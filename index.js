@@ -1,3 +1,4 @@
+require("dotenv").config({ path: "/etc/secrets/.env" });
 const express = require("express");
 const axios = require("axios");
 const app = express();
