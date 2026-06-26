@@ -85,19 +85,33 @@ Anel de Ferrara: R$ 8.700,00 por olho | até 5x no cartão
 Lentes Esclerais: Esclera SG R$ 7.800,00 par / R$ 4.280,00 unidade | ZenLens R$ 5.980,00 par
 Teste de Lentes: gelatinosas R$ 120,00 | rígidas/esclerais R$ 150,00 (somente particular, apenas Conjunto Nacional, priorizar PIX e débito)
 
-Exames com convênio:
-- Paquimetria (41501128): R$ 180,00
-- Topografia/Ceratoscopia (41301080): R$ 180,00
-- Mapeamento de Retina (41301250): R$ 300,00
-- Microscopia Especular (41301269): R$ 180,00
-- Tonometria (41301323): confirmar com equipe
-- Curva Diária de Pressão Ocular CDPO (41301129): R$ 380,00
-- Retinografia Simples (41301315): R$ 220,00
-- Gonioscopia (41301242): R$ 150,00
+Exames cobertos por convênio (paciente NÃO paga nada além da cobertura do plano):
+- Paquimetria (cód. 41501128)
+- Topografia/Ceratoscopia (cód. 41301080)
+- Mapeamento de Retina (cód. 41301250)
+- Microscopia Especular (cód. 41301269)
+- Tonometria (cód. 41301323)
+- Curva Diária de Pressão Ocular CDPO (cód. 41301129)
+- Retinografia Simples (cód. 41301315)
+- Gonioscopia (cód. 41301242)
 
-Exames somente particular:
+Valores dos mesmos exames para pacientes PARTICULARES (sem convênio):
+- Paquimetria: R$ 180,00
+- Topografia/Ceratoscopia: R$ 180,00
+- Mapeamento de Retina: R$ 300,00
+- Microscopia Especular: R$ 180,00
+- Tonometria: confirmar com equipe
+- Curva Diária de Pressão Ocular CDPO: R$ 380,00
+- Retinografia Simples: R$ 220,00
+- Gonioscopia: R$ 150,00
+
+Exames somente particular (NÃO aceita nenhum convênio):
 - Pentacam: R$ 300,00 (apenas Conjunto Nacional)
 - Teste de Sobrecarga Hídrica: R$ 380,00
+- Teste de Lentes Gelatinosa: R$ 120,00
+- Teste de Lentes Escleral ou Rígida: R$ 150,00
+
+Regra importante: nunca mencione valor de exame quando o paciente tiver convênio — o exame é coberto pelo plano sem custo adicional.
 
 ### Exames realizados pelo IOBB
 - Pentacam HR — apenas particular, apenas Conjunto Nacional
@@ -110,7 +124,7 @@ Exames somente particular:
 - Teste de Sobrecarga Hídrica
 - Mapeamento de Retina
 - Gonioscopia
-- Teste de Lente de Contato — apenas Conjunto Nacional
+- Teste de Lente de Contato — realizado exclusivamente na unidade do Conjunto Nacional, em sessão separada da consulta médica, sob supervisão do médico com orientação da contactóloga para adaptação e uso da lente mais adequada para cada paciente
 - Teste de Visão Cromática (Ishihara)
 - Teste de Estereopsia (Titmus Test)
 
@@ -126,7 +140,12 @@ Taguatinga Shopping — Sala 615 Torre B
 Telefone: (61) 3033-6605 — segunda a sexta, 08h às 18h (intervalo de almoço das 13h às 14h)
 
 ### Regra de oferta de horários
-Quando receber lista de horários disponíveis, ofereça no máximo 2 por vez (uma manhã, uma tarde). Priorizar preferência do paciente.
+Quando receber lista de horários disponíveis, siga rigorosamente:
+1. Ofereça SEMPRE exatamente 2 opções: uma pela manhã e uma pela tarde.
+2. Se o paciente pedir mais cedo → ofereça apenas 1 opção mais cedo que a anterior.
+3. Se o paciente pedir mais tarde → ofereça apenas 1 opção mais tarde que a anterior.
+4. Nunca liste mais de 2 horários de uma vez, exceto quando o paciente pedir explicitamente.
+Exemplo: "Temos disponibilidade na sexta-feira às 9h20 ou às 15h40. Algum desses funciona?"
 
 ### Conferência de óculos
 Não precisa agendar. Pode comparecer com os óculos e receita no horário de atendimento.
@@ -158,11 +177,12 @@ function parseICS(icsText) {
 }
 
 function getAvailableSlots(events, unidadePref) {
-  const now = new Date();
+  // Usar horário de Brasília corretamente
+  const nowBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
   const slots = [];
-  for (let d = 1; d <= 14; d++) {
-    const day = new Date(now);
-    day.setDate(now.getDate() + d);
+  for (let d = 0; d <= 14; d++) {
+    const day = new Date(nowBrasilia);
+    day.setDate(nowBrasilia.getDate() + d);
     const dow = day.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long" });
     const isConjunto = ["segunda","quarta","sexta"].some(x => dow.includes(x));
     const isTaguatinga = ["terça","quinta"].some(x => dow.includes(x));
@@ -176,12 +196,16 @@ function getAvailableSlots(events, unidadePref) {
     for (let h = startH; h < 18; h++) {
       if (h === 13) continue;
       for (let m = 0; m < 60; m += 20) {
-        const slotStart = new Date(day.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }) + `T${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:00-03:00`);
+        const dateStr = day.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+        const slotStart = new Date(`${dateStr}T${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:00-03:00`);
         const slotEnd = new Date(slotStart.getTime() + 20 * 60000);
+        // Ignorar slots que já passaram
+        if (slotStart <= new Date()) continue;
         const busy = events.some(ev => slotStart < ev.end && slotEnd > ev.start);
         if (!busy) {
           const label = slotStart.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-          slots.push(`${label} (${isConjunto ? "Conjunto Nacional" : "Taguatinga"})`);
+          const unidade = isConjunto ? "Conjunto Nacional" : "Taguatinga";
+          slots.push(`${label} (${unidade})`);
         }
       }
     }
@@ -237,8 +261,22 @@ app.post("/webhook", async (req, res) => {
     if (detectSchedulingIntent(conversations[from])) {
       const unidade = detectUnidade(conversations[from]);
       const slots = await fetchSlots(unidade);
-      if (slots.length > 0) {
-        systemPrompt += `\n\n### Horários disponíveis agora (agenda real)\nUse esses horários ao oferecer opções. Máximo 2 por vez:\n${slots.slice(0, 10).join("\n")}`;
+    if (slots.length > 0) {
+        // Garantir um horário de manhã e um de tarde
+        const manha = slots.find(s => {
+          const hora = parseInt(s.match(/(\d{2}):\d{2}/)?.[1] || "0");
+          return hora < 13;
+        });
+        const tarde = slots.find(s => {
+          const hora = parseInt(s.match(/(\d{2}):\d{2}/)?.[1] || "0");
+          return hora >= 14;
+        });
+        const primeiros = [];
+        if (manha) primeiros.push(manha);
+        if (tarde) primeiros.push(tarde);
+        const extras = slots.filter(s => !primeiros.includes(s)).slice(0, 8);
+        const todosSlots = [...primeiros, ...extras];
+        systemPrompt += `\n\n### Horários disponíveis agora (agenda real)\nOFEREÇA SEMPRE o primeiro horário de manhã e o primeiro de tarde. Se o paciente pedir mais cedo ou mais tarde, ofereça 1 opção adicional por vez:\n${todosSlots.join("\n")}`;
       }
     }
 
