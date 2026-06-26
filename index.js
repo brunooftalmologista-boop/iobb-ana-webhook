@@ -262,18 +262,31 @@ app.post("/webhook", async (req, res) => {
       const unidade = detectUnidade(conversations[from]);
       const slots = await fetchSlots(unidade);
     if (slots.length > 0) {
-        // Garantir um horário de manhã e um de tarde
-        const manha = slots.find(s => {
-          const hora = parseInt(s.match(/(\d{2}):\d{2}/)?.[1] || "0");
-          return hora < 13;
-        });
-        const tarde = slots.find(s => {
-          const hora = parseInt(s.match(/(\d{2}):\d{2}/)?.[1] || "0");
-          return hora >= 14;
-        });
-        const primeiros = [];
-        if (manha) primeiros.push(manha);
-        if (tarde) primeiros.push(tarde);
+        const hoje = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long" });
+        const slotsConjunto = slots.filter(s => s.includes("Conjunto Nacional"));
+        const slotsTaguatinga = slots.filter(s => s.includes("Taguatinga"));
+
+        let primeiros = [];
+
+        if (unidade) {
+          // Paciente indicou preferência
+          const slotsPref = unidade.includes("taguatinga") ? slotsTaguatinga : slotsConjunto;
+          const manha = slotsPref.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") < 13);
+          const tarde = slotsPref.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") >= 14);
+          if (manha) primeiros.push(manha);
+          if (tarde) primeiros.push(tarde);
+        } else {
+          // Sem preferência — mostrar um de cada unidade (manhã ou tarde)
+          const conjManha = slotsConjunto.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") < 13);
+          const conjTarde = slotsConjunto.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") >= 14);
+          const tagManha = slotsTaguatinga.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") < 13);
+          const tagTarde = slotsTaguatinga.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") >= 14);
+          if (conjManha) primeiros.push(conjManha);
+          else if (conjTarde) primeiros.push(conjTarde);
+          if (tagManha) primeiros.push(tagManha);
+          else if (tagTarde) primeiros.push(tagTarde);
+        }
+
         const extras = slots.filter(s => !primeiros.includes(s)).slice(0, 8);
         const todosSlots = [...primeiros, ...extras];
         systemPrompt += `\n\n### Horários disponíveis agora (agenda real)\nOFEREÇA SEMPRE o primeiro horário de manhã e o primeiro de tarde. Se o paciente pedir mais cedo ou mais tarde, ofereça 1 opção adicional por vez:\n${todosSlots.join("\n")}`;
