@@ -161,6 +161,26 @@ Atendimento a partir de 8 anos. Menor de 8 anos: encaminhar para a equipe.
 ### Regra de sugestão de dias
 Sempre ordem cronológica — do mais próximo para o mais distante.`;
 
+const NUMERO_CLINICA = "5561984060001";
+
+async function notificarClinica(resumo) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: NUMERO_CLINICA,
+        type: "text",
+        text: { body: `📋 *Novo pré-agendamento via WhatsApp*\n\n${resumo}` }
+      },
+      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+    );
+    console.log("Clínica notificada com sucesso.");
+  } catch(e) {
+    console.error("Erro ao notificar clínica:", e.message);
+  }
+}
+
 const conversations = {};
 
 function parseICS(icsText) {
@@ -302,6 +322,19 @@ app.post("/webhook", async (req, res) => {
     );
     const reply = response.data.content[0].text;
     conversations[from].push({ role: "assistant", content: reply });
+
+    // Detectar se o pré-agendamento foi concluído
+    const replyLower = reply.toLowerCase();
+    const conversaTexto = conversations[from].map(m => m.content).join(" ").toLowerCase();
+    const temNome = conversaTexto.match(/meu nome é|me chamo|sou o|sou a/i);
+    const temTelefone = conversaTexto.match(/\d{8,11}/);
+    const confirmando = replyLower.includes("entrará em contato") || replyLower.includes("nossa equipe") && replyLower.includes("confirmar");
+
+    if (confirmando && temNome && temTelefone) {
+      // Extrair dados da conversa para o resumo
+      const ultimas = conversations[from].slice(-10).map(m => `${m.role === "user" ? "Paciente" : "Ana"}: ${m.content}`).join("\n");
+      await notificarClinica(ultimas);
+    }
     await axios.post(
       `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
       { messaging_product: "whatsapp", to: from, type: "text", text: { body: reply } },
