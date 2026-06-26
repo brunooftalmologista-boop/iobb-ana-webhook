@@ -203,10 +203,14 @@ function detectUnidade(messages) {
 
 async function fetchSlots(unidadePref) {
   try {
-    const res = await axios.get(`https://api.allorigins.win/raw?url=${encodeURIComponent(ICAL_URL)}`);
+    console.log("Buscando calendário...");
+    const res = await axios.get(`https://api.allorigins.win/raw?url=${encodeURIComponent(ICAL_URL)}`, { timeout: 8000 });
     const events = parseICS(res.data);
-    return getAvailableSlots(events, unidadePref);
-  } catch {
+    const slots = getAvailableSlots(events, unidadePref);
+    console.log("Slots encontrados:", slots.length);
+    return slots;
+  } catch(e) {
+    console.error("Erro calendário:", e.message);
     return [];
   }
 }
