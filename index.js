@@ -160,8 +160,8 @@ Atendimento a partir de 8 anos. Menor de 8 anos: encaminhar para a equipe.
 ### Regra de sugestão de dias
 Sempre ordem cronológica — do mais próximo para o mais distante.`;
 
-const NUMERO_CLINICA = "5561984060001";
-const NUMEROS_ADMIN = ["5561984060001", "556182879853"]; // números autorizados a controlar a Ana
+const NUMERO_CLINICA = "5561982879853";
+const NUMEROS_ADMIN = ["5561984060001", "556182879853", "5561982879853"]; // números autorizados a controlar a Ana
 let anaAtiva = true;
 
 async function notificarClinica(resumo) {
@@ -357,6 +357,10 @@ app.post("/webhook", async (req, res) => {
     );
     const reply = response.data.content[0].text;
     conversations[from].push({ role: "assistant", content: reply });
+
+    // Espelhar conversa para a clínica
+    const nomePaciente = from;
+    await notificarClinica(`👤 *Paciente ${nomePaciente}:*\n${text}\n\n🤖 *Ana:*\n${reply}`);
 
     // Detectar se o pré-agendamento foi concluído
     const replyLower = reply.toLowerCase();
