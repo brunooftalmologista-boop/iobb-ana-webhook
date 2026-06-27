@@ -277,6 +277,7 @@ app.post("/webhook", async (req, res) => {
     if (!msg || msg.type !== "text") return;
     const from = msg.from;
     const text = msg.text.body.trim();
+    console.log("Mensagem de:", from, "| Texto:", text);
 
     // Comandos de controle — apenas do número da clínica
     if (from === NUMERO_CLINICA) {
