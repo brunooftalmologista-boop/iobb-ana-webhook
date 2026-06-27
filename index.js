@@ -1,6 +1,7 @@
 require("dotenv").config({ path: "/etc/secrets/.env" });
 const express = require("express");
 const axios = require("axios");
+const { createClient } = require("@supabase/supabase-js");
 const app = express();
 app.use(express.json());
 
@@ -8,12 +9,15 @@ const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const ICAL_URL = "https://calendar.google.com/calendar/ical/8b9b392717790c4374966cbb68a56c819448b074f8bd7fefadd1c79303745d38%40group.calendar.google.com/public/basic.ics";
 
 const SYSTEM_PROMPT = `Você é Ana, secretária do Instituto de Olhos Bruno Borges (IOBB), em Brasília/DF.
-
-Você atende pelo WhatsApp fora do horário comercial. Sua missão é acolher cada pessoa com atenção genuína, esclarecer dúvidas com clareza e ajudar a marcar uma consulta ou pré-agendamento quando fizer sentido.
+Você atende pelo WhatsApp. Sua missão é acolher cada pessoa com atenção genuína, esclarecer dúvidas com clareza e ajudar a marcar uma consulta ou pré-agendamento quando fizer sentido.
 
 ### Sua identidade
 - Você é secretária, não médica. Nunca tente diagnosticar.
@@ -39,12 +43,12 @@ Você atende pelo WhatsApp fora do horário comercial. Sua missão é acolher ca
 - Nunca indique cirurgia sem dizer que depende de avaliação
 - Nunca prometa resultados
 - Nunca pressione o paciente a agendar
-- Nunca faça triagem clínica — não pergunte sobre sintomas, duração, olho afetado, histórico médico ou qualquer detalhe clínico. Isso é papel do médico na consulta. Quando o paciente relatar sintoma visual, acolha e encaminhe para agendamento.
+- Nunca faça triagem clínica — não pergunte sobre sintomas, duração, olho afetado, histórico médico. Quando o paciente relatar sintoma visual, acolha e encaminhe para agendamento.
 
 ### Convênios
 Se o convênio estiver na lista → confirme que atendemos.
 Se não estiver → diga que não atendemos e ofereça atendimento particular.
-Qualquer menção a Unimed → solicite número da carteirinha ou foto. Exemplo: "A Unimed pode ter variações dependendo do tipo de plano, então prefiro confirmar com nossa equipe. 😊 Você consegue me mandar o número da carteirinha ou uma foto dela? Assim já repasso para eles verificarem e te retornam por aqui mesmo."
+Qualquer menção a Unimed → solicite número da carteirinha ou foto.
 
 LISTA DE CONVÊNIOS ATENDIDOS:
 AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBRAPA, CAEME-GO, CAMED, CAESAN, CASEC, CENTRAL NACIONAL UNIMED, CTI, CONAB, ELETRONORTE, EMBRATEL, E-VIDA, FACEB, FAPES (BNDES), FASCAL, FIOSAÚDE (FIOPREV), FURNAS, GAMA SAÚDE, INSTITUTO DE ASSISTÊNCIA À SAÚDE DOS SERVIDORES DO DISTRITO FEDERAL, INFRAERO, IRB, IRMÃOS GRAVIA, LIFE EMPRESARIAL, MAPFRE SAÚDE, MPDFT, MPF, MPM, MPT, NOTRE DAME, PAME, PLAN-ASSISTE, PROASA, SAÚDE CAIXA, SERPRO, STF-MED, STJ, STM, TJDFT, TST SAÚDE, T.R.E., TRF, TRT, UNAFISCO, UNIBANCO - TEMPO SAUDE, UNIMED CENTRAL NACIONAL, UNIMED PLANALTO, UNIMED INTERCÂMBIO, UNIVERSAL ASSISTENCE.
@@ -52,138 +56,65 @@ AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBR
 ### Quando encaminhar para humano
 - Dor ocular intensa, perda súbita de visão, trauma ou sintoma agudo
 - Angústia emocional intensa
-- Pergunta técnica demais (interpretação de laudo, segundo diagnóstico)
+- Pergunta técnica demais
 - Paciente pedir para falar com o médico ou secretária humana
-
 Nesse caso: "Essa situação merece atenção especial da nossa equipe. Nosso telefone é (61) 3033-6605, atendido de segunda a sexta, das 8h às 18h (intervalo de almoço das 13h às 14h). Se preferir, posso deixar um recado para a nossa equipe entrar em contato com você pelo WhatsApp assim que abrir amanhã. O que prefere?"
 
 ### Tom e linguagem
 - Use o nome do paciente quando souber
 - Mensagens curtas e encadeadas
 - Emojis com moderação (😊 ✅ 👁️)
-- Nunca diga "infelizmente" — prefira "nesse caso" ou "o que posso fazer é"
-- Nunca adicione complementações "vendedoras" — responda de forma direta e natural
-- Quando o exame ou procedimento não for realizado: responda diretamente e após o paciente sinalizar encerramento diga "De nada! 😊 Posso ajudar em algo mais?"
-
-### Procedimentos prioritários
-1. Ceratocone — dificuldade com óculos, visão distorcida, troca frequente de grau
-2. Lentes esclerais — reabilitação visual no ceratocone ou córneas irregulares
-3. Cirurgia refrativa — desejo de largar óculos ou lentes de contato
-4. Catarata — visão turva progressiva, sensibilidade à luz (mais comum acima dos 55 anos)
+- Nunca diga "infelizmente"
+- Nunca adicione complementações "vendedoras"
+- Quando o exame ou procedimento não for realizado: responda diretamente. Após o paciente sinalizar encerramento: "De nada! 😊 Posso ajudar em algo mais?"
 
 ### Valores dos procedimentos
-Informe apenas quando perguntado. Nunca inicie com preços.
-
 Consulta particular: R$ 200,00
-
-Cirurgia Refrativa:
-- PRK: R$ 5.990,00 | LASIK: R$ 7.800,00 | Femto-LASIK: R$ 8.890,00 | até 5x no cartão
-- A técnica depende da avaliação médica.
-
-Crosslinking (Ceratocone): R$ 5.980,00 por olho | até 5x no cartão
-Anel de Ferrara: R$ 8.700,00 por olho | até 5x no cartão
+Cirurgia Refrativa: PRK R$ 5.990,00 | LASIK R$ 7.800,00 | Femto-LASIK R$ 8.890,00 | até 5x cartão
+Crosslinking: R$ 5.980,00 por olho | até 5x cartão
+Anel de Ferrara: R$ 8.700,00 por olho | até 5x cartão
 Lentes Esclerais: Esclera SG R$ 7.800,00 par / R$ 4.280,00 unidade | ZenLens R$ 5.980,00 par
 Teste de Lentes: gelatinosas R$ 120,00 | rígidas/esclerais R$ 150,00 (somente particular, apenas Conjunto Nacional, priorizar PIX e débito)
 
-Exames cobertos por convênio (paciente NÃO paga nada além da cobertura do plano):
-- Paquimetria (cód. 41501128)
-- Topografia/Ceratoscopia (cód. 41301080)
-- Mapeamento de Retina (cód. 41301250)
-- Microscopia Especular (cód. 41301269)
-- Tonometria (cód. 41301323)
-- Curva Diária de Pressão Ocular CDPO (cód. 41301129)
-- Retinografia Simples (cód. 41301315)
-- Gonioscopia (cód. 41301242)
+Exames cobertos por convênio (paciente NÃO paga nada):
+Paquimetria, Topografia/Ceratoscopia, Mapeamento de Retina, Microscopia Especular, Tonometria, Curva Diária de Pressão Ocular CDPO, Retinografia Simples, Gonioscopia.
 
-Valores dos mesmos exames para pacientes PARTICULARES (sem convênio):
-- Paquimetria: R$ 180,00
-- Topografia/Ceratoscopia: R$ 180,00
-- Mapeamento de Retina: R$ 300,00
-- Microscopia Especular: R$ 180,00
-- Tonometria: confirmar com equipe
-- Curva Diária de Pressão Ocular CDPO: R$ 380,00
-- Retinografia Simples: R$ 220,00
-- Gonioscopia: R$ 150,00
+Valores para pacientes PARTICULARES:
+Paquimetria R$ 180,00 | Topografia R$ 180,00 | Mapeamento Retina R$ 300,00 | Microscopia Especular R$ 180,00 | Tonometria confirmar | CDPO R$ 380,00 | Retinografia R$ 220,00 | Gonioscopia R$ 150,00
 
-Exames somente particular (NÃO aceita nenhum convênio):
-- Pentacam: R$ 300,00 (apenas Conjunto Nacional)
-- Teste de Sobrecarga Hídrica: R$ 380,00
-- Teste de Lentes Gelatinosa: R$ 120,00
-- Teste de Lentes Escleral ou Rígida: R$ 150,00
+Exames somente particular: Pentacam R$ 300,00 (apenas Conjunto Nacional) | Teste Sobrecarga Hídrica R$ 380,00
 
-Regra importante: nunca mencione valor de exame quando o paciente tiver convênio — o exame é coberto pelo plano sem custo adicional.
+Regra: nunca mencione valor de exame quando o paciente tiver convênio.
 
-### Exames realizados pelo IOBB
-- Pentacam HR — apenas particular, apenas Conjunto Nacional
-- Paquimetria
-- Topografia de Córnea (Ceratoscopia)
-- Microscopia Especular de Córnea
-- Retinografia — apenas Conjunto Nacional
-- Tonometria
-- Curva Diária de Pressão Ocular
-- Teste de Sobrecarga Hídrica
-- Mapeamento de Retina
-- Gonioscopia
-- Teste de Lente de Contato — realizado exclusivamente na unidade do Conjunto Nacional, em sessão separada da consulta médica, sob supervisão do médico com orientação da contactóloga para adaptação e uso da lente mais adequada. Exige exame prévio de córnea (topografia ou similar), realizado aqui ou em outro serviço. Agendamento separado da consulta.
-- Teste de Visão Cromática (Ishihara)
-- Teste de Estereopsia (Titmus Test)
-
-Exame NÃO realizado: Campimetria (campo visual). Se perguntado, responda diretamente: "A campimetria não é um exame que realizamos."
+### Exames realizados
+Pentacam HR (particular, Conjunto Nacional), Paquimetria, Topografia, Microscopia Especular, Retinografia (Conjunto Nacional), Tonometria, CDPO, Teste Sobrecarga Hídrica, Mapeamento Retina, Gonioscopia, Teste Lente de Contato (Conjunto Nacional, sessão separada, exame prévio de córnea necessário, sob supervisão médica com contactóloga), Teste Visão Cromática, Teste Estereopsia.
+Exame NÃO realizado: Campimetria. Resposta: "A campimetria não é um exame que realizamos."
 
 ### Unidades e horários
-Conjunto Nacional — Shopping Conjunto Nacional, Sala 6027, Asa Norte
-- Funciona: segunda, quarta e sexta | Consultas: 09h às 18h (intervalo de almoço das 13h às 14h)
-
-Taguatinga Shopping — Sala 615 Torre B
-- Funciona: terça e quinta | Consultas: 10h às 18h (intervalo de almoço das 13h às 14h)
-
-Telefone: (61) 3033-6605 — segunda a sexta, 08h às 18h (intervalo de almoço das 13h às 14h)
-
-### Regra de oferta de horários
-Os horários disponíveis servem para qualquer tipo de atendimento: consultas, exames e testes de lente de contato. Não separe por tipo de atendimento.
-Quando receber lista de horários disponíveis, siga rigorosamente:
-1. Ofereça SEMPRE exatamente 2 opções: uma pela manhã e uma pela tarde.
-2. Se o paciente pedir mais cedo → ofereça apenas 1 opção mais cedo que a anterior.
-3. Se o paciente pedir mais tarde → ofereça apenas 1 opção mais tarde que a anterior.
-4. Nunca liste mais de 2 horários de uma vez, exceto quando o paciente pedir explicitamente.
-Exemplo: "Temos disponibilidade na sexta-feira às 9h20 ou às 15h40. Algum desses funciona?"
+Conjunto Nacional — Sala 6027, Asa Norte | segunda, quarta, sexta | Consultas 09h-18h (almoço 13h-14h)
+Taguatinga Shopping — Sala 615 Torre B | terça, quinta | Consultas 10h-18h (almoço 13h-14h)
+Telefone: (61) 3033-6605 | seg-sex 08h-18h (almoço 13h-14h)
 
 ### Conferência de óculos
-Não precisa agendar. Pode comparecer com os óculos e receita no horário de atendimento.
+Não precisa agendar. Comparecer com óculos e receita no horário de atendimento.
+
+### Regra de oferta de horários
+Todos os horários servem para qualquer atendimento (consultas, exames, testes).
+Ofereça SEMPRE 2 opções: uma manhã e uma tarde. Se pedir mais cedo/tarde → 1 opção adicional.
+Sempre ordem cronológica.
 
 ### Ceratocone
-Pacientes frequentemente já têm diagnóstico. Pergunte: diagnóstico confirmado? topografia recente? já usou lentes rígidas ou esclerais? Não criar barreiras. Nunca assumir que quer cirurgia.
+Pergunte: diagnóstico confirmado? topografia recente? já usou lentes rígidas/esclerais?
+Não criar barreiras. Nunca assumir que quer cirurgia.
 
 ### Faixa etária
-Atendimento a partir de 8 anos. Menor de 8 anos: encaminhar para a equipe.
-
-### Regra de sugestão de dias
-Sempre ordem cronológica — do mais próximo para o mais distante.`;
+A partir de 8 anos. Menor de 8 anos: encaminhar para a equipe.`;
 
 const NUMERO_CLINICA = "5561982879853";
-const NUMEROS_ADMIN = ["5561984060001", "556182879853", "5561982879853"]; // números autorizados a controlar a Ana
+const NUMEROS_ADMIN = ["5561984060001", "556182879853", "5561982879853"];
 let anaAtiva = true;
 
-async function notificarClinica(resumo) {
-  try {
-    await axios.post(
-      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to: NUMERO_CLINICA,
-        type: "text",
-        text: { body: `📋 *Novo pré-agendamento via WhatsApp*\n\n${resumo}` }
-      },
-      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
-    );
-    console.log("Clínica notificada com sucesso.");
-  } catch(e) {
-    console.error("Erro ao notificar clínica:", e.message);
-  }
-}
-
-const conversations = {};
-
+// Funções do calendário
 function parseICS(icsText) {
   const events = [];
   const blocks = icsText.split("BEGIN:VEVENT");
@@ -200,7 +131,6 @@ function parseICS(icsText) {
 }
 
 function getAvailableSlots(events, unidadePref) {
-  // Usar horário de Brasília corretamente
   const nowBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
   const slots = [];
   for (let d = 0; d <= 14; d++) {
@@ -222,13 +152,11 @@ function getAvailableSlots(events, unidadePref) {
         const dateStr = day.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
         const slotStart = new Date(`${dateStr}T${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:00-03:00`);
         const slotEnd = new Date(slotStart.getTime() + 20 * 60000);
-        // Ignorar slots que já passaram
         if (slotStart <= new Date()) continue;
         const busy = events.some(ev => slotStart < ev.end && slotEnd > ev.start);
         if (!busy) {
           const label = slotStart.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-          const unidade = isConjunto ? "Conjunto Nacional" : "Taguatinga";
-          slots.push(`${label} (${unidade})`);
+          slots.push(`${label} (${isConjunto ? "Conjunto Nacional" : "Taguatinga"})`);
         }
       }
     }
@@ -250,18 +178,71 @@ function detectUnidade(messages) {
 
 async function fetchSlots(unidadePref) {
   try {
-    console.log("Buscando calendário...");
     const res = await axios.get(`https://api.allorigins.win/raw?url=${encodeURIComponent(ICAL_URL)}`, { timeout: 8000 });
     const events = parseICS(res.data);
-    const slots = getAvailableSlots(events, unidadePref);
-    console.log("Slots encontrados:", slots.length);
-    return slots;
+    return getAvailableSlots(events, unidadePref);
   } catch(e) {
     console.error("Erro calendário:", e.message);
     return [];
   }
 }
 
+// Funções do Supabase
+async function getOrCreatePatient(phone) {
+  let { data } = await supabase.from("patients").select("*").eq("phone", phone).single();
+  if (!data) {
+    const { data: newPatient } = await supabase.from("patients").insert({ phone }).select().single();
+    data = newPatient;
+  }
+  return data;
+}
+
+async function getOrCreateConversation(patientId) {
+  let { data } = await supabase.from("conversations").select("*").eq("patient_id", patientId).neq("status", "closed").order("started_at", { ascending: false }).limit(1).single();
+  if (!data) {
+    const { data: newConv } = await supabase.from("conversations").insert({ patient_id: patientId, status: "bot" }).select().single();
+    data = newConv;
+  }
+  return data;
+}
+
+async function saveMessage(conversationId, role, content, waMessageId = null) {
+  await supabase.from("messages").insert({ conversation_id: conversationId, role, content, wa_message_id: waMessageId });
+  await supabase.from("conversations").update({ last_message: content, updated_at: new Date() }).eq("id", conversationId);
+}
+
+async function getConversationMessages(conversationId) {
+  const { data } = await supabase.from("messages").select("role, content").eq("conversation_id", conversationId).order("timestamp", { ascending: true }).limit(20);
+  return data || [];
+}
+
+async function updatePatientName(phone, name) {
+  await supabase.from("patients").update({ name, updated_at: new Date() }).eq("phone", phone);
+}
+
+// Notificar clínica
+async function notificarClinica(texto) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+      { messaging_product: "whatsapp", to: NUMERO_CLINICA, type: "text", text: { body: texto } },
+      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+    );
+  } catch(e) {
+    console.error("Erro ao notificar clínica:", e.message);
+  }
+}
+
+// Enviar mensagem WhatsApp
+async function sendWhatsApp(to, body) {
+  await axios.post(
+    `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+    { messaging_product: "whatsapp", to, type: "text", text: { body } },
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+  );
+}
+
+// Webhook verification
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
     res.send(req.query["hub.challenge"]);
@@ -270,6 +251,7 @@ app.get("/webhook", (req, res) => {
   }
 });
 
+// Webhook principal
 app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
   try {
@@ -279,61 +261,64 @@ app.post("/webhook", async (req, res) => {
     const text = msg.text.body.trim();
     console.log("Mensagem de:", from, "| Texto:", text);
 
-    // Comandos de controle — apenas de números autorizados
+    // Comandos admin
     if (NUMEROS_ADMIN.includes(from)) {
       if (text === "#ANA OFF") {
         anaAtiva = false;
-        await axios.post(
-          `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
-          { messaging_product: "whatsapp", to: from, type: "text", text: { body: "✅ Ana desativada. Atendimento manual ativado." } },
-          { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
-        );
+        await supabase.from("settings").upsert({ key: "ai_enabled", value: "false" });
+        await sendWhatsApp(from, "✅ Ana desativada.");
         return;
       }
       if (text === "#ANA ON") {
         anaAtiva = true;
-        await axios.post(
-          `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
-          { messaging_product: "whatsapp", to: from, type: "text", text: { body: "✅ Ana ativada. Atendimento automático ativado." } },
-          { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
-        );
+        await supabase.from("settings").upsert({ key: "ai_enabled", value: "true" });
+        await sendWhatsApp(from, "✅ Ana ativada.");
         return;
       }
       if (text === "#ANA STATUS") {
-        await axios.post(
-          `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
-          { messaging_product: "whatsapp", to: from, type: "text", text: { body: `ℹ️ Ana está ${anaAtiva ? "✅ ATIVA" : "❌ DESATIVADA"}.` } },
-          { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
-        );
+        await sendWhatsApp(from, `ℹ️ Ana está ${anaAtiva ? "✅ ATIVA" : "❌ DESATIVADA"}.`);
         return;
       }
     }
 
-    // Se Ana estiver desativada, não responde
-    if (!anaAtiva) return;
-    if (!conversations[from]) conversations[from] = [];
-    conversations[from].push({ role: "user", content: text });
+    // Salvar no banco
+    const patient = await getOrCreatePatient(from);
+    const conversation = await getOrCreateConversation(patient.id);
+    await saveMessage(conversation.id, "user", text, msg.id);
 
+    // Verificar se conversa está com humano
+    if (conversation.status === "human") {
+      await notificarClinica(`👤 *Paciente ${patient.name || from}:*\n${text}`);
+      return;
+    }
+
+    // Se Ana desativada, não responde
+    if (!anaAtiva) return;
+
+    // Buscar histórico do banco
+    const history = await getConversationMessages(conversation.id);
+    const messages = history.map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }));
+
+    // Detectar nome do paciente nas mensagens
+    const nameMatch = text.match(/(?:me chamo|meu nome é|sou o|sou a)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)*)/i);
+    if (nameMatch) await updatePatientName(from, nameMatch[1]);
+
+    // Buscar horários se necessário
     let systemPrompt = SYSTEM_PROMPT;
-    if (detectSchedulingIntent(conversations[from])) {
-      const unidade = detectUnidade(conversations[from]);
+    if (detectSchedulingIntent(messages)) {
+      const unidade = detectUnidade(messages);
       const slots = await fetchSlots(unidade);
-    if (slots.length > 0) {
-        const hoje = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long" });
+      if (slots.length > 0) {
         const slotsConjunto = slots.filter(s => s.includes("Conjunto Nacional"));
         const slotsTaguatinga = slots.filter(s => s.includes("Taguatinga"));
-
         let primeiros = [];
-
         if (unidade) {
-          // Paciente indicou preferência
           const slotsPref = unidade.includes("taguatinga") ? slotsTaguatinga : slotsConjunto;
           const manha = slotsPref.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") < 13);
           const tarde = slotsPref.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") >= 14);
           if (manha) primeiros.push(manha);
           if (tarde) primeiros.push(tarde);
         } else {
-          // Sem preferência — mostrar um de cada unidade (manhã ou tarde)
           const conjManha = slotsConjunto.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") < 13);
           const conjTarde = slotsConjunto.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") >= 14);
           const tagManha = slotsTaguatinga.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") < 13);
@@ -343,45 +328,70 @@ app.post("/webhook", async (req, res) => {
           if (tagManha) primeiros.push(tagManha);
           else if (tagTarde) primeiros.push(tagTarde);
         }
-
         const extras = slots.filter(s => !primeiros.includes(s)).slice(0, 8);
-        const todosSlots = [...primeiros, ...extras];
-        systemPrompt += `\n\n### Horários disponíveis agora (agenda real)\nOFEREÇA SEMPRE o primeiro horário de manhã e o primeiro de tarde. Se o paciente pedir mais cedo ou mais tarde, ofereça 1 opção adicional por vez:\n${todosSlots.join("\n")}`;
+        systemPrompt += `\n\n### Horários disponíveis\nOfereça 2 por vez (manhã + tarde):\n${[...primeiros, ...extras].join("\n")}`;
       }
     }
 
+    // Chamar Ana
     const response = await axios.post(
       "https://api.anthropic.com/v1/messages",
-      { model: "claude-sonnet-4-6", max_tokens: 1000, system: systemPrompt, messages: conversations[from].slice(-10) },
+      { model: "claude-sonnet-4-6", max_tokens: 1000, system: systemPrompt, messages: messages.slice(-10) },
       { headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" } }
     );
     const reply = response.data.content[0].text;
-    conversations[from].push({ role: "assistant", content: reply });
 
-    // Espelhar conversa para a clínica
-    const nomePaciente = from;
-    await notificarClinica(`👤 *Paciente ${nomePaciente}:*\n${text}\n\n🤖 *Ana:*\n${reply}`);
+    // Salvar resposta
+    await saveMessage(conversation.id, "assistant", reply);
 
-    // Detectar se o pré-agendamento foi concluído
-    const replyLower = reply.toLowerCase();
-    const conversaTexto = conversations[from].map(m => m.content).join(" ").toLowerCase();
-    const temNome = conversaTexto.match(/meu nome é|me chamo|sou o|sou a/i);
-    const temTelefone = conversaTexto.match(/\d{8,11}/);
-    const confirmando = replyLower.includes("entrará em contato") || replyLower.includes("nossa equipe") && replyLower.includes("confirmar");
+    // Enviar ao paciente
+    await sendWhatsApp(from, reply);
 
-    if (confirmando && temNome && temTelefone) {
-      // Extrair dados da conversa para o resumo
-      const ultimas = conversations[from].slice(-10).map(m => `${m.role === "user" ? "Paciente" : "Ana"}: ${m.content}`).join("\n");
-      await notificarClinica(ultimas);
-    }
-    await axios.post(
-      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
-      { messaging_product: "whatsapp", to: from, type: "text", text: { body: reply } },
-      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
-    );
-  } catch (e) {
+    // Espelhar para clínica
+    await notificarClinica(`👤 *${patient.name || from}:*\n${text}\n\n🤖 *Ana:*\n${reply}`);
+
+  } catch(e) {
     console.error(e?.response?.data || e.message);
   }
+});
+
+// API para o painel web
+app.get("/api/conversations", async (req, res) => {
+  const { data } = await supabase.from("conversations").select(`*, patients(name, phone)`).order("updated_at", { ascending: false });
+  res.json(data);
+});
+
+app.get("/api/conversations/:id/messages", async (req, res) => {
+  const { data } = await supabase.from("messages").select("*").eq("conversation_id", req.params.id).order("timestamp");
+  res.json(data);
+});
+
+app.post("/api/conversations/:id/assign", async (req, res) => {
+  await supabase.from("conversations").update({ status: "human", assigned_to: req.body.agent }).eq("id", req.params.id);
+  res.json({ ok: true });
+});
+
+app.post("/api/conversations/:id/release", async (req, res) => {
+  await supabase.from("conversations").update({ status: "bot", assigned_to: null }).eq("id", req.params.id);
+  res.json({ ok: true });
+});
+
+app.post("/api/send", async (req, res) => {
+  const { to, message, conversationId } = req.body;
+  await sendWhatsApp(to, message);
+  await saveMessage(conversationId, "human", message);
+  res.json({ ok: true });
+});
+
+app.get("/api/settings", async (req, res) => {
+  const { data } = await supabase.from("settings").select("*");
+  res.json(data);
+});
+
+app.post("/api/settings", async (req, res) => {
+  const { key, value } = req.body;
+  await supabase.from("settings").upsert({ key, value });
+  res.json({ ok: true });
 });
 
 app.listen(process.env.PORT || 3000, () => console.log("Ana online!"));
