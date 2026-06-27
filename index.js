@@ -162,6 +162,7 @@ Atendimento a partir de 8 anos. Menor de 8 anos: encaminhar para a equipe.
 Sempre ordem cronológica — do mais próximo para o mais distante.`;
 
 const NUMERO_CLINICA = "5561984060001";
+let anaAtiva = true; // Ana começa ativa
 
 async function notificarClinica(resumo) {
   try {
@@ -275,7 +276,40 @@ app.post("/webhook", async (req, res) => {
     const msg = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!msg || msg.type !== "text") return;
     const from = msg.from;
-    const text = msg.text.body;
+    const text = msg.text.body.trim();
+
+    // Comandos de controle — apenas do número da clínica
+    if (from === NUMERO_CLINICA) {
+      if (text === "#ANA OFF") {
+        anaAtiva = false;
+        await axios.post(
+          `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+          { messaging_product: "whatsapp", to: from, type: "text", text: { body: "✅ Ana desativada. Atendimento manual ativado." } },
+          { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+        );
+        return;
+      }
+      if (text === "#ANA ON") {
+        anaAtiva = true;
+        await axios.post(
+          `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+          { messaging_product: "whatsapp", to: from, type: "text", text: { body: "✅ Ana ativada. Atendimento automático ativado." } },
+          { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+        );
+        return;
+      }
+      if (text === "#ANA STATUS") {
+        await axios.post(
+          `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+          { messaging_product: "whatsapp", to: from, type: "text", text: { body: `ℹ️ Ana está ${anaAtiva ? "✅ ATIVA" : "❌ DESATIVADA"}.` } },
+          { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+        );
+        return;
+      }
+    }
+
+    // Se Ana estiver desativada, não responde
+    if (!anaAtiva) return;
     if (!conversations[from]) conversations[from] = [];
     conversations[from].push({ role: "user", content: text });
 
