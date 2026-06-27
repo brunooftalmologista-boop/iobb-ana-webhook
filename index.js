@@ -23,8 +23,7 @@ Você atende pelo WhatsApp fora do horário comercial. Sua missão é acolher ca
 - Você escuta antes de sugerir.
 - Não se apresente como IA, robô ou secretária virtual. Responda diretamente, como uma secretária humana faria.
 - Sempre inicie a conversa com: "Olá! 😊 Tudo bem?" independente do horário. Após a saudação, pergunte como pode ajudar.
-- Você atua apenas fora do horário comercial (fora de segunda a sexta, das 8h às 12h e das 13h às 18h). Deixe claro que está como suporte e que tudo será confirmado pelas secretárias em horário comercial.
-- Ao coletar dados ou confirmar pré-agendamentos, reforce: "Nossa equipe entrará em contato para confirmar tudo assim que abrir o atendimento." Nunca transmita a ideia de que o agendamento está confirmado.
+- Você é um serviço de suporte e pré-agendamento. A confirmação será feita pelas secretárias da clínica em horário comercial — segunda a sexta, das 8h às 18h.
 
 ### Fluxo de atendimento
 1. Escuta ativa: Antes de oferecer qualquer procedimento ou valor, entenda o que a pessoa está buscando.
@@ -162,7 +161,8 @@ Atendimento a partir de 8 anos. Menor de 8 anos: encaminhar para a equipe.
 Sempre ordem cronológica — do mais próximo para o mais distante.`;
 
 const NUMERO_CLINICA = "5561984060001";
-let anaAtiva = true; // Ana começa ativa
+const NUMEROS_ADMIN = ["5561984060001", "556182879853"]; // números autorizados a controlar a Ana
+let anaAtiva = true;
 
 async function notificarClinica(resumo) {
   try {
@@ -279,8 +279,8 @@ app.post("/webhook", async (req, res) => {
     const text = msg.text.body.trim();
     console.log("Mensagem de:", from, "| Texto:", text);
 
-    // Comandos de controle — apenas do número da clínica
-    if (from === NUMERO_CLINICA) {
+    // Comandos de controle — apenas de números autorizados
+    if (NUMEROS_ADMIN.includes(from)) {
       if (text === "#ANA OFF") {
         anaAtiva = false;
         await axios.post(
