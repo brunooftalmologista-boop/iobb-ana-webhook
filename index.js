@@ -189,12 +189,19 @@ async function fetchSlots(unidadePref) {
 
 // Funções do Supabase
 async function getOrCreatePatient(phone) {
-  let { data } = await supabase.from("patients").select("*").eq("phone", phone).single();
-  if (!data) {
-    const { data: newPatient } = await supabase.from("patients").insert({ phone }).select().single();
-    data = newPatient;
+  try {
+    let { data, error } = await supabase.from("patients").select("*").eq("phone", phone).single();
+    console.log("Patient query:", JSON.stringify(data), JSON.stringify(error));
+    if (!data) {
+      const { data: newPatient, error: insertError } = await supabase.from("patients").insert({ phone }).select().single();
+      console.log("Patient insert:", JSON.stringify(newPatient), JSON.stringify(insertError));
+      data = newPatient;
+    }
+    return data;
+  } catch(e) {
+    console.error("Erro patient:", e.message);
+    return null;
   }
-  return data;
 }
 
 async function getOrCreateConversation(patientId) {
