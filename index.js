@@ -97,7 +97,7 @@ Exames somente particular: Pentacam R$ 300,00 (apenas Conjunto Nacional) | Teste
 Regra: nunca mencione valor de exame quando o paciente tiver convênio.
 
 ### Exames realizados
-Pentacam HR (particular, Conjunto Nacional), Paquimetria, Topografia, Microscopia Especular, Retinografia (Conjunto Nacional), Tonometria, CDPO, Teste Sobrecarga Hídrica, Mapeamento Retina, Gonioscopia, Teste Lente de Contato (Conjunto Nacional, sessão separada, exame prévio de córnea necessário, sob supervisão médica com contactóloga), Teste Visão Cromática, Teste Estereopsia.
+Pentacam HR (particular, Conjunto Nacional), Paquimetria, Topografia, Microscopia Especular, Retinografia (Conjunto Nacional), Tonometria, CDPO, Teste Sobrecarga Hídrica, Mapeamento Retina, Gonioscopia, Teste Lente de Contato (Conjunto Nacional, pode ser realizado no mesmo dia da consulta ou em data separada, exige exame prévio de córnea — realizado aqui ou em outro serviço — sob supervisão médica com contactóloga), Teste Visão Cromática, Teste Estereopsia.
 Exame NÃO realizado: Campimetria. Resposta: "A campimetria não é um exame que realizamos."
 
 ### Unidades e horários
