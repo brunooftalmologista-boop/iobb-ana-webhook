@@ -19,6 +19,7 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const OPENAI_KEY = process.env.OPENAI_KEY;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -235,6 +236,54 @@ async function updatePatientName(phone, name) {
   await supabase.from("patients").update({ name, updated_at: new Date() }).eq("phone", phone);
 }
 
+// Baixar mídia do WhatsApp
+async function downloadMedia(mediaId) {
+  try {
+    const { data: mediaInfo } = await axios.get(
+      `https://graph.facebook.com/v19.0/${mediaId}`,
+      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } }
+    );
+    const response = await axios.get(mediaInfo.url, {
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
+      responseType: "arraybuffer"
+    });
+    return { buffer: Buffer.from(response.data), mimeType: mediaInfo.mime_type };
+  } catch(e) {
+    console.error("Erro ao baixar mídia:", e.message);
+    return null;
+  }
+}
+
+// Transcrever áudio com Whisper
+async function transcribeAudio(buffer, mimeType) {
+  try {
+    const FormData = require("form-data");
+    const form = new FormData();
+    const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "wav";
+    form.append("file", buffer, { filename: `audio.${ext}`, contentType: mimeType });
+    form.append("model", "whisper-1");
+    form.append("language", "pt");
+    const { data } = await axios.post(
+      "https://api.openai.com/v1/audio/transcriptions",
+      form,
+      { headers: { Authorization: `Bearer ${OPENAI_KEY}`, ...form.getHeaders() } }
+    );
+    return data.text;
+  } catch(e) {
+    console.error("Erro Whisper:", e.message);
+    return null;
+  }
+}
+
+// Enviar documento pelo WhatsApp
+async function sendWhatsAppDocument(to, url, filename, caption = "") {
+  await axios.post(
+    `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+    { messaging_product: "whatsapp", to, type: "document", document: { link: url, filename, caption } },
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+  );
+}
+
 // Notificar clínica
 async function notificarClinica(texto) {
   try {
@@ -271,9 +320,41 @@ app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
   try {
     const msg = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    if (!msg || msg.type !== "text") return;
+    if (!msg) return;
+
     const from = msg.from;
-    const text = msg.text.body.trim();
+    let text = "";
+    let mediaNotification = "";
+
+    // Processar tipo de mensagem
+    if (msg.type === "text") {
+      text = msg.text.body.trim();
+    } else if (msg.type === "audio") {
+      console.log("Áudio recebido, transcrevendo...");
+      const media = await downloadMedia(msg.audio.id);
+      if (media) {
+        const transcricao = await transcribeAudio(media.buffer, media.mimeType);
+        if (transcricao) {
+          text = `[Áudio transcrito]: ${transcricao}`;
+          console.log("Transcrição:", transcricao);
+        } else {
+          text = "[Áudio recebido - não foi possível transcrever]";
+        }
+      }
+    } else if (msg.type === "image") {
+      text = "[Imagem recebida]";
+      mediaNotification = "📷 Paciente enviou uma imagem";
+    } else if (msg.type === "document") {
+      const filename = msg.document?.filename || "documento";
+      text = `[Documento recebido: ${filename}]`;
+      mediaNotification = `📄 Paciente enviou um documento: ${filename}`;
+    } else if (msg.type === "video") {
+      text = "[Vídeo recebido]";
+      mediaNotification = "🎥 Paciente enviou um vídeo";
+    } else {
+      return; // Ignorar outros tipos
+    }
+
     console.log("Mensagem de:", from, "| Texto:", text);
 
     // Comandos admin
@@ -303,12 +384,26 @@ app.post("/webhook", async (req, res) => {
 
     // Verificar se conversa está com humano
     if (conversation.status === "human") {
-      await notificarClinica(`👤 *Paciente ${patient.name || from}:*\n${text}`);
+      const notif = mediaNotification || `👤 *Paciente ${patient.name || from}:*\n${text}`;
+      await notificarClinica(notif);
       return;
     }
 
     // Se Ana desativada, não responde
-    if (!anaAtiva) return;
+    if (!anaAtiva) {
+      if (mediaNotification) await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification}`);
+      return;
+    }
+
+    // Para imagens e documentos, Ana responde e notifica equipe
+    if (msg.type === "image" || msg.type === "document" || msg.type === "video") {
+      const tipoArquivo = msg.type === "image" ? "imagem" : msg.type === "document" ? "documento" : "vídeo";
+      const reply = `Recebi ${tipoArquivo === "imagem" ? "a" : "o"} ${tipoArquivo}! 😊 Vou encaminhar para nossa equipe verificar. Assim que abrir o atendimento — segunda a sexta, das 8h às 18h — elas entram em contato com você. Posso ajudar com mais alguma coisa?`;
+      await sendWhatsApp(from, reply);
+      await saveMessage(conversation.id, "assistant", reply);
+      await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification}\n\n🤖 *Ana:*\n${reply}`);
+      return;
+    }
 
     // Buscar histórico do banco
     const history = await getConversationMessages(conversation.id);
@@ -392,9 +487,14 @@ app.post("/api/conversations/:id/release", async (req, res) => {
 });
 
 app.post("/api/send", async (req, res) => {
-  const { to, message, conversationId } = req.body;
-  await sendWhatsApp(to, message);
-  await saveMessage(conversationId, "human", message);
+  const { to, message, conversationId, agent, documentUrl, documentName } = req.body;
+  if (documentUrl) {
+    await sendWhatsAppDocument(to, documentUrl, documentName || "documento");
+    await saveMessage(conversationId, "human", `[Documento enviado: ${documentName || "documento"}]`);
+  } else {
+    await sendWhatsApp(to, message);
+    await saveMessage(conversationId, "human", message);
+  }
   res.json({ ok: true });
 });
 
