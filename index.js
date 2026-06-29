@@ -1,6 +1,7 @@
 require("dotenv").config({ path: "/etc/secrets/.env" });
 const express = require("express");
 const axios = require("axios");
+const FormData = require("form-data");
 const { createClient } = require("@supabase/supabase-js");
 const app = express();
 app.use(express.json());
@@ -257,7 +258,6 @@ async function downloadMedia(mediaId) {
 // Transcrever áudio com Whisper
 async function transcribeAudio(buffer, mimeType) {
   try {
-    const FormData = require("form-data");
     const form = new FormData();
     const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "wav";
     form.append("file", buffer, { filename: `audio.${ext}`, contentType: mimeType });
