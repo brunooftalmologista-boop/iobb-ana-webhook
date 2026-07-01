@@ -25,9 +25,20 @@ Referências: `PLANO_CAMPANHAS.md`, `RASTREAMENTO.md`, `sql/ad_clicks.sql`.
 ## Fase 4 — Google Ads: campanhas
 - [ ] Importar `negativas_iobb_google_ads.csv` (está em `~/Downloads`) — ou criar lista de negativas compartilhada.
 - [ ] Importar `estrutura_campanhas_google_ads.csv` no **Editor** (2 campanhas, 6 grupos, 27 palavras-chave; entram como **Paused**).
-- [ ] Adicionar os **RSAs** (textos no `PLANO_CAMPANHAS.md`) em cada grupo, com **URL final**:
-  - Campanha Ceratocone/Esclerais → `https://SEU-DOMINIO/lp/ceratocone`
-  - Campanha Consulta → `https://SEU-DOMINIO/lp/consulta`
+- [ ] Adicionar os **RSAs** (textos no `PLANO_CAMPANHAS.md`) em cada grupo, com a **URL final por grupo de anúncio** (landing certa para cada intenção):
+
+  | Campanha | Grupo de anúncio | URL final |
+  |---|---|---|
+  | IOBB \| Consulta DF | Águas Claras | `https://SEU-DOMINIO/lp/aguas-claras` |
+  | IOBB \| Consulta DF | Taguatinga | `https://SEU-DOMINIO/lp/taguatinga` |
+  | IOBB \| Consulta DF | Asa Norte e Brasília | `https://SEU-DOMINIO/lp/asa-norte` |
+  | IOBB \| Ceratocone e Esclerais | Ceratocone | `https://SEU-DOMINIO/lp/ceratocone` |
+  | IOBB \| Ceratocone e Esclerais | Lente Escleral | `https://SEU-DOMINIO/lp/ceratocone` |
+  | IOBB \| Ceratocone e Esclerais | Anel | `https://SEU-DOMINIO/lp/ceratocone` |
+
+  - **Por quê:** cada landing de bairro tem hero + unidade destacada da região, aumentando a relevância (Índice de Qualidade) e a conversão para termos locais. Todos os grupos de ceratocone/esclerais/anel usam a landing de condição, que já cobre os 3 tratamentos.
+  - `/lp/consulta` (geral) fica como **fallback** para tráfego amplo/genérico de Brasília (ex.: futuro grupo "Brasília" sem bairro definido) ou testes.
+  - Dá para sobrescrever a URL final por **palavra-chave** se quiser (ex.: `oftalmologista brasília` no grupo "Asa Norte e Brasília" → `/lp/consulta`).
 - [ ] Aplicar as negativas às 2 campanhas.
 - [ ] **Pausar/minimizar Performance Max**; manter **refrativa e catarata pausadas**.
 - [ ] Ativar primeiro **Consulta DF**; ativar **Ceratocone** só após testar o fluxo (Fase 5).

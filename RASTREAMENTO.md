@@ -34,10 +34,17 @@ Rode `sql/ad_clicks.sql` no **SQL Editor do Supabase**.
 5. Ative o **auto-tagging**: *Configurações → Acompanhamento → Marcação automática = ATIVADA* (garante o `gclid`).
 
 ### 4. Apontar os anúncios para a landing (não para o `wa.me` direto!)
-Troque a **URL final** dos anúncios/grupos:
-- Ceratocone → `https://SEU-DOMINIO/lp/ceratocone`
-- Refrativa → `https://SEU-DOMINIO/lp/refrativa`
-- Catarata → `https://SEU-DOMINIO/lp/catarata`
+Troque a **URL final** de cada **grupo de anúncio** para a landing correspondente (mais relevante = melhor Índice de Qualidade e conversão):
+
+| Campanha | Grupo de anúncio | URL final |
+|---|---|---|
+| IOBB \| Consulta DF | Águas Claras | `https://SEU-DOMINIO/lp/aguas-claras` |
+| IOBB \| Consulta DF | Taguatinga | `https://SEU-DOMINIO/lp/taguatinga` |
+| IOBB \| Consulta DF | Asa Norte e Brasília | `https://SEU-DOMINIO/lp/asa-norte` |
+| IOBB \| Ceratocone e Esclerais | Ceratocone / Lente Escleral / Anel | `https://SEU-DOMINIO/lp/ceratocone` |
+
+**Landings disponíveis** (todas capturam `gclid` e redirecionam para a Ana):
+`/lp/consulta` (geral — fallback), `/lp/ceratocone`, `/lp/taguatinga`, `/lp/aguas-claras`, `/lp/asa-norte`.
 
 (`SEU-DOMINIO` = a URL pública do app no Render.) O Google adiciona o `gclid` automaticamente; a landing captura, cria o token e redireciona para o WhatsApp da Ana com `[ref:token]`.
 
