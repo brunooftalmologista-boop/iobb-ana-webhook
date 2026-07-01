@@ -218,13 +218,22 @@
    Nenhuma alteração de schema é necessária.
    ============================================================ */
 
+// ---------- Credenciais fixas (hardcoded) ----------
+// O painel é hospedado no Netlify (estático) e conversa com o backend no Render,
+// que faz a ponte com o Supabase usando a service key (nunca exposta aqui).
+const WEBHOOK_URL       = 'https://iobb-ana-webhook.onrender.com';           // backend /api/* no Render
+const SUPABASE_URL      = 'https://pbnphvmzqdgnijxngosc.supabase.co';        // referência (não usado direto)
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBibnBodm16cWRnbmlqeG5nb3NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NzgwODIsImV4cCI6MjA5ODE1NDA4Mn0.PPEtOcAsi9llW_4YH60iy4FR-e1kFYxAX4mJTao3gD4';
+
 // ---------- Config / estado ----------
 const LS = {
   api:  'iobb_api_base',
   agent:'iobb_agent',
   read: 'iobb_read_state',   // { [convId]: updated_at lido }
 };
-let API_BASE = localStorage.getItem(LS.api) || (location.protocol === 'file:' ? '' : location.origin);
+// Aponta para o backend no Render por padrão; localStorage só sobrepõe se você
+// tiver salvo outro endereço manualmente na engrenagem de configurações.
+let API_BASE = localStorage.getItem(LS.api) || WEBHOOK_URL;
 let AGENT    = localStorage.getItem(LS.agent) || 'Secretária';
 let readState = JSON.parse(localStorage.getItem(LS.read) || '{}');
 
