@@ -181,7 +181,8 @@
       <div class="emoji-panel" id="emoji-panel"></div>
       <div class="composer">
         <button class="icon-btn" id="btn-emoji" title="Emoji">😀</button>
-        <button class="icon-btn" id="btn-attach" title="Enviar documento (link)">📎</button>
+        <button class="icon-btn" id="btn-attach" title="Anexar arquivo">📎</button>
+        <input type="file" id="file-input" style="display:none" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt">
         <div class="field">
           <textarea id="input" rows="1" placeholder="Digite uma mensagem"></textarea>
         </div>
@@ -486,16 +487,41 @@ async function sendMessage(){
     setTimeout(()=>loadMessages(true),600);
   }catch(e){ toast('Falha ao enviar. Verifique a conexão.'); }
 }
-async function sendDocument(){
-  if(!activeConv) return;
-  const url=prompt('Cole o LINK público do documento/imagem (PDF, JPG, PNG…):');
-  if(!url) return;
-  const filename=prompt('Nome do arquivo:', 'documento.pdf')||'documento';
+// Upload real de arquivo → Supabase Storage (via backend) → envia link ao paciente
+async function uploadFile(e){
+  const file = e.target.files && e.target.files[0];
+  e.target.value=''; // permite reenviar o mesmo arquivo depois
+  if(!file || !activeConv) return;
   const to=phoneOf(activeConv);
+  if(!to){ toast('Conversa sem número de telefone.'); return; }
+  if(file.size > 30*1024*1024){ toast('Arquivo muito grande (máx. 30MB).'); return; }
+  const isImage = (file.type||'').startsWith('image/');
+
+  // bolha otimista
+  const tmpId='tmp'+Date.now();
+  messages.push({ role:'human', agent:AGENT, timestamp:new Date().toISOString(), id:tmpId,
+    content: (isImage?'📷 ':'📎 ')+'Enviando '+file.name+'…' });
+  renderMessages();
+  toast('Enviando '+file.name+'…');
+
   try{
-    await api('/api/send',{ method:'POST', body:JSON.stringify({ to, conversationId:activeId, agent:AGENT, documentUrl:url, documentName:filename }) });
-    toast('Documento enviado.'); setTimeout(()=>loadMessages(true),600);
-  }catch(e){ toast('Falha ao enviar documento.'); }
+    const q = new URLSearchParams({ filename:file.name, mime:file.type||'application/octet-stream' });
+    const up = await fetch(API_BASE.replace(/\/$/,'')+'/api/upload?'+q.toString(), {
+      method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:file
+    });
+    if(!up.ok) throw new Error('upload '+up.status);
+    const { url } = await up.json();
+    const body = isImage
+      ? { to, imageUrl:url, message:'', conversationId:activeId, agent:AGENT }
+      : { to, documentUrl:url, documentName:file.name, conversationId:activeId, agent:AGENT };
+    await api('/api/send',{ method:'POST', body:JSON.stringify(body) });
+    toast('Arquivo enviado!');
+    setTimeout(()=>loadMessages(true),700);
+  }catch(err){
+    toast('Falha ao enviar arquivo.');
+    messages = messages.filter(m=>m.id!==tmpId);
+    renderMessages();
+  }
 }
 
 // ---------- Ana on/off por conversa ----------
@@ -549,7 +575,8 @@ $('#btn-refresh').onclick=()=>{ loadConversations(); if(activeId) loadMessages(t
 $('#btn-config').onclick=openConfig;
 $('#btn-back').onclick=()=>{ document.getElementById('app').classList.remove('chat-open'); activeId=null; };
 $('#btn-send').onclick=sendMessage;
-$('#btn-attach').onclick=sendDocument;
+$('#btn-attach').onclick=()=>$('#file-input').click();
+$('#file-input').onchange=uploadFile;
 $('#btn-read').onclick=markRead;
 el.anaToggle.onclick=toggleAna;
 $('#btn-emoji').onclick=()=>el.emojiPanel.classList.toggle('show');

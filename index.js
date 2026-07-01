@@ -299,6 +299,15 @@ async function sendWhatsAppDocument(to, url, filename, caption = "") {
   );
 }
 
+// Enviar imagem pelo WhatsApp
+async function sendWhatsAppImage(to, url, caption = "") {
+  await axios.post(
+    `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+    { messaging_product: "whatsapp", to, type: "image", image: { link: url, caption } },
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+  );
+}
+
 // Notificar clínica
 async function notificarClinica(texto) {
   try {
@@ -502,8 +511,11 @@ app.post("/api/conversations/:id/release", async (req, res) => {
 });
 
 app.post("/api/send", async (req, res) => {
-  const { to, message, conversationId, agent, documentUrl, documentName } = req.body;
-  if (documentUrl) {
+  const { to, message, conversationId, agent, documentUrl, documentName, imageUrl } = req.body;
+  if (imageUrl) {
+    await sendWhatsAppImage(to, imageUrl, message || "");
+    await saveMessage(conversationId, "human", `[Imagem enviada]${message ? `: ${message}` : ""}`);
+  } else if (documentUrl) {
     await sendWhatsAppDocument(to, documentUrl, documentName || "documento");
     await saveMessage(conversationId, "human", `[Documento enviado: ${documentName || "documento"}]`);
   } else {
@@ -522,6 +534,40 @@ app.post("/api/settings", async (req, res) => {
   const { key, value } = req.body;
   await supabase.from("settings").upsert({ key, value });
   res.json({ ok: true });
+});
+
+// Garantir que o bucket de anexos exista (público), idempotente
+(async () => {
+  try {
+    const { data: buckets } = await supabase.storage.listBuckets();
+    if (!buckets?.some(b => b.name === "anexos")) {
+      const { error } = await supabase.storage.createBucket("anexos", { public: true });
+      if (error) console.error("Erro ao criar bucket anexos:", error.message);
+      else console.log("Bucket 'anexos' criado.");
+    }
+  } catch (e) {
+    console.error("Erro ao verificar bucket anexos:", e.message);
+  }
+})();
+
+// Upload de anexo do painel para o Supabase Storage → devolve link público
+// O navegador envia o arquivo como corpo binário (application/octet-stream)
+// e informa nome/tipo real via query (?filename=...&mime=...).
+app.post("/api/upload", express.raw({ type: () => true, limit: "30mb" }), async (req, res) => {
+  try {
+    if (!req.body || !req.body.length) return res.status(400).json({ error: "Arquivo vazio" });
+    const rawName = (req.query.filename || "arquivo").toString();
+    const safeName = rawName.replace(/[^\w.\-]+/g, "_").slice(-120) || "arquivo";
+    const contentType = (req.query.mime || req.headers["content-type"] || "application/octet-stream").toString();
+    const path = `${Date.now()}_${safeName}`;
+    const { error } = await supabase.storage.from("anexos").upload(path, req.body, { contentType, upsert: false });
+    if (error) return res.status(500).json({ error: error.message });
+    const { data } = supabase.storage.from("anexos").getPublicUrl(path);
+    res.json({ url: data.publicUrl, filename: rawName, contentType });
+  } catch (e) {
+    console.error("Erro upload:", e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Servir o painel web das secretárias
