@@ -266,8 +266,10 @@ async function saveMessage(conversationId, role, content, waMessageId = null) {
 }
 
 async function getConversationMessages(conversationId) {
-  const { data } = await supabase.from("messages").select("role, content").eq("conversation_id", conversationId).order("timestamp", { ascending: true }).limit(20);
-  return data || [];
+  // Buscar as 20 mensagens MAIS RECENTES (desc) e devolver em ordem cronológica.
+  // Assim o histórico sempre inclui a última mensagem do usuário recém-salva.
+  const { data } = await supabase.from("messages").select("role, content").eq("conversation_id", conversationId).order("timestamp", { ascending: false }).limit(20);
+  return (data || []).reverse();
 }
 
 async function updatePatientName(phone, name) {
@@ -490,9 +492,17 @@ app.post("/webhook", async (req, res) => {
     }
 
     // Chamar Ana
+    // A API da Anthropic exige que o array de mensagens comece e termine com
+    // role "user" (sem prefill do assistente). Garantimos isso removendo
+    // quaisquer mensagens do assistente nas pontas do payload.
+    const apiMessages = messages.slice(-10);
+    while (apiMessages.length && apiMessages[apiMessages.length - 1].role === "assistant") apiMessages.pop();
+    while (apiMessages.length && apiMessages[0].role === "assistant") apiMessages.shift();
+    // Salvaguarda: se nada sobrar, usar ao menos a mensagem atual do usuário.
+    if (apiMessages.length === 0) apiMessages.push({ role: "user", content: text });
     const response = await axios.post(
       "https://api.anthropic.com/v1/messages",
-      { model: "claude-sonnet-4-6", max_tokens: 1000, system: systemPrompt, messages: messages.slice(-10) },
+      { model: "claude-sonnet-4-6", max_tokens: 1000, system: systemPrompt, messages: apiMessages },
       { headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" } }
     );
     const reply = response.data.content[0].text;
