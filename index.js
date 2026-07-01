@@ -1093,6 +1093,9 @@ function injectTracking(html, token) {
   });
 }
 
+// Imagens otimizadas das landings, servidas com cache longo (carregamento rápido)
+app.use("/lp/assets", express.static(`${__dirname}/landings/assets`, { maxAge: "30d", immutable: true }));
+
 app.get("/lp/:tema", async (req, res) => {
   const tema = String(req.params.tema || "").toLowerCase();
   const custom = LP_HTML[tema];
