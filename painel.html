@@ -233,7 +233,6 @@
 
 <div id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -246,7 +245,7 @@
 // O painel é hospedado no Netlify (estático) e conversa com o backend no Render,
 // que faz a ponte com o Supabase usando a service key (nunca exposta aqui).
 const WEBHOOK_URL       = 'https://iobb-ana-webhook.onrender.com';           // backend /api/* no Render
-const SUPABASE_URL      = 'https://pbnphvmzqdgnijxngosc.supabase.co';        // usado para login (Supabase Auth)
+const SUPABASE_URL      = 'https://pbnphvmzqdgnijxngosc.supabase.co';        // referência (login é via backend /api/login)
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBibnBodm16cWRnbmlqeG5nb3NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NzgwODIsImV4cCI6MjA5ODE1NDA4Mn0.PPEtOcAsi9llW_4YH60iy4FR-e1kFYxAX4mJTao3gD4';
 
 // ---------- Config / estado ----------
@@ -255,12 +254,22 @@ const LS = {
   agent:'iobb_agent',
   read: 'iobb_read_state',   // { [convId]: updated_at lido }
 };
-// Autenticação individual via Supabase Auth. O supabase-js persiste a sessão
-// (localStorage) e renova o token sozinho; guardamos o access_token em memória.
-let AUTH = '';
-const EMAIL_BY_NAME = { 'Aline':'aline@iobb.local', 'Mylla':'mylla@iobb.local', 'Elaine':'elaine@iobb.local', 'Secretaria':'secretaria@iobb.local' };
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-sb.auth.onAuthStateChange((_e, session)=>{ AUTH = session?.access_token || ''; });
+// Autenticação individual via Supabase Auth, intermediada pelo backend
+// (/api/login com rate-limit e /api/refresh). Guardamos os tokens no navegador.
+let AUTH    = localStorage.getItem('iobb_at') || '';
+let REFRESH = localStorage.getItem('iobb_rt') || '';
+function setTokens(at, rt){ AUTH=at||''; if(rt) REFRESH=rt; localStorage.setItem('iobb_at',AUTH); if(rt) localStorage.setItem('iobb_rt',REFRESH); }
+function clearTokens(){ AUTH=''; REFRESH=''; localStorage.removeItem('iobb_at'); localStorage.removeItem('iobb_rt'); }
+async function tryRefresh(){
+  if(!REFRESH) return false;
+  try{
+    const r = await fetch(API_BASE.replace(/\/$/,'')+'/api/refresh',{
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ refresh_token:REFRESH })
+    });
+    if(!r.ok) return false;
+    const d = await r.json(); setTokens(d.access_token, d.refresh_token); return true;
+  }catch(e){ return false; }
+}
 // Aponta para o backend no Render por padrão; localStorage só sobrepõe se você
 // tiver salvo outro endereço manualmente na engrenagem de configurações.
 let API_BASE = localStorage.getItem(LS.api) || WEBHOOK_URL;
@@ -287,15 +296,15 @@ const el = {
 };
 
 // ---------- Utilidades ----------
-function api(path, opts={}){
-  return fetch(API_BASE.replace(/\/$/,'') + path, {
+async function api(path, opts={}, _retried){
+  const r = await fetch(API_BASE.replace(/\/$/,'') + path, {
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+AUTH}, ...opts
-  }).then(async r=>{
-    if(r.status===401){ logout(); throw new Error('401'); }
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    const t = await r.text();
-    return t ? JSON.parse(t) : null;
   });
+  if(r.status===401 && !_retried && await tryRefresh()) return api(path, opts, true);
+  if(r.status===401){ logout(); throw new Error('401'); }
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const t = await r.text();
+  return t ? JSON.parse(t) : null;
 }
 function toast(msg){
   const t=$('#toast'); t.textContent=msg; t.classList.add('show');
@@ -546,9 +555,11 @@ async function uploadFile(e){
 
   try{
     const q = new URLSearchParams({ filename:file.name, mime:file.type||'application/octet-stream' });
-    const up = await fetch(API_BASE.replace(/\/$/,'')+'/api/upload?'+q.toString(), {
+    const doUpload = () => fetch(API_BASE.replace(/\/$/,'')+'/api/upload?'+q.toString(), {
       method:'POST', headers:{'Content-Type':'application/octet-stream','Authorization':'Bearer '+AUTH}, body:file
     });
+    let up = await doUpload();
+    if(up.status===401 && await tryRefresh()) up = await doUpload();
     if(up.status===401){ logout(); throw new Error('401'); }
     if(!up.ok) throw new Error('upload '+up.status);
     const { url } = await up.json();
@@ -617,20 +628,21 @@ function showLoginError(msg){ const e=$('#login-error'); e.textContent=msg; e.st
 async function doLogin(){
   const nome=$('#login-agent').value, pass=$('#login-pass').value;
   $('#login-error').style.display='none';
-  const email=EMAIL_BY_NAME[nome];
-  if(!email){ showLoginError('Selecione a secretária.'); return; }
+  if(!nome){ showLoginError('Selecione a secretária.'); return; }
   try{
-    const { data, error } = await sb.auth.signInWithPassword({ email, password:pass });
-    if(error || !data?.session) throw error || new Error('login');
-    AUTH=data.session.access_token; AGENT=nome;
+    const r = await fetch(API_BASE.replace(/\/$/,'')+'/api/login',{
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ agent:nome, password:pass })
+    });
+    if(r.status===429){ const d=await r.json().catch(()=>({})); showLoginError(d.error||'Muitas tentativas. Aguarde.'); return; }
+    if(!r.ok) throw new Error('login');
+    const d = await r.json(); setTokens(d.access_token, d.refresh_token); AGENT=nome;
     localStorage.setItem(LS.agent,AGENT);
     $('#login-pass').value='';
     hideLogin(); startApp();
   }catch(e){ showLoginError('Usuário ou senha inválidos.'); $('#login-pass').select(); }
 }
-async function logout(){
-  try{ await sb.auth.signOut(); }catch(e){}
-  AUTH='';
+function logout(){
+  clearTokens();
   activeId=null; activeConv=null; conversations=[]; filtered=[]; messages=[];
   el.list.innerHTML=''; el.conv.style.display='none'; el.empty.style.display='flex';
   document.getElementById('app').classList.remove('chat-open');
@@ -671,11 +683,8 @@ if('Notification' in window && Notification.permission==='default'){
   Notification.requestPermission();
 }
 (async ()=>{
-  try{
-    const { data:{ session } } = await sb.auth.getSession();
-    if(session){ AUTH=session.access_token; hideLogin(); startApp(); return; }
-  }catch(e){}
-  showLogin();
+  if(REFRESH && await tryRefresh()){ hideLogin(); startApp(); return; }
+  clearTokens(); showLogin();
 })();
 // intervalos só rodam quando autenticado
 setInterval(()=>{ if(AUTH) loadConversations(); }, 5000);          // lista + notificações

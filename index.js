@@ -527,6 +527,69 @@ const SECRETARIAS = [
   }
 })();
 
+// Cliente dedicado ao login (stateless — não guarda sessão no servidor)
+const authClient = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+
+// Rate-limiting por IP no /api/login (defesa contra força bruta)
+const LOGIN_MAX = 5, LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const loginAttempts = new Map();
+function loginRateLimit(req, res, next) {
+  const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
+  const now = Date.now();
+  let rec = loginAttempts.get(ip);
+  if (!rec || now > rec.resetAt) { rec = { count: 0, resetAt: now + LOGIN_WINDOW_MS }; loginAttempts.set(ip, rec); }
+  if (rec.count >= LOGIN_MAX) {
+    const min = Math.max(1, Math.ceil((rec.resetAt - now) / 60000));
+    return res.status(429).json({ error: `Muitas tentativas de login. Tente novamente em ${min} min.` });
+  }
+  rec.count++;
+  req._loginIp = ip;
+  next();
+}
+// Limpeza periódica dos registros expirados de rate-limit
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, rec] of loginAttempts) if (now > rec.resetAt) loginAttempts.delete(ip);
+}, LOGIN_WINDOW_MS);
+
+// Login do painel (público, com rate-limit): {agent, password} → tokens da sessão
+app.post("/api/login", loginRateLimit, async (req, res) => {
+  try {
+    const { agent, password } = req.body || {};
+    const secretaria = SECRETARIAS.find(s => s.nome === agent);
+    if (!secretaria || !password) return res.status(401).json({ error: "Usuário ou senha inválidos" });
+    const { data, error } = await authClient.auth.signInWithPassword({ email: secretaria.email, password });
+    if (error || !data?.session) return res.status(401).json({ error: "Usuário ou senha inválidos" });
+    loginAttempts.delete(req._loginIp); // sucesso zera o contador do IP
+    res.json({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: data.session.expires_at,
+      agent: secretaria.nome
+    });
+  } catch (e) {
+    console.error("Erro no login:", e.message);
+    res.status(500).json({ error: "Erro no login" });
+  }
+});
+
+// Renovação de sessão (público): troca refresh_token por novo access_token
+app.post("/api/refresh", async (req, res) => {
+  try {
+    const { refresh_token } = req.body || {};
+    if (!refresh_token) return res.status(401).json({ error: "Sem refresh_token" });
+    const { data, error } = await authClient.auth.refreshSession({ refresh_token });
+    if (error || !data?.session) return res.status(401).json({ error: "Sessão expirada" });
+    res.json({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: data.session.expires_at
+    });
+  } catch (e) {
+    res.status(401).json({ error: "Sessão expirada" });
+  }
+});
+
 // Middleware: valida o token JWT do Supabase enviado pelo painel (Bearer).
 async function requirePanelAuth(req, res, next) {
   try {
