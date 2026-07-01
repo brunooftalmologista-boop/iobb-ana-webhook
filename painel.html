@@ -105,8 +105,8 @@
   .modal h3{margin:0 0 4px;}
   .modal p{color:var(--muted);font-size:14px;margin:0 0 16px;}
   .modal label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px;}
-  .modal input{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px;outline:none;}
-  .modal input:focus{border-color:var(--green);}
+  .modal input, .modal select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px;outline:none;background:#fff;}
+  .modal input:focus, .modal select:focus{border-color:var(--green);}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
   .btn{padding:10px 18px;border-radius:8px;font-weight:600;font-size:14px;}
   .btn.primary{background:var(--green);color:#fff;}
@@ -197,12 +197,18 @@
 <div class="modal-bg show" id="login-modal" style="z-index:150">
   <div class="modal">
     <h3>🔒 Painel IOBB — Acesso restrito</h3>
-    <p>Esta área contém dados de pacientes (LGPD). Identifique-se para continuar.</p>
-    <label>Seu nome (secretária)</label>
-    <input id="login-agent" placeholder="Ex.: Recepção Conjunto Nacional" autocomplete="username">
+    <p>Esta área contém dados de pacientes (LGPD). Entre com seu usuário.</p>
+    <label>Secretária</label>
+    <select id="login-agent">
+      <option value="">Selecione…</option>
+      <option>Aline</option>
+      <option>Mylla</option>
+      <option>Elaine</option>
+      <option>Secretaria</option>
+    </select>
     <label>Senha</label>
-    <input id="login-pass" type="password" placeholder="Senha do painel" autocomplete="current-password">
-    <div id="login-error" style="color:#d33;font-size:13px;margin-top:10px;display:none">Senha incorreta. Tente novamente.</div>
+    <input id="login-pass" type="password" placeholder="Sua senha" autocomplete="current-password">
+    <div id="login-error" style="color:#d33;font-size:13px;margin-top:10px;display:none">Usuário ou senha inválidos.</div>
     <div class="modal-actions">
       <button class="btn primary" id="login-btn" style="width:100%">Entrar</button>
     </div>
@@ -227,6 +233,7 @@
 
 <div id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -239,7 +246,7 @@
 // O painel é hospedado no Netlify (estático) e conversa com o backend no Render,
 // que faz a ponte com o Supabase usando a service key (nunca exposta aqui).
 const WEBHOOK_URL       = 'https://iobb-ana-webhook.onrender.com';           // backend /api/* no Render
-const SUPABASE_URL      = 'https://pbnphvmzqdgnijxngosc.supabase.co';        // referência (não usado direto)
+const SUPABASE_URL      = 'https://pbnphvmzqdgnijxngosc.supabase.co';        // usado para login (Supabase Auth)
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBibnBodm16cWRnbmlqeG5nb3NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NzgwODIsImV4cCI6MjA5ODE1NDA4Mn0.PPEtOcAsi9llW_4YH60iy4FR-e1kFYxAX4mJTao3gD4';
 
 // ---------- Config / estado ----------
@@ -247,9 +254,13 @@ const LS = {
   api:  'iobb_api_base',
   agent:'iobb_agent',
   read: 'iobb_read_state',   // { [convId]: updated_at lido }
-  auth: 'iobb_auth',         // senha do painel (enviada no header x-iobb-auth)
 };
-let AUTH = localStorage.getItem('iobb_auth') || '';
+// Autenticação individual via Supabase Auth. O supabase-js persiste a sessão
+// (localStorage) e renova o token sozinho; guardamos o access_token em memória.
+let AUTH = '';
+const EMAIL_BY_NAME = { 'Aline':'aline@iobb.local', 'Mylla':'mylla@iobb.local', 'Elaine':'elaine@iobb.local', 'Secretaria':'secretaria@iobb.local' };
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+sb.auth.onAuthStateChange((_e, session)=>{ AUTH = session?.access_token || ''; });
 // Aponta para o backend no Render por padrão; localStorage só sobrepõe se você
 // tiver salvo outro endereço manualmente na engrenagem de configurações.
 let API_BASE = localStorage.getItem(LS.api) || WEBHOOK_URL;
@@ -278,7 +289,7 @@ const el = {
 // ---------- Utilidades ----------
 function api(path, opts={}){
   return fetch(API_BASE.replace(/\/$/,'') + path, {
-    headers:{'Content-Type':'application/json','x-iobb-auth':AUTH}, ...opts
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+AUTH}, ...opts
   }).then(async r=>{
     if(r.status===401){ logout(); throw new Error('401'); }
     if(!r.ok) throw new Error('HTTP '+r.status);
@@ -536,7 +547,7 @@ async function uploadFile(e){
   try{
     const q = new URLSearchParams({ filename:file.name, mime:file.type||'application/octet-stream' });
     const up = await fetch(API_BASE.replace(/\/$/,'')+'/api/upload?'+q.toString(), {
-      method:'POST', headers:{'Content-Type':'application/octet-stream','x-iobb-auth':AUTH}, body:file
+      method:'POST', headers:{'Content-Type':'application/octet-stream','Authorization':'Bearer '+AUTH}, body:file
     });
     if(up.status===401){ logout(); throw new Error('401'); }
     if(!up.ok) throw new Error('upload '+up.status);
@@ -602,22 +613,24 @@ function closeConfig(){ $('#config-modal').classList.remove('show'); }
 // ---------- Login / Logout ----------
 function showLogin(){ $('#login-modal').classList.add('show'); const a=$('#login-agent'); if(a && !a.value) a.value=AGENT; setTimeout(()=>$('#login-pass').focus(),50); }
 function hideLogin(){ $('#login-modal').classList.remove('show'); }
+function showLoginError(msg){ const e=$('#login-error'); e.textContent=msg; e.style.display='block'; }
 async function doLogin(){
-  const pass=$('#login-pass').value, agent=$('#login-agent').value.trim();
+  const nome=$('#login-agent').value, pass=$('#login-pass').value;
   $('#login-error').style.display='none';
+  const email=EMAIL_BY_NAME[nome];
+  if(!email){ showLoginError('Selecione a secretária.'); return; }
   try{
-    const r = await fetch(API_BASE.replace(/\/$/,'')+'/api/login',{
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ password:pass })
-    });
-    if(!r.ok) throw new Error('login');
-    AUTH=pass; AGENT=agent||'Secretária';
-    localStorage.setItem(LS.auth,AUTH); localStorage.setItem(LS.agent,AGENT);
+    const { data, error } = await sb.auth.signInWithPassword({ email, password:pass });
+    if(error || !data?.session) throw error || new Error('login');
+    AUTH=data.session.access_token; AGENT=nome;
+    localStorage.setItem(LS.agent,AGENT);
     $('#login-pass').value='';
     hideLogin(); startApp();
-  }catch(e){ $('#login-error').style.display='block'; $('#login-pass').select(); }
+  }catch(e){ showLoginError('Usuário ou senha inválidos.'); $('#login-pass').select(); }
 }
-function logout(){
-  AUTH=''; localStorage.removeItem(LS.auth);
+async function logout(){
+  try{ await sb.auth.signOut(); }catch(e){}
+  AUTH='';
   activeId=null; activeConv=null; conversations=[]; filtered=[]; messages=[];
   el.list.innerHTML=''; el.conv.style.display='none'; el.empty.style.display='flex';
   document.getElementById('app').classList.remove('chat-open');
@@ -657,7 +670,13 @@ buildEmoji();
 if('Notification' in window && Notification.permission==='default'){
   Notification.requestPermission();
 }
-if(AUTH){ hideLogin(); startApp(); } else { showLogin(); }
+(async ()=>{
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    if(session){ AUTH=session.access_token; hideLogin(); startApp(); return; }
+  }catch(e){}
+  showLogin();
+})();
 // intervalos só rodam quando autenticado
 setInterval(()=>{ if(AUTH) loadConversations(); }, 5000);          // lista + notificações
 setInterval(()=>{ if(AUTH && activeId) loadMessages(false); }, 3000); // chat aberto

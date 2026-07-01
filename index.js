@@ -9,7 +9,7 @@ app.use(express.json());
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, x-iobb-auth");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
 });
@@ -489,22 +489,57 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// ===== Autenticação do painel (LGPD: protege dados de pacientes) =====
-// Senha compartilhada das secretárias. Pode ser sobrescrita por env var no Render.
-const PANEL_PASSWORD = process.env.PANEL_PASSWORD || "iobb2024";
+// ===== Autenticação individual do painel via Supabase Auth (LGPD) =====
+// Cada secretária tem seu próprio usuário. As senhas vêm SOMENTE de env vars no
+// Render (nunca do código-fonte): PANEL_PW_<NOME> ou, como fallback, PANEL_PASSWORD.
+// Sem env de senha, a usuária não é criada.
+const SECRETARIAS = [
+  { nome: "Aline",      email: "aline@iobb.local",      pwEnv: "PANEL_PW_ALINE" },
+  { nome: "Mylla",      email: "mylla@iobb.local",      pwEnv: "PANEL_PW_MYLLA" },
+  { nome: "Elaine",     email: "elaine@iobb.local",     pwEnv: "PANEL_PW_ELAINE" },
+  { nome: "Secretaria", email: "secretaria@iobb.local", pwEnv: "PANEL_PW_SECRETARIA" },
+];
 
-// Login do painel — rota PÚBLICA (fica antes do middleware de proteção)
-app.post("/api/login", (req, res) => {
-  const { password } = req.body || {};
-  if (password === PANEL_PASSWORD) return res.json({ ok: true });
-  return res.status(401).json({ ok: false, error: "Senha incorreta" });
-});
+// Cria/atualiza as usuárias das secretárias (idempotente) usando a service key.
+// A senha em env é a fonte da verdade — para trocar, altere a env e faça redeploy.
+(async () => {
+  try {
+    const { data: list, error: listErr } = await supabase.auth.admin.listUsers();
+    if (listErr) { console.error("Auth listUsers:", listErr.message); return; }
+    for (const s of SECRETARIAS) {
+      const senha = process.env[s.pwEnv] || process.env.PANEL_PASSWORD;
+      if (!senha) { console.log(`Sem senha em env para ${s.nome} — usuária não criada.`); continue; }
+      const existente = list.users.find(u => u.email === s.email);
+      if (!existente) {
+        const { error } = await supabase.auth.admin.createUser({
+          email: s.email, password: senha, email_confirm: true, user_metadata: { nome: s.nome }
+        });
+        console.log(error ? `Erro ao criar ${s.nome}: ${error.message}` : `Usuária ${s.nome} criada.`);
+      } else {
+        const { error } = await supabase.auth.admin.updateUserById(existente.id, {
+          password: senha, user_metadata: { nome: s.nome }
+        });
+        if (error) console.error(`Erro ao atualizar ${s.nome}:`, error.message);
+      }
+    }
+  } catch (e) {
+    console.error("Erro no seeding de secretárias:", e.message);
+  }
+})();
 
-// Middleware: protege todas as rotas /api/* registradas ABAIXO desta linha.
-// O painel envia a senha no header x-iobb-auth a cada requisição.
-function requirePanelAuth(req, res, next) {
-  if ((req.headers["x-iobb-auth"] || "") === PANEL_PASSWORD) return next();
-  return res.status(401).json({ error: "Não autorizado" });
+// Middleware: valida o token JWT do Supabase enviado pelo painel (Bearer).
+async function requirePanelAuth(req, res, next) {
+  try {
+    const authz = req.headers["authorization"] || "";
+    const token = authz.startsWith("Bearer ") ? authz.slice(7) : "";
+    if (!token) return res.status(401).json({ error: "Não autorizado" });
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) return res.status(401).json({ error: "Sessão inválida" });
+    req.panelUser = data.user; // identidade da secretária (auditoria/LGPD)
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: "Falha na autenticação" });
+  }
 }
 app.use("/api", requirePanelAuth);
 
