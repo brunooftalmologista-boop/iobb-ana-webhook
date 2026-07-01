@@ -779,7 +779,20 @@ app.use("/api", requirePanelAuth);
 // API para o painel web
 app.get("/api/conversations", async (req, res) => {
   const { data } = await supabase.from("conversations").select(`*, patients(name, phone)`).order("updated_at", { ascending: false });
-  res.json(data);
+  const convs = data || [];
+  // Anota quais conversas vieram de anúncio (clique vinculado) e se já agendaram
+  try {
+    const { data: clicks } = await supabase.from("ad_clicks").select("conversation_id, source, booked").not("conversation_id", "is", null);
+    const map = {};
+    for (const c of (clicks || [])) { if (c.conversation_id) map[c.conversation_id] = c; }
+    for (const cv of convs) {
+      const a = map[String(cv.id)];
+      if (a) { cv.ad_source = a.source || "anúncio"; cv.ad_booked = !!a.booked; }
+    }
+  } catch (e) {
+    console.error("[Ads] Falha ao anotar origem de anúncio:", e.message);
+  }
+  res.json(convs);
 });
 
 app.get("/api/conversations/:id/messages", async (req, res) => {

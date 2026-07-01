@@ -50,6 +50,7 @@
   .tag.bot{background:#d9fdd3;color:#027a5b;}
   .tag.human{background:#cfe9ff;color:#025a94;}
   .tag.closed{background:#eee;color:#888;}
+  .tag.ad{background:#fff2cc;color:#a86b00;text-transform:none;letter-spacing:0;}
 
   /* ===== Chat ===== */
   #chat{flex:1;display:flex;flex-direction:column;background:var(--chat-bg);position:relative;
@@ -418,7 +419,7 @@ function renderList(){
         </div>
         <div class="conv-bottom">
           <span class="conv-last">${esc(c.last_message||'')}</span>
-          <span class="conv-meta">${statusTag}${count?`<span class="badge">${count>99?'99+':count}</span>`:''}</span>
+          <span class="conv-meta">${c.ad_source?'<span class="tag ad" title="Veio de anúncio">🎯</span>':''}${statusTag}${count?`<span class="badge">${count>99?'99+':count}</span>`:''}</span>
         </div>
       </div>
     </div>`;
@@ -487,7 +488,8 @@ function updateChatHeader(){
   else statusTxt = phoneOf(activeConv);
   const modo = activeConv.status==='human' ? ' · atendimento humano'
              : activeConv.status==='closed' ? ' · encerrada' : ' · 🤖 Ana ativa';
-  el.cStatus.textContent = statusTxt + modo;
+  const anuncio = activeConv.ad_source ? (activeConv.ad_booked ? ' · 🎯 veio de anúncio (agendado ✅)' : ' · 🎯 veio de anúncio') : '';
+  el.cStatus.textContent = statusTxt + modo + anuncio;
   el.cStatus.className = 's'+(online?' online':'');
   // switch: Ana ativa quando status !== 'human'
   el.anaSwitch.classList.toggle('on', activeConv.status!=='human');
