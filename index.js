@@ -699,6 +699,38 @@ const ANEXO_SIGN_TTL = 3600; // 1 hora, em segundos
   }
 })();
 
+// Expurgo automático de anexos com mais de 30 dias (LGPD: minimização/retenção).
+// Roda no startup e a cada 24h. Usa created_at do objeto; se ausente, cai no
+// timestamp embutido no nome do arquivo (`${Date.now()}_...`).
+const ANEXO_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+async function purgeOldAttachments() {
+  try {
+    const cutoff = Date.now() - ANEXO_RETENTION_MS;
+    const antigos = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabase.storage.from("anexos").list("", {
+        limit: 1000, offset, sortBy: { column: "created_at", order: "asc" }
+      });
+      if (error) { console.error("Expurgo: erro ao listar anexos:", error.message); return; }
+      if (!data || data.length === 0) break;
+      for (const f of data) {
+        const ts = f.created_at ? new Date(f.created_at).getTime() : parseInt(f.name.split("_")[0], 10);
+        if (Number.isFinite(ts) && ts < cutoff) antigos.push(f.name);
+      }
+      if (data.length < 1000) break;
+    }
+    if (antigos.length) {
+      const { error } = await supabase.storage.from("anexos").remove(antigos);
+      if (error) console.error("Expurgo: erro ao remover anexos:", error.message);
+      else console.log(`Expurgo: ${antigos.length} anexo(s) com +30 dias removido(s).`);
+    }
+  } catch (e) {
+    console.error("Erro no expurgo de anexos:", e.message);
+  }
+}
+purgeOldAttachments();
+setInterval(purgeOldAttachments, 24 * 60 * 60 * 1000);
+
 // Upload de anexo do painel para o Supabase Storage → devolve URL ASSINADA (1h)
 // O navegador envia o arquivo como corpo binário (application/octet-stream)
 // e informa nome/tipo real via query (?filename=...&mime=...).
