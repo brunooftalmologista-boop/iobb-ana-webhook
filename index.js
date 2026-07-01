@@ -3,6 +3,7 @@ const express = require("express");
 const axios = require("axios");
 const FormData = require("form-data");
 const { createClient } = require("@supabase/supabase-js");
+const googleAds = require("./googleAds");
 const app = express();
 app.use(express.json());
 
@@ -423,6 +424,11 @@ app.post("/webhook", async (req, res) => {
         await sendWhatsApp(from, `ℹ️ Ana está ${anaAtiva ? "✅ ATIVA" : "❌ DESATIVADA"}.`);
         return;
       }
+      if (text === "#ADS" || text === "#ADS RELATORIO") {
+        await sendWhatsApp(from, `📊 Gerando relatório do Google Ads (modo ${googleAds.isTestMode() ? "TESTE" : "PRODUÇÃO"})...`);
+        googleAds.runWeeklyReport({ supabase, sendWhatsApp }).catch(e => console.error("[GoogleAds] Manual:", e.message));
+        return;
+      }
     }
 
     // Salvar no banco
@@ -685,6 +691,13 @@ app.post("/api/settings", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Dispara o relatório do Google Ads sob demanda (painel). Roda em background;
+// o relatório chega pelo WhatsApp no número configurado.
+app.post("/api/ads/report", async (req, res) => {
+  googleAds.runWeeklyReport({ supabase, sendWhatsApp }).catch(e => console.error("[GoogleAds] Endpoint:", e.message));
+  res.json({ ok: true, mode: googleAds.isTestMode() ? "test" : "prod" });
+});
+
 // Anexos podem conter dados sensíveis de pacientes (laudos, receitas, exames).
 // Por LGPD, o bucket é PRIVADO e os links são URLs assinadas com expiração curta.
 const ANEXO_SIGN_TTL = 3600; // 1 hora, em segundos
@@ -765,5 +778,8 @@ app.post("/api/upload", express.raw({ type: () => true, limit: "30mb" }), async 
 
 // Servir o painel web das secretárias
 app.get("/painel", (req, res) => res.sendFile(__dirname + "/painel.html"));
+
+// Agendador do relatório semanal do Google Ads (segunda 08h, Brasília)
+googleAds.startScheduler({ supabase, sendWhatsApp });
 
 app.listen(process.env.PORT || 3000, () => console.log("Ana online!"));
