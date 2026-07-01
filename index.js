@@ -1078,7 +1078,13 @@ function renderLanding(cfg, waLink) {
 // Landings com HTML próprio (design pronto) carregadas do disco na inicialização.
 // Têm precedência sobre o template genérico renderLanding() para o mesmo tema.
 const LP_HTML = {};
-for (const [tema, arquivo] of Object.entries({ consulta: "landings/consulta.html" })) {
+for (const [tema, arquivo] of Object.entries({
+  consulta: "landings/consulta.html",
+  ceratocone: "landings/ceratocone.html",
+  taguatinga: "landings/taguatinga.html",
+  "aguas-claras": "landings/aguas-claras.html",
+  "asa-norte": "landings/asa-norte.html",
+})) {
   try { LP_HTML[tema] = fs.readFileSync(`${__dirname}/${arquivo}`, "utf8"); }
   catch (e) { console.error(`[LP] Falha ao carregar ${arquivo}:`, e.message); }
 }
