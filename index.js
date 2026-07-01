@@ -691,11 +691,16 @@ app.post("/api/settings", async (req, res) => {
   res.json({ ok: true });
 });
 
-// Dispara o relatório do Google Ads sob demanda (painel). Roda em background;
-// o relatório chega pelo WhatsApp no número configurado.
+// Dispara o relatório do Google Ads sob demanda (painel). Envia pelo WhatsApp
+// e também devolve o texto do relatório para exibição na modal do painel.
 app.post("/api/ads/report", async (req, res) => {
-  googleAds.runWeeklyReport({ supabase, sendWhatsApp }).catch(e => console.error("[GoogleAds] Endpoint:", e.message));
-  res.json({ ok: true, mode: googleAds.isTestMode() ? "test" : "prod" });
+  try {
+    const report = await googleAds.runWeeklyReport({ supabase, sendWhatsApp });
+    res.json({ ok: !!report, mode: googleAds.isTestMode() ? "test" : "prod", report });
+  } catch (e) {
+    console.error("[GoogleAds] Endpoint:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 // Anexos podem conter dados sensíveis de pacientes (laudos, receitas, exames).

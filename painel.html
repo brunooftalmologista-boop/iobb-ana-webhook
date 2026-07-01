@@ -112,6 +112,9 @@
   .btn{padding:10px 18px;border-radius:8px;font-weight:600;font-size:14px;}
   .btn.primary{background:var(--green);color:#fff;}
   .btn.ghost{background:var(--header);color:#54656f;}
+  .modal.ads{width:min(640px,94vw);}
+  .ads-content{white-space:pre-wrap;font-size:13.5px;line-height:1.45;max-height:60vh;overflow:auto;background:var(--header);border-radius:8px;padding:14px;color:#111b21;margin-top:4px;}
+  .ads-content:empty{display:none;}
 
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111b21;color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;opacity:0;transition:.3s;z-index:200;pointer-events:none;}
   #toast.show{opacity:.95;}
@@ -139,6 +142,7 @@
       <div class="side-actions">
         <button class="icon-btn" id="btn-refresh" title="Atualizar">⟳</button>
         <button class="icon-btn" id="btn-config" title="Configurações">⚙️</button>
+        <button class="icon-btn" id="btn-ads" title="Relatório Google Ads">📊</button>
         <button class="icon-btn" id="btn-logout" title="Sair">⎋</button>
       </div>
     </div>
@@ -228,6 +232,19 @@
     <div class="modal-actions">
       <button class="btn ghost" id="cfg-cancel">Cancelar</button>
       <button class="btn primary" id="cfg-save">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Relatório Google Ads modal -->
+<div class="modal-bg" id="ads-modal">
+  <div class="modal ads">
+    <h3>📊 Relatório Google Ads</h3>
+    <p id="ads-sub">Gerando relatório…</p>
+    <div id="ads-content" class="ads-content"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="ads-close">Fechar</button>
+      <button class="btn primary" id="ads-refresh">Gerar novamente</button>
     </div>
   </div>
 </div>
@@ -631,6 +648,29 @@ function openConfig(){
 }
 function closeConfig(){ $('#config-modal').classList.remove('show'); }
 
+// ---------- Relatório Google Ads ----------
+function formatReport(t){
+  const esc = String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return esc.replace(/\*([^*\n]+)\*/g,'<b>$1</b>').replace(/_([^_\n]+)_/g,'<i>$1</i>');
+}
+async function openAds(){
+  $('#ads-modal').classList.add('show');
+  $('#ads-content').innerHTML='';
+  $('#ads-sub').textContent='Gerando relatório…';
+  try{
+    const d = await api('/api/ads/report',{method:'POST'});
+    if(d && d.report){
+      $('#ads-sub').textContent = (d.mode==='test' ? '🧪 Modo teste (dados simulados)' : 'Dados reais da conta') + ' — também enviado ao WhatsApp.';
+      $('#ads-content').innerHTML = formatReport(d.report);
+    } else {
+      $('#ads-sub').textContent = 'Não foi possível gerar o relatório. Verifique os logs do servidor.';
+    }
+  }catch(e){
+    $('#ads-sub').textContent = 'Erro ao gerar o relatório ('+e.message+').';
+  }
+}
+function closeAds(){ $('#ads-modal').classList.remove('show'); }
+
 // ---------- Login / Logout ----------
 function showLogin(){ $('#login-modal').classList.add('show'); const a=$('#login-agent'); if(a && !a.value) a.value=AGENT; setTimeout(()=>$('#login-pass').focus(),50); }
 function hideLogin(){ $('#login-modal').classList.remove('show'); }
@@ -664,6 +704,9 @@ function startApp(){ el.conn.textContent='conectando…'; loadConversations(); }
 el.search.oninput=applyFilter;
 $('#btn-refresh').onclick=()=>{ loadConversations(); if(activeId) loadMessages(true); };
 $('#btn-config').onclick=openConfig;
+$('#btn-ads').onclick=openAds;
+$('#ads-close').onclick=closeAds;
+$('#ads-refresh').onclick=openAds;
 $('#btn-back').onclick=()=>{ document.getElementById('app').classList.remove('chat-open'); activeId=null; };
 $('#btn-send').onclick=sendMessage;
 $('#btn-attach').onclick=()=>$('#file-input').click();
