@@ -4,6 +4,7 @@ const axios = require("axios");
 const FormData = require("form-data");
 const { createClient } = require("@supabase/supabase-js");
 const crypto = require("crypto");
+const fs = require("fs");
 const googleAds = require("./googleAds");
 const app = express();
 app.use(express.json());
@@ -1074,16 +1075,36 @@ function renderLanding(cfg, waLink) {
 </body></html>`;
 }
 
+// Landings com HTML próprio (design pronto) carregadas do disco na inicialização.
+// Têm precedência sobre o template genérico renderLanding() para o mesmo tema.
+const LP_HTML = {};
+for (const [tema, arquivo] of Object.entries({ consulta: "landings/consulta.html" })) {
+  try { LP_HTML[tema] = fs.readFileSync(`${__dirname}/${arquivo}`, "utf8"); }
+  catch (e) { console.error(`[LP] Falha ao carregar ${arquivo}:`, e.message); }
+}
+
+// Injeta rastreamento numa landing de HTML próprio: aponta todos os links do
+// WhatsApp para o número da Ana e acrescenta o [ref:token] ao texto pré-preenchido.
+function injectTracking(html, token) {
+  const ref = encodeURIComponent(` [ref:${token}]`);
+  return html.replace(/https:\/\/wa\.me\/\d+(\?text=[^"'\s]*)?/g, (m, query) => {
+    const base = `https://wa.me/${WA_LP_NUMBER}`;
+    return query ? `${base}${query}${ref}` : `${base}?text=${encodeURIComponent(`Olá! [ref:${token}]`)}`;
+  });
+}
+
 app.get("/lp/:tema", async (req, res) => {
   const tema = String(req.params.tema || "").toLowerCase();
+  const custom = LP_HTML[tema];
   const cfg = LP_TEMAS[tema];
-  if (!cfg) return res.status(404).send("Página não encontrada");
+  if (!custom && !cfg) return res.status(404).send("Página não encontrada");
   const token = await registrarClique({
     gclid: req.query.gclid, wbraid: req.query.wbraid, gbraid: req.query.gbraid, source: `google/${tema}`
   });
-  const waLink = `https://wa.me/${WA_LP_NUMBER}?text=${encodeURIComponent(`${cfg.msg} [ref:${token}]`)}`;
   res.set("Cache-Control", "no-store");
-  res.send(renderLanding(cfg, waLink));
+  if (custom) return res.send(injectTracking(custom, token)); // design próprio (ex.: consulta)
+  const waLink = `https://wa.me/${WA_LP_NUMBER}?text=${encodeURIComponent(`${cfg.msg} [ref:${token}]`)}`;
+  res.send(renderLanding(cfg, waLink)); // template genérico (ceratocone/refrativa/catarata)
 });
 
 // Servir o painel web das secretárias
