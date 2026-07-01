@@ -1,28 +1,28 @@
-﻿Campaign,Campaign Type,Campaign Daily Budget,Bid Strategy Type,Campaign Status,Ad Group,Ad Group Status,Keyword,Match Type,Max CPC,Status
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Águas Claras,Enabled,oftalmologista águas claras,Exact,4.50,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Águas Claras,Enabled,oftalmologista aguas claras,Exact,4.50,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Águas Claras,Enabled,oftalmologista aguas claras,Phrase,4.50,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Águas Claras,Enabled,exame de vista águas claras,Exact,4.50,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Águas Claras,Enabled,oftalmo águas claras,Phrase,4.50,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Taguatinga,Enabled,oftalmologista taguatinga,Exact,4.50,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Taguatinga,Enabled,oftalmologista em taguatinga,Phrase,4.50,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Taguatinga,Enabled,exame de vista taguatinga,Phrase,4.50,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Taguatinga,Enabled,clínica oftalmológica taguatinga,Phrase,4.50,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Asa Norte e Brasília,Enabled,oftalmologista asa norte,Exact,4.50,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Asa Norte e Brasília,Enabled,clínica oftalmológica asa norte,Exact,4.50,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Asa Norte e Brasília,Enabled,oftalmologista brasília,Phrase,4.00,Enabled
-IOBB | Consulta DF,Search,28,Manual CPC,Paused,Asa Norte e Brasília,Enabled,oftalmologista conjunto nacional,Phrase,4.50,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Ceratocone,Enabled,ceratocone brasília,Exact,10.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Ceratocone,Enabled,especialista em ceratocone,Phrase,20.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Ceratocone,Enabled,médico especialista em ceratocone,Phrase,20.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Ceratocone,Enabled,crosslinking,Exact,8.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Ceratocone,Enabled,crosslinking corneano,Phrase,8.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Ceratocone,Enabled,cirurgia ceratocone preço,Phrase,10.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Ceratocone,Enabled,avaliação da histerese corneana,Phrase,8.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Lente Escleral,Enabled,lente escleral,Phrase,10.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Lente Escleral,Enabled,lente escleral preço,Exact,10.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Lente Escleral,Enabled,lente para ceratocone,Phrase,10.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Lente Escleral,Enabled,quanto custa uma lente escleral,Phrase,8.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Lente Escleral,Enabled,lente escleral para ceratocone preço,Phrase,8.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Anel,Enabled,anel de ferrara,Phrase,8.00,Enabled
-IOBB | Ceratocone e Esclerais,Search,18,Manual CPC,Paused,Anel,Enabled,anel de ferrara valor,Exact,8.00,Enabled
+Campaign,Campaign Type,Campaign Daily Budget,Ad Group,Keyword,Match Type,Max CPC,Campaign Status,Ad Group Status
+IOBB | Consulta DF,Search,28,Águas Claras,oftalmologista águas claras,Exact,4.50,Paused,Enabled
+IOBB | Consulta DF,Search,28,Águas Claras,oftalmologista aguas claras,Exact,4.50,Paused,Enabled
+IOBB | Consulta DF,Search,28,Águas Claras,oftalmologista aguas claras,Phrase,4.50,Paused,Enabled
+IOBB | Consulta DF,Search,28,Águas Claras,exame de vista águas claras,Exact,4.50,Paused,Enabled
+IOBB | Consulta DF,Search,28,Águas Claras,oftalmo águas claras,Phrase,4.50,Paused,Enabled
+IOBB | Consulta DF,Search,28,Taguatinga,oftalmologista taguatinga,Exact,4.50,Paused,Enabled
+IOBB | Consulta DF,Search,28,Taguatinga,oftalmologista em taguatinga,Phrase,4.50,Paused,Enabled
+IOBB | Consulta DF,Search,28,Taguatinga,exame de vista taguatinga,Phrase,4.50,Paused,Enabled
+IOBB | Consulta DF,Search,28,Taguatinga,clínica oftalmológica taguatinga,Phrase,4.50,Paused,Enabled
+IOBB | Consulta DF,Search,28,Asa Norte e Brasília,oftalmologista asa norte,Exact,4.50,Paused,Enabled
+IOBB | Consulta DF,Search,28,Asa Norte e Brasília,clínica oftalmológica asa norte,Exact,4.50,Paused,Enabled
+IOBB | Consulta DF,Search,28,Asa Norte e Brasília,oftalmologista brasília,Phrase,4.00,Paused,Enabled
+IOBB | Consulta DF,Search,28,Asa Norte e Brasília,oftalmologista conjunto nacional,Phrase,4.50,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Ceratocone,ceratocone brasília,Exact,10.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Ceratocone,especialista em ceratocone,Phrase,20.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Ceratocone,médico especialista em ceratocone,Phrase,20.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Ceratocone,crosslinking,Exact,8.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Ceratocone,crosslinking corneano,Phrase,8.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Ceratocone,cirurgia ceratocone preço,Phrase,10.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Ceratocone,avaliação da histerese corneana,Phrase,8.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Lente Escleral,lente escleral,Phrase,10.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Lente Escleral,lente escleral preço,Exact,10.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Lente Escleral,lente para ceratocone,Phrase,10.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Lente Escleral,quanto custa uma lente escleral,Phrase,8.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Lente Escleral,lente escleral para ceratocone preço,Phrase,8.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Anel,anel de ferrara,Phrase,8.00,Paused,Enabled
+IOBB | Ceratocone e Esclerais,Search,18,Anel,anel de ferrara valor,Exact,8.00,Paused,Enabled
