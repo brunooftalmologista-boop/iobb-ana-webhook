@@ -175,6 +175,23 @@ const NUMERO_CLINICA = "5561982879853";
 const NUMEROS_ADMIN = ["5561984060001", "556182879853", "5561982879853"];
 let anaAtiva = true;
 
+// Mensagem amigável enviada ao paciente quando algo falha (nunca deixar no silêncio).
+const FRIENDLY_FALLBACK = "Opa, tive uma instabilidade rápida por aqui 😊 Pode me enviar sua mensagem de novo, por favor? Se preferir, fale com a nossa equipe pelo (61) 3033-6605 (seg a sex, das 8h às 18h).";
+
+// Dedup de mensagens já processadas: o WhatsApp pode reenviar o mesmo evento,
+// o que faria a Ana responder duas vezes. Guardamos os IDs recentes em memória.
+const processedMessages = new Set();
+function alreadyProcessed(id) {
+  if (!id) return false;
+  if (processedMessages.has(id)) return true;
+  processedMessages.add(id);
+  if (processedMessages.size > 2000) {
+    // poda simples dos mais antigos (o Set mantém a ordem de inserção)
+    for (const old of processedMessages) { processedMessages.delete(old); if (processedMessages.size <= 1500) break; }
+  }
+  return false;
+}
+
 // Funções do calendário
 function parseICS(icsText) {
   const events = [];
@@ -346,26 +363,46 @@ async function sendWhatsAppImage(to, url, caption = "") {
   );
 }
 
-// Notificar clínica
+// Notificar clínica (espelhamento). NUNCA lança: uma falha aqui — por exemplo,
+// a janela de 24h do WhatsApp fechada para o número da clínica — não pode
+// interromper o atendimento ao paciente.
 async function notificarClinica(texto) {
   try {
-    await axios.post(
-      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
-      { messaging_product: "whatsapp", to: NUMERO_CLINICA, type: "text", text: { body: texto } },
-      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
-    );
+    await sendWhatsApp(NUMERO_CLINICA, texto);
   } catch(e) {
-    console.error("Erro ao notificar clínica:", e.message);
+    const d = e?.response?.data;
+    console.error("[Ana] Falha ao espelhar p/ clínica (possível janela de 24h fechada):", d ? JSON.stringify(d) : e.message);
   }
 }
 
-// Enviar mensagem WhatsApp
-async function sendWhatsApp(to, body) {
+// Limite de caracteres do corpo de texto do WhatsApp (a API rejeita > 4096).
+const WA_TEXT_LIMIT = 3900;
+
+// Envio bruto de um único texto (sem divisão).
+async function sendWhatsAppRaw(to, body) {
   await axios.post(
     `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
     { messaging_product: "whatsapp", to, type: "text", text: { body } },
     { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
   );
+}
+
+// Enviar mensagem WhatsApp — divide automaticamente textos longos em partes,
+// respeitando quebras de linha, para não estourar o limite da API (o que
+// causaria falha silenciosa em respostas grandes).
+async function sendWhatsApp(to, body) {
+  const text = String(body ?? "").trim();
+  if (!text) return;
+  if (text.length <= WA_TEXT_LIMIT) { await sendWhatsAppRaw(to, text); return; }
+  const chunks = [];
+  let buf = "";
+  for (let line of text.split("\n")) {
+    while (line.length > WA_TEXT_LIMIT) { chunks.push(line.slice(0, WA_TEXT_LIMIT)); line = line.slice(WA_TEXT_LIMIT); }
+    if ((buf ? buf.length + 1 : 0) + line.length > WA_TEXT_LIMIT) { if (buf) chunks.push(buf); buf = line; }
+    else buf = buf ? buf + "\n" + line : line;
+  }
+  if (buf) chunks.push(buf);
+  for (const c of chunks) await sendWhatsAppRaw(to, c);
 }
 
 // Webhook verification
@@ -383,6 +420,9 @@ app.post("/webhook", async (req, res) => {
   try {
     const msg = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!msg) return;
+
+    // Ignora reentregas do mesmo evento (evita resposta duplicada)
+    if (alreadyProcessed(msg.id)) { console.log("[Ana] Mensagem duplicada ignorada:", msg.id); return; }
 
     const from = msg.from;
     let text = "";
@@ -417,7 +457,14 @@ app.post("/webhook", async (req, res) => {
       return; // Ignorar outros tipos
     }
 
-    console.log("Mensagem de:", from, "| Texto:", text);
+    console.log("Mensagem de:", from, "| Tipo:", msg.type, "| Texto:", text);
+
+    // Sem texto utilizável (ex.: áudio não baixado/transcrito) → orienta o paciente
+    if (!text || !text.trim()) {
+      console.error("[Ana] Mensagem sem texto utilizável (tipo:", msg.type + ")");
+      await sendWhatsApp(from, "Não consegui ler sua mensagem 😊 Pode me escrever por texto, por favor?").catch(e => console.error("[Ana] Falha ao pedir reenvio:", e.message));
+      return;
+    }
 
     // Comandos admin
     if (NUMEROS_ADMIN.includes(from)) {
@@ -446,7 +493,17 @@ app.post("/webhook", async (req, res) => {
 
     // Salvar no banco
     const patient = await getOrCreatePatient(from);
+    if (!patient) {
+      console.error("[Ana] Não foi possível obter/criar o paciente:", from);
+      await sendWhatsApp(from, FRIENDLY_FALLBACK).catch(e => console.error("[Ana] Falha no fallback:", e.message));
+      return;
+    }
     const conversation = await getOrCreateConversation(patient.id);
+    if (!conversation) {
+      console.error("[Ana] Não foi possível obter/criar a conversa do paciente:", patient.id);
+      await sendWhatsApp(from, FRIENDLY_FALLBACK).catch(e => console.error("[Ana] Falha no fallback:", e.message));
+      return;
+    }
     await saveMessage(conversation.id, "user", text, msg.id);
 
     // Verificar se conversa está com humano
@@ -519,24 +576,38 @@ app.post("/webhook", async (req, res) => {
     while (apiMessages.length && apiMessages[0].role === "assistant") apiMessages.shift();
     // Salvaguarda: se nada sobrar, usar ao menos a mensagem atual do usuário.
     if (apiMessages.length === 0) apiMessages.push({ role: "user", content: text });
-    const response = await axios.post(
-      "https://api.anthropic.com/v1/messages",
-      { model: "claude-sonnet-4-6", max_tokens: 1000, system: systemPrompt, messages: apiMessages },
-      { headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" } }
-    );
-    const reply = response.data.content[0].text;
+    let reply;
+    try {
+      const response = await axios.post(
+        "https://api.anthropic.com/v1/messages",
+        { model: "claude-sonnet-4-6", max_tokens: 1000, system: systemPrompt, messages: apiMessages },
+        { headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, timeout: 30000 }
+      );
+      reply = response.data?.content?.[0]?.text;
+      if (!reply || !reply.trim()) throw new Error("Resposta vazia da IA");
+    } catch (err) {
+      console.error("[Ana] Falha na API Anthropic:", err?.response?.status || "", err?.response?.data ? JSON.stringify(err.response.data) : err.message);
+      await sendWhatsApp(from, FRIENDLY_FALLBACK).catch(e => console.error("[Ana] Falha ao enviar fallback:", e.message));
+      await saveMessage(conversation.id, "assistant", FRIENDLY_FALLBACK).catch(e => console.error("[Ana] Falha ao salvar fallback:", e.message));
+      return;
+    }
 
     // Salvar resposta
     await saveMessage(conversation.id, "assistant", reply);
 
-    // Enviar ao paciente
-    await sendWhatsApp(from, reply);
+    // Enviar ao paciente (se falhar, registra com detalhe — sem silêncio sem log)
+    try {
+      await sendWhatsApp(from, reply);
+    } catch (err) {
+      console.error("[Ana] Falha ao enviar resposta ao paciente:", err?.response?.data ? JSON.stringify(err.response.data) : err.message);
+    }
 
-    // Espelhar para clínica
+    // Espelhar para clínica (isolado: notificarClinica nunca lança)
     await notificarClinica(`👤 *${patient.name || from}:*\n${text}\n\n🤖 *Ana:*\n${reply}`);
 
   } catch(e) {
-    console.error(e?.response?.data || e.message);
+    console.error("[Ana] Erro não tratado no webhook:", e?.response?.status || "", e?.response?.data ? JSON.stringify(e.response.data) : e.message);
+    if (e?.stack) console.error(e.stack);
   }
 });
 
