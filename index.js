@@ -9,7 +9,7 @@ app.use(express.json());
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.header("Access-Control-Allow-Headers", "Content-Type, x-iobb-auth");
   if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
 });
@@ -488,6 +488,25 @@ app.post("/webhook", async (req, res) => {
     console.error(e?.response?.data || e.message);
   }
 });
+
+// ===== Autenticação do painel (LGPD: protege dados de pacientes) =====
+// Senha compartilhada das secretárias. Pode ser sobrescrita por env var no Render.
+const PANEL_PASSWORD = process.env.PANEL_PASSWORD || "iobb2024";
+
+// Login do painel — rota PÚBLICA (fica antes do middleware de proteção)
+app.post("/api/login", (req, res) => {
+  const { password } = req.body || {};
+  if (password === PANEL_PASSWORD) return res.json({ ok: true });
+  return res.status(401).json({ ok: false, error: "Senha incorreta" });
+});
+
+// Middleware: protege todas as rotas /api/* registradas ABAIXO desta linha.
+// O painel envia a senha no header x-iobb-auth a cada requisição.
+function requirePanelAuth(req, res, next) {
+  if ((req.headers["x-iobb-auth"] || "") === PANEL_PASSWORD) return next();
+  return res.status(401).json({ error: "Não autorizado" });
+}
+app.use("/api", requirePanelAuth);
 
 // API para o painel web
 app.get("/api/conversations", async (req, res) => {

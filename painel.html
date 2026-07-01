@@ -138,6 +138,7 @@
       <div class="side-actions">
         <button class="icon-btn" id="btn-refresh" title="Atualizar">⟳</button>
         <button class="icon-btn" id="btn-config" title="Configurações">⚙️</button>
+        <button class="icon-btn" id="btn-logout" title="Sair">⎋</button>
       </div>
     </div>
     <div class="search-wrap">
@@ -192,6 +193,22 @@
   </section>
 </div>
 
+<!-- Login (fail-closed: visível por padrão, o JS esconde se já autenticado) -->
+<div class="modal-bg show" id="login-modal" style="z-index:150">
+  <div class="modal">
+    <h3>🔒 Painel IOBB — Acesso restrito</h3>
+    <p>Esta área contém dados de pacientes (LGPD). Identifique-se para continuar.</p>
+    <label>Seu nome (secretária)</label>
+    <input id="login-agent" placeholder="Ex.: Recepção Conjunto Nacional" autocomplete="username">
+    <label>Senha</label>
+    <input id="login-pass" type="password" placeholder="Senha do painel" autocomplete="current-password">
+    <div id="login-error" style="color:#d33;font-size:13px;margin-top:10px;display:none">Senha incorreta. Tente novamente.</div>
+    <div class="modal-actions">
+      <button class="btn primary" id="login-btn" style="width:100%">Entrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Config modal -->
 <div class="modal-bg" id="config-modal">
   <div class="modal">
@@ -230,7 +247,9 @@ const LS = {
   api:  'iobb_api_base',
   agent:'iobb_agent',
   read: 'iobb_read_state',   // { [convId]: updated_at lido }
+  auth: 'iobb_auth',         // senha do painel (enviada no header x-iobb-auth)
 };
+let AUTH = localStorage.getItem('iobb_auth') || '';
 // Aponta para o backend no Render por padrão; localStorage só sobrepõe se você
 // tiver salvo outro endereço manualmente na engrenagem de configurações.
 let API_BASE = localStorage.getItem(LS.api) || WEBHOOK_URL;
@@ -259,8 +278,9 @@ const el = {
 // ---------- Utilidades ----------
 function api(path, opts={}){
   return fetch(API_BASE.replace(/\/$/,'') + path, {
-    headers:{'Content-Type':'application/json'}, ...opts
+    headers:{'Content-Type':'application/json','x-iobb-auth':AUTH}, ...opts
   }).then(async r=>{
+    if(r.status===401){ logout(); throw new Error('401'); }
     if(!r.ok) throw new Error('HTTP '+r.status);
     const t = await r.text();
     return t ? JSON.parse(t) : null;
@@ -516,8 +536,9 @@ async function uploadFile(e){
   try{
     const q = new URLSearchParams({ filename:file.name, mime:file.type||'application/octet-stream' });
     const up = await fetch(API_BASE.replace(/\/$/,'')+'/api/upload?'+q.toString(), {
-      method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:file
+      method:'POST', headers:{'Content-Type':'application/octet-stream','x-iobb-auth':AUTH}, body:file
     });
+    if(up.status===401){ logout(); throw new Error('401'); }
     if(!up.ok) throw new Error('upload '+up.status);
     const { url } = await up.json();
     const body = isImage
@@ -578,6 +599,32 @@ function openConfig(){
 }
 function closeConfig(){ $('#config-modal').classList.remove('show'); }
 
+// ---------- Login / Logout ----------
+function showLogin(){ $('#login-modal').classList.add('show'); const a=$('#login-agent'); if(a && !a.value) a.value=AGENT; setTimeout(()=>$('#login-pass').focus(),50); }
+function hideLogin(){ $('#login-modal').classList.remove('show'); }
+async function doLogin(){
+  const pass=$('#login-pass').value, agent=$('#login-agent').value.trim();
+  $('#login-error').style.display='none';
+  try{
+    const r = await fetch(API_BASE.replace(/\/$/,'')+'/api/login',{
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ password:pass })
+    });
+    if(!r.ok) throw new Error('login');
+    AUTH=pass; AGENT=agent||'Secretária';
+    localStorage.setItem(LS.auth,AUTH); localStorage.setItem(LS.agent,AGENT);
+    $('#login-pass').value='';
+    hideLogin(); startApp();
+  }catch(e){ $('#login-error').style.display='block'; $('#login-pass').select(); }
+}
+function logout(){
+  AUTH=''; localStorage.removeItem(LS.auth);
+  activeId=null; activeConv=null; conversations=[]; filtered=[]; messages=[];
+  el.list.innerHTML=''; el.conv.style.display='none'; el.empty.style.display='flex';
+  document.getElementById('app').classList.remove('chat-open');
+  showLogin();
+}
+function startApp(){ el.conn.textContent='conectando…'; loadConversations(); }
+
 // ---------- Eventos ----------
 el.search.oninput=applyFilter;
 $('#btn-refresh').onclick=()=>{ loadConversations(); if(activeId) loadMessages(true); };
@@ -599,14 +646,21 @@ $('#cfg-save').onclick=()=>{
   closeConfig(); prevUpdated={}; loadConversations();
 };
 
+// ---------- Login handlers ----------
+$('#login-btn').onclick=doLogin;
+$('#login-pass').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); doLogin(); } };
+$('#login-agent').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#login-pass').focus(); } };
+$('#btn-logout').onclick=logout;
+
 // ---------- Init ----------
 buildEmoji();
 if('Notification' in window && Notification.permission==='default'){
   Notification.requestPermission();
 }
-if(!API_BASE){ openConfig(); } else { loadConversations(); }
-setInterval(loadConversations, 5000);          // lista + notificações
-setInterval(()=>{ if(activeId) loadMessages(false); }, 3000); // chat aberto
+if(AUTH){ hideLogin(); startApp(); } else { showLogin(); }
+// intervalos só rodam quando autenticado
+setInterval(()=>{ if(AUTH) loadConversations(); }, 5000);          // lista + notificações
+setInterval(()=>{ if(AUTH && activeId) loadMessages(false); }, 3000); // chat aberto
 </script>
 </body>
 </html>
