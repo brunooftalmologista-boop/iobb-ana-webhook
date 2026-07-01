@@ -3,6 +3,7 @@ const express = require("express");
 const axios = require("axios");
 const FormData = require("form-data");
 const { createClient } = require("@supabase/supabase-js");
+const crypto = require("crypto");
 const googleAds = require("./googleAds");
 const app = express();
 app.use(express.json());
@@ -173,6 +174,12 @@ Se a criança tiver MENOS de 8 anos, acolha com gentileza e explique que, para e
 
 const NUMERO_CLINICA = "5561982879853";
 const NUMEROS_ADMIN = ["5561984060001", "556182879853", "5561982879853"];
+// Número (E.164, sem "+") da Ana para onde a landing de anúncios envia o paciente.
+// IMPORTANTE: deve ser o número do WhatsApp Business conectado à Cloud API (o que
+// a Ana atende), senão a captura do token de origem não funciona.
+const WA_LP_NUMBER = process.env.WA_LP_NUMBER || NUMERO_CLINICA;
+// Nome da ação de conversão criada no Google Ads (tipo Importar/Offline).
+const GOOGLE_ADS_CONVERSION_NAME = process.env.GOOGLE_ADS_CONVERSION_NAME || "Agendamento IOBB";
 let anaAtiva = true;
 
 // Mensagem amigável enviada ao paciente quando algo falha (nunca deixar no silêncio).
@@ -305,6 +312,35 @@ async function getConversationMessages(conversationId) {
 
 async function updatePatientName(phone, name) {
   await supabase.from("patients").update({ name, updated_at: new Date() }).eq("phone", phone);
+}
+
+// ===== Atribuição de anúncios (Google Ads) =====
+function novoToken() { return crypto.randomBytes(4).toString("hex").toUpperCase(); } // 8 chars
+
+// Registra um clique de anúncio (na landing) e devolve o token que viajará no [ref:...]
+async function registrarClique({ gclid, wbraid, gbraid, source }) {
+  const token = novoToken();
+  try {
+    await supabase.from("ad_clicks").insert({
+      token, gclid: gclid || null, wbraid: wbraid || null, gbraid: gbraid || null, source: source || null
+    });
+  } catch (e) {
+    console.error("[Ads] Falha ao registrar clique:", e.message);
+  }
+  return token;
+}
+
+// Vincula o token (recebido na 1ª mensagem) ao telefone/conversa do paciente
+async function vincularClique(token, phone, conversationId) {
+  try {
+    const { data } = await supabase.from("ad_clicks").select("id, phone").eq("token", token).limit(1).single();
+    if (!data) { console.warn("[Ads] Token de anúncio não encontrado:", token); return; }
+    if (data.phone) return; // já vinculado
+    await supabase.from("ad_clicks").update({ phone, conversation_id: String(conversationId) }).eq("id", data.id);
+    console.log("[Ads] Clique vinculado:", token, "→", phone);
+  } catch (e) {
+    console.error("[Ads] Falha ao vincular clique:", e.message);
+  }
 }
 
 // Baixar mídia do WhatsApp
@@ -466,6 +502,15 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
+    // Captura o token de origem de anúncio (landing → WhatsApp) e remove do texto
+    let refToken = null;
+    const refMatch = text.match(/\[ref:([A-Za-z0-9]+)\]/i);
+    if (refMatch) {
+      refToken = refMatch[1].toUpperCase();
+      text = text.replace(/\s*\[ref:[A-Za-z0-9]+\]\s*/i, " ").trim();
+      if (!text) text = "Olá!";
+    }
+
     // Comandos admin
     if (NUMEROS_ADMIN.includes(from)) {
       if (text === "#ANA OFF") {
@@ -505,6 +550,9 @@ app.post("/webhook", async (req, res) => {
       return;
     }
     await saveMessage(conversation.id, "user", text, msg.id);
+
+    // Vincula o clique de anúncio (se veio da landing) ao paciente/conversa
+    if (refToken) await vincularClique(refToken, from, conversation.id);
 
     // Verificar se conversa está com humano
     if (conversation.status === "human") {
@@ -749,6 +797,23 @@ app.post("/api/conversations/:id/release", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Marca um agendamento (conversão) para a conversa. Se ela veio de um anúncio
+// (tem clique vinculado), registra a conversão para exportação ao Google Ads.
+app.post("/api/conversations/:id/booked", async (req, res) => {
+  try {
+    const value = Number(req.body?.value) || 200;
+    const { data } = await supabase.from("ad_clicks").select("id")
+      .eq("conversation_id", String(req.params.id))
+      .order("clicked_at", { ascending: false }).limit(1).single();
+    if (!data) return res.json({ ok: true, attributed: false });
+    await supabase.from("ad_clicks").update({ booked: true, booked_at: new Date(), conversion_value: value }).eq("id", data.id);
+    res.json({ ok: true, attributed: true });
+  } catch (e) {
+    console.error("[Ads] Falha ao marcar agendamento:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.post("/api/send", async (req, res) => {
   const { to, message, conversationId, agent, documentUrl, documentName, imageUrl } = req.body;
   if (imageUrl) {
@@ -783,6 +848,38 @@ app.post("/api/ads/report", async (req, res) => {
     res.json({ ok: !!report, mode: googleAds.isTestMode() ? "test" : "prod", report });
   } catch (e) {
     console.error("[GoogleAds] Endpoint:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Exporta as conversões (agendamentos com gclid) no formato de importação de
+// conversões offline do Google Ads. ?all=1 inclui já exportadas; ?markReported=1
+// marca as exportadas para não reenviar (evita contagem dupla).
+app.get("/api/ads/conversions.csv", async (req, res) => {
+  try {
+    const tz = "America/Sao_Paulo";
+    const fmt = d => {
+      const p = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(d);
+      const g = t => (p.find(x => x.type === t) || {}).value;
+      return `${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")}:${g("second")}`;
+    };
+    let q = supabase.from("ad_clicks").select("*").eq("booked", true).not("gclid", "is", null);
+    if (req.query.all !== "1") q = q.eq("reported", false);
+    const { data } = await q;
+    const rows = (data || []).filter(r => r.gclid);
+    const lines = [`Parameters:TimeZone=${tz}`, "Google Click ID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency"];
+    for (const r of rows) {
+      const t = fmt(new Date(r.booked_at || r.clicked_at));
+      lines.push([r.gclid, GOOGLE_ADS_CONVERSION_NAME, t, (r.conversion_value ?? 200), "BRL"].join(","));
+    }
+    if (req.query.markReported === "1" && rows.length) {
+      await supabase.from("ad_clicks").update({ reported: true, reported_at: new Date() }).in("id", rows.map(r => r.id));
+    }
+    res.set("Content-Type", "text/csv; charset=utf-8");
+    res.set("Content-Disposition", 'attachment; filename="conversoes_google_ads.csv"');
+    res.send(lines.join("\n"));
+  } catch (e) {
+    console.error("[Ads] Falha ao exportar conversões:", e.message);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -863,6 +960,91 @@ app.post("/api/upload", express.raw({ type: () => true, limit: "30mb" }), async 
     console.error("Erro upload:", e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// ===== Landing pages de anúncios (captura de gclid → WhatsApp com token) =====
+const LP_TEMAS = {
+  ceratocone: {
+    titulo: "Ceratocone tem tratamento — e somos referência nisso",
+    sub: "Instituto de Olhos Bruno Borges • Brasília — Asa Norte e Taguatinga",
+    bullets: [
+      "Crosslinking, anel intraestromal e lentes de contato especiais (rígidas e esclerais)",
+      "Avaliação com médico especialista e contactóloga",
+      "Atendimento acolhedor pelo WhatsApp, sem compromisso",
+    ],
+    msg: "Olá! Vim pelo Google e quero saber sobre ceratocone.",
+  },
+  refrativa: {
+    titulo: "Livre-se dos óculos com cirurgia refrativa a laser",
+    sub: "Instituto de Olhos Bruno Borges • Brasília — Asa Norte e Taguatinga",
+    bullets: [
+      "PRK, LASIK e Femto-LASIK — técnica definida na avaliação",
+      "Avaliação completa com o médico antes de qualquer indicação",
+      "Parcelamento em até 5x no cartão",
+    ],
+    msg: "Olá! Vim pelo Google e quero saber sobre cirurgia refrativa.",
+  },
+  catarata: {
+    titulo: "Cirurgia de catarata com avaliação individualizada",
+    sub: "Instituto de Olhos Bruno Borges • Brasília — Asa Norte e Taguatinga",
+    bullets: [
+      "Cirurgia realizada pelo Dr. Bruno",
+      "Escolha da lente intraocular definida na avaliação",
+      "Tire suas dúvidas pelo WhatsApp",
+    ],
+    msg: "Olá! Vim pelo Google e quero saber sobre cirurgia de catarata.",
+  },
+};
+
+function renderLanding(cfg, waLink) {
+  const bullets = cfg.bullets.map(b => `<li>${b}</li>`).join("");
+  return `<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${cfg.titulo} — IOBB</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0b141a;background:#f0f2f5;line-height:1.5}
+  .wrap{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+  .hero{background:#008069;color:#fff;padding:32px 22px 26px}
+  .hero .logo{width:52px;height:52px;border-radius:50%;background:#fff;color:#008069;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;margin-bottom:16px}
+  .hero h1{font-size:24px;line-height:1.25;margin-bottom:8px}
+  .hero p{opacity:.92;font-size:14px}
+  .card{background:#fff;margin:18px;border-radius:14px;padding:20px 20px 8px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .card ul{list-style:none}
+  .card li{padding:10px 0 10px 30px;position:relative;font-size:15px;border-bottom:1px solid #eee}
+  .card li:last-child{border-bottom:none}
+  .card li:before{content:"👁️";position:absolute;left:0;top:9px}
+  .cta{position:sticky;bottom:0;padding:16px 18px 22px;background:linear-gradient(180deg,rgba(240,242,245,0),#f0f2f5 30%)}
+  .btn{display:flex;align-items:center;justify-content:center;gap:10px;background:#25d366;color:#fff;text-decoration:none;font-weight:700;font-size:17px;padding:16px;border-radius:12px;box-shadow:0 4px 14px rgba(37,211,102,.4)}
+  .foot{text-align:center;color:#667781;font-size:12px;padding:0 18px 20px}
+</style></head><body>
+<div class="wrap">
+  <div class="hero">
+    <div class="logo">A</div>
+    <h1>${cfg.titulo}</h1>
+    <p>${cfg.sub}</p>
+  </div>
+  <div class="card"><ul>${bullets}</ul></div>
+  <div style="flex:1"></div>
+  <div class="cta">
+    <a class="btn" href="${waLink}" rel="nofollow">💬 Falar no WhatsApp agora</a>
+  </div>
+  <div class="foot">Atendimento humano de seg a sex, 8h às 18h. Não realizamos atendimento de urgência/emergência.</div>
+</div>
+</body></html>`;
+}
+
+app.get("/lp/:tema", async (req, res) => {
+  const tema = String(req.params.tema || "").toLowerCase();
+  const cfg = LP_TEMAS[tema];
+  if (!cfg) return res.status(404).send("Página não encontrada");
+  const token = await registrarClique({
+    gclid: req.query.gclid, wbraid: req.query.wbraid, gbraid: req.query.gbraid, source: `google/${tema}`
+  });
+  const waLink = `https://wa.me/${WA_LP_NUMBER}?text=${encodeURIComponent(`${cfg.msg} [ref:${token}]`)}`;
+  res.set("Cache-Control", "no-store");
+  res.send(renderLanding(cfg, waLink));
 });
 
 // Servir o painel web das secretárias

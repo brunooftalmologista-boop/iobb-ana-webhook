@@ -176,6 +176,7 @@
             <span class="lbl">Ana</span>
             <div class="switch" id="ana-switch"></div>
           </div>
+          <button class="icon-btn" id="btn-booked" title="Marcar agendamento (conversão)">📅</button>
           <button class="icon-btn" id="btn-read" title="Marcar como lido">✓</button>
         </div>
       </div>
@@ -244,6 +245,7 @@
     <div id="ads-content" class="ads-content"></div>
     <div class="modal-actions">
       <button class="btn ghost" id="ads-close">Fechar</button>
+      <button class="btn ghost" id="ads-conv">Baixar conversões</button>
       <button class="btn primary" id="ads-refresh">Gerar novamente</button>
     </div>
   </div>
@@ -670,6 +672,26 @@ async function openAds(){
   }
 }
 function closeAds(){ $('#ads-modal').classList.remove('show'); }
+async function downloadConversions(){
+  try{
+    const r = await fetch(API_BASE.replace(/\/$/,'')+'/api/ads/conversions.csv?markReported=1',{ headers:{'Authorization':'Bearer '+AUTH} });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download='conversoes_google_ads.csv'; document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast('Conversões exportadas (CSV para o Google Ads).');
+  }catch(e){ toast('Falha ao exportar conversões.'); }
+}
+
+// ---------- Marcar agendamento (conversão) ----------
+async function markBooked(){
+  if(!activeConv){ return; }
+  try{
+    const d = await api(`/api/conversations/${activeId}/booked`,{ method:'POST', body: JSON.stringify({}) });
+    toast(d && d.attributed ? 'Agendamento registrado ✅ (conversão de anúncio)' : 'Agendamento registrado ✅ (sem origem de anúncio)');
+  }catch(e){ toast('Não foi possível registrar o agendamento.'); }
+}
 
 // ---------- Login / Logout ----------
 function showLogin(){ $('#login-modal').classList.add('show'); const a=$('#login-agent'); if(a && !a.value) a.value=AGENT; setTimeout(()=>$('#login-pass').focus(),50); }
@@ -707,6 +729,8 @@ $('#btn-config').onclick=openConfig;
 $('#btn-ads').onclick=openAds;
 $('#ads-close').onclick=closeAds;
 $('#ads-refresh').onclick=openAds;
+$('#ads-conv').onclick=downloadConversions;
+$('#btn-booked').onclick=markBooked;
 $('#btn-back').onclick=()=>{ document.getElementById('app').classList.remove('chat-open'); activeId=null; };
 $('#btn-send').onclick=sendMessage;
 $('#btn-attach').onclick=()=>$('#file-input').click();
