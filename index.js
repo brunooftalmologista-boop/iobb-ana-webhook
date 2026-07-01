@@ -1007,10 +1007,27 @@ const LP_TEMAS = {
     ],
     msg: "Olá! Vim pelo Google e quero saber sobre cirurgia de catarata.",
   },
+  consulta: {
+    titulo: "Oftalmologista em Brasília",
+    sub: "Instituto de Olhos Bruno Borges — Asa Norte e Taguatinga",
+    destaque: "Consulta oftalmológica completa, com atendimento humanizado e sem pressa.",
+    bullets: [
+      "Unidades: Conjunto Nacional (Asa Norte) e Taguatinga Shopping",
+      "Atendemos convênios e particular",
+    ],
+    chips: ["Ceratocone", "Cirurgia refrativa", "Catarata", "Lentes esclerais"],
+    cred: "Dr. Bruno Borges • CRM-DF 17877 · RQE 9314 • Oftalmologia (UFMG)",
+    cta: "📅 Agendar pelo WhatsApp",
+    msg: "Olá! Vim pelo Google e quero agendar uma consulta oftalmológica.",
+  },
 };
 
 function renderLanding(cfg, waLink) {
   const bullets = cfg.bullets.map(b => `<li>${b}</li>`).join("");
+  const destaque = cfg.destaque ? `<p class="destaque">${cfg.destaque}</p>` : "";
+  const chips = cfg.chips ? `<div class="chips">${cfg.chips.map(c => `<span class="chip">${c}</span>`).join("")}</div>` : "";
+  const cred = cfg.cred ? `<div class="cred">🩺 ${cfg.cred}</div>` : "";
+  const cta = cfg.cta || "💬 Falar no WhatsApp agora";
   return `<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
@@ -1023,13 +1040,17 @@ function renderLanding(cfg, waLink) {
   .hero .logo{width:52px;height:52px;border-radius:50%;background:#fff;color:#008069;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;margin-bottom:16px}
   .hero h1{font-size:24px;line-height:1.25;margin-bottom:8px}
   .hero p{opacity:.92;font-size:14px}
+  .hero .destaque{margin-top:12px;font-size:15px;opacity:.97;font-weight:500}
   .card{background:#fff;margin:18px;border-radius:14px;padding:20px 20px 8px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
   .card ul{list-style:none}
   .card li{padding:10px 0 10px 30px;position:relative;font-size:15px;border-bottom:1px solid #eee}
   .card li:last-child{border-bottom:none}
   .card li:before{content:"👁️";position:absolute;left:0;top:9px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;padding:14px 0 10px}
+  .chip{background:#e7f7f1;color:#008069;font-size:12.5px;font-weight:600;padding:5px 11px;border-radius:20px}
   .cta{position:sticky;bottom:0;padding:16px 18px 22px;background:linear-gradient(180deg,rgba(240,242,245,0),#f0f2f5 30%)}
   .btn{display:flex;align-items:center;justify-content:center;gap:10px;background:#25d366;color:#fff;text-decoration:none;font-weight:700;font-size:17px;padding:16px;border-radius:12px;box-shadow:0 4px 14px rgba(37,211,102,.4)}
+  .cred{text-align:center;color:#54656f;font-size:12.5px;margin-top:12px;font-weight:500}
   .foot{text-align:center;color:#667781;font-size:12px;padding:0 18px 20px}
 </style></head><body>
 <div class="wrap">
@@ -1037,11 +1058,16 @@ function renderLanding(cfg, waLink) {
     <div class="logo">A</div>
     <h1>${cfg.titulo}</h1>
     <p>${cfg.sub}</p>
+    ${destaque}
   </div>
-  <div class="card"><ul>${bullets}</ul></div>
+  <div class="card">
+    <ul>${bullets}</ul>
+    ${chips}
+  </div>
   <div style="flex:1"></div>
   <div class="cta">
-    <a class="btn" href="${waLink}" rel="nofollow">💬 Falar no WhatsApp agora</a>
+    <a class="btn" href="${waLink}" rel="nofollow">${cta}</a>
+    ${cred}
   </div>
   <div class="foot">Atendimento humano de seg a sex, 8h às 18h. Não realizamos atendimento de urgência/emergência.</div>
 </div>

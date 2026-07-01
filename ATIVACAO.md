@@ -27,7 +27,7 @@ Referências: `PLANO_CAMPANHAS.md`, `RASTREAMENTO.md`, `sql/ad_clicks.sql`.
 - [ ] Importar `estrutura_campanhas_google_ads.csv` no **Editor** (2 campanhas, 6 grupos, 27 palavras-chave; entram como **Paused**).
 - [ ] Adicionar os **RSAs** (textos no `PLANO_CAMPANHAS.md`) em cada grupo, com **URL final**:
   - Campanha Ceratocone/Esclerais → `https://SEU-DOMINIO/lp/ceratocone`
-  - Campanha Consulta → sua página/WhatsApp de consulta (idealmente também uma `/lp/`)
+  - Campanha Consulta → `https://SEU-DOMINIO/lp/consulta`
 - [ ] Aplicar as negativas às 2 campanhas.
 - [ ] **Pausar/minimizar Performance Max**; manter **refrativa e catarata pausadas**.
 - [ ] Ativar primeiro **Consulta DF**; ativar **Ceratocone** só após testar o fluxo (Fase 5).
