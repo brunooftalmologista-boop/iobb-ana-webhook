@@ -536,21 +536,31 @@ app.post("/api/settings", async (req, res) => {
   res.json({ ok: true });
 });
 
-// Garantir que o bucket de anexos exista (público), idempotente
+// Anexos podem conter dados sensíveis de pacientes (laudos, receitas, exames).
+// Por LGPD, o bucket é PRIVADO e os links são URLs assinadas com expiração curta.
+const ANEXO_SIGN_TTL = 3600; // 1 hora, em segundos
+
+// Garantir que o bucket de anexos exista e seja PRIVADO, idempotente
 (async () => {
   try {
     const { data: buckets } = await supabase.storage.listBuckets();
-    if (!buckets?.some(b => b.name === "anexos")) {
-      const { error } = await supabase.storage.createBucket("anexos", { public: true });
+    const existing = buckets?.find(b => b.name === "anexos");
+    if (!existing) {
+      const { error } = await supabase.storage.createBucket("anexos", { public: false });
       if (error) console.error("Erro ao criar bucket anexos:", error.message);
-      else console.log("Bucket 'anexos' criado.");
+      else console.log("Bucket 'anexos' criado (privado).");
+    } else if (existing.public) {
+      // bucket antigo estava público → rebaixar para privado (LGPD)
+      const { error } = await supabase.storage.updateBucket("anexos", { public: false });
+      if (error) console.error("Erro ao tornar bucket anexos privado:", error.message);
+      else console.log("Bucket 'anexos' ajustado para PRIVADO.");
     }
   } catch (e) {
     console.error("Erro ao verificar bucket anexos:", e.message);
   }
 })();
 
-// Upload de anexo do painel para o Supabase Storage → devolve link público
+// Upload de anexo do painel para o Supabase Storage → devolve URL ASSINADA (1h)
 // O navegador envia o arquivo como corpo binário (application/octet-stream)
 // e informa nome/tipo real via query (?filename=...&mime=...).
 app.post("/api/upload", express.raw({ type: () => true, limit: "30mb" }), async (req, res) => {
@@ -562,8 +572,10 @@ app.post("/api/upload", express.raw({ type: () => true, limit: "30mb" }), async 
     const path = `${Date.now()}_${safeName}`;
     const { error } = await supabase.storage.from("anexos").upload(path, req.body, { contentType, upsert: false });
     if (error) return res.status(500).json({ error: error.message });
-    const { data } = supabase.storage.from("anexos").getPublicUrl(path);
-    res.json({ url: data.publicUrl, filename: rawName, contentType });
+    // URL assinada de curta duração — suficiente para o WhatsApp baixar a mídia na hora
+    const { data, error: signErr } = await supabase.storage.from("anexos").createSignedUrl(path, ANEXO_SIGN_TTL);
+    if (signErr) return res.status(500).json({ error: signErr.message });
+    res.json({ url: data.signedUrl, filename: rawName, contentType, expiresIn: ANEXO_SIGN_TTL });
   } catch (e) {
     console.error("Erro upload:", e.message);
     res.status(500).json({ error: e.message });
