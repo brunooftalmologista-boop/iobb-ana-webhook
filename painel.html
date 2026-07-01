@@ -78,7 +78,8 @@
   .bubble.out .who{color:#027a5b;} .bubble.out.human .who{color:#025a94;}
   .bubble .meta{float:right;font-size:11px;color:var(--muted);margin:6px 0 -4px 10px;user-select:none;}
   .typing{align-self:flex-start;background:#fff;border-radius:8px;border-top-left-radius:0;padding:10px 14px;display:none;box-shadow:0 1px .5px rgba(0,0,0,.13);}
-  .typing.show{display:flex;gap:4px;}
+  .typing.show{display:flex;gap:4px;align-items:center;}
+  .typing .tlabel{font-size:12.5px;color:#667781;font-weight:500;margin-right:4px;}
   .typing span{width:7px;height:7px;border-radius:50%;background:#9aa4a9;animation:blink 1.2s infinite;}
   .typing span:nth-child(2){animation-delay:.2s;} .typing span:nth-child(3){animation-delay:.4s;}
   @keyframes blink{0%,60%,100%{opacity:.3;transform:translateY(0);}30%{opacity:1;transform:translateY(-3px);}}
@@ -176,7 +177,7 @@
       </div>
 
       <div class="messages" id="messages">
-        <div class="typing" id="typing"><span></span><span></span><span></span></div>
+        <div class="typing" id="typing"><b class="tlabel">Ana está digitando</b><span></span><span></span><span></span></div>
       </div>
 
       <div class="emoji-panel" id="emoji-panel"></div>
@@ -411,25 +412,27 @@ function renderList(){
 
 // ---------- Notificações ----------
 let audioCtx;
-function beep(){
+function beep(vol){
+  vol = vol || .25;
   try{
     audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
     const o=audioCtx.createOscillator(), g=audioCtx.createGain();
     o.connect(g); g.connect(audioCtx.destination);
     o.frequency.value=680; o.type='sine';
     g.gain.setValueAtTime(.001,audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(.25,audioCtx.currentTime+.02);
+    g.gain.exponentialRampToValueAtTime(vol,audioCtx.currentTime+.02);
     g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.3);
     o.start(); o.stop(audioCtx.currentTime+.3);
   }catch(e){}
 }
+function totalUnread(){ return Object.values(unreadCount).reduce((a,b)=>a+(b||0),0); }
 function notifyNew(c){
   beep();
   if('Notification' in window && Notification.permission==='granted'){
     const n=new Notification('Nova mensagem — '+displayName(c),{ body:c.last_message||'', tag:'iobb-'+c.id });
     n.onclick=()=>{ window.focus(); openConversation(c.id); n.close(); };
   }
-  if(document.hidden) document.title='🔴 Nova mensagem — IOBB';
+  if(document.hidden){ const t=totalUnread(); document.title=`(${t}) 🔴 Nova mensagem — IOBB`; }
 }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) document.title='IOBB • Painel Ana'; });
 
@@ -469,6 +472,7 @@ function updateChatHeader(){
   el.cStatus.className = 's'+(online?' online':'');
   // switch: Ana ativa quando status !== 'human'
   el.anaSwitch.classList.toggle('on', activeConv.status!=='human');
+  updateTyping();
 }
 
 // ---------- Mensagens ----------
@@ -485,13 +489,18 @@ async function loadMessages(force){
     msgSignature=sig; messages=arr;
     renderMessages();
     updateChatHeader();
-    if(grew && lastNew && lastNew.role==='user'){ flashTyping(); }
+    // som suave ao receber nova mensagem do paciente na conversa aberta
+    if(grew && lastNew && lastNew.role==='user') beep(.12);
   }catch(e){/* silencioso */}
 }
-function flashTyping(){
-  el.typing.classList.add('show'); scrollBottom();
-  clearTimeout(el.typing._t);
-  el.typing._t=setTimeout(()=>el.typing.classList.remove('show'),900);
+// "Ana está digitando…": mostrado enquanto aguardamos a resposta da Ana —
+// última mensagem é do paciente e a conversa está em modo bot (Ana ativa).
+function updateTyping(){
+  const st = activeConv && activeConv.status;
+  const awaiting = !!(activeConv && st!=='human' && st!=='closed'
+    && messages.length && messages[messages.length-1].role==='user');
+  el.typing.classList.toggle('show', awaiting);
+  if(awaiting) scrollBottom();
 }
 function renderMessages(){
   const frag=document.createDocumentFragment();
@@ -516,6 +525,7 @@ function renderMessages(){
   // manter o indicador de digitação ao final
   el.messages.querySelectorAll('.bubble,.day-sep').forEach(n=>n.remove());
   el.messages.insertBefore(frag, el.typing);
+  updateTyping();
   scrollBottom();
 }
 function scrollBottom(){ el.messages.scrollTop=el.messages.scrollHeight; }
