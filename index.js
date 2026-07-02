@@ -229,6 +229,8 @@ Atendemos a partir de 8 anos — crianças de 8 anos ou mais são atendidas norm
 Se a criança tiver MENOS de 8 anos, acolha com gentileza e explique que, para essa idade, o agendamento é avaliado pela nossa equipe — oriente a falar pelo (61) 3033-6605 (seg a sex, 8h às 18h) ou deixe um recado para retornarmos no próximo dia útil. Não recuse de forma seca nem invente encaminhamento para outro serviço.`;
 
 const NUMERO_CLINICA = "5561982879853";
+// Números autorizados a dar comandos à Ana pelo WhatsApp (#ANA ON/OFF/STATUS,
+// #ADS e o envio a paciente #ENVIAR/#MSG). E.164 sem "+".
 const NUMEROS_ADMIN = ["5561984060001", "556182879853", "5561982879853"];
 // Número (E.164, sem "+") da Ana para onde a landing de anúncios envia o paciente.
 // IMPORTANTE: deve ser o número do WhatsApp Business conectado à Cloud API (o que
@@ -499,7 +501,11 @@ async function getOrCreateConversation(patientId) {
 // Salva uma mensagem. `media`, quando informado, guarda a referência ao anexo
 // no Storage ({ path, type, name }) — exige as colunas media_* na tabela
 // messages (ver sql/messages_media.sql).
-async function saveMessage(conversationId, role, content, waMessageId = null, media = null) {
+// `agent`, quando informado, grava o autor da mensagem humana (ex.: a secretária
+// ou "Dr. Bruno (WhatsApp)" para mensagens disparadas por comando admin). O
+// painel exibe esse rótulo na bolha (exige a coluna `agent` — ver
+// sql/messages_agent.sql). Se a coluna não existir, o insert reinsere só o básico.
+async function saveMessage(conversationId, role, content, waMessageId = null, media = null, agent = null) {
   const base = { conversation_id: conversationId, role, content, wa_message_id: waMessageId };
   const row = { ...base };
   if (media && media.path) {
@@ -507,11 +513,12 @@ async function saveMessage(conversationId, role, content, waMessageId = null, me
     row.media_type = media.type || null;
     row.media_name = media.name || null;
   }
+  if (agent) row.agent = agent;
   const { error } = await supabase.from("messages").insert(row);
-  // Se as colunas media_* ainda não existem (migração sql/messages_media.sql
-  // não rodada), não perca a mensagem: reinsere só com os campos básicos.
-  if (error && row.media_path) {
-    console.error("[Anexo] Insert com media_* falhou (rode sql/messages_media.sql):", error.message);
+  // Se colunas opcionais ainda não existem (migrações sql/messages_media.sql ou
+  // sql/messages_agent.sql não rodadas), não perca a mensagem: reinsere o básico.
+  if (error && (row.media_path || row.agent)) {
+    console.error("[Msg] Insert com colunas opcionais falhou (rode as migrações em sql/):", error.message);
     await supabase.from("messages").insert(base);
   }
   await supabase.from("conversations").update({ last_message: content, updated_at: new Date() }).eq("id", conversationId);
@@ -790,6 +797,109 @@ async function notificarSecretaria(registros, patient, from) {
   }
 }
 
+// ===== Comando admin de envio: "#ENVIAR <numero>: <intenção>" (ou "#MSG ...") =====
+// Rótulo do autor gravado no histórico do painel para mensagens disparadas por um
+// número ADMIN (o médico/equipe pelo WhatsApp), distinto das secretárias.
+const ADMIN_SEND_AUTOR = "Dr. Bruno (WhatsApp)";
+
+// A Ana redige, no tom dela, a mensagem que cumpre EXATAMENTE a intenção do admin,
+// sem inventar nada além do pedido. Devolve o texto final, ou null se a IA falhar
+// (nunca enviamos texto malformado ao paciente).
+async function redigirMensagemAdmin(intent, patient) {
+  const ctxNome = patient?.name ? ` O paciente se chama ${patient.name} — pode usar o primeiro nome se ficar natural.` : "";
+  const sys = `${SYSTEM_PROMPT}
+
+### Tarefa especial: redigir uma mensagem a pedido da equipe/médico
+A equipe pediu que você envie uma mensagem a este paciente pelo WhatsApp. Escreva SOMENTE o texto final da mensagem para o paciente, no seu tom acolhedor de sempre, cumprindo EXATAMENTE a intenção abaixo.
+Regras rígidas:
+- NÃO invente nada além do que foi pedido: não crie datas, horários, valores, unidades, convênios ou informações que não estejam explícitas na intenção.
+- NÃO faça perguntas à equipe nem comente a tarefa. Não use marcadores nem aspas.
+- Responda APENAS com o texto da mensagem, pronto para enviar.${ctxNome}
+
+Intenção da equipe: ${intent}`;
+  try {
+    const r = await axios.post(
+      "https://api.anthropic.com/v1/messages",
+      { model: "claude-sonnet-4-6", max_tokens: 500, system: sys, messages: [{ role: "user", content: "Escreva agora a mensagem para o paciente." }] },
+      { headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, timeout: 30000 }
+    );
+    const t = r.data?.content?.[0]?.text?.trim();
+    return t || null;
+  } catch (e) {
+    console.error("[AdminEnviar] Falha ao redigir com IA:", e?.response?.data ? JSON.stringify(e.response.data) : e.message);
+    return null;
+  }
+}
+
+// Trata o comando de envio vindo de um número ADMIN. `rest` é o que vem depois do
+// prefixo (#ENVIAR/#MSG). Formato: "<numero>: <intenção>" (aceita também
+// "<numero> <intenção>"). Exige SEMPRE o número — nunca adivinha o paciente.
+async function handleAdminSend(adminFrom, rest) {
+  const raw = String(rest || "").trim();
+  let numPart, intent;
+  const colon = raw.indexOf(":");
+  if (colon !== -1) {
+    numPart = raw.slice(0, colon);
+    intent = raw.slice(colon + 1).trim();
+  } else {
+    const m = raw.match(/^(\S+)\s+([\s\S]+)$/);
+    if (m) { numPart = m[1]; intent = m[2].trim(); }
+    else { numPart = raw; intent = ""; }
+  }
+  const phone = normalizePhoneBR(numPart);
+  if (!phone) {
+    await sendWhatsApp(adminFrom, "⚠️ Não identifiquei o número do paciente. Use:\n*#ENVIAR 5561999999999: sua instrução*\n\nSempre informe o número — eu não escolho o paciente por referência, para nunca enviar ao destinatário errado.");
+    return;
+  }
+  if (!intent) {
+    await sendWhatsApp(adminFrom, `⚠️ Faltou a instrução da mensagem. Use:\n*#ENVIAR ${phone}: o que devo dizer ao paciente*`);
+    return;
+  }
+
+  // Paciente + conversa (para registrar no histórico do painel).
+  const patient = await getOrCreatePatient(phone);
+  const conversation = patient ? await getOrCreateConversation(patient.id) : null;
+
+  // Janela de 24h da Meta: fora dela, só template aprovado.
+  const inboundAt = await lastInboundAt(phone);
+  const within24h = inboundAt && (Date.now() - inboundAt) < 24 * 60 * 60 * 1000;
+  if (!within24h) {
+    const templateName = readEnv("WA_TEMPLATE_NAME");
+    const templateLang = readEnv("WA_TEMPLATE_LANG") || "pt_BR";
+    if (templateName) {
+      try {
+        await sendWhatsAppTemplate(phone, templateName, templateLang, [patient?.name || "tudo bem"]);
+        if (conversation) await saveMessage(conversation.id, "human", `[Template de reconexão "${templateName}" enviado por comando do Dr./admin]`, null, null, ADMIN_SEND_AUTOR);
+        await sendWhatsApp(adminFrom, `⚠️ ${phone} está fora da janela de 24h da Meta — não dá para enviar sua mensagem livre agora.\nEnviei o template aprovado "${templateName}" para reabrir a conversa. Assim que o paciente responder, mande de novo seu *#ENVIAR* que eu entrego a mensagem no tom certo.`);
+      } catch (e) {
+        console.error("[AdminEnviar] Falha ao enviar template:", e?.response?.data ? JSON.stringify(e.response.data) : e.message);
+        await sendWhatsApp(adminFrom, `⚠️ ${phone} está fora da janela de 24h e falhei ao enviar o template "${templateName}". Confira se ele está APROVADO na Meta e se WA_TEMPLATE_NAME está correto.`);
+      }
+    } else {
+      await sendWhatsApp(adminFrom, `⚠️ ${phone} está fora da janela de 24h da Meta (esse paciente não te manda mensagem há mais de 24h), então só consigo enviar por *template aprovado* — e nenhum está configurado.\n\nComo resolver:\n1) No WhatsApp Manager (Meta) crie um template, categoria *Utilidade*, idioma *pt_BR*. Sugestão de confirmação de horário com variáveis:\n   "Olá {{1}}! Passando para confirmar sua consulta em {{2}} às {{3}} na unidade {{4}}. Podemos confirmar? 😊"\n2) Após aprovado, configure no Render: *WA_TEMPLATE_NAME* = nome do template e *WA_TEMPLATE_LANG* = pt_BR.\n\nAlternativa imediata: peça ao paciente para enviar qualquer mensagem — isso reabre a janela de 24h e aí seu *#ENVIAR* funciona normalmente.`);
+    }
+    return;
+  }
+
+  // Dentro da janela: Ana redige no tom dela e envia ao paciente.
+  const texto = await redigirMensagemAdmin(intent, patient);
+  if (!texto) {
+    await sendWhatsApp(adminFrom, "❌ Não consegui redigir a mensagem agora (IA indisponível). Tente novamente em instantes — não enviei nada ao paciente.");
+    return;
+  }
+  try {
+    await sendWhatsApp(phone, texto);
+  } catch (e) {
+    console.error("[AdminEnviar] Falha ao enviar ao paciente:", e?.response?.data ? JSON.stringify(e.response.data) : e.message);
+    await sendWhatsApp(adminFrom, `❌ Não consegui enviar para ${phone}. ${e?.response?.data?.error?.message || e.message}`);
+    return;
+  }
+  // Registra no histórico do painel, marcada como enviada por comando do médico.
+  if (conversation) await saveMessage(conversation.id, "human", texto, null, null, ADMIN_SEND_AUTOR);
+  // Confirma ao admin exatamente o que foi enviado.
+  await sendWhatsApp(adminFrom, `✅ Mensagem enviada para ${phone}:\n${texto}`);
+}
+
 // Limite de caracteres do corpo de texto do WhatsApp (a API rejeita > 4096).
 const WA_TEXT_LIMIT = 3900;
 
@@ -921,6 +1031,13 @@ app.post("/webhook", async (req, res) => {
       if (text === "#ADS" || text === "#ADS RELATORIO") {
         await sendWhatsApp(from, `📊 Gerando relatório do Google Ads (modo ${googleAds.isTestMode() ? "TESTE" : "PRODUÇÃO"})...`);
         googleAds.runWeeklyReport({ supabase, sendWhatsApp }).catch(e => console.error("[GoogleAds] Manual:", e.message));
+        return;
+      }
+      // Envio a um paciente por comando do admin: "#ENVIAR <num>: <intenção>" ou
+      // "#MSG <num>: <intenção>". \b evita casar com outros comandos.
+      const sendCmd = text.match(/^#(?:ENVIAR|MSG)\b([\s\S]*)$/i);
+      if (sendCmd) {
+        await handleAdminSend(from, sendCmd[1]);
         return;
       }
     }
