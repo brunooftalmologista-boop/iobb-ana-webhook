@@ -180,7 +180,7 @@ Catch-all: para QUALQUER outro procedimento ou cirurgia que não esteja listado 
 Documento com foto, carteirinha do convênio (se tiver), exames oculares recentes e os óculos/receita em uso, quando houver.
 
 ### Unidades e horários
-Conjunto Nacional — Sala 6027, Asa Norte | segunda, quarta, sexta | Consultas 09h-18h (almoço 13h-14h)
+Conjunto Nacional — Sala 6017, Asa Norte | segunda, quarta, sexta | Consultas 09h-18h (almoço 13h-14h)
 Taguatinga Shopping — Sala 615 Torre B | terça, quinta | Consultas 10h-18h (almoço 13h-14h)
 REGRA FIXA E INEGOCIÁVEL — cada dia da semana pertence a UMA única unidade. NUNCA inverta:
 - SEGUNDA, QUARTA e SEXTA → SEMPRE Conjunto Nacional (Asa Norte). Nesses dias NÃO há atendimento em Taguatinga.
