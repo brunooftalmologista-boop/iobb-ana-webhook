@@ -48,6 +48,25 @@ const OPENAI_KEY = readEnv("OPENAI_KEY");
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Papel (role) embutido na SUPABASE_KEY. Uploads ao bucket PRIVADO "anexos"
+// exigem a chave service_role (a anon key é barrada pela RLS do Storage, mesmo
+// que a RLS das tabelas esteja desligada). Avisamos alto no startup se a chave
+// não for service_role — é a causa mais comum de anexos não salvarem.
+function supabaseKeyRole() {
+  try {
+    const payload = JSON.parse(Buffer.from(String(SUPABASE_KEY).split(".")[1], "base64").toString("utf8"));
+    return payload.role || null;
+  } catch (e) { return null; }
+}
+(() => {
+  const role = supabaseKeyRole();
+  if (role !== "service_role") {
+    console.error(`[Supabase] ATENÇÃO: SUPABASE_KEY tem role='${role || "desconhecido"}'. Uploads de anexos ao Storage privado exigem a chave SERVICE_ROLE. Configure SUPABASE_KEY com a service_role key no Render (Settings → API → service_role).`);
+  } else {
+    console.log("[Supabase] Chave service_role detectada (OK para Storage privado).");
+  }
+})();
+
 const ICAL_URL = "https://calendar.google.com/calendar/ical/8b9b392717790c4374966cbb68a56c819448b074f8bd7fefadd1c79303745d38%40group.calendar.google.com/public/basic.ics";
 
 const SYSTEM_PROMPT = `Você é Ana, secretária do Instituto de Olhos Bruno Borges (IOBB), em Brasília/DF.
@@ -453,7 +472,11 @@ async function storeInboundMedia(buffer, mimeType, originalName) {
     if (!/\.\w+$/.test(base)) base = `${base}.${ext}`;
     const path = `${Date.now()}_in_${base}`;
     const { error } = await supabase.storage.from("anexos").upload(path, buffer, { contentType: mimeType, upsert: false });
-    if (error) { console.error("Erro ao salvar anexo recebido:", error.message); return null; }
+    if (error) {
+      console.error(`[Anexo] Falha no upload ao Storage (bucket anexos): ${error.message} | path=${path} | ${buffer.length} bytes | ${mimeType}`);
+      return null;
+    }
+    console.log(`[Anexo] Salvo no Storage: ${path} (${buffer.length} bytes, ${mimeType})`);
     return { path, type: mimeType, name: base };
   } catch (e) {
     console.error("Erro ao salvar anexo recebido:", e.message);
@@ -1194,10 +1217,37 @@ app.get("/api/attachment", async (req, res) => {
     const path = (req.query.path || "").toString();
     if (!path || path.includes("..") || path.startsWith("/")) return res.status(400).json({ error: "path inválido" });
     const { data, error } = await supabase.storage.from("anexos").createSignedUrl(path, ANEXO_SIGN_TTL);
-    if (error) return res.status(404).json({ error: error.message });
+    if (error) {
+      console.error(`[Anexo] Falha ao gerar URL assinada: ${error.message} | path=${path}`);
+      return res.status(404).json({ error: error.message });
+    }
     res.json({ url: data.signedUrl, expiresIn: ANEXO_SIGN_TTL });
   } catch (e) {
+    console.error("[Anexo] Erro em /api/attachment:", e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Autoteste do Storage: prova, ponta a ponta, se este servidor consegue
+// gravar no bucket privado "anexos" e gerar URL assinada com a chave atual.
+// Abra autenticado no painel; devolve um relatório JSON de cada etapa.
+app.get("/api/diag/storage", async (req, res) => {
+  const report = { keyRole: supabaseKeyRole(), bucket: "anexos", steps: [] };
+  const path = `${Date.now()}_diag_selftest.txt`;
+  try {
+    const up = await supabase.storage.from("anexos").upload(path, Buffer.from("iobb-selftest"), { contentType: "text/plain", upsert: true });
+    report.steps.push({ step: "upload", ok: !up.error, error: up.error?.message || null });
+    const sign = await supabase.storage.from("anexos").createSignedUrl(path, 60);
+    report.steps.push({ step: "signedUrl", ok: !sign.error, hasUrl: !!sign.data?.signedUrl, error: sign.error?.message || null });
+    await supabase.storage.from("anexos").remove([path]).catch(() => {});
+    report.ok = report.steps.every(s => s.ok);
+    if (!report.ok && report.keyRole !== "service_role") {
+      report.hint = "A SUPABASE_KEY não é service_role. Uploads ao bucket privado exigem a service_role key.";
+    }
+    res.json(report);
+  } catch (e) {
+    report.ok = false; report.error = e.message;
+    res.status(500).json(report);
   }
 });
 

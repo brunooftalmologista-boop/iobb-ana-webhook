@@ -83,7 +83,7 @@
   .att-img img{width:100%;display:block;border-radius:6px;}
   .att-loading{display:inline-block;font-size:12px;color:#777;padding:14px 12px;}
   .att-aud{display:block;margin:4px 0;max-width:240px;width:240px;}
-  .att-doc{display:inline-flex;align-items:center;gap:7px;margin:2px 0 4px;padding:8px 11px;background:rgba(0,0,0,.05);border-radius:7px;color:#025a94;text-decoration:none;font-size:13.5px;font-weight:500;}
+  .att-doc{display:inline-flex;align-items:center;gap:7px;margin:2px 0 4px;padding:8px 11px;background:rgba(0,0,0,.05);border-radius:7px;color:#025a94;text-decoration:none;font-size:13.5px;font-weight:500;cursor:pointer;}
   .att-doc:hover{background:rgba(0,0,0,.09);}
   .typing{align-self:flex-start;background:#fff;border-radius:8px;border-top-left-radius:0;padding:10px 14px;display:none;box-shadow:0 1px .5px rgba(0,0,0,.13);}
   .typing.show{display:flex;gap:4px;align-items:center;}
@@ -829,6 +829,15 @@ function startApp(){ el.conn.textContent='conectando…'; loadConversations(); }
 // ---------- Eventos ----------
 el.search.oninput=applyFilter;
 $('#btn-refresh').onclick=()=>{ loadConversations(); if(activeId) loadMessages(true); };
+// Clicar num anexo SEMPRE abre — mesmo se a hidratação em segundo plano
+// (href/src) ainda não terminou ou falhou: busca a URL assinada sob demanda.
+el.messages.addEventListener('click', async e=>{
+  const node = e.target.closest('[data-att]'); if(!node) return;
+  if(node.tagName==='A' && node.getAttribute('href')) return; // já hidratado: comportamento normal
+  e.preventDefault();
+  const url = await attUrl(decodeURIComponent(node.getAttribute('data-att')));
+  if(url) window.open(url,'_blank','noopener'); else toast('Não foi possível abrir o anexo. Tente novamente.');
+});
 $('#btn-newchat').onclick=openNewChat;
 $('#nc-cancel').onclick=closeNewChat;
 $('#nc-send').onclick=submitNewChat;
