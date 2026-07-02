@@ -892,10 +892,15 @@ $('#btn-refresh').onclick=()=>{ loadConversations(); if(activeId) loadMessages(t
 // (href/src) ainda não terminou ou falhou: busca a URL assinada sob demanda.
 el.messages.addEventListener('click', async e=>{
   const node = e.target.closest('[data-att]'); if(!node) return;
-  if(node.tagName==='A' && node.getAttribute('href')) return; // já hidratado: comportamento normal
+  if(node.tagName==='A' && node.getAttribute('href')) return; // já hidratado: link normal abre sozinho
   e.preventDefault();
+  // Abre a aba SINCRONAMENTE, ainda dentro do gesto do clique — senão o navegador
+  // bloqueia como popup (o window.open depois do await ficava barrado, e o
+  // documento "não abria"). Depois preenchemos a URL assinada obtida via fetch.
+  const w = window.open('', '_blank');
   const url = await attUrl(decodeURIComponent(node.getAttribute('data-att')));
-  if(url) window.open(url,'_blank','noopener'); else toast('Não foi possível abrir o anexo. Tente novamente.');
+  if(url){ if(w && !w.closed) w.location.href = url; else window.open(url,'_blank','noopener'); }
+  else { if(w && !w.closed) w.close(); toast('Não foi possível abrir o anexo. Tente novamente.'); }
 });
 $('#btn-newchat').onclick=openNewChat;
 $('#nc-cancel').onclick=closeNewChat;

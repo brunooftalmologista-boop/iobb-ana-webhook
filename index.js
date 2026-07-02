@@ -1483,6 +1483,34 @@ app.get("/api/diag/storage", async (req, res) => {
   }
 });
 
+// Autoteste dos ANEXOS recebidos: lista as mensagens recentes com media_path e
+// tenta gerar a URL assinada de cada uma. Responde, ponta a ponta: os anexos dos
+// pacientes estão sendo GRAVADOS (media_path) e ABREM (URL assinada)?
+// Abra autenticado no painel: /api/diag/anexos
+app.get("/api/diag/anexos", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("messages")
+      .select("id, timestamp, media_path, media_type, media_name")
+      .not("media_path", "is", null)
+      .order("timestamp", { ascending: false }).limit(10);
+    if (error) {
+      return res.status(500).json({ ok: false, error: error.message,
+        hint: "A coluna media_path existe? Rode sql/messages_media.sql no Supabase." });
+    }
+    const itens = [];
+    for (const m of (data || [])) {
+      const { data: s, error: se } = await supabase.storage.from("anexos").createSignedUrl(m.media_path, 60);
+      itens.push({ id: m.id, quando: m.timestamp, tipo: m.media_type, nome: m.media_name,
+        path: m.media_path, urlAssinadaOk: !se && !!s?.signedUrl, erro: se?.message || null });
+    }
+    res.json({ ok: true, keyRole: supabaseKeyRole(), totalComAnexo: itens.length, itens,
+      dica: itens.length === 0 ? "Nenhuma mensagem com media_path — os anexos recebidos não estão sendo gravados (veja os logs [Anexo] Salvo/Falha)." : undefined });
+  } catch (e) {
+    console.error("[Anexo] Erro no diagnóstico:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Autoteste da AGENDA: mostra se o iCal carrega, quantos eventos ocupados há e
 // quais vagas o sistema calcula. Use ?unidade=conjunto|taguatinga para filtrar.
 // Abra autenticado no painel: /api/diag/agenda
