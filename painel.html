@@ -148,6 +148,7 @@
         <div>IOBB • Ana<small id="conn-status">conectando…</small></div>
       </div>
       <div class="side-actions">
+        <button class="icon-btn" id="btn-newchat" title="Nova conversa">✏️</button>
         <button class="icon-btn" id="btn-refresh" title="Atualizar">⟳</button>
         <button class="icon-btn" id="btn-config" title="Configurações">⚙️</button>
         <button class="icon-btn" id="btn-ads" title="Relatório Google Ads">📊</button>
@@ -255,6 +256,24 @@
       <button class="btn ghost" id="ads-close">Fechar</button>
       <button class="btn ghost" id="ads-conv">Baixar conversões</button>
       <button class="btn primary" id="ads-refresh">Gerar novamente</button>
+    </div>
+  </div>
+</div>
+
+<!-- Nova conversa modal -->
+<div class="modal-bg" id="newchat-modal">
+  <div class="modal">
+    <h3>✏️ Nova conversa</h3>
+    <p>Inicie um contato com um paciente. A Meta só permite <b>mensagem livre</b> dentro de 24h desde a última mensagem dele. Fora dessa janela, é preciso um <b>template aprovado</b>.</p>
+    <label>Número do paciente (WhatsApp)</label>
+    <input id="nc-phone" placeholder="Ex.: 61 98406-0001" inputmode="tel" autocomplete="off">
+    <label>Mensagem</label>
+    <textarea id="nc-msg" rows="3" placeholder="Escreva a primeira mensagem…"></textarea>
+    <div id="nc-note" style="font-size:12.5px;color:#667781;margin-top:8px;">Dentro de 24h: envia sua mensagem normalmente. Fora de 24h: envia um template aprovado (se configurado no servidor).</div>
+    <div id="nc-error" style="color:#d33;font-size:13px;margin-top:8px;display:none"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="nc-cancel">Cancelar</button>
+      <button class="btn primary" id="nc-send">Iniciar conversa</button>
     </div>
   </div>
 </div>
@@ -676,6 +695,43 @@ function markRead(){
   renderList(); toast('Marcada como lida.');
 }
 
+// ---------- Nova conversa ----------
+function openNewChat(){
+  $('#nc-phone').value=''; $('#nc-msg').value='';
+  $('#nc-error').style.display='none';
+  $('#newchat-modal').classList.add('show');
+  setTimeout(()=>$('#nc-phone').focus(),50);
+}
+function closeNewChat(){ $('#newchat-modal').classList.remove('show'); }
+async function submitNewChat(){
+  const phone=$('#nc-phone').value.trim();
+  const message=$('#nc-msg').value.trim();
+  const errEl=$('#nc-error'); errEl.style.display='none';
+  if(!phone){ errEl.textContent='Informe o número do paciente.'; errEl.style.display='block'; return; }
+  const btn=$('#nc-send'); btn.disabled=true; const old=btn.textContent; btn.textContent='Enviando…';
+  try{
+    const doPost=()=>fetch(API_BASE.replace(/\/$/,'')+'/api/conversations/new',{
+      method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+AUTH},
+      body:JSON.stringify({ phone, message, agent:AGENT })
+    });
+    let r=await doPost();
+    if(r.status===401 && await tryRefresh()) r=await doPost();
+    if(r.status===401){ logout(); return; }
+    const d=await r.json().catch(()=>({}));
+    if(r.ok){
+      closeNewChat();
+      toast(d.mode==='template' ? 'Template enviado (fora da janela de 24h).' : 'Mensagem enviada!');
+      await loadConversations();
+      if(d.conversationId) openConversation(d.conversationId);
+    } else {
+      // 409 = fora das 24h sem template; demais = validação/erro
+      errEl.textContent = d.error || ('Não foi possível iniciar ('+r.status+').');
+      errEl.style.display='block';
+    }
+  }catch(e){ errEl.textContent='Falha de conexão.'; errEl.style.display='block'; }
+  finally{ btn.disabled=false; btn.textContent=old; }
+}
+
 // ---------- Composer helpers ----------
 function autoGrow(){
   el.input.style.height='auto';
@@ -773,6 +829,9 @@ function startApp(){ el.conn.textContent='conectando…'; loadConversations(); }
 // ---------- Eventos ----------
 el.search.oninput=applyFilter;
 $('#btn-refresh').onclick=()=>{ loadConversations(); if(activeId) loadMessages(true); };
+$('#btn-newchat').onclick=openNewChat;
+$('#nc-cancel').onclick=closeNewChat;
+$('#nc-send').onclick=submitNewChat;
 $('#btn-config').onclick=openConfig;
 $('#btn-ads').onclick=openAds;
 $('#ads-close').onclick=closeAds;

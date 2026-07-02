@@ -334,6 +334,37 @@ async function saveMessage(conversationId, role, content, waMessageId = null, me
   await supabase.from("conversations").update({ last_message: content, updated_at: new Date() }).eq("id", conversationId);
 }
 
+// Normaliza um número BR para o formato do WhatsApp (só dígitos, com DDI 55).
+// Aceita "(61) 98406-0001", "61984060001", "+55 61 98406-0001" etc.
+function normalizePhoneBR(raw) {
+  let d = String(raw || "").replace(/\D+/g, "");
+  if (!d) return null;
+  if (d.startsWith("00")) d = d.slice(2);     // 00 55 ... → 55 ...
+  if (!d.startsWith("55")) d = "55" + d;      // sem DDI → assume Brasil
+  // 55 + DDD(2) + número(8 ou 9 dígitos) = 12 ou 13 dígitos
+  if (d.length < 12 || d.length > 13) return null;
+  return d;
+}
+
+// Timestamp (ms) da última mensagem RECEBIDA do paciente (role 'user'), que
+// define a janela de atendimento de 24h da Meta. null se o paciente nunca
+// escreveu (nesse caso, só é possível iniciar via template aprovado).
+async function lastInboundAt(phone) {
+  try {
+    const { data: patient } = await supabase.from("patients").select("id").eq("phone", phone).single();
+    if (!patient) return null;
+    const { data: convs } = await supabase.from("conversations").select("id").eq("patient_id", patient.id);
+    const ids = (convs || []).map(c => c.id);
+    if (!ids.length) return null;
+    const { data: last } = await supabase.from("messages").select("timestamp")
+      .in("conversation_id", ids).eq("role", "user")
+      .order("timestamp", { ascending: false }).limit(1).single();
+    return last?.timestamp ? new Date(last.timestamp).getTime() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function getConversationMessages(conversationId) {
   // Buscar as 20 mensagens MAIS RECENTES (desc) e devolver em ordem cronológica.
   // Assim o histórico sempre inclui a última mensagem do usuário recém-salva.
@@ -457,6 +488,45 @@ async function sendWhatsAppImage(to, url, caption = "") {
   await axios.post(
     `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
     { messaging_product: "whatsapp", to, type: "image", image: { link: url, caption } },
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+  );
+}
+
+// ============================================================================
+// TEMPLATES DA META — mensagens FORA da janela de 24h
+// ----------------------------------------------------------------------------
+// Regra da Meta: só é permitido enviar MENSAGEM LIVRE (texto arbitrário) nas
+// 24h seguintes à ÚLTIMA mensagem que o paciente enviou. Passada essa janela,
+// para iniciar/retomar o contato é OBRIGATÓRIO usar um TEMPLATE aprovado.
+//
+// Como criar um template aprovado (uma vez):
+//   1. Acesse o WhatsApp Manager (business.facebook.com) → sua conta WABA →
+//      "Modelos de mensagem" → "Criar modelo".
+//   2. Escolha a categoria:
+//        • UTILITY   → retomar atendimento, avisos, confirmações (recomendado);
+//        • MARKETING → reengajamento/promoção (mais restrições e opt-out).
+//      Escolha o idioma pt_BR.
+//   3. Escreva o corpo. Pode usar variáveis {{1}}, {{2}}… preenchidas no envio,
+//      ex.: "Olá {{1}}! Aqui é a Ana, do Instituto de Olhos Bruno Borges.
+//            Podemos continuar seu atendimento por aqui?"
+//   4. Envie para aprovação (leva de minutos a algumas horas).
+//   5. Depois de APROVADO, configure no Render as variáveis de ambiente:
+//        WA_TEMPLATE_NAME = nome exato do template aprovado
+//        WA_TEMPLATE_LANG = idioma (padrão pt_BR)
+//      Assim o botão "Nova conversa" do painel envia o template quando o
+//      paciente estiver fora da janela de 24h.
+//
+// `bodyParams` preenche as variáveis {{1}}… do corpo, na ordem informada.
+async function sendWhatsAppTemplate(to, templateName, languageCode = "pt_BR", bodyParams = []) {
+  const components = bodyParams.length
+    ? [{ type: "body", parameters: bodyParams.map(t => ({ type: "text", text: String(t) })) }]
+    : [];
+  await axios.post(
+    `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: "whatsapp", to, type: "template",
+      template: { name: templateName, language: { code: languageCode }, components },
+    },
     { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
   );
 }
@@ -870,6 +940,56 @@ app.get("/api/conversations", async (req, res) => {
 app.get("/api/conversations/:id/messages", async (req, res) => {
   const { data } = await supabase.from("messages").select("*").eq("conversation_id", req.params.id).order("timestamp");
   res.json(data);
+});
+
+// Nova conversa iniciada pela secretária a partir do painel.
+// Respeita a janela de 24h da Meta:
+//   • dentro de 24h da última msg do paciente → envia texto livre;
+//   • fora de 24h → tenta enviar template aprovado (WA_TEMPLATE_NAME); se não
+//     houver template configurado, devolve 409 orientando a secretária.
+app.post("/api/conversations/new", async (req, res) => {
+  try {
+    const phone = normalizePhoneBR(req.body?.phone);
+    const message = String(req.body?.message || "").trim();
+    const agent = req.body?.agent || req.panelUser?.email || "Secretária";
+    if (!phone) return res.status(400).json({ error: "Número inválido. Use DDD + número (ex.: 61 98406-0001)." });
+
+    const patient = await getOrCreatePatient(phone);
+    if (!patient) return res.status(500).json({ error: "Falha ao registrar o paciente." });
+    const conversation = await getOrCreateConversation(patient.id);
+    if (!conversation) return res.status(500).json({ error: "Falha ao abrir a conversa." });
+
+    const inboundAt = await lastInboundAt(phone);
+    const within24h = inboundAt && (Date.now() - inboundAt) < 24 * 60 * 60 * 1000;
+
+    if (within24h) {
+      if (!message) return res.status(400).json({ error: "Escreva a mensagem a enviar." });
+      await sendWhatsApp(phone, message);
+      await saveMessage(conversation.id, "human", message);
+      await supabase.from("conversations").update({ status: "human", assigned_to: agent }).eq("id", conversation.id);
+      return res.json({ ok: true, mode: "free", conversationId: conversation.id });
+    }
+
+    // Fora da janela de 24h → precisa de template aprovado pela Meta
+    const templateName = readEnv("WA_TEMPLATE_NAME");
+    const templateLang = readEnv("WA_TEMPLATE_LANG") || "pt_BR";
+    if (!templateName) {
+      return res.status(409).json({
+        ok: false, needsTemplate: true,
+        error: "Este paciente está fora da janela de 24h da Meta. Para iniciar o contato é preciso um template aprovado (nenhum configurado) — ou aguardar o paciente enviar a primeira mensagem.",
+      });
+    }
+    // A 1ª variável {{1}} recebe o nome do paciente (ou saudação neutra).
+    const firstParam = patient.name || "tudo bem";
+    await sendWhatsAppTemplate(phone, templateName, templateLang, [firstParam]);
+    await saveMessage(conversation.id, "human", `[Template enviado: ${templateName}]`);
+    await supabase.from("conversations").update({ status: "human", assigned_to: agent }).eq("id", conversation.id);
+    return res.json({ ok: true, mode: "template", template: templateName, conversationId: conversation.id });
+  } catch (e) {
+    const d = e?.response?.data;
+    console.error("[Painel] Nova conversa falhou:", d ? JSON.stringify(d) : e.message);
+    res.status(500).json({ error: d?.error?.message || e.message });
+  }
 });
 
 app.post("/api/conversations/:id/assign", async (req, res) => {
