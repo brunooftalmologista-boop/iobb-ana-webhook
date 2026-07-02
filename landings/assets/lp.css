@@ -300,6 +300,18 @@ section { padding: 96px 10vw; }
 }
 .proof-badge svg { color: var(--sky); flex-shrink: 0; }
 
+/* DEPOIMENTOS (prints reais de pacientes) */
+.testimonials-section { background: var(--white); }
+.testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 56px; }
+.testimonial-card {
+  border: 1px solid rgba(10,22,40,.08);
+  border-radius: 20px; overflow: hidden;
+  background: var(--white);
+  transition: box-shadow .25s, transform .25s;
+}
+.testimonial-card:hover { box-shadow: 0 16px 48px rgba(10,22,40,.08); transform: translateY(-3px); }
+.testimonial-card img { width: 100%; height: auto; display: block; }
+
 /* CONVENIOS */
 .convenios-section { background: var(--white); }
 .convenios-intro { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
