@@ -241,53 +241,107 @@ function alreadyProcessed(id) {
 }
 
 // Funções do calendário
+// Converte 'YYYYMMDDThhmmss[Z]' em Date. Com 'Z' é UTC (formato do free/busy do
+// Google). Sem 'Z' (TZID local), assumimos Brasília (America/Sao_Paulo, UTC-3
+// o ano todo desde 2019). Antes o código anexava 'Z' sempre — o que erraria em
+// 3h qualquer evento exportado em horário local.
+function parseICSDate(d) {
+  const iso = `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}T${d.slice(9,11)}:${d.slice(11,13)}:${d.slice(13,15)}`;
+  return d.endsWith("Z") ? new Date(iso + "Z") : new Date(iso + "-03:00");
+}
+
 function parseICS(icsText) {
   const events = [];
-  const blocks = icsText.split("BEGIN:VEVENT");
+  const blocks = String(icsText).split("BEGIN:VEVENT");
   for (let i = 1; i < blocks.length; i++) {
     const block = blocks[i];
-    const dtstart = block.match(/DTSTART[^:\r\n]*:(\d{8}T\d{6})/)?.[1];
-    const dtend = block.match(/DTEND[^:\r\n]*:(\d{8}T\d{6})/)?.[1];
+    // Ignora eventos cancelados ou marcados como "livre" (não ocupam a agenda).
+    if (/STATUS:CANCELLED/i.test(block)) continue;
+    if (/TRANSP:TRANSPARENT/i.test(block)) continue;
+    // Eventos com hora (com ou sem 'Z').
+    const dtstart = block.match(/DTSTART[^:\r\n]*:(\d{8}T\d{6}Z?)/)?.[1];
+    const dtend = block.match(/DTEND[^:\r\n]*:(\d{8}T\d{6}Z?)/)?.[1];
     if (dtstart && dtend) {
-      const parseDate = d => new Date(`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}T${d.slice(9,11)}:${d.slice(11,13)}:${d.slice(13,15)}Z`);
-      events.push({ start: parseDate(dtstart), end: parseDate(dtend) });
+      events.push({ start: parseICSDate(dtstart), end: parseICSDate(dtend) });
+      continue;
+    }
+    // Eventos de dia inteiro (VALUE=DATE, 8 dígitos, sem hora) → bloqueia o dia.
+    const dAll = block.match(/DTSTART[^:\r\n]*VALUE=DATE[^:\r\n]*:(\d{8})/)?.[1];
+    if (dAll) {
+      const s = new Date(`${dAll.slice(0,4)}-${dAll.slice(4,6)}-${dAll.slice(6,8)}T00:00:00-03:00`);
+      const eRaw = block.match(/DTEND[^:\r\n]*VALUE=DATE[^:\r\n]*:(\d{8})/)?.[1] || dAll;
+      const e = new Date(`${eRaw.slice(0,4)}-${eRaw.slice(4,6)}-${eRaw.slice(6,8)}T00:00:00-03:00`);
+      if (e <= s) e.setDate(e.getDate() + 1); // DTEND é exclusivo
+      events.push({ start: s, end: e });
     }
   }
   return events;
 }
 
+// Regras de atendimento por unidade. Ajuste aqui se os dias/horários mudarem.
+// (O iCal é uma única agenda; a unidade é inferida pelo dia da semana.)
+const AGENDA_REGRAS = {
+  conjunto:   { nome: "Conjunto Nacional", dias: ["segunda","quarta","sexta"], inicio: 9,  fim: 18 },
+  taguatinga: { nome: "Taguatinga",        dias: ["terça","quinta"],           inicio: 10, fim: 18 },
+};
+const SLOT_MIN = 20; // duração de cada horário, em minutos
+
+// Calcula os horários REALMENTE livres nos próximos 14 dias, cruzando a grade de
+// atendimento com os eventos "ocupado" da agenda. Devolve objetos estruturados.
 function getAvailableSlots(events, unidadePref) {
   const nowBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const now = new Date();
   const slots = [];
   for (let d = 0; d <= 14; d++) {
     const day = new Date(nowBrasilia);
     day.setDate(nowBrasilia.getDate() + d);
     const dow = day.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long" });
-    const isConjunto = ["segunda","quarta","sexta"].some(x => dow.includes(x));
-    const isTaguatinga = ["terça","quinta"].some(x => dow.includes(x));
-    if (!isConjunto && !isTaguatinga) continue;
+    const regra = Object.values(AGENDA_REGRAS).find(r => r.dias.some(x => dow.includes(x)));
+    if (!regra) continue; // fim de semana ou dia sem atendimento
     if (unidadePref) {
       const p = unidadePref.toLowerCase();
-      if (p.includes("conjunto") && !isConjunto) continue;
-      if (p.includes("taguatinga") && !isTaguatinga) continue;
+      if (p.includes("conjunto") && regra.nome !== "Conjunto Nacional") continue;
+      if (p.includes("taguatinga") && regra.nome !== "Taguatinga") continue;
     }
-    const startH = isConjunto ? 9 : 10;
-    for (let h = startH; h < 18; h++) {
-      if (h === 13) continue;
-      for (let m = 0; m < 60; m += 20) {
-        const dateStr = day.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const dateStr = day.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    for (let h = regra.inicio; h < regra.fim; h++) {
+      if (h === 13) continue; // almoço
+      for (let m = 0; m < 60; m += SLOT_MIN) {
         const slotStart = new Date(`${dateStr}T${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:00-03:00`);
-        const slotEnd = new Date(slotStart.getTime() + 20 * 60000);
-        if (slotStart <= new Date()) continue;
+        const slotEnd = new Date(slotStart.getTime() + SLOT_MIN * 60000);
+        if (slotStart <= now) continue; // não oferecer horário no passado
         const busy = events.some(ev => slotStart < ev.end && slotEnd > ev.start);
-        if (!busy) {
-          const label = slotStart.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-          slots.push(`${label} (${isConjunto ? "Conjunto Nacional" : "Taguatinga"})`);
-        }
+        if (busy) continue;
+        slots.push({
+          start: slotStart,
+          unidade: regra.nome,
+          dia: slotStart.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "2-digit" }),
+          hora: slotStart.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }),
+          periodo: h < 13 ? "manha" : "tarde",
+        });
       }
     }
   }
   return slots;
+}
+
+// Monta um resumo claro por dia (manhã | tarde) para injetar no prompt da Ana,
+// nos próximos `maxDias` dias com vaga. Evita a Ana "achar" que não há manhã.
+function formatSlotsForPrompt(slots, maxDias = 6) {
+  const byDay = new Map(); // "dia (unidade)" -> { manha:[], tarde:[] }
+  for (const s of slots) {
+    const key = `${s.dia} (${s.unidade})`;
+    if (!byDay.has(key)) byDay.set(key, { manha: [], tarde: [] });
+    byDay.get(key)[s.periodo].push(s.hora);
+  }
+  const linhas = [];
+  for (const [key, g] of byDay) {
+    if (linhas.length >= maxDias) break;
+    const manha = g.manha.length ? `manhã: ${g.manha.slice(0, 8).join(", ")}` : "manhã: sem vagas";
+    const tarde = g.tarde.length ? `tarde: ${g.tarde.slice(0, 8).join(", ")}` : "tarde: sem vagas";
+    linhas.push(`- ${key} → ${manha} | ${tarde}`);
+  }
+  return linhas.join("\n");
 }
 
 function detectSchedulingIntent(messages) {
@@ -302,15 +356,39 @@ function detectUnidade(messages) {
   return null;
 }
 
-async function fetchSlots(unidadePref) {
+// Busca o iCal. Servidor-para-servidor NÃO tem CORS, então baixamos direto do
+// Google (confiável). O proxy allorigins.win, usado antes, estava fora do ar e
+// derrubava a agenda inteira — deixando a Ana sem dados e "inventando" vagas.
+// Mantemos um proxy só como último recurso, caso o Google bloqueie o IP.
+async function fetchICS() {
   try {
-    const res = await axios.get(`https://api.allorigins.win/raw?url=${encodeURIComponent(ICAL_URL)}`, { timeout: 8000 });
-    const events = parseICS(res.data);
-    return getAvailableSlots(events, unidadePref);
-  } catch(e) {
-    console.error("Erro calendário:", e.message);
-    return [];
+    const res = await axios.get(ICAL_URL, {
+      timeout: 8000, responseType: "text",
+      headers: { "User-Agent": "IOBB-Ana/1.0 (+https://iobb.com.br)" },
+    });
+    const data = String(res.data || "");
+    if (data.includes("BEGIN:VEVENT") || data.includes("BEGIN:VCALENDAR")) return data;
+    throw new Error("iCal sem VEVENT/VCALENDAR");
+  } catch (e) {
+    console.error("[Agenda] Falha ao buscar iCal direto do Google:", e.message);
+    try {
+      const res = await axios.get(`https://api.allorigins.win/raw?url=${encodeURIComponent(ICAL_URL)}`, { timeout: 6000, responseType: "text" });
+      const data = String(res.data || "");
+      if (data.includes("BEGIN:VEVENT")) return data;
+    } catch (e2) { console.error("[Agenda] Proxy de fallback também falhou:", e2.message); }
+    return null;
   }
+}
+
+// Devolve os horários livres. `null` = falha ao CARREGAR a agenda (para a Ana
+// NÃO inventar); `[]` = agenda carregou mas não há vagas.
+async function fetchSlots(unidadePref) {
+  const ics = await fetchICS();
+  if (ics === null) return null;
+  const events = parseICS(ics);
+  const slots = getAvailableSlots(events, unidadePref);
+  console.log(`[Agenda] iCal OK: ${events.length} eventos ocupados → ${slots.length} vagas nos próximos 14 dias.`);
+  return slots;
 }
 
 // Funções do Supabase
@@ -762,28 +840,13 @@ app.post("/webhook", async (req, res) => {
     if (detectSchedulingIntent(messages)) {
       const unidade = detectUnidade(messages);
       const slots = await fetchSlots(unidade);
-      if (slots.length > 0) {
-        const slotsConjunto = slots.filter(s => s.includes("Conjunto Nacional"));
-        const slotsTaguatinga = slots.filter(s => s.includes("Taguatinga"));
-        let primeiros = [];
-        if (unidade) {
-          const slotsPref = unidade.includes("taguatinga") ? slotsTaguatinga : slotsConjunto;
-          const manha = slotsPref.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") < 13);
-          const tarde = slotsPref.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") >= 14);
-          if (manha) primeiros.push(manha);
-          if (tarde) primeiros.push(tarde);
-        } else {
-          const conjManha = slotsConjunto.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") < 13);
-          const conjTarde = slotsConjunto.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") >= 14);
-          const tagManha = slotsTaguatinga.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") < 13);
-          const tagTarde = slotsTaguatinga.find(s => parseInt(s.match(/(\d{2}):\d{2}/)?.[1]||"0") >= 14);
-          if (conjManha) primeiros.push(conjManha);
-          else if (conjTarde) primeiros.push(conjTarde);
-          if (tagManha) primeiros.push(tagManha);
-          else if (tagTarde) primeiros.push(tagTarde);
-        }
-        const extras = slots.filter(s => !primeiros.includes(s)).slice(0, 8);
-        systemPrompt += `\n\n### Horários disponíveis\nOfereça 2 por vez (manhã + tarde):\n${[...primeiros, ...extras].join("\n")}`;
+      if (slots === null) {
+        // Falha ao carregar a agenda → PROIBIR a Ana de inventar horários.
+        systemPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Explique que vai confirmar a disponibilidade com a equipe, e pergunte a unidade e o melhor período (manhã ou tarde) para já deixar anotado.`;
+      } else if (slots.length > 0) {
+        systemPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — use só estes)\n${formatSlotsForPrompt(slots)}\n\nRegras ao oferecer:\n- Ofereça no máximo 2 opções por vez, de preferência uma de manhã e uma à tarde.\n- Ofereça APENAS horários que aparecem na lista acima. Nunca invente.\n- Se o paciente pedir um dia/período que está "sem vagas" na lista, diga que naquele momento não há e ofereça o horário livre mais próximo desta lista.`;
+      } else {
+        systemPrompt += `\n\n### Sem vagas nos próximos dias\nA agenda foi consultada e não há horários livres nos próximos dias${unidade ? ` na unidade ${unidade}` : ""}. Ofereça anotar o interesse para encaixe/lista de espera e pergunte o melhor período; a equipe confirma.`;
       }
     }
 
@@ -1248,6 +1311,29 @@ app.get("/api/diag/storage", async (req, res) => {
   } catch (e) {
     report.ok = false; report.error = e.message;
     res.status(500).json(report);
+  }
+});
+
+// Autoteste da AGENDA: mostra se o iCal carrega, quantos eventos ocupados há e
+// quais vagas o sistema calcula. Use ?unidade=conjunto|taguatinga para filtrar.
+// Abra autenticado no painel: /api/diag/agenda
+app.get("/api/diag/agenda", async (req, res) => {
+  try {
+    const ics = await fetchICS();
+    if (ics === null) return res.status(502).json({ ok: false, error: "Não foi possível carregar o iCal (direto e proxy falharam)" });
+    const events = parseICS(ics);
+    const unidade = req.query.unidade ? String(req.query.unidade) : null;
+    const slots = getAvailableSlots(events, unidade);
+    res.json({
+      ok: true,
+      eventosOcupados: events.length,
+      vagasProximos14dias: slots.length,
+      resumoPorDia: formatSlotsForPrompt(slots, 10).split("\n").filter(Boolean),
+      amostraEventos: events.slice(0, 5).map(e => ({ inicio: e.start, fim: e.end })),
+    });
+  } catch (e) {
+    console.error("[Agenda] Erro no diagnóstico:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
