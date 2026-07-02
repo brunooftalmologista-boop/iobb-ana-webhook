@@ -28,6 +28,10 @@
   .icon-btn{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#54656f;font-size:20px;}
   .icon-btn:hover{background:rgba(0,0,0,.06);}
   .search-wrap{padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);}
+  .tabs{display:flex;gap:6px;padding:6px 12px 8px;background:var(--panel);border-bottom:1px solid var(--border);}
+  .tab-btn{flex:1;padding:7px 10px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--muted);background:var(--header);}
+  .tab-btn.active{background:var(--green);color:#fff;}
+  .tab-btn .cnt{font-weight:700;opacity:.85;}
   .search-box{display:flex;align-items:center;background:var(--header);border-radius:8px;padding:6px 12px;gap:10px;}
   .search-box input{border:none;background:none;outline:none;width:100%;font-size:15px;}
   .search-box .s-ico{color:var(--muted);}
@@ -161,6 +165,10 @@
         <input id="search" placeholder="Pesquisar ou começar nova conversa">
       </div>
     </div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="active" id="tab-active">Ativas <span class="cnt" id="cnt-active"></span></button>
+      <button class="tab-btn" data-tab="closed" id="tab-closed">Encerradas <span class="cnt" id="cnt-closed"></span></button>
+    </div>
     <div class="conv-list" id="conv-list"></div>
   </aside>
 
@@ -187,6 +195,8 @@
           </div>
           <button class="icon-btn" id="btn-booked" title="Marcar agendamento (conversão)">📅</button>
           <button class="icon-btn" id="btn-read" title="Marcar como lido">✓</button>
+          <button class="icon-btn" id="btn-close-conv" title="Encerrar conversa">🏁</button>
+          <button class="icon-btn" id="btn-reopen-conv" title="Reabrir conversa" style="display:none">↩️</button>
         </div>
       </div>
 
@@ -325,6 +335,7 @@ let readState = JSON.parse(localStorage.getItem(LS.read) || '{}');
 
 let conversations = [];
 let filtered = [];
+let currentTab = 'active';   // 'active' (não encerradas) | 'closed' (encerradas)
 let activeId = null;
 let activeConv = null;
 let messages = [];
@@ -425,13 +436,27 @@ async function loadConversations(){
 }
 function applyFilter(){
   const q = el.search.value.trim().toLowerCase();
-  filtered = !q ? conversations : conversations.filter(c=>{
+  // contadores por aba (sempre sobre o total, independentes da busca)
+  const activeConvs = conversations.filter(c=>c.status!=='closed');
+  const closedConvs = conversations.filter(c=>c.status==='closed');
+  const cntA=$('#cnt-active'), cntC=$('#cnt-closed');
+  if(cntA) cntA.textContent = activeConvs.length ? '('+activeConvs.length+')' : '';
+  if(cntC) cntC.textContent = closedConvs.length ? '('+closedConvs.length+')' : '';
+  // conjunto da aba atual
+  const base = currentTab==='closed' ? closedConvs : activeConvs;
+  filtered = !q ? base : base.filter(c=>{
     const p=c.patients||{};
     return (p.name||'').toLowerCase().includes(q)
         || (p.phone||'').toLowerCase().includes(q)
         || (c.last_message||'').toLowerCase().includes(q);
   });
   renderList();
+}
+function switchTab(tab){
+  currentTab = tab;
+  $('#tab-active').classList.toggle('active', tab==='active');
+  $('#tab-closed').classList.toggle('active', tab==='closed');
+  applyFilter();
 }
 function renderList(){
   el.list.innerHTML = filtered.map(c=>{
@@ -524,6 +549,11 @@ function updateChatHeader(){
   el.cStatus.className = 's'+(online?' online':'');
   // switch: Ana ativa quando status !== 'human'
   el.anaSwitch.classList.toggle('on', activeConv.status!=='human');
+  // botões encerrar/reabrir conforme o status da conversa
+  const closed = activeConv.status==='closed';
+  const btnClose=$('#btn-close-conv'), btnReopen=$('#btn-reopen-conv');
+  if(btnClose) btnClose.style.display = closed ? 'none' : 'flex';
+  if(btnReopen) btnReopen.style.display = closed ? 'flex' : 'none';
   updateTyping();
 }
 
@@ -700,6 +730,30 @@ function markRead(){
   renderList(); toast('Marcada como lida.');
 }
 
+// ---------- Encerrar / reabrir conversa ----------
+async function closeConversation(){
+  if(!activeConv || activeConv.status==='closed') return;
+  if(!confirm('Encerrar esta conversa? Ela vai para a aba "Encerradas". Se o paciente mandar nova mensagem, a Ana volta a atender automaticamente.')) return;
+  try{
+    await api(`/api/conversations/${activeId}/close`,{ method:'POST', body:JSON.stringify({}) });
+    activeConv.status='closed';
+    updateChatHeader();
+    applyFilter();
+    toast('Conversa encerrada.');
+  }catch(e){ toast('Não foi possível encerrar a conversa.'); }
+}
+async function reopenConversation(){
+  if(!activeConv || activeConv.status!=='closed') return;
+  try{
+    await api(`/api/conversations/${activeId}/reopen`,{ method:'POST', body:JSON.stringify({}) });
+    activeConv.status='bot';
+    // volta a acompanhar na aba de ativas
+    switchTab('active');
+    updateChatHeader();
+    toast('Conversa reaberta — Ana ativa.');
+  }catch(e){ toast('Não foi possível reabrir a conversa.'); }
+}
+
 // ---------- Nova conversa ----------
 function openNewChat(){
   $('#nc-phone').value=''; $('#nc-msg').value='';
@@ -857,6 +911,10 @@ $('#btn-send').onclick=sendMessage;
 $('#btn-attach').onclick=()=>$('#file-input').click();
 $('#file-input').onchange=uploadFile;
 $('#btn-read').onclick=markRead;
+$('#btn-close-conv').onclick=closeConversation;
+$('#btn-reopen-conv').onclick=reopenConversation;
+$('#tab-active').onclick=()=>switchTab('active');
+$('#tab-closed').onclick=()=>switchTab('closed');
 el.anaToggle.onclick=toggleAna;
 $('#btn-emoji').onclick=()=>el.emojiPanel.classList.toggle('show');
 document.addEventListener('click',e=>{ if(!e.target.closest('#emoji-panel,#btn-emoji')) el.emojiPanel.classList.remove('show'); });

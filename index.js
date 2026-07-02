@@ -1135,6 +1135,23 @@ app.post("/api/conversations/:id/release", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Encerra a conversa (status "closed"). A partir daí ela sai da lista ativa do
+// painel. Se o paciente mandar nova mensagem, getOrCreateConversation ignora
+// conversas "closed" e abre uma nova conversa "bot" — a Ana volta a atender
+// normalmente, sem ficar travada.
+app.post("/api/conversations/:id/close", async (req, res) => {
+  const { error } = await supabase.from("conversations").update({ status: "closed", assigned_to: null }).eq("id", req.params.id);
+  if (error) return res.status(500).json({ ok: false, error: error.message });
+  res.json({ ok: true });
+});
+
+// Reabre manualmente uma conversa encerrada, devolvendo-a à Ana (status "bot").
+app.post("/api/conversations/:id/reopen", async (req, res) => {
+  const { error } = await supabase.from("conversations").update({ status: "bot", assigned_to: null }).eq("id", req.params.id);
+  if (error) return res.status(500).json({ ok: false, error: error.message });
+  res.json({ ok: true });
+});
+
 // Marca um agendamento (conversão) para a conversa. Se ela veio de um anúncio
 // (tem clique vinculado), registra a conversão para exportação ao Google Ads.
 app.post("/api/conversations/:id/booked", async (req, res) => {
