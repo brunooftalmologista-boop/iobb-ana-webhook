@@ -171,6 +171,10 @@ Documento com foto, carteirinha do convênio (se tiver), exames oculares recente
 ### Unidades e horários
 Conjunto Nacional — Sala 6027, Asa Norte | segunda, quarta, sexta | Consultas 09h-18h (almoço 13h-14h)
 Taguatinga Shopping — Sala 615 Torre B | terça, quinta | Consultas 10h-18h (almoço 13h-14h)
+REGRA FIXA E INEGOCIÁVEL — cada dia da semana pertence a UMA única unidade. NUNCA inverta:
+- SEGUNDA, QUARTA e SEXTA → SEMPRE Conjunto Nacional (Asa Norte). Nesses dias NÃO há atendimento em Taguatinga.
+- TERÇA e QUINTA → SEMPRE Taguatinga Shopping. Nesses dias NÃO há atendimento no Conjunto Nacional.
+Ao dizer a unidade de qualquer data, calcule o dia da semana (fuso de Brasília) e aplique esta regra ao pé da letra. Ex.: uma sexta-feira é SEMPRE Conjunto Nacional.
 Telefone: (61) 3033-6605 | seg-sex 08h-18h (almoço 13h-14h)
 Não há atendimento aos sábados, domingos e feriados. Se pedirem fim de semana, ofereça o próximo dia útil disponível.
 Localização: as unidades ficam no Conjunto Nacional (Asa Norte) e no Taguatinga Shopping. Se pedirem endereço detalhado, ponto de referência, estacionamento ou como chegar, ofereça enviar a localização pela equipe — não invente vagas de estacionamento nem endereços que você não tem.
@@ -351,6 +355,38 @@ function getAvailableSlots(events, unidadePref) {
     }
   }
   return slots;
+}
+
+// Diagnóstico auditável: para os próximos `dias` dias, devolve data, dia da
+// semana (Brasília), unidade atribuída (pela REGRA FIXA dia→unidade) e nº de
+// vagas. Serve para validar que sexta=Conjunto e quinta=Taguatinga em produção.
+function agendaPorDia(events, dias = 7) {
+  const now = new Date();
+  const { ano, mes, dia } = brasiliaAgora().ymd;
+  const out = [];
+  for (let d = 0; d <= dias; d++) {
+    const base = new Date(Date.UTC(ano, mes - 1, dia, 12, 0, 0));
+    base.setUTCDate(base.getUTCDate() + d);
+    const y = base.getUTCFullYear(), mo = base.getUTCMonth() + 1, da = base.getUTCDate();
+    const dowName = DOW_BR[base.getUTCDay()];
+    const dataStr = `${String(da).padStart(2,"0")}/${String(mo).padStart(2,"0")}/${y}`;
+    const regra = Object.values(AGENDA_REGRAS).find(r => r.dias.includes(dowName));
+    if (!regra) { out.push({ data: dataStr, diaSemana: dowName, unidade: null, vagas: 0, fechado: true }); continue; }
+    const dateStr = `${y}-${String(mo).padStart(2,"0")}-${String(da).padStart(2,"0")}`;
+    let vagas = 0; const horas = [];
+    for (let h = regra.inicio; h < regra.fim; h++) {
+      if (h === 13) continue;
+      for (let m = 0; m < 60; m += SLOT_MIN) {
+        const s = new Date(`${dateStr}T${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:00-03:00`);
+        const e = new Date(s.getTime() + SLOT_MIN * 60000);
+        if (s <= now) continue;
+        if (events.some(ev => s < ev.end && e > ev.start)) continue;
+        vagas++; if (horas.length < 6) horas.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);
+      }
+    }
+    out.push({ data: dataStr, diaSemana: dowName, unidade: regra.nome, vagas, amostra: horas });
+  }
+  return out;
 }
 
 // Monta um resumo claro por dia (manhã | tarde) para injetar no prompt da Ana,
@@ -1379,6 +1415,8 @@ app.get("/api/diag/agenda", async (req, res) => {
       eventosOcupados: events.length,
       vagasProximos14dias: slots.length,
       resumoPorDia: formatSlotsForPrompt(slots, 10).split("\n").filter(Boolean),
+      // Tabela auditável dia→unidade (valida sexta=Conjunto / quinta=Taguatinga)
+      diagnostico7dias: agendaPorDia(events, 7),
       amostraEventos: events.slice(0, 5).map(e => ({ inicio: e.start, fim: e.end })),
     });
   } catch (e) {
