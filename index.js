@@ -324,13 +324,20 @@ async function getOrCreateConversation(patientId) {
 // no Storage ({ path, type, name }) — exige as colunas media_* na tabela
 // messages (ver sql/messages_media.sql).
 async function saveMessage(conversationId, role, content, waMessageId = null, media = null) {
-  const row = { conversation_id: conversationId, role, content, wa_message_id: waMessageId };
+  const base = { conversation_id: conversationId, role, content, wa_message_id: waMessageId };
+  const row = { ...base };
   if (media && media.path) {
     row.media_path = media.path;
     row.media_type = media.type || null;
     row.media_name = media.name || null;
   }
-  await supabase.from("messages").insert(row);
+  const { error } = await supabase.from("messages").insert(row);
+  // Se as colunas media_* ainda não existem (migração sql/messages_media.sql
+  // não rodada), não perca a mensagem: reinsere só com os campos básicos.
+  if (error && row.media_path) {
+    console.error("[Anexo] Insert com media_* falhou (rode sql/messages_media.sql):", error.message);
+    await supabase.from("messages").insert(base);
+  }
   await supabase.from("conversations").update({ last_message: content, updated_at: new Date() }).eq("id", conversationId);
 }
 
