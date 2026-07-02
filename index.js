@@ -946,7 +946,14 @@ app.get("/api/conversations", async (req, res) => {
 
 app.get("/api/conversations/:id/messages", async (req, res) => {
   const { data } = await supabase.from("messages").select("*").eq("conversation_id", req.params.id).order("timestamp");
-  res.json(data);
+  const msgs = data || [];
+  // O nome da secretária que atende fica em conversations.assigned_to (não é
+  // gravado por mensagem). Rotula as mensagens humanas com esse nome para o
+  // painel exibir quem respondeu, em vez do genérico "Secretária".
+  const { data: conv } = await supabase.from("conversations").select("assigned_to").eq("id", req.params.id).single();
+  const agente = conv?.assigned_to || null;
+  if (agente) for (const m of msgs) if (m.role === "human" && !m.agent) m.agent = agente;
+  res.json(msgs);
 });
 
 // Nova conversa iniciada pela secretária a partir do painel.
@@ -1037,6 +1044,10 @@ app.post("/api/send", async (req, res) => {
   } else {
     await sendWhatsApp(to, message);
     await saveMessage(conversationId, "human", message);
+  }
+  // Registra quem respondeu (nome do login) para o painel rotular corretamente.
+  if (agent && conversationId) {
+    await supabase.from("conversations").update({ assigned_to: agent }).eq("id", conversationId);
   }
   res.json({ ok: true });
 });
