@@ -89,6 +89,17 @@ Você atende pelo WhatsApp. Sua missão é acolher cada pessoa com atenção gen
 4. Coleta de dados para pré-agendamento: Nome completo, telefone, unidade preferida (Conjunto Nacional ou Taguatinga), convênio ou particular, motivo da consulta, melhor período (manhã ou tarde). Ao solicitar: "Por gentileza, me passa seu nome e número para nossa equipe entrar em contato? 😊 Assim que abrir o atendimento — segunda a sexta, das 8h às 18h — as secretárias confirmam tudo certinho com você."
 5. Encerramento: Confirme os dados, informe que a equipe entrará em contato no próximo dia útil.
 
+### Registro interno de pré-agendamento (INVISÍVEL ao paciente)
+Sempre que você CONCLUIR a coleta de um pré-agendamento — ou seja, no momento em que disser ao paciente que a equipe/as secretárias vão entrar em contato para confirmar — acrescente, no FINAL da sua mensagem, um bloco técnico EXATAMENTE neste formato:
+[PREAGENDAMENTO]
+nome: <nome completo> | telefone: <telefone informado> | convenio: <convênio ou "particular"> | unidade: <Conjunto Nacional ou Taguatinga> | periodo: <manhã, tarde ou data/horário combinado> | motivo: <motivo da consulta>
+[/PREAGENDAMENTO]
+Regras do bloco:
+- Use "-" em qualquer campo que você não tenha (nunca invente dados).
+- Se houver mais de um paciente (ex.: mãe e filho), inclua UMA linha "nome: ... | ..." para cada, dentro do MESMO bloco.
+- Escreva o bloco UMA única vez, e só quando realmente encerrar a coleta (não a cada mensagem).
+- NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
+
 ### Regras absolutas
 - Nunca diagnostique por mensagem
 - Nunca interprete exames
@@ -223,6 +234,10 @@ const NUMEROS_ADMIN = ["5561984060001", "556182879853", "5561982879853"];
 // IMPORTANTE: deve ser o número do WhatsApp Business conectado à Cloud API (o que
 // a Ana atende), senão a captura do token de origem não funciona.
 const WA_LP_NUMBER = process.env.WA_LP_NUMBER || NUMERO_CLINICA;
+// Número (E.164, sem "+") da secretária que recebe o resumo de cada
+// pré-agendamento concluído pela Ana. Configurável por env; default = número
+// informado pela clínica. Atenção à janela de 24h da Meta (ver notificarSecretaria).
+const WA_SECRETARIA_NUMBER = process.env.WA_SECRETARIA_NUMBER || "5561992997639";
 // Nome da ação de conversão criada no Google Ads (tipo Importar/Offline).
 const GOOGLE_ADS_CONVERSION_NAME = process.env.GOOGLE_ADS_CONVERSION_NAME || "Agendamento IOBB";
 let anaAtiva = true;
@@ -715,6 +730,66 @@ async function notificarClinica(texto) {
   }
 }
 
+// Extrai o bloco técnico [PREAGENDAMENTO]...[/PREAGENDAMENTO] que a Ana anexa ao
+// concluir a coleta. Devolve { limpo, registros } — `limpo` é a mensagem SEM o
+// bloco (o que o paciente vê) e `registros` é a lista de pré-agendamentos (uma
+// entrada por paciente). Se não houver bloco, registros = [].
+function extrairPreAgendamento(reply) {
+  const re = /\[PREAGENDAMENTO\]([\s\S]*?)\[\/PREAGENDAMENTO\]/i;
+  let inner, limpo;
+  const m = reply.match(re);
+  if (m) {
+    inner = m[1];
+    limpo = reply.replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
+  } else {
+    // Salvaguarda: bloco sem tag de fechamento — remove da abertura até o fim,
+    // para o marcador técnico NUNCA vazar para o paciente.
+    const mo = reply.match(/\[PREAGENDAMENTO\]([\s\S]*)$/i);
+    if (!mo) return { limpo: reply, registros: [] };
+    inner = mo[1];
+    limpo = reply.slice(0, mo.index).replace(/\n{3,}/g, "\n\n").trim();
+  }
+  const registros = [];
+  for (const linha of inner.split("\n")) {
+    if (!/[:|]/.test(linha) || !linha.trim()) continue;
+    const campos = {};
+    for (const par of linha.split("|")) {
+      const idx = par.indexOf(":");
+      if (idx === -1) continue;
+      const chave = par.slice(0, idx).trim().toLowerCase().replace(/^-+\s*/, "");
+      const valor = par.slice(idx + 1).trim();
+      if (chave) campos[chave] = valor;
+    }
+    if (Object.keys(campos).length) registros.push(campos);
+  }
+  return { limpo, registros };
+}
+
+// Envia à secretária o resumo de um pré-agendamento concluído. Trata a janela de
+// 24h da Meta: se o envio livre falhar (número não falou com o Business nas
+// últimas 24h), registra o erro e espelha para o número da clínica como
+// salvaguarda, para o pré-agendamento nunca se perder. NUNCA lança.
+async function notificarSecretaria(registros, patient, from) {
+  if (!registros || !registros.length) return;
+  const val = (r, k) => { const v = r[k]; return v && v !== "-" ? v : "—"; };
+  const blocos = registros.map((r, i) => {
+    const tel = (r.telefone && r.telefone !== "-") ? r.telefone : (patient?.phone || from || "—");
+    const nome = (r.nome && r.nome !== "-") ? r.nome : (patient?.name || "—");
+    const cab = registros.length > 1 ? `\n— Paciente ${i + 1} —` : "";
+    return `${cab}\n👤 Nome: ${nome}\n📱 Telefone: ${tel}\n🏥 Convênio: ${val(r, "convenio")}\n📍 Unidade: ${val(r, "unidade")}\n🕐 Período: ${val(r, "periodo")}\n📝 Motivo: ${val(r, "motivo")}`;
+  }).join("\n");
+  const texto = `📋 *NOVO PRÉ-AGENDAMENTO*\n${blocos}`;
+  try {
+    await sendWhatsApp(WA_SECRETARIA_NUMBER, texto);
+    console.log(`[PréAgenda] Resumo enviado à secretária (${WA_SECRETARIA_NUMBER}) — ${registros.length} paciente(s).`);
+  } catch (e) {
+    const d = e?.response?.data;
+    console.error("[PréAgenda] Falha ao enviar à secretária (possível janela de 24h fechada):", d ? JSON.stringify(d) : e.message);
+    // Salvaguarda: espelha para o número da clínica, que costuma estar na janela.
+    await notificarClinica(`⚠️ (não entregue à secretária — janela 24h?)\n${texto}`);
+  }
+}
+
 // Limite de caracteres do corpo de texto do WhatsApp (a API rejeita > 4096).
 const WA_TEXT_LIMIT = 3900;
 
@@ -944,7 +1019,12 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
-    // Salvar resposta
+    // Separar o bloco técnico de pré-agendamento (invisível ao paciente) do
+    // texto que será realmente enviado. `limpo` nunca contém o bloco.
+    const { limpo, registros } = extrairPreAgendamento(reply);
+    reply = limpo;
+
+    // Salvar resposta (já sem o bloco técnico)
     await saveMessage(conversation.id, "assistant", reply);
 
     // Enviar ao paciente (se falhar, registra com detalhe — sem silêncio sem log)
@@ -953,6 +1033,9 @@ app.post("/webhook", async (req, res) => {
     } catch (err) {
       console.error("[Ana] Falha ao enviar resposta ao paciente:", err?.response?.data ? JSON.stringify(err.response.data) : err.message);
     }
+
+    // Pré-agendamento concluído → resumo formatado para a secretária.
+    if (registros.length) await notificarSecretaria(registros, patient, from);
 
     // Espelhar para clínica (isolado: notificarClinica nunca lança)
     await notificarClinica(`👤 *${patient.name || from}:*\n${text}\n\n🤖 *Ana:*\n${reply}`);
