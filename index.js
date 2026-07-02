@@ -280,33 +280,61 @@ function parseICS(icsText) {
 
 // Regras de atendimento por unidade. Ajuste aqui se os dias/horários mudarem.
 // (O iCal é uma única agenda; a unidade é inferida pelo dia da semana.)
+// Confirmado: Conjunto Nacional = seg/qua/sex 9h–18h; Taguatinga = ter/qui
+// 10h–18h. Ambas com pausa de almoço 13h–14h (a hora 13 é pulada abaixo).
 const AGENDA_REGRAS = {
   conjunto:   { nome: "Conjunto Nacional", dias: ["segunda","quarta","sexta"], inicio: 9,  fim: 18 },
   taguatinga: { nome: "Taguatinga",        dias: ["terça","quinta"],           inicio: 10, fim: 18 },
 };
 const SLOT_MIN = 20; // duração de cada horário, em minutos
+const TZ_BR = "America/Sao_Paulo";
+// Nomes dos dias na ordem de getUTCDay() (0=domingo), batendo com AGENDA_REGRAS.
+const DOW_BR = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
+
+// Data/hora ATUAL em Brasília, de forma explícita e sem round-trip frágil.
+// Usada para ancorar "hoje/amanhã/dia da semana" no prompt e nos logs.
+// Brasília não tem horário de verão desde 2019, então +24h = sempre o dia seguinte.
+function brasiliaAgora() {
+  const now = new Date();
+  const amanha = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const optData = { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" };
+  const [ay, am, ad] = now.toLocaleDateString("en-CA", { timeZone: TZ_BR }).split("-").map(Number);
+  return {
+    now,
+    ymd: { ano: ay, mes: am, dia: ad },               // data de hoje em Brasília (componentes)
+    agora: now.toLocaleString("pt-BR", { ...optData, hour: "2-digit", minute: "2-digit" }),
+    hoje: now.toLocaleDateString("pt-BR", optData),
+    amanha: amanha.toLocaleDateString("pt-BR", optData),
+    hojeDow: now.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long" }),
+    amanhaDow: amanha.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long" }),
+  };
+}
 
 // Calcula os horários REALMENTE livres nos próximos 14 dias, cruzando a grade de
 // atendimento com os eventos "ocupado" da agenda. Devolve objetos estruturados.
+// TODAS as datas são resolvidas no fuso de Brasília (America/Sao_Paulo).
 function getAvailableSlots(events, unidadePref) {
-  const nowBrasilia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
   const now = new Date();
+  const { ano, mes, dia } = brasiliaAgora().ymd; // hoje em Brasília (Y-M-D)
   const slots = [];
   for (let d = 0; d <= 14; d++) {
-    const day = new Date(nowBrasilia);
-    day.setDate(nowBrasilia.getDate() + d);
-    const dow = day.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long" });
-    const regra = Object.values(AGENDA_REGRAS).find(r => r.dias.some(x => dow.includes(x)));
+    // Âncora ao MEIO-DIA UTC do dia-alvo: some d dias sem risco de virada de dia.
+    const base = new Date(Date.UTC(ano, mes - 1, dia, 12, 0, 0));
+    base.setUTCDate(base.getUTCDate() + d);
+    const y = base.getUTCFullYear(), mo = base.getUTCMonth() + 1, da = base.getUTCDate();
+    const dowName = DOW_BR[base.getUTCDay()];
+    const regra = Object.values(AGENDA_REGRAS).find(r => r.dias.includes(dowName));
     if (!regra) continue; // fim de semana ou dia sem atendimento
     if (unidadePref) {
       const p = unidadePref.toLowerCase();
       if (p.includes("conjunto") && regra.nome !== "Conjunto Nacional") continue;
       if (p.includes("taguatinga") && regra.nome !== "Taguatinga") continue;
     }
-    const dateStr = day.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const dateStr = `${y}-${String(mo).padStart(2,"0")}-${String(da).padStart(2,"0")}`;
     for (let h = regra.inicio; h < regra.fim; h++) {
-      if (h === 13) continue; // almoço
+      if (h === 13) continue; // almoço 13h–14h
       for (let m = 0; m < 60; m += SLOT_MIN) {
+        // Instante absoluto do slot, ancorado em Brasília (-03:00).
         const slotStart = new Date(`${dateStr}T${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:00-03:00`);
         const slotEnd = new Date(slotStart.getTime() + SLOT_MIN * 60000);
         if (slotStart <= now) continue; // não oferecer horário no passado
@@ -315,8 +343,8 @@ function getAvailableSlots(events, unidadePref) {
         slots.push({
           start: slotStart,
           unidade: regra.nome,
-          dia: slotStart.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "2-digit" }),
-          hora: slotStart.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }),
+          dia: slotStart.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit" }),
+          hora: slotStart.toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" }),
           periodo: h < 13 ? "manha" : "tarde",
         });
       }
@@ -835,8 +863,13 @@ app.post("/webhook", async (req, res) => {
     const nameMatch = text.match(/(?:me chamo|meu nome é|sou o|sou a)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)*)/i);
     if (nameMatch) await updatePatientName(from, nameMatch[1]);
 
+    // Ancora a data/hora atual (Brasília) no prompt — sem isto a Ana "chuta" o
+    // dia da semana e erra "hoje/amanhã".
+    const dt = brasiliaAgora();
+    console.log(`[Data] Agora (Brasília): ${dt.agora} | hoje = ${dt.hojeDow}, ${dt.hoje} | amanhã = ${dt.amanhaDow}, ${dt.amanha}`);
+    let systemPrompt = SYSTEM_PROMPT + `\n\n### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje}.\n- AMANHÃ é ${dt.amanha}.\nSempre calcule "hoje", "amanhã", datas e dia da semana a partir daqui (America/Sao_Paulo). Nunca use outra referência de data.`;
+
     // Buscar horários se necessário
-    let systemPrompt = SYSTEM_PROMPT;
     if (detectSchedulingIntent(messages)) {
       const unidade = detectUnidade(messages);
       const slots = await fetchSlots(unidade);
