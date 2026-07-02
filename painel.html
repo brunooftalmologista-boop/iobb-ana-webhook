@@ -78,6 +78,13 @@
   .bubble .who{font-size:12px;font-weight:600;margin-bottom:2px;}
   .bubble.out .who{color:#027a5b;} .bubble.out.human .who{color:#025a94;}
   .bubble .meta{float:right;font-size:11px;color:var(--muted);margin:6px 0 -4px 10px;user-select:none;}
+  /* Anexos recebidos/enviados */
+  .att-img{display:block;margin:2px 0 4px;max-width:240px;border-radius:6px;overflow:hidden;cursor:pointer;background:#e9edef;min-height:40px;}
+  .att-img img{width:100%;display:block;border-radius:6px;}
+  .att-loading{display:inline-block;font-size:12px;color:#777;padding:14px 12px;}
+  .att-aud{display:block;margin:4px 0;max-width:240px;width:240px;}
+  .att-doc{display:inline-flex;align-items:center;gap:7px;margin:2px 0 4px;padding:8px 11px;background:rgba(0,0,0,.05);border-radius:7px;color:#025a94;text-decoration:none;font-size:13.5px;font-weight:500;}
+  .att-doc:hover{background:rgba(0,0,0,.09);}
   .typing{align-self:flex-start;background:#fff;border-radius:8px;border-top-left-radius:0;padding:10px 14px;display:none;box-shadow:0 1px .5px rgba(0,0,0,.13);}
   .typing.show{display:flex;gap:4px;align-items:center;}
   .typing .tlabel{font-size:12.5px;color:#667781;font-weight:500;margin-right:4px;}
@@ -539,15 +546,54 @@ function renderMessages(){
     b.className='bubble '+(incoming?'in':'out')+(m.role==='human'?' human':'');
     let who='';
     if(!incoming) who=`<div class="who">${m.role==='human'?esc(m.agent||'Secretária'):'Ana 🤖'}</div>`;
-    b.innerHTML = who + esc(m.content) +
+    const mediaHtml = m.media_path ? mediaMarkup(m) : '';
+    // Para imagem/vídeo sem legenda, o texto "[Imagem recebida]" é redundante
+    const hideText = m.media_path && /^\[(Imagem recebida|Vídeo recebido)\]$/.test(m.content||'');
+    const textHtml = hideText ? '' : esc(m.content);
+    b.innerHTML = who + mediaHtml + textHtml +
       `<span class="meta">${new Date(m.timestamp).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}${incoming?'':' ✓✓'}</span>`;
     frag.appendChild(b);
   });
   // manter o indicador de digitação ao final
   el.messages.querySelectorAll('.bubble,.day-sep').forEach(n=>n.remove());
   el.messages.insertBefore(frag, el.typing);
+  hydrateMedia();
   updateTyping();
   scrollBottom();
+}
+
+// ---------- Anexos (mídia recebida do paciente) ----------
+// Cache path→URL assinada, para não repedir a cada re-render (a bolha é
+// recriada em cada poll). A URL assinada dura ~1h; recarregar a página renova.
+const attCache = {};
+function attUrl(path){
+  if(attCache[path]) return attCache[path];
+  const p = api('/api/attachment?path='+encodeURIComponent(path))
+    .then(d=>{ attCache[path]=d.url; return d.url; })
+    .catch(()=>{ delete attCache[path]; return null; });
+  attCache[path]=p; return p;
+}
+function mediaMarkup(m){
+  const type=(m.media_type||'');
+  const path=encodeURIComponent(m.media_path);
+  if(type.startsWith('image/')) return `<div class="att-img" data-att="${path}"><span class="att-loading">carregando imagem…</span></div>`;
+  if(type.startsWith('audio/')) return `<audio class="att-aud" data-att="${path}" controls preload="none"></audio>`;
+  const name=esc(m.media_name||'arquivo');
+  const ico=type.includes('pdf')?'📄':type.startsWith('video/')?'🎥':'📎';
+  return `<a class="att-doc" data-att="${path}" target="_blank" rel="noopener">${ico} ${name} · abrir</a>`;
+}
+async function hydrateMedia(scope){
+  const nodes=(scope||el.messages).querySelectorAll('[data-att]:not([data-hydrated])');
+  nodes.forEach(async node=>{
+    node.setAttribute('data-hydrated','1');
+    const url=await attUrl(decodeURIComponent(node.getAttribute('data-att')));
+    if(!url){ node.removeAttribute('data-hydrated'); return; }
+    if(node.classList.contains('att-img')){
+      node.innerHTML=`<img src="${url}" alt="anexo do paciente" loading="lazy">`;
+      node.onclick=()=>window.open(url,'_blank','noopener');
+    } else if(node.tagName==='AUDIO'){ node.src=url; }
+    else { node.href=url; }
+  });
 }
 function scrollBottom(){ el.messages.scrollTop=el.messages.scrollHeight; }
 

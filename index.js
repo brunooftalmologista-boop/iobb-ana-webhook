@@ -320,8 +320,17 @@ async function getOrCreateConversation(patientId) {
   return data;
 }
 
-async function saveMessage(conversationId, role, content, waMessageId = null) {
-  await supabase.from("messages").insert({ conversation_id: conversationId, role, content, wa_message_id: waMessageId });
+// Salva uma mensagem. `media`, quando informado, guarda a referência ao anexo
+// no Storage ({ path, type, name }) — exige as colunas media_* na tabela
+// messages (ver sql/messages_media.sql).
+async function saveMessage(conversationId, role, content, waMessageId = null, media = null) {
+  const row = { conversation_id: conversationId, role, content, wa_message_id: waMessageId };
+  if (media && media.path) {
+    row.media_path = media.path;
+    row.media_type = media.type || null;
+    row.media_name = media.name || null;
+  }
+  await supabase.from("messages").insert(row);
   await supabase.from("conversations").update({ last_message: content, updated_at: new Date() }).eq("id", conversationId);
 }
 
@@ -379,6 +388,37 @@ async function downloadMedia(mediaId) {
     return { buffer: Buffer.from(response.data), mimeType: mediaInfo.mime_type };
   } catch(e) {
     console.error("Erro ao baixar mídia:", e.message);
+    return null;
+  }
+}
+
+// Extensão de arquivo a partir do mime-type (para nomear o anexo salvo).
+function extFromMime(mime = "") {
+  const map = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+    "application/pdf": "pdf", "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a",
+    "audio/amr": "amr", "audio/wav": "wav", "video/mp4": "mp4", "video/3gpp": "3gp",
+  };
+  if (map[mime]) return map[mime];
+  const guess = (mime.split("/")[1] || "bin").split(";")[0];
+  return guess.replace(/[^\w]+/g, "") || "bin";
+}
+
+// Sobe uma mídia RECEBIDA do paciente para o bucket privado "anexos".
+// Devolve { path, type, name } para persistir na mensagem, ou null em falha.
+// O nome começa com `${Date.now()}_` para que o expurgo de 30 dias (LGPD)
+// e o prefixo `_in_` distingam anexos recebidos dos enviados pelo painel.
+async function storeInboundMedia(buffer, mimeType, originalName) {
+  try {
+    const ext = extFromMime(mimeType);
+    let base = originalName ? originalName.replace(/[^\w.\-]+/g, "_").slice(-80) : `midia.${ext}`;
+    if (!/\.\w+$/.test(base)) base = `${base}.${ext}`;
+    const path = `${Date.now()}_in_${base}`;
+    const { error } = await supabase.storage.from("anexos").upload(path, buffer, { contentType: mimeType, upsert: false });
+    if (error) { console.error("Erro ao salvar anexo recebido:", error.message); return null; }
+    return { path, type: mimeType, name: base };
+  } catch (e) {
+    console.error("Erro ao salvar anexo recebido:", e.message);
     return null;
   }
 }
@@ -485,15 +525,19 @@ app.post("/webhook", async (req, res) => {
     const from = msg.from;
     let text = "";
     let mediaNotification = "";
+    let media = null; // { path, type, name } do anexo salvo no Storage, se houver
 
     // Processar tipo de mensagem
     if (msg.type === "text") {
       text = msg.text.body.trim();
     } else if (msg.type === "audio") {
       console.log("Áudio recebido, transcrevendo...");
-      const media = await downloadMedia(msg.audio.id);
-      if (media) {
-        const transcricao = await transcribeAudio(media.buffer, media.mimeType);
+      const dl = await downloadMedia(msg.audio.id);
+      if (dl) {
+        // guarda o áudio para a secretária poder ouvir no painel...
+        media = await storeInboundMedia(dl.buffer, dl.mimeType, `audio.${extFromMime(dl.mimeType)}`);
+        // ...e mantém a transcrição automática (Whisper) que já funcionava
+        const transcricao = await transcribeAudio(dl.buffer, dl.mimeType);
         if (transcricao) {
           text = `[Áudio transcrito]: ${transcricao}`;
           console.log("Transcrição:", transcricao);
@@ -502,14 +546,20 @@ app.post("/webhook", async (req, res) => {
         }
       }
     } else if (msg.type === "image") {
-      text = "[Imagem recebida]";
+      const dl = await downloadMedia(msg.image.id);
+      if (dl) media = await storeInboundMedia(dl.buffer, dl.mimeType, `imagem.${extFromMime(dl.mimeType)}`);
+      text = msg.image?.caption ? `[Imagem recebida]: ${msg.image.caption}` : "[Imagem recebida]";
       mediaNotification = "📷 Paciente enviou uma imagem";
     } else if (msg.type === "document") {
       const filename = msg.document?.filename || "documento";
+      const dl = await downloadMedia(msg.document.id);
+      if (dl) media = await storeInboundMedia(dl.buffer, dl.mimeType, filename);
       text = `[Documento recebido: ${filename}]`;
       mediaNotification = `📄 Paciente enviou um documento: ${filename}`;
     } else if (msg.type === "video") {
-      text = "[Vídeo recebido]";
+      const dl = await downloadMedia(msg.video.id);
+      if (dl) media = await storeInboundMedia(dl.buffer, dl.mimeType, `video.${extFromMime(dl.mimeType)}`);
+      text = msg.video?.caption ? `[Vídeo recebido]: ${msg.video.caption}` : "[Vídeo recebido]";
       mediaNotification = "🎥 Paciente enviou um vídeo";
     } else {
       return; // Ignorar outros tipos
@@ -571,7 +621,7 @@ app.post("/webhook", async (req, res) => {
       await sendWhatsApp(from, FRIENDLY_FALLBACK).catch(e => console.error("[Ana] Falha no fallback:", e.message));
       return;
     }
-    await saveMessage(conversation.id, "user", text, msg.id);
+    await saveMessage(conversation.id, "user", text, msg.id, media);
 
     // Vincula o clique de anúncio (se veio da landing) ao paciente/conversa
     if (refToken) await vincularClique(refToken, from, conversation.id);
@@ -993,6 +1043,22 @@ app.post("/api/upload", express.raw({ type: () => true, limit: "30mb" }), async 
     res.json({ url: data.signedUrl, filename: rawName, contentType, expiresIn: ANEXO_SIGN_TTL });
   } catch (e) {
     console.error("Erro upload:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Gera uma URL ASSINADA de curta duração para um anexo salvo (recebido do
+// paciente ou enviado pela secretária). O painel chama autenticado (Bearer) e
+// usa a URL devolvida direto no <img>/<audio>/<a>. Como o link expira, o painel
+// sempre pede um novo na hora de renderizar — nada sensível fica em cache/DB.
+app.get("/api/attachment", async (req, res) => {
+  try {
+    const path = (req.query.path || "").toString();
+    if (!path || path.includes("..") || path.startsWith("/")) return res.status(400).json({ error: "path inválido" });
+    const { data, error } = await supabase.storage.from("anexos").createSignedUrl(path, ANEXO_SIGN_TTL);
+    if (error) return res.status(404).json({ error: error.message });
+    res.json({ url: data.signedUrl, expiresIn: ANEXO_SIGN_TTL });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
