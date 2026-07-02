@@ -1,4 +1,25 @@
-require("dotenv").config({ path: "/etc/secrets/.env" });
+// override:true garante que o Secret File (.env) tenha prioridade sobre variáveis
+// já injetadas pelo Render, evitando que um valor errado no painel prevaleça.
+require("dotenv").config({ path: "/etc/secrets/.env", override: true });
+
+// Lê uma variável de ambiente sanitizando erros comuns de configuração:
+// espaços em volta, aspas envolventes e um prefixo "NOME=" colado por engano
+// no valor (ex.: valor "PHONE_NUMBER_ID=123..." em vez de só "123...").
+function readEnv(name) {
+  let v = process.env[name];
+  if (v == null) return v;
+  v = v.trim();
+  if (
+    (v.startsWith('"') && v.endsWith('"')) ||
+    (v.startsWith("'") && v.endsWith("'"))
+  ) {
+    v = v.slice(1, -1).trim();
+  }
+  if (v.startsWith(name + "=")) {
+    v = v.slice(name.length + 1).trim();
+  }
+  return v;
+}
 const express = require("express");
 const axios = require("axios");
 const FormData = require("form-data");
@@ -17,13 +38,13 @@ app.use((req, res, next) => {
   next();
 });
 
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-const ANTHROPIC_KEY = process.env.ANTHROPIC_KEY;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
-const OPENAI_KEY = process.env.OPENAI_KEY;
+const VERIFY_TOKEN = readEnv("VERIFY_TOKEN");
+const WHATSAPP_TOKEN = readEnv("WHATSAPP_TOKEN");
+const PHONE_NUMBER_ID = readEnv("PHONE_NUMBER_ID");
+const ANTHROPIC_KEY = readEnv("ANTHROPIC_KEY");
+const SUPABASE_URL = readEnv("SUPABASE_URL");
+const SUPABASE_KEY = readEnv("SUPABASE_KEY");
+const OPENAI_KEY = readEnv("OPENAI_KEY");
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
