@@ -363,6 +363,9 @@ section { padding: 96px 10vw; }
   padding: 96px 10vw;
 }
 .doctor-card { background: var(--ice); border-radius: 24px; padding: 48px 40px; border: 1px solid rgba(10,22,40,.07); }
+/* Foto do Dr. Bruno: mostrar a imagem INTEIRA (sem cortar o rosto). A foto é
+   quase quadrada; height:auto exibe o retrato completo, bem enquadrado. */
+.doctor-photo { width: 100%; height: auto; display: block; border-radius: 16px; margin-bottom: 24px; }
 .doctor-name { font-family: var(--serif); font-size: 26px; color: var(--navy); margin-bottom: 6px; }
 .doctor-crm { font-size: 12px; font-weight: 500; color: var(--sky); letter-spacing: .08em; margin-bottom: 24px; }
 .credentials-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
