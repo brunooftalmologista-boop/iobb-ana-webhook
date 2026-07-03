@@ -212,7 +212,7 @@ Não precisa agendar. Comparecer com óculos e receita no horário de atendiment
 Todos os horários servem para qualquer atendimento (consultas, exames, testes).
 NUNCA diga um horário específico (ex.: "quinta às 10h") que não esteja na lista "Horários REALMENTE disponíveis" injetada nesta conversa. Essa lista, quando presente, é a ÚNICA fonte de horário — não some, não subtraia, não "arredonde", não invente.
 Se a lista de horários NÃO estiver presente nesta conversa, NÃO chute horário: pergunte a unidade e o melhor período (manhã ou tarde) e diga que a equipe confirma o horário exato.
-Quando a lista estiver presente, ofereça 2 opções (uma de manhã e uma à tarde), em ordem cronológica, apenas entre os horários listados. Se pedir mais cedo/tarde → 1 opção adicional da lista.
+Quando a lista estiver presente, ofereça UM ÚNICO horário por vez — no início, apenas UMA opção, nunca uma lista de horários. Se não souber a preferência, pergunte manhã ou tarde e ofereça um único horário desse período (o mais próximo em ordem cronológica, entre os listados). Ofereça um SEGUNDO horário APENAS se o paciente pedir outra opção (por conveniência da agenda dele). Nunca despeje vários horários de uma vez.
 
 ### Ceratocone
 Somos referência em ceratocone. Tratamentos que oferecemos, conforme cada caso: crosslinking, anel de Ferrara e lentes de contato especiais (rígidas/esclerais). A cirurgia refrativa a laser geralmente não é indicada no ceratocone — a definição é sempre do médico na avaliação.
@@ -1226,7 +1226,7 @@ app.post("/webhook", async (req, res) => {
         // Falha ao carregar a agenda → PROIBIR a Ana de inventar horários.
         systemPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Explique que vai confirmar a disponibilidade com a equipe, e pergunte a unidade e o melhor período (manhã ou tarde) para já deixar anotado.`;
       } else if (slots.length > 0) {
-        systemPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — use só estes)\n${formatSlotsForPrompt(slots)}\n\nRegras ao oferecer:\n- Ofereça no máximo 2 opções por vez, de preferência uma de manhã e uma à tarde.\n- Ofereça APENAS horários que aparecem na lista acima. Nunca invente.\n- Se o paciente pedir um dia/período que está "sem vagas" na lista, diga que naquele momento não há e ofereça o horário livre mais próximo desta lista.`;
+        systemPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — use só estes)\n${formatSlotsForPrompt(slots)}\n\nRegras ao oferecer:\n- Ofereça UM ÚNICO horário por vez. No início da conversa, sugira apenas UMA opção — nunca liste vários horários de uma vez.\n- Só ofereça um segundo horário se o paciente pedir outra opção (por conveniência da agenda dele).\n- Ofereça APENAS horários que aparecem na lista acima. Nunca invente.\n- Se o paciente pedir um dia/período que está "sem vagas" na lista, diga que naquele momento não há e ofereça o horário livre mais próximo desta lista.`;
       } else {
         systemPrompt += `\n\n### Sem vagas nos próximos dias\nA agenda foi consultada e não há horários livres nos próximos dias${unidade ? ` na unidade ${unidade}` : ""}. Ofereça anotar o interesse para encaixe/lista de espera e pergunte o melhor período; a equipe confirma.`;
       }
