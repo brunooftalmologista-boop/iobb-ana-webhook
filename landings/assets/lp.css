@@ -349,6 +349,8 @@ section { padding: 96px 10vw; }
 .unit-badge.here { color: var(--navy); background: var(--gold); }
 .unit-name { font-family: var(--serif); font-size: 22px; color: var(--navy); margin-bottom: 8px; }
 .unit-address { font-size: 14px; color: var(--muted); line-height: 1.65; margin-bottom: 16px; }
+.unit-note { font-size: 13px; color: var(--navy); line-height: 1.6; margin: -6px 0 16px; padding-left: 12px; border-left: 3px solid var(--gold); }
+.unit-note strong { color: var(--navy); font-weight: 600; }
 .unit-hours {
   font-size: 13px; color: var(--navy); font-weight: 500;
   display: flex; gap: 8px; align-items: center; margin-bottom: 20px;
