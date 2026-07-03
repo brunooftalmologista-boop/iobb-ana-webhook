@@ -45,6 +45,10 @@ const ANTHROPIC_KEY = readEnv("ANTHROPIC_KEY");
 const SUPABASE_URL = readEnv("SUPABASE_URL");
 const SUPABASE_KEY = readEnv("SUPABASE_KEY");
 const OPENAI_KEY = readEnv("OPENAI_KEY");
+// Senha de administrador para o controle global da Ana (ligar/desligar) no
+// painel. Configurável por env no Render (ADMIN_PASSWORD); default para
+// funcionar de imediato. Validada SEMPRE no backend, nunca só no navegador.
+const ADMIN_PASSWORD = readEnv("ADMIN_PASSWORD") || "iobb1980";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -1336,6 +1340,16 @@ const SECRETARIAS = [
   { nome: "Secretaria", email: "secretaria@iobb.local", pwEnv: "PANEL_PW_SECRETARIA" },
 ];
 
+// Restaura o estado GLOBAL da Ana (settings.ai_enabled) ao subir, para que
+// ligar/desligar (pelo painel ou #ANA) persista entre reinícios do Render.
+(async () => {
+  try {
+    const { data } = await supabase.from("settings").select("value").eq("key", "ai_enabled").maybeSingle();
+    if (data && typeof data.value === "string") anaAtiva = data.value !== "false";
+    console.log(`[Boot] Estado da Ana carregado de settings: ${anaAtiva ? "ATIVA" : "DESATIVADA"}.`);
+  } catch (e) { console.error("[Boot] Não foi possível carregar ai_enabled:", e.message); }
+})();
+
 // Cria/atualiza as usuárias das secretárias (idempotente) usando a service key.
 // A senha em env é a fonte da verdade — para trocar, altere a env e faça redeploy.
 (async () => {
@@ -1595,6 +1609,25 @@ app.post("/api/settings", async (req, res) => {
   const { key, value } = req.body;
   await supabase.from("settings").upsert({ key, value });
   res.json({ ok: true });
+});
+
+// ===== Controle GLOBAL da Ana (ligar/desligar) — mesmo flag do #ANA ON/OFF =====
+// GET: qualquer secretária logada consulta o estado (para exibir no painel).
+// POST: exige a SENHA DE ADMIN (ADMIN_PASSWORD), validada aqui no backend, para
+// alterar o flag global `anaAtiva` — persistido em settings.ai_enabled, igual ao
+// comando #ANA. Ambas as rotas já passam por requirePanelAuth (login da equipe).
+app.get("/api/ana-status", async (req, res) => {
+  res.json({ ativa: anaAtiva });
+});
+app.post("/api/ana-toggle", async (req, res) => {
+  const { ativa, adminPassword } = req.body || {};
+  if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
+    return res.status(403).json({ ok: false, error: "Senha de administrador incorreta." });
+  }
+  anaAtiva = !!ativa;
+  await supabase.from("settings").upsert({ key: "ai_enabled", value: anaAtiva ? "true" : "false" });
+  console.log(`[Admin] Ana ${anaAtiva ? "ATIVADA" : "DESATIVADA"} pelo painel (senha admin OK).`);
+  res.json({ ok: true, ativa: anaAtiva });
 });
 
 // Dispara o relatório do Google Ads sob demanda (painel). Envia pelo WhatsApp

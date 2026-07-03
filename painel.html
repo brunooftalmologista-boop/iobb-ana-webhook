@@ -67,6 +67,14 @@
   .icon-btn.armed{color:var(--green-dark);}
   .icon-btn.armed::after{content:'';position:absolute;width:7px;height:7px;border-radius:50%;background:var(--green);margin:-14px 0 0 14px;box-shadow:0 0 0 2px var(--header);}
   #btn-sound{position:relative;}
+  /* Barra de status GLOBAL da Ana (visível a todos; clique abre controle admin) */
+  .ana-bar{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:1px solid var(--border);user-select:none;background:var(--header);color:var(--muted);}
+  .ana-bar .ana-dot{width:9px;height:9px;border-radius:50%;background:#9aa5ac;flex:0 0 auto;}
+  .ana-bar.on{background:#e7f8f0;color:#0a7a54;}
+  .ana-bar.on .ana-dot{background:#00a884;}
+  .ana-bar.off{background:#fdeaea;color:#b42318;}
+  .ana-bar.off .ana-dot{background:#e02424;animation:attnblink 1.2s steps(1) infinite;}
+  .ana-bar .ana-cog{margin-left:auto;font-size:11px;font-weight:600;opacity:.75;}
 
   /* ===== Chat ===== */
   #chat{flex:1;display:flex;flex-direction:column;background:var(--chat-bg);position:relative;
@@ -172,6 +180,11 @@
         <button class="icon-btn" id="btn-logout" title="Sair">⎋</button>
       </div>
     </div>
+    <div class="ana-bar" id="ana-bar" title="Status global da Ana — clique para ativar/desativar (requer senha de administrador)">
+      <span class="ana-dot"></span>
+      <span id="ana-label">Ana: verificando…</span>
+      <span class="ana-cog">⚙️ admin</span>
+    </div>
     <div class="search-wrap">
       <div class="search-box">
         <span class="s-ico">🔍</span>
@@ -269,6 +282,20 @@
   </div>
 </div>
 
+<!-- Controle global da Ana (admin) -->
+<div class="modal-bg" id="ana-modal">
+  <div class="modal">
+    <h3 id="ana-modal-title">Controle da Ana</h3>
+    <p id="ana-modal-desc">Este controle é GLOBAL: afeta o atendimento automático de todos os pacientes. Digite a senha de administrador para confirmar.</p>
+    <label>Senha de administrador</label>
+    <input id="ana-pass" type="password" placeholder="Senha admin" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn ghost" id="ana-cancel">Cancelar</button>
+      <button class="btn primary" id="ana-confirm">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Relatório Google Ads modal -->
 <div class="modal-bg" id="ads-modal">
   <div class="modal ads">
@@ -356,6 +383,8 @@ let messages = [];
 let unreadCount = {};        // { convId: n }  (novos observados nesta sessão)
 let prevUpdated = {};        // { convId: updated_at } para detectar novidades
 let attention = {};          // { convId: 'action'|'urgent' } precisa de ação da equipe
+let anaGlobalActive = null;  // estado global da Ana (null=desconhecido)
+let anaPendingTarget = null; // alvo pretendido ao abrir o modal admin
 let msgSignature = '';       // para evitar re-render desnecessário
 
 const $ = s => document.querySelector(s);
@@ -447,6 +476,7 @@ async function loadConversations(){
       prevUpdated[c.id] = c.updated_at;
     }
     applyFilter();
+    loadAnaStatus();   // reflete o estado global da Ana (ligada/desligada) a cada ciclo
     if(activeId){
       activeConv = conversations.find(c=>c.id===activeId) || activeConv;
       updateChatHeader();
@@ -580,6 +610,41 @@ function pendingAction(c){
   if(URGENT_KEYS.some(k=>t.includes(k))) return 'urgent';
   if(HANDOFF_KEYS.some(k=>t.includes(k))) return 'action';
   return null;
+}
+
+// ---------- Controle global da Ana (ligar/desligar — admin) ----------
+async function loadAnaStatus(){
+  try{ const d = await api('/api/ana-status'); anaGlobalActive = !!d.ativa; updateAnaUI(); }catch(e){/* silencioso */}
+}
+function updateAnaUI(){
+  const bar=$('#ana-bar'), lbl=$('#ana-label'); if(!bar||!lbl) return;
+  if(anaGlobalActive===null){ bar.className='ana-bar'; lbl.textContent='Ana: verificando…'; return; }
+  bar.className='ana-bar '+(anaGlobalActive?'on':'off');
+  lbl.textContent = anaGlobalActive ? 'Ana: Ativa — respondendo pacientes' : 'Ana: Desativada — equipe atende';
+}
+function openAnaModal(){
+  if(anaGlobalActive===null){ toast('Aguarde: status da Ana ainda carregando'); return; }
+  anaPendingTarget = !anaGlobalActive;
+  $('#ana-modal-title').textContent = anaPendingTarget ? 'Ativar a Ana?' : 'Desativar a Ana?';
+  $('#ana-modal-desc').textContent = anaPendingTarget
+    ? 'A Ana voltará a responder automaticamente TODOS os pacientes. Digite a senha de administrador para confirmar.'
+    : 'A Ana vai PARAR de responder automaticamente. As mensagens continuam chegando no painel para a equipe atender. Digite a senha de administrador para confirmar.';
+  $('#ana-pass').value='';
+  $('#ana-modal').classList.add('show');
+  setTimeout(()=>$('#ana-pass').focus(), 50);
+}
+function closeAnaModal(){ $('#ana-modal').classList.remove('show'); }
+async function confirmAnaToggle(){
+  const pass = $('#ana-pass').value;
+  if(!pass){ toast('Digite a senha de administrador'); return; }
+  try{
+    const d = await api('/api/ana-toggle', { method:'POST', body: JSON.stringify({ ativa: anaPendingTarget, adminPassword: pass }) });
+    anaGlobalActive = !!d.ativa; updateAnaUI(); closeAnaModal();
+    toast(anaGlobalActive ? '✅ Ana ativada para todos' : '⏸️ Ana desativada para todos');
+  }catch(e){
+    if(String(e.message).includes('403')) toast('❌ Senha de administrador incorreta');
+    else toast('Falha ao alterar o estado da Ana. Tente novamente.');
+  }
 }
 
 // ---------- Notificações ----------
@@ -1033,6 +1098,12 @@ $('#login-btn').onclick=doLogin;
 $('#login-pass').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); doLogin(); } };
 $('#login-agent').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#login-pass').focus(); } };
 $('#btn-logout').onclick=logout;
+
+// ---------- Controle global da Ana (admin) ----------
+$('#ana-bar').onclick=openAnaModal;
+$('#ana-cancel').onclick=closeAnaModal;
+$('#ana-confirm').onclick=confirmAnaToggle;
+$('#ana-pass').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); confirmAnaToggle(); } };
 
 // ---------- Alerta sonoro: sino + desbloqueio de áudio ----------
 $('#btn-sound').onclick=toggleSound;
