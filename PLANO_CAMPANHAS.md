@@ -110,7 +110,7 @@ Total: **~R$ 45/dia (~R$ 1.350/mês)** — muito abaixo dos ~R$ 213/dia anterior
 A unidade **Conjunto Nacional** fica no coração do Plano Piloto, a passos da Esplanada
 dos Ministérios — de fácil acesso para o **funcionalismo público federal**, um dos
 principais públicos-alvo da clínica. A IOBB atende **dezenas de convênios de servidores**
-(MPF, MPDFT, MPT, MPM, STJ, STM, STF-Med, TJDFT, TRF, TRT, TST, Bacen, Serpro, GEAP,
+(MPF, MPDFT, MPT, MPM, STJ, STM, STF-Med, TJDFT, TRF, TRT, TST, Bacen, Serpro,
 Saúde Caixa, BB Saúde, GDF Saúde, Plan-Assiste, Fascal, entre outros). Isso abre uma
 frente de palavras-chave de **altíssima intenção e baixa concorrência**: quem procura
 "oftalmologista que atende [meu convênio]" está pronto para agendar.
@@ -131,7 +131,7 @@ frente de palavras-chave de **altíssima intenção e baixa concorrência**: que
   `"clínica de olhos que atende convênio de servidor"`, `"oftalmologista perto da esplanada"`.
 
 **Palavras-chave sugeridas — oftalmologista × convênio (alta intenção)**
-- **GEAP:** `"oftalmologista geap brasília"`, `"oftalmologista que atende geap"`, `[oftalmologista geap]`
+> ⚠️ Só convênios REALMENTE atendidos. **GEAP NÃO é atendida** — não usar como palavra-chave (ver negativas).
 - **Saúde Caixa:** `"oftalmologista saúde caixa brasília"`, `"oftalmologista que atende saúde caixa"`
 - **BB Saúde / Cassi-BB:** `"oftalmologista bb saúde brasília"`, `"oftalmologista que atende bb saúde"`
 - **Serpro (SaúdeSerpro):** `"oftalmologista serpro"`, `"oftalmologista que atende serpro"`
@@ -143,8 +143,11 @@ frente de palavras-chave de **altíssima intenção e baixa concorrência**: que
 - **STJ / STM / STF:** `"oftalmologista stj"`, `"oftalmologista stm brasília"`, `"oftalmologista stf-med"`
 - **TJDFT / TRF / TRT / TST:** `"oftalmologista tjdft"`, `"oftalmologista que atende trf1"`, `"oftalmologista trt brasília"`, `"oftalmologista tst saúde"`
 
-**Negativas específicas do grupo:** `2 via`, `boleto`, `reembolso`, `telefone`, `credenciamento`,
-`como funciona`, `edital`, `concurso` — evitam cliques administrativos de quem não busca consulta.
+**Negativas específicas do grupo:** `geap`, `2 via`, `boleto`, `reembolso`, `telefone`, `credenciamento`,
+`como funciona`, `edital`, `concurso` — evitam cliques administrativos e de convênios NÃO atendidos.
+**Convênio NÃO atendido → negativa obrigatória:** `geap` (e variações: `oftalmologista geap`,
+`geap brasília`). A clínica não atende GEAP; sem essa negativa, gastaríamos verba atraindo
+pacientes que não podem ser atendidos.
 
 ---
 
