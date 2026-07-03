@@ -210,8 +210,9 @@ Não precisa agendar. Comparecer com óculos e receita no horário de atendiment
 
 ### Regra de oferta de horários
 Todos os horários servem para qualquer atendimento (consultas, exames, testes).
-Ofereça SEMPRE 2 opções: uma manhã e uma tarde. Se pedir mais cedo/tarde → 1 opção adicional.
-Sempre ordem cronológica.
+NUNCA diga um horário específico (ex.: "quinta às 10h") que não esteja na lista "Horários REALMENTE disponíveis" injetada nesta conversa. Essa lista, quando presente, é a ÚNICA fonte de horário — não some, não subtraia, não "arredonde", não invente.
+Se a lista de horários NÃO estiver presente nesta conversa, NÃO chute horário: pergunte a unidade e o melhor período (manhã ou tarde) e diga que a equipe confirma o horário exato.
+Quando a lista estiver presente, ofereça 2 opções (uma de manhã e uma à tarde), em ordem cronológica, apenas entre os horários listados. Se pedir mais cedo/tarde → 1 opção adicional da lista.
 
 ### Ceratocone
 Somos referência em ceratocone. Tratamentos que oferecemos, conforme cada caso: crosslinking, anel de Ferrara e lentes de contato especiais (rígidas/esclerais). A cirurgia refrativa a laser geralmente não é indicada no ceratocone — a definição é sempre do médico na avaliação.
@@ -441,8 +442,17 @@ function formatSlotsForPrompt(slots, maxDias = 6) {
 }
 
 function detectSchedulingIntent(messages) {
-  const recent = messages.slice(-4).map(m => m.content.toLowerCase()).join(" ");
-  return recent.includes("horário") || recent.includes("agendar") || recent.includes("marcar") || recent.includes("consulta") || recent.includes("disponibilidade");
+  // Normaliza (sem acentos) para casar "horário/horario", "manhã/manha",
+  // "amanhã/amanha", "terça/terca" etc.
+  const recent = messages.slice(-4).map(m => (m.content || "").toLowerCase())
+    .join(" ").normalize("NFD").replace(/[̀-ͯ]/g, "");
+  // Gatilho AMPLO de propósito: qualquer sinal de marcar/checar horário ancora a
+  // agenda no prompt. Um falso positivo custa só um GET (cacheável) — muito
+  // melhor que a Ana ficar sem dados e INVENTAR horário. Antes só 5 palavras
+  // ("horário/agendar/marcar/consulta/disponibilidade") passavam, então frases
+  // comuns como "tem vaga sexta?", "tem disponível quinta?", "quando me atende?"
+  // não injetavam a lista real e a Ana chutava.
+  return /(horario|agend|marcar|remarcar|consulta|disponiv|disponibil|vaga|encaixe|atend|quando|hoje|amanha|semana|manha|tarde|periodo|segunda|terca|quarta|quinta|sexta|feira|que horas|marca[cç])/.test(recent);
 }
 
 function detectUnidade(messages) {
