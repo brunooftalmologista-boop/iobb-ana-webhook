@@ -55,6 +55,18 @@
   .tag.human{background:#cfe9ff;color:#025a94;}
   .tag.closed{background:#eee;color:#888;}
   .tag.ad{background:#fff2cc;color:#a86b00;text-transform:none;letter-spacing:0;}
+  /* Destaque de conversa que precisa de ação da equipe (pré-agendamento/recado) */
+  .conv.needs-action{background:#fff8e1;}
+  .conv.needs-action:hover{background:#fff3cf;}
+  .conv.needs-action.active{background:#ffeeba;}
+  .conv.needs-action::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--green);}
+  .conv.needs-urgent::before{background:#e02424;animation:attnblink 1s steps(1) infinite;}
+  .attn-dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:0 0 auto;display:inline-block;box-shadow:0 0 0 2px #fff;}
+  .attn-dot.urgent{background:#e02424;animation:attnblink 1s steps(1) infinite;}
+  @keyframes attnblink{50%{opacity:.15;}}
+  .icon-btn.armed{color:var(--green-dark);}
+  .icon-btn.armed::after{content:'';position:absolute;width:7px;height:7px;border-radius:50%;background:var(--green);margin:-14px 0 0 14px;box-shadow:0 0 0 2px var(--header);}
+  #btn-sound{position:relative;}
 
   /* ===== Chat ===== */
   #chat{flex:1;display:flex;flex-direction:column;background:var(--chat-bg);position:relative;
@@ -152,6 +164,7 @@
         <div>IOBB • Ana<small id="conn-status">conectando…</small></div>
       </div>
       <div class="side-actions">
+        <button class="icon-btn" id="btn-sound" title="Alerta sonoro">🔔</button>
         <button class="icon-btn" id="btn-newchat" title="Nova conversa">✏️</button>
         <button class="icon-btn" id="btn-refresh" title="Atualizar">⟳</button>
         <button class="icon-btn" id="btn-config" title="Configurações">⚙️</button>
@@ -310,6 +323,7 @@ const LS = {
   api:  'iobb_api_base',
   agent:'iobb_agent',
   read: 'iobb_read_state',   // { [convId]: updated_at lido }
+  sound:'iobb_sound_on',     // '1' ligado (padrão) | '0' desligado
 };
 // Autenticação individual via Supabase Auth, intermediada pelo backend
 // (/api/login com rate-limit e /api/refresh). Guardamos os tokens no navegador.
@@ -341,6 +355,7 @@ let activeConv = null;
 let messages = [];
 let unreadCount = {};        // { convId: n }  (novos observados nesta sessão)
 let prevUpdated = {};        // { convId: updated_at } para detectar novidades
+let attention = {};          // { convId: 'action'|'urgent' } precisa de ação da equipe
 let msgSignature = '';       // para evitar re-render desnecessário
 
 const $ = s => document.querySelector(s);
@@ -418,9 +433,16 @@ async function loadConversations(){
     // detectar novidades para notificação/contador
     for(const c of conversations){
       const prev = prevUpdated[c.id];
-      if(prev !== undefined && c.updated_at !== prev && c.id !== activeId){
-        unreadCount[c.id] = (unreadCount[c.id]||0) + 1;
-        notifyNew(c);
+      if(prev !== undefined && c.updated_at !== prev){
+        if(c.id !== activeId) unreadCount[c.id] = (unreadCount[c.id]||0) + 1;
+        const action = pendingAction(c);   // 'urgent' | 'action' | null
+        if(action){
+          // Só aqui há SOM: a Ana encaminhou algo que exige a secretária.
+          attention[c.id] = action;        // destaque visual persistente
+          alertPending(action, c);
+        } else if(c.id !== activeId){
+          notifyNew(c);                     // mensagem comum: notif/título, SEM som
+        }
       }
       prevUpdated[c.id] = c.updated_at;
     }
@@ -463,10 +485,13 @@ function renderList(){
     const name = displayName(c);
     const unread = isUnread(c);
     const count = unreadCount[c.id]||0;
+    const attn = attention[c.id];  // 'urgent' | 'action' | undefined
+    const attnCls = attn ? (attn==='urgent' ? 'needs-action needs-urgent' : 'needs-action') : '';
+    const attnDot = attn ? `<span class="attn-dot ${attn==='urgent'?'urgent':''}" title="Precisa de ação da equipe"></span>` : '';
     const statusTag = c.status==='human' ? '<span class="tag human">humano</span>'
                     : c.status==='closed' ? '<span class="tag closed">fim</span>'
                     : '<span class="tag bot">ana</span>';
-    return `<div class="conv ${c.id===activeId?'active':''} ${unread?'unread':''}" data-id="${c.id}">
+    return `<div class="conv ${c.id===activeId?'active':''} ${unread?'unread':''} ${attnCls}" data-id="${c.id}">
       <div class="avatar" style="background:${colorFor(phoneOf(c)||name)}">${esc(initials(name))}</div>
       <div class="conv-body">
         <div class="conv-top">
@@ -475,7 +500,7 @@ function renderList(){
         </div>
         <div class="conv-bottom">
           <span class="conv-last">${esc(c.last_message||'')}</span>
-          <span class="conv-meta">${c.ad_source?'<span class="tag ad" title="Veio de anúncio">🎯</span>':''}${statusTag}${count?`<span class="badge">${count>99?'99+':count}</span>`:''}</span>
+          <span class="conv-meta">${attnDot}${c.ad_source?'<span class="tag ad" title="Veio de anúncio">🎯</span>':''}${statusTag}${count?`<span class="badge">${count>99?'99+':count}</span>`:''}</span>
         </div>
       </div>
     </div>`;
@@ -486,24 +511,92 @@ function renderList(){
   });
 }
 
-// ---------- Notificações ----------
+// ---------- Áudio (alerta sonoro) ----------
+// Som embutido via Web Audio API — sem arquivo externo. O alerta só toca quando
+// a Ana encaminha algo que exige a secretária (pré-agendamento ou recado);
+// mensagens comuns que a Ana responde sozinha NÃO tocam (ver pendingAction()).
 let audioCtx;
-function beep(vol){
-  vol = vol || .25;
-  try{
-    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
-    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-    o.connect(g); g.connect(audioCtx.destination);
-    o.frequency.value=680; o.type='sine';
-    g.gain.setValueAtTime(.001,audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(vol,audioCtx.currentTime+.02);
-    g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.3);
-    o.start(); o.stop(audioCtx.currentTime+.3);
-  }catch(e){}
+let soundEnabled = localStorage.getItem(LS.sound) !== '0';  // padrão: ligado
+let audioReady = false;                                     // desbloqueado após 1º gesto
+function ensureCtx(){
+  if(!audioCtx){ try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  return audioCtx;
 }
+// Navegadores bloqueiam áudio até o usuário interagir — "destrava" no 1º gesto
+// (login/clique) e também no clique do sino.
+function unlockAudio(){
+  const ctx = ensureCtx(); if(!ctx) return;
+  if(ctx.state === 'suspended') ctx.resume();
+  if(ctx.state === 'running' && !audioReady){ audioReady = true; updateSoundUI(); }
+}
+function tone(freq, start, dur, vol){
+  const ctx = audioCtx; if(!ctx) return;
+  const o=ctx.createOscillator(), g=ctx.createGain();
+  o.connect(g); g.connect(ctx.destination);
+  o.type='sine'; o.frequency.value=freq;
+  const t0=ctx.currentTime+start;
+  g.gain.setValueAtTime(.0001,t0);
+  g.gain.exponentialRampToValueAtTime(vol||.3,t0+.02);
+  g.gain.exponentialRampToValueAtTime(.0001,t0+dur);
+  o.start(t0); o.stop(t0+dur+.03);
+}
+function playChime(){ // ação normal: dois tons agradáveis
+  const ctx=ensureCtx(); if(!ctx) return; if(ctx.state==='suspended') ctx.resume();
+  tone(660,0,.18,.3); tone(880,.16,.22,.3);
+}
+function playUrgent(){ // urgência: padrão insistente repetido 3x
+  const ctx=ensureCtx(); if(!ctx) return; if(ctx.state==='suspended') ctx.resume();
+  for(let r=0;r<3;r++){ const b=r*0.55; tone(990,b,.16,.35); tone(760,b+.16,.16,.35); }
+}
+function updateSoundUI(){
+  const btn=$('#btn-sound'); if(!btn) return;
+  if(!soundEnabled){ btn.textContent='🔕'; btn.title='Som desligado — clique para ligar'; btn.classList.remove('armed'); }
+  else if(!audioReady){ btn.textContent='🔔'; btn.title='Som ligado — clique em qualquer lugar da tela para ativar o áudio'; btn.classList.remove('armed'); }
+  else { btn.textContent='🔔'; btn.title='Alerta sonoro ativo (pré-agendamento e recados)'; btn.classList.add('armed'); }
+}
+function toggleSound(){
+  soundEnabled = !soundEnabled;
+  localStorage.setItem(LS.sound, soundEnabled?'1':'0');
+  if(soundEnabled){ unlockAudio(); playChime(); } // é um clique → desbloqueia + feedback
+  updateSoundUI();
+}
+
+// ---------- Detecção de ação humana pendente (client-side) ----------
+// Os blocos [PREAGENDAMENTO]/[RECADO] são removidos no backend antes de salvar,
+// então detectamos pela fala visível da Ana ao concluir/encaminhar. 'urgent' toca
+// som insistente; 'action' toca o chime; null = mensagem comum (não toca).
+function _norm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+const HANDOFF_KEYS = [
+  'registrei sua preferencia','confirmar o horario disponivel','entrar em contato o mais breve',
+  'vou encaminhar','vou repassar','vou deixar um recado','deixar um recado','deixei um recado',
+  'deixar anotado','deixei anotado','deixar registrado','deixei registrado',
+  'encaminhar para a equipe','repassar para a equipe','encaminhar sua mensagem',
+  'equipe vai confirmar','equipe vai entrar em contato','equipe vai retornar','equipe vai verificar',
+  'vao confirmar o horario','entrar em contato para confirmar','as secretarias vao','secretarias confirmam',
+];
+const URGENT_KEYS = ['urgente','urgencia','emergencia','pronto-socorro','pronto socorro','atencao especial'];
+function pendingAction(c){
+  const t=_norm(c.last_message); if(!t) return null;
+  if(URGENT_KEYS.some(k=>t.includes(k))) return 'urgent';
+  if(HANDOFF_KEYS.some(k=>t.includes(k))) return 'action';
+  return null;
+}
+
+// ---------- Notificações ----------
 function totalUnread(){ return Object.values(unreadCount).reduce((a,b)=>a+(b||0),0); }
+// Alerta REFORÇADO — só para conversas que exigem a equipe. Toca som (se ligado),
+// notificação de sistema e título piscando.
+function alertPending(kind, c){
+  if(soundEnabled){ if(kind==='urgent') playUrgent(); else playChime(); }
+  if('Notification' in window && Notification.permission==='granted'){
+    const title=(kind==='urgent'?'🔴 URGENTE — ':'🔔 Ação da equipe — ')+displayName(c);
+    const n=new Notification(title,{ body:c.last_message||'', tag:'iobb-act-'+c.id, requireInteraction: kind==='urgent' });
+    n.onclick=()=>{ window.focus(); openConversation(c.id); n.close(); };
+  }
+  if(document.hidden){ const t=totalUnread(); document.title=`(${t}) ${kind==='urgent'?'🔴 URGENTE':'🔔 Ação'} — IOBB`; }
+}
+// Notificação NORMAL (sem som) — mensagem comum de paciente que a Ana responde só.
 function notifyNew(c){
-  beep();
   if('Notification' in window && Notification.permission==='granted'){
     const n=new Notification('Nova mensagem — '+displayName(c),{ body:c.last_message||'', tag:'iobb-'+c.id });
     n.onclick=()=>{ window.focus(); openConversation(c.id); n.close(); };
@@ -518,6 +611,8 @@ async function openConversation(id){
   activeConv = conversations.find(c=>c.id===id);
   if(!activeConv) return;
   unreadCount[id]=0;
+  delete attention[id];   // abriu → limpa destaque de "precisa de ação"
+  unlockAudio();          // é um gesto do usuário → garante áudio destravado
   readState[id]=activeConv.updated_at; saveRead();
 
   el.empty.style.display='none';
@@ -571,8 +666,9 @@ async function loadMessages(force){
     msgSignature=sig; messages=arr;
     renderMessages();
     updateChatHeader();
-    // som suave ao receber nova mensagem do paciente na conversa aberta
-    if(grew && lastNew && lastNew.role==='user') beep(.12);
+    // (Sem som aqui: o alerta sonoro é só para ação humana pendente —
+    // pré-agendamento/recado — tratado em loadConversations/alertPending.)
+    void grew; void lastNew;
   }catch(e){/* silencioso */}
 }
 // "Ana está digitando…": mostrado enquanto aguardamos a resposta da Ana —
@@ -937,6 +1033,12 @@ $('#login-btn').onclick=doLogin;
 $('#login-pass').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); doLogin(); } };
 $('#login-agent').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#login-pass').focus(); } };
 $('#btn-logout').onclick=logout;
+
+// ---------- Alerta sonoro: sino + desbloqueio de áudio ----------
+$('#btn-sound').onclick=toggleSound;
+// Navegadores só permitem áudio após um gesto do usuário — destrava no 1º toque/tecla.
+['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev, ()=>{ if(!audioReady) unlockAudio(); }, {passive:true}));
+updateSoundUI();
 
 // ---------- Init ----------
 buildEmoji();
