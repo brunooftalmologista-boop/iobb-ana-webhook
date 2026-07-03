@@ -497,6 +497,34 @@ async function fetchSlots(unidadePref) {
   return slots;
 }
 
+// Chamada à API de mensagens da Anthropic com retry curto SOMENTE em erros
+// TRANSITÓRIOS: 429 (limite), 500/502/503/504 (servidor), 529 (sobrecarga) e
+// falhas SEM resposta HTTP (timeout/rede). Erros DEFINITIVOS (401 chave, 400
+// requisição, 404 modelo, 403 permissão) sobem na 1ª tentativa — repetir não
+// resolveria e só atrasaria o fallback. O webhook já respondeu 200 ao Meta antes
+// de processar (assíncrono), então o backoff não afeta a entrega do webhook.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const ANTHROPIC_RETRY_STATUS = new Set([429, 500, 502, 503, 504, 529]);
+async function anthropicMessages(payload, { tentativas = 3, timeout = 30000 } = {}) {
+  for (let i = 1; ; i++) {
+    try {
+      return await axios.post(
+        "https://api.anthropic.com/v1/messages",
+        payload,
+        { headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, timeout }
+      );
+    } catch (err) {
+      const status = err?.response?.status;
+      // Transitório = status retentável OU falha sem resposta (timeout/rede).
+      const transitorio = (status && ANTHROPIC_RETRY_STATUS.has(status)) || !err.response;
+      if (!transitorio || i >= tentativas) throw err;
+      const espera = 1000 * i; // backoff curto: 1s, depois 2s
+      console.warn(`[Ana] Anthropic transitório (${status || err.code || "sem resposta"}) — tentativa ${i}/${tentativas}, aguardando ${espera}ms e repetindo.`);
+      await sleep(espera);
+    }
+  }
+}
+
 // Funções do Supabase
 async function getOrCreatePatient(phone) {
   try {
@@ -939,11 +967,7 @@ Regras rígidas:
 
 Intenção da equipe: ${intent}`;
   try {
-    const r = await axios.post(
-      "https://api.anthropic.com/v1/messages",
-      { model: "claude-sonnet-4-6", max_tokens: 500, system: sys, messages: [{ role: "user", content: "Escreva agora a mensagem para o paciente." }] },
-      { headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, timeout: 30000 }
-    );
+    const r = await anthropicMessages({ model: "claude-sonnet-4-6", max_tokens: 500, system: sys, messages: [{ role: "user", content: "Escreva agora a mensagem para o paciente." }] });
     const t = r.data?.content?.[0]?.text?.trim();
     return t || null;
   } catch (e) {
@@ -1243,11 +1267,7 @@ app.post("/webhook", async (req, res) => {
     if (apiMessages.length === 0) apiMessages.push({ role: "user", content: text });
     let reply;
     try {
-      const response = await axios.post(
-        "https://api.anthropic.com/v1/messages",
-        { model: "claude-sonnet-4-6", max_tokens: 1000, system: systemPrompt, messages: apiMessages },
-        { headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, timeout: 30000 }
-      );
+      const response = await anthropicMessages({ model: "claude-sonnet-4-6", max_tokens: 1000, system: systemPrompt, messages: apiMessages });
       reply = response.data?.content?.[0]?.text;
       if (!reply || !reply.trim()) throw new Error("Resposta vazia da IA");
     } catch (err) {
