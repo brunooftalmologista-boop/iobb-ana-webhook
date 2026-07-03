@@ -1810,6 +1810,39 @@ app.get("/api/diag/agenda", async (req, res) => {
   }
 });
 
+// Diagnóstico da IA: reproduz a chamada à API Anthropic (mesmo modelo/headers do
+// fluxo real) e devolve o STATUS e o CORPO EXATOS de qualquer erro. Serve para
+// descobrir por que a Ana está caindo no FRIENDLY_FALLBACK sem depender dos logs
+// do Render. 401=chave inválida/ausente, 400=requisição/créditos, 404=modelo,
+// 429=limite, 529=sobrecarga. Auth via requirePanelAuth (já aplicado em /api).
+app.get("/api/diag/ana", async (req, res) => {
+  const info = {
+    ok: false,
+    modelo: "claude-sonnet-4-6",
+    anthropicKeyPresente: !!ANTHROPIC_KEY,
+    anthropicKeyLen: ANTHROPIC_KEY ? ANTHROPIC_KEY.length : 0,
+    anthropicKeyPrefixo: ANTHROPIC_KEY ? ANTHROPIC_KEY.slice(0, 7) : null, // "sk-ant-" esperado
+  };
+  if (!ANTHROPIC_KEY) return res.status(500).json({ ...info, error: "ANTHROPIC_KEY ausente no ambiente (env do Render)." });
+  try {
+    const r = await axios.post(
+      "https://api.anthropic.com/v1/messages",
+      { model: "claude-sonnet-4-6", max_tokens: 16, messages: [{ role: "user", content: "diga apenas: ok" }] },
+      { headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, timeout: 20000 }
+    );
+    res.json({ ...info, ok: true, respostaModelo: r.data?.content?.[0]?.text || null, usage: r.data?.usage || null });
+  } catch (err) {
+    // Devolve o status HTTP e o corpo de erro da Anthropic — a causa raiz exata.
+    res.status(200).json({
+      ...info,
+      ok: false,
+      httpStatus: err?.response?.status || null,
+      anthropicError: err?.response?.data || null,
+      mensagem: err.message,
+    });
+  }
+});
+
 // ===== Landing pages de anúncios (captura de gclid → WhatsApp com token) =====
 const LP_TEMAS = {
   ceratocone: {
