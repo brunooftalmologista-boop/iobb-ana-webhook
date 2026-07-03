@@ -522,20 +522,35 @@ async function getOrCreateConversation(patientId) {
 // sql/messages_agent.sql). Se a coluna não existir, o insert reinsere só o básico.
 async function saveMessage(conversationId, role, content, waMessageId = null, media = null, agent = null) {
   const base = { conversation_id: conversationId, role, content, wa_message_id: waMessageId };
-  const row = { ...base };
+  // withMedia preserva a referência do anexo; row adiciona ainda o autor (agent).
+  const withMedia = { ...base };
   if (media && media.path) {
-    row.media_path = media.path;
-    row.media_type = media.type || null;
-    row.media_name = media.name || null;
+    withMedia.media_path = media.path;
+    withMedia.media_type = media.type || null;
+    withMedia.media_name = media.name || null;
   }
+  const row = { ...withMedia };
   if (agent) row.agent = agent;
-  const { error } = await supabase.from("messages").insert(row);
-  // Se colunas opcionais ainda não existem (migrações sql/messages_media.sql ou
-  // sql/messages_agent.sql não rodadas), não perca a mensagem: reinsere o básico.
-  if (error && (row.media_path || row.agent)) {
-    console.error("[Msg] Insert com colunas opcionais falhou (rode as migrações em sql/):", error.message);
-    await supabase.from("messages").insert(base);
+
+  let { error } = await supabase.from("messages").insert(row);
+  // Degradação em cascata, do MAIS completo ao mais básico — sem NUNCA descartar
+  // o media_path por causa de uma coluna `agent` ausente:
+  if (error && agent) {
+    // A coluna `agent` pode não existir (migração sql/messages_agent.sql não
+    // rodada). Tenta de novo PRESERVANDO o anexo.
+    console.error("[Msg] Insert com coluna `agent` falhou (rode sql/messages_agent.sql) — reinserindo sem agent, com o anexo:", error.message);
+    ({ error } = await supabase.from("messages").insert(withMedia));
   }
+  if (error && withMedia.media_path) {
+    // As colunas media_* podem não existir (migração sql/messages_media.sql não
+    // rodada). Só então cai para o básico — e alerta que o ANEXO ficou sem
+    // referência no painel (mas a mensagem não se perde).
+    console.error("[Msg][Anexo] Insert com colunas media_* falhou (rode sql/messages_media.sql) — o ANEXO NÃO será exibível no painel:", error.message);
+    ({ error } = await supabase.from("messages").insert(base));
+  }
+  if (error) console.error("[Msg] Falha ao inserir mensagem no banco:", error.message);
+  else if (withMedia.media_path) console.log(`[Anexo] media_path gravado na mensagem (${withMedia.media_type || "?"}): ${withMedia.media_path}`);
+
   await supabase.from("conversations").update({ last_message: content, updated_at: new Date() }).eq("id", conversationId);
 }
 
@@ -752,6 +767,48 @@ async function notificarClinica(texto) {
   }
 }
 
+// Envia uma mensagem e devolve um resultado ESTRUTURADO (nunca lança), com o
+// código de erro da Meta e se a falha é por janela de 24h fechada. Usado no
+// espelhamento para logar claramente sucesso/falha e o motivo.
+async function trySendWhatsApp(to, texto) {
+  try {
+    await sendWhatsApp(to, texto);
+    return { ok: true };
+  } catch (e) {
+    const err = e?.response?.data?.error || {};
+    const code = err.code ?? null;
+    const message = err.message || e.message || "erro desconhecido";
+    // 131047 = re-engagement (mais de 24h desde a última msg do cliente);
+    // 131051/131026/131053 também indicam entrega bloqueada/fora de janela.
+    const isWindow = [131047, 131051, 131026, 131053].includes(Number(code)) ||
+      /24\s*hours|re-?engag|outside.*window|último.*24/i.test(message);
+    return { ok: false, code, message, isWindow };
+  }
+}
+
+// Espelha um texto para a SECRETÁRIA (WA_SECRETARIA_NUMBER). Se falhar (tipicamente
+// janela de 24h da Meta fechada), usa a salvaguarda de espelhar para o número da
+// clínica. Loga CLARAMENTE cada tentativa: destino, sucesso/falha, motivo e código
+// da Meta. NUNCA lança. `label` identifica a origem no log (ex.: "[Recado urgência]").
+async function espelharParaSecretaria(label, texto) {
+  const r1 = await trySendWhatsApp(WA_SECRETARIA_NUMBER, texto);
+  if (r1.ok) {
+    console.log(`[Espelho]${label} ✅ ENVIADO à secretária ${WA_SECRETARIA_NUMBER}.`);
+    return { entregue: true, canal: "secretaria" };
+  }
+  const motivo = r1.isWindow ? "FORA DA JANELA DE 24H da Meta" : "ERRO DA API";
+  console.error(`[Espelho]${label} ❌ FALHA ao enviar à secretária ${WA_SECRETARIA_NUMBER}: ${motivo} (code=${r1.code}) ${r1.message}`);
+  // Salvaguarda: espelha para o número da clínica.
+  const aviso = `⚠️ (não entregue à secretária ${WA_SECRETARIA_NUMBER} — ${r1.isWindow ? "janela 24h fechada" : "erro API"})\n${texto}`;
+  const r2 = await trySendWhatsApp(NUMERO_CLINICA, aviso);
+  if (r2.ok) {
+    console.log(`[Espelho]${label} ↪️ SALVAGUARDA OK: espelhado para a clínica ${NUMERO_CLINICA}.`);
+    return { entregue: true, canal: "clinica" };
+  }
+  console.error(`[Espelho]${label} ⛔ SALVAGUARDA TAMBÉM FALHOU: clínica ${NUMERO_CLINICA} (code=${r2.code}) ${r2.message}. Recado NÃO entregue por nenhum canal (configure um template aprovado ou peça à secretária que envie uma msg ao número da Ana para abrir a janela de 24h).`);
+  return { entregue: false, canal: null };
+}
+
 // Extrai o bloco técnico [PREAGENDAMENTO]...[/PREAGENDAMENTO] que a Ana anexa ao
 // concluir a coleta. Devolve { limpo, registros } — `limpo` é a mensagem SEM o
 // bloco (o que o paciente vê) e `registros` é a lista de pré-agendamentos (uma
@@ -801,15 +858,7 @@ async function notificarSecretaria(registros, patient, from) {
     return `${cab}\n👤 Nome: ${nome}\n📱 Telefone: ${tel}\n🏥 Convênio: ${val(r, "convenio")}\n📍 Unidade: ${val(r, "unidade")}\n🕐 Período: ${val(r, "periodo")}\n📝 Motivo: ${val(r, "motivo")}`;
   }).join("\n");
   const texto = `📋 *NOVO PRÉ-AGENDAMENTO*\n${blocos}`;
-  try {
-    await sendWhatsApp(WA_SECRETARIA_NUMBER, texto);
-    console.log(`[PréAgenda] Resumo enviado à secretária (${WA_SECRETARIA_NUMBER}) — ${registros.length} paciente(s).`);
-  } catch (e) {
-    const d = e?.response?.data;
-    console.error("[PréAgenda] Falha ao enviar à secretária (possível janela de 24h fechada):", d ? JSON.stringify(d) : e.message);
-    // Salvaguarda: espelha para o número da clínica, que costuma estar na janela.
-    await notificarClinica(`⚠️ (não entregue à secretária — janela 24h?)\n${texto}`);
-  }
+  await espelharParaSecretaria(`[PréAgenda ${registros.length}p]`, texto);
 }
 
 // Extrai o bloco técnico [RECADO]...[/RECADO] que a Ana anexa ao encaminhar algo
@@ -856,14 +905,7 @@ async function notificarRecadoEquipe(recado, patient, from) {
   const tel = patient?.phone || from || "—";
   const topo = recado.prioritario ? "⚠️ *PRIORITÁRIO*\n" : "";
   const texto = `${topo}🔔 *RECADO PARA A EQUIPE*\nTipo: ${recado.tipo}\nPaciente: ${nome} / ${tel}\nResumo: ${recado.resumo || "—"}`;
-  try {
-    await sendWhatsApp(WA_SECRETARIA_NUMBER, texto);
-    console.log(`[Recado] Enviado à secretária (${WA_SECRETARIA_NUMBER}) — tipo=${recado.tipo}${recado.prioritario ? " PRIORITÁRIO" : ""}.`);
-  } catch (e) {
-    const d = e?.response?.data;
-    console.error("[Recado] Falha ao enviar à secretária (possível janela de 24h fechada):", d ? JSON.stringify(d) : e.message);
-    await notificarClinica(`⚠️ (não entregue à secretária — janela 24h?)\n${texto}`);
-  }
+  await espelharParaSecretaria(`[Recado ${recado.tipo}${recado.prioritario ? "/PRIORITÁRIO" : ""}]`, texto);
 }
 
 // ===== Comando admin de envio: "#ENVIAR <numero>: <intenção>" (ou "#MSG ...") =====
@@ -1211,6 +1253,10 @@ app.post("/webhook", async (req, res) => {
     const rec = extrairRecado(pre.limpo);   // extrai [RECADO] do texto já sem [PREAGENDAMENTO]
     const registros = pre.registros;
     reply = rec.limpo;
+    // Log de detecção por mensagem: revela se a Ana emitiu (ou não) um bloco de
+    // espelhamento. Se a Ana disse "vou encaminhar" mas isto marca "recado=nenhum",
+    // o problema está no prompt/modelo, não no envio.
+    console.log(`[Espelho] Detecção na resposta da Ana: pré-agendamento=${registros.length}, recado=${rec.recado ? rec.recado.tipo + (rec.recado.prioritario ? "/PRIORITÁRIO" : "") : "nenhum"}.`);
 
     // Salvar resposta (já sem o bloco técnico)
     await saveMessage(conversation.id, "assistant", reply);
@@ -1687,14 +1733,42 @@ app.get("/api/diag/anexos", async (req, res) => {
       return res.status(500).json({ ok: false, error: error.message,
         hint: "A coluna media_path existe? Rode sql/messages_media.sql no Supabase." });
     }
+    const categoria = t => {
+      const tp = (t || "").toLowerCase();
+      if (tp.startsWith("image/")) return "imagem";
+      if (tp.startsWith("audio/")) return "audio";
+      if (tp.startsWith("video/")) return "video";
+      if (tp.includes("pdf") || tp.startsWith("application/")) return "documento";
+      return "outro";
+    };
     const itens = [];
+    const porTipo = { imagem: 0, documento: 0, audio: 0, video: 0, outro: 0 };
+    let urlsOk = 0;
     for (const m of (data || [])) {
       const { data: s, error: se } = await supabase.storage.from("anexos").createSignedUrl(m.media_path, 60);
-      itens.push({ id: m.id, quando: m.timestamp, tipo: m.media_type, nome: m.media_name,
-        path: m.media_path, urlAssinadaOk: !se && !!s?.signedUrl, erro: se?.message || null });
+      const ok = !se && !!s?.signedUrl;
+      const cat = categoria(m.media_type);
+      porTipo[cat]++;
+      if (ok) urlsOk++;
+      itens.push({ id: m.id, quando: m.timestamp, categoria: cat, tipo: m.media_type, nome: m.media_name,
+        path: m.media_path, urlAssinadaOk: ok, erro: se?.message || null });
     }
-    res.json({ ok: true, keyRole: supabaseKeyRole(), totalComAnexo: itens.length, itens,
-      dica: itens.length === 0 ? "Nenhuma mensagem com media_path — os anexos recebidos não estão sendo gravados (veja os logs [Anexo] Salvo/Falha)." : undefined });
+    res.json({
+      ok: true,
+      keyRole: supabaseKeyRole(),
+      // GRAVAÇÃO: quantas mensagens têm media_path (por categoria).
+      totalComAnexo: itens.length,
+      porCategoria: porTipo,
+      // EXIBIÇÃO: para quantas a URL assinada foi gerada com sucesso.
+      urlsAssinadasOk: urlsOk,
+      itens,
+      diagnostico:
+        itens.length === 0
+          ? "GRAVAÇÃO FALHANDO: nenhuma mensagem com media_path. Os anexos recebidos não estão sendo gravados — veja os logs [Anexo] Salvo/Falha e confirme SUPABASE_KEY=service_role + migração sql/messages_media.sql."
+          : urlsOk < itens.length
+          ? "EXIBIÇÃO PARCIAL: media_path existe, mas algumas URLs assinadas falharam (veja `erro` nos itens) — provável arquivo ausente no bucket ou chave sem permissão."
+          : "OK no backend: media_path gravado e URL assinada gerada para todos. Se ainda não abre no painel, o painel.html publicado está DESATUALIZADO (sem o fix de abertura) — republique o painel.html.",
+    });
   } catch (e) {
     console.error("[Anexo] Erro no diagnóstico:", e.message);
     res.status(500).json({ ok: false, error: e.message });
