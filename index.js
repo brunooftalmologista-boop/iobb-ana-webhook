@@ -100,6 +100,21 @@ Regras do bloco:
 - Escreva o bloco UMA única vez, e só quando realmente encerrar a coleta (não a cada mensagem).
 - NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
 
+### Recado para a equipe humana (INVISÍVEL ao paciente)
+Sempre que você ENCAMINHAR algo para a equipe humana — ou seja, quando disser ao paciente algo como "vou repassar para a equipe", "nossa equipe vai entrar em contato", "vou encaminhar sua mensagem ao setor responsável", "vou deixar um recado para as secretárias", ou equivalente — acrescente, no FINAL da sua mensagem, um bloco técnico EXATAMENTE neste formato:
+[RECADO]
+tipo: <dúvida | urgência | pedido de contato humano> | prioritario: <sim ou não> | resumo: <1 a 2 linhas com o que o paciente precisa>
+[/RECADO]
+Quando usar cada tipo:
+- "dúvida": pergunta que você não resolve e encaminha (ex.: variação específica de convênio Unimed, dúvida técnica demais, caso não listado).
+- "pedido de contato humano": o paciente pede para falar com uma pessoa/atendente/médico.
+- "urgência": situação delicada — sintoma agudo/urgência ocular OU angústia emocional. Nesses casos use prioritario: sim.
+Regras do bloco:
+- NÃO gere este bloco para pré-agendamento — esse caso já usa o bloco [PREAGENDAMENTO] acima. Nunca gere os dois na mesma mensagem.
+- Gere no máximo UM bloco [RECADO] por mensagem, e só quando de fato estiver encaminhando algo.
+- Escreva o resumo em português claro, objetivo, sem inventar dados que o paciente não deu.
+- NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
+
 ### Regras absolutas
 - Nunca diagnostique por mensagem
 - Nunca interprete exames
@@ -797,6 +812,60 @@ async function notificarSecretaria(registros, patient, from) {
   }
 }
 
+// Extrai o bloco técnico [RECADO]...[/RECADO] que a Ana anexa ao encaminhar algo
+// para a equipe humana (dúvida, urgência, pedido de contato). Devolve
+// { limpo, recado } — `limpo` é a mensagem SEM o bloco (o que o paciente vê) e
+// `recado` é { tipo, resumo, prioritario } ou null se não houver bloco.
+function extrairRecado(reply) {
+  const re = /\[RECADO\]([\s\S]*?)\[\/RECADO\]/i;
+  let inner, limpo;
+  const m = reply.match(re);
+  if (m) {
+    inner = m[1];
+    limpo = reply.replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
+  } else {
+    // Salvaguarda: bloco sem tag de fechamento — remove da abertura até o fim,
+    // para o marcador técnico NUNCA vazar para o paciente.
+    const mo = reply.match(/\[RECADO\]([\s\S]*)$/i);
+    if (!mo) return { limpo: reply, recado: null };
+    inner = mo[1];
+    limpo = reply.slice(0, mo.index).replace(/\n{3,}/g, "\n\n").trim();
+  }
+  const campos = {};
+  // Aceita pares separados por "|" ou por quebra de linha, com ":" ou "=".
+  for (const par of inner.replace(/\n/g, " | ").split("|")) {
+    let idx = par.indexOf(":");
+    const eq = par.indexOf("=");
+    if (idx === -1 || (eq !== -1 && eq < idx)) idx = eq;
+    if (idx === -1) continue;
+    const chave = par.slice(0, idx).trim().toLowerCase().replace(/^-+\s*/, "");
+    const valor = par.slice(idx + 1).trim();
+    if (chave && valor) campos[chave] = valor;
+  }
+  if (!campos.tipo && !campos.resumo) return { limpo, recado: null };
+  const prioritario = /^s(im)?$/i.test(campos.prioritario || "") || /urg[êe]nci/i.test(campos.tipo || "");
+  return { limpo, recado: { tipo: campos.tipo || "recado", resumo: campos.resumo || "", prioritario } };
+}
+
+// Envia à secretária um recado quando a Ana encaminha algo para a equipe humana.
+// Mesma salvaguarda de 24h da notificarSecretaria: se o envio livre falhar,
+// espelha para o número da clínica. NUNCA lança.
+async function notificarRecadoEquipe(recado, patient, from) {
+  if (!recado) return;
+  const nome = patient?.name || "—";
+  const tel = patient?.phone || from || "—";
+  const topo = recado.prioritario ? "⚠️ *PRIORITÁRIO*\n" : "";
+  const texto = `${topo}🔔 *RECADO PARA A EQUIPE*\nTipo: ${recado.tipo}\nPaciente: ${nome} / ${tel}\nResumo: ${recado.resumo || "—"}`;
+  try {
+    await sendWhatsApp(WA_SECRETARIA_NUMBER, texto);
+    console.log(`[Recado] Enviado à secretária (${WA_SECRETARIA_NUMBER}) — tipo=${recado.tipo}${recado.prioritario ? " PRIORITÁRIO" : ""}.`);
+  } catch (e) {
+    const d = e?.response?.data;
+    console.error("[Recado] Falha ao enviar à secretária (possível janela de 24h fechada):", d ? JSON.stringify(d) : e.message);
+    await notificarClinica(`⚠️ (não entregue à secretária — janela 24h?)\n${texto}`);
+  }
+}
+
 // ===== Comando admin de envio: "#ENVIAR <numero>: <intenção>" (ou "#MSG ...") =====
 // Rótulo do autor gravado no histórico do painel para mensagens disparadas por um
 // número ADMIN (o médico/equipe pelo WhatsApp), distinto das secretárias.
@@ -1136,10 +1205,12 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
-    // Separar o bloco técnico de pré-agendamento (invisível ao paciente) do
-    // texto que será realmente enviado. `limpo` nunca contém o bloco.
-    const { limpo, registros } = extrairPreAgendamento(reply);
-    reply = limpo;
+    // Separar os blocos técnicos (invisíveis ao paciente) do texto que será
+    // realmente enviado. `reply` nunca conterá nenhum dos blocos.
+    const pre = extrairPreAgendamento(reply);
+    const rec = extrairRecado(pre.limpo);   // extrai [RECADO] do texto já sem [PREAGENDAMENTO]
+    const registros = pre.registros;
+    reply = rec.limpo;
 
     // Salvar resposta (já sem o bloco técnico)
     await saveMessage(conversation.id, "assistant", reply);
@@ -1151,8 +1222,10 @@ app.post("/webhook", async (req, res) => {
       console.error("[Ana] Falha ao enviar resposta ao paciente:", err?.response?.data ? JSON.stringify(err.response.data) : err.message);
     }
 
-    // Pré-agendamento concluído → resumo formatado para a secretária.
+    // Espelhamento à secretária. Evita duplicar: pré-agendamento já tem seu
+    // próprio resumo, então o [RECADO] só dispara quando NÃO houver pré-agenda.
     if (registros.length) await notificarSecretaria(registros, patient, from);
+    else if (rec.recado) await notificarRecadoEquipe(rec.recado, patient, from);
 
     // Espelhar para clínica (isolado: notificarClinica nunca lança)
     await notificarClinica(`👤 *${patient.name || from}:*\n${text}\n\n🤖 *Ana:*\n${reply}`);
