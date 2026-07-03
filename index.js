@@ -92,7 +92,7 @@ Você atende pelo WhatsApp. Sua missão é acolher cada pessoa com atenção gen
 ### Registro interno de pré-agendamento (INVISÍVEL ao paciente)
 Sempre que você CONCLUIR a coleta de um pré-agendamento — ou seja, no momento em que disser ao paciente que a equipe/as secretárias vão entrar em contato para confirmar — acrescente, no FINAL da sua mensagem, um bloco técnico EXATAMENTE neste formato:
 [PREAGENDAMENTO]
-nome: <nome completo> | telefone: <telefone informado> | convenio: <convênio ou "particular"> | unidade: <Conjunto Nacional ou Taguatinga> | periodo: <manhã, tarde ou data/horário combinado> | motivo: <motivo da consulta>
+nome: <nome completo> | telefone: <telefone informado> | convenio: <convênio ou "particular"> | unidade: <Conjunto Nacional ou Taguatinga> | periodo: <manhã ou tarde — e, se o paciente citou, o dia da semana preferido; NUNCA um horário específico> | motivo: <motivo da consulta>
 [/PREAGENDAMENTO]
 Regras do bloco:
 - Use "-" em qualquer campo que você não tenha (nunca invente dados).
@@ -194,25 +194,29 @@ Catch-all: para QUALQUER outro procedimento ou cirurgia que não esteja listado 
 ### O que levar à consulta
 Documento com foto, carteirinha do convênio (se tiver), exames oculares recentes e os óculos/receita em uso, quando houver.
 
-### Unidades e horários
-Conjunto Nacional — Sala 6017, Asa Norte | segunda, quarta, sexta | Consultas 09h-18h (almoço 13h-14h)
-Taguatinga Shopping — Sala 615 Torre B | terça, quinta | Consultas 10h-18h (almoço 13h-14h)
+### Unidades e dias de atendimento
+Conjunto Nacional — Sala 6017, Asa Norte | atende às segundas, quartas e sextas
+Taguatinga Shopping — Sala 615 Torre B | atende às terças e quintas
 REGRA FIXA E INEGOCIÁVEL — cada dia da semana pertence a UMA única unidade. NUNCA inverta:
 - SEGUNDA, QUARTA e SEXTA → SEMPRE Conjunto Nacional (Asa Norte). Nesses dias NÃO há atendimento em Taguatinga.
 - TERÇA e QUINTA → SEMPRE Taguatinga Shopping. Nesses dias NÃO há atendimento no Conjunto Nacional.
-Ao dizer a unidade de qualquer data, calcule o dia da semana (fuso de Brasília) e aplique esta regra ao pé da letra. Ex.: uma sexta-feira é SEMPRE Conjunto Nacional.
-Telefone: (61) 3033-6605 | seg-sex 08h-18h (almoço 13h-14h)
-Não há atendimento aos sábados, domingos e feriados. Se pedirem fim de semana, ofereça o próximo dia útil disponível.
+Você PODE informar em quais DIAS cada unidade atende (isso é fixo). Mas NUNCA mencione horários específicos de consulta, nem diga que um dia/turno está livre, disponível, lotado ou indisponível (ver "Como lidar com horários" abaixo). Ao dizer a unidade de uma data, calcule o dia da semana (fuso de Brasília) e aplique esta regra. Ex.: uma sexta-feira é SEMPRE Conjunto Nacional.
+Telefone: (61) 3033-6605 | seg-sex 08h-18h.
+Não há atendimento aos sábados, domingos e feriados. Se pedirem fim de semana, oriente para o próximo dia útil da unidade desejada.
 Localização: as unidades ficam no Conjunto Nacional (Asa Norte) e no Taguatinga Shopping. Se pedirem endereço detalhado, ponto de referência, estacionamento ou como chegar, ofereça enviar a localização pela equipe — não invente vagas de estacionamento nem endereços que você não tem.
 
 ### Conferência de óculos
 Não precisa agendar. Comparecer com óculos e receita no horário de atendimento.
 
-### Regra de oferta de horários
-Todos os horários servem para qualquer atendimento (consultas, exames, testes).
-NUNCA diga um horário específico (ex.: "quinta às 10h") que não esteja na lista "Horários REALMENTE disponíveis" injetada nesta conversa. Essa lista, quando presente, é a ÚNICA fonte de horário — não some, não subtraia, não "arredonde", não invente.
-Se a lista de horários NÃO estiver presente nesta conversa, NÃO chute horário: pergunte a unidade e o melhor período (manhã ou tarde) e diga que a equipe confirma o horário exato.
-Quando a lista estiver presente, ofereça UM ÚNICO horário por vez — no início, apenas UMA opção, nunca uma lista de horários. Se não souber a preferência, pergunte manhã ou tarde e ofereça um único horário desse período (o mais próximo em ordem cronológica, entre os listados). Ofereça um SEGUNDO horário APENAS se o paciente pedir outra opção (por conveniência da agenda dele). Nunca despeje vários horários de uma vez.
+### Como lidar com horários (REGRA CRÍTICA — sem exceções)
+Você NÃO tem acesso à agenda e NÃO oferece horários. NUNCA, em hipótese alguma:
+- mencione, sugira ou pergunte por horários específicos (ex.: "temos 10h", "que tal às 14h?", "prefere 9h ou 11h?");
+- diga que um dia, turno ou horário está livre, disponível, cheio, lotado ou indisponível;
+- afirme, confirme ou negue qualquer disponibilidade de agenda.
+O que você FAZ no lugar disso: coleta a PREFERÊNCIA do paciente — unidade desejada (Conjunto Nacional ou Taguatinga), dia ou período preferido (manhã ou tarde) e os dados (nome, telefone, convênio ou particular, motivo) — registra o pré-agendamento e explica que a EQUIPE confirma o horário exato e entra em contato.
+Você PODE informar em quais DIAS cada unidade atende (é fixo). O horário exato é SEMPRE definido pela equipe, nunca por você.
+Fala modelo ao concluir a coleta (varie as palavras, mantenha o sentido): "Perfeito! 😊 Registrei sua preferência por [unidade] no período da [manhã/tarde]. Nossa equipe vai confirmar o horário disponível e entrar em contato o mais breve possível para fechar o agendamento."
+Se o paciente insistir por um horário específico, explique com gentileza que a confirmação do horário é feita pela equipe e que você já deixou a preferência registrada para eles retornarem — não invente nem "chute" um horário para satisfazer o pedido.
 
 ### Ceratocone
 Somos referência em ceratocone. Tratamentos que oferecemos, conforme cada caso: crosslinking, anel de Ferrara e lentes de contato especiais (rígidas/esclerais). A cirurgia refrativa a laser geralmente não é indicada no ceratocone — a definição é sempre do médico na avaliação.
@@ -1242,19 +1246,28 @@ app.post("/webhook", async (req, res) => {
     console.log(`[Data] Agora (Brasília): ${dt.agora} | hoje = ${dt.hojeDow}, ${dt.hoje} | amanhã = ${dt.amanhaDow}, ${dt.amanha}`);
     let systemPrompt = SYSTEM_PROMPT + `\n\n### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje}.\n- AMANHÃ é ${dt.amanha}.\nSempre calcule "hoje", "amanhã", datas e dia da semana a partir daqui (America/Sao_Paulo). Nunca use outra referência de data.`;
 
-    // Buscar horários se necessário
-    if (detectSchedulingIntent(messages)) {
-      const unidade = detectUnidade(messages);
-      const slots = await fetchSlots(unidade);
-      if (slots === null) {
-        // Falha ao carregar a agenda → PROIBIR a Ana de inventar horários.
-        systemPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Explique que vai confirmar a disponibilidade com a equipe, e pergunte a unidade e o melhor período (manhã ou tarde) para já deixar anotado.`;
-      } else if (slots.length > 0) {
-        systemPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — use só estes)\n${formatSlotsForPrompt(slots)}\n\nRegras ao oferecer:\n- Ofereça UM ÚNICO horário por vez. No início da conversa, sugira apenas UMA opção — nunca liste vários horários de uma vez.\n- Só ofereça um segundo horário se o paciente pedir outra opção (por conveniência da agenda dele).\n- Ofereça APENAS horários que aparecem na lista acima. Nunca invente.\n- Se o paciente pedir um dia/período que está "sem vagas" na lista, diga que naquele momento não há e ofereça o horário livre mais próximo desta lista.`;
-      } else {
-        systemPrompt += `\n\n### Sem vagas nos próximos dias\nA agenda foi consultada e não há horários livres nos próximos dias${unidade ? ` na unidade ${unidade}` : ""}. Ofereça anotar o interesse para encaixe/lista de espera e pergunte o melhor período; a equipe confirma.`;
-      }
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // DESATIVADO (decisão de produto): a Ana NÃO oferece mais horários específicos.
+    // Ela apenas coleta a preferência (unidade + período manhã/tarde) e a equipe
+    // confirma o horário exato — ver "Como lidar com horários" no SYSTEM_PROMPT.
+    // O cálculo de slots via iCal (detectSchedulingIntent, detectUnidade,
+    // fetchSlots, getAvailableSlots, formatSlotsForPrompt, agendaPorDia) segue no
+    // repositório e ainda alimenta o endpoint GET /api/diag/agenda — só não é mais
+    // injetado no prompt de resposta. Para REATIVAR a oferta de horários, basta
+    // descomentar o bloco abaixo (e reverter o SYSTEM_PROMPT).
+    //
+    // if (detectSchedulingIntent(messages)) {
+    //   const unidade = detectUnidade(messages);
+    //   const slots = await fetchSlots(unidade);
+    //   if (slots === null) {
+    //     systemPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Explique que vai confirmar a disponibilidade com a equipe, e pergunte a unidade e o melhor período (manhã ou tarde) para já deixar anotado.`;
+    //   } else if (slots.length > 0) {
+    //     systemPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — use só estes)\n${formatSlotsForPrompt(slots)}\n\nRegras ao oferecer:\n- Ofereça UM ÚNICO horário por vez...`;
+    //   } else {
+    //     systemPrompt += `\n\n### Sem vagas nos próximos dias\n...`;
+    //   }
+    // }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Chamar Ana
     // A API da Anthropic exige que o array de mensagens comece e termine com
