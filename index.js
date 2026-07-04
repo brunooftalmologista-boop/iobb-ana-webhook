@@ -290,6 +290,15 @@ const WA_LP_NUMBER = process.env.WA_LP_NUMBER || NUMERO_CLINICA;
 // pré-agendamento concluído pela Ana. Configurável por env; default = número
 // informado pela clínica. Atenção à janela de 24h da Meta (ver notificarSecretaria).
 const WA_SECRETARIA_NUMBER = process.env.WA_SECRETARIA_NUMBER || "5561992997639";
+// Template APROVADO na Meta usado para notificar a secretária QUANDO a janela de
+// 24h está fechada (ela não mandou mensagem ao número da Ana nas últimas 24h). Sem
+// isto, o espelhamento livre é bloqueado pela Meta (code 131047) e o recado/pré-
+// agendamento não chega por canal nenhum. O template deve ter UMA variável {{1}}
+// (recebe um resumo em linha única). Ex. de corpo aprovado, categoria Utilidade:
+//   "Novo atendimento da Ana (IOBB): {{1}}. Abra o WhatsApp para ver os detalhes."
+// Configure no Render: WA_SECRETARIA_TEMPLATE_NAME e WA_SECRETARIA_TEMPLATE_LANG.
+const WA_SECRETARIA_TEMPLATE_NAME = process.env.WA_SECRETARIA_TEMPLATE_NAME || "";
+const WA_SECRETARIA_TEMPLATE_LANG = process.env.WA_SECRETARIA_TEMPLATE_LANG || "pt_BR";
 // Nome da ação de conversão criada no Google Ads (tipo Importar/Offline).
 const GOOGLE_ADS_CONVERSION_NAME = process.env.GOOGLE_ADS_CONVERSION_NAME || "Agendamento IOBB";
 let anaAtiva = true;
@@ -870,14 +879,43 @@ async function espelharParaSecretaria(label, texto) {
   }
   const motivo = r1.isWindow ? "FORA DA JANELA DE 24H da Meta" : "ERRO DA API";
   console.error(`[Espelho]${label} ❌ FALHA ao enviar à secretária ${WA_SECRETARIA_NUMBER}: ${motivo} (code=${r1.code}) ${r1.message}`);
-  // Salvaguarda: espelha para o número da clínica.
+
+  // Salvaguarda 1 (durável): fora da janela de 24h, mensagem LIVRE é sempre
+  // bloqueada pela Meta — a ÚNICA forma de entregar é um TEMPLATE aprovado. Se
+  // houver um configurado, envia o resumo em linha única na variável {{1}}. Isso
+  // também reabre a janela, e a secretária pode responder para ver o detalhe.
+  if (r1.isWindow && WA_SECRETARIA_TEMPLATE_NAME) {
+    const resumo = String(texto)
+      .replace(/\*/g, "")            // remove marcação de negrito do WhatsApp
+      .replace(/\s*\n+\s*/g, " · ")  // Meta proíbe \n em variável de template
+      .replace(/\s{2,}/g, " ")       // e mais de 4 espaços seguidos
+      .trim()
+      .slice(0, 600);                // margem segura no limite da variável
+    let tpl;
+    try {
+      await sendWhatsAppTemplate(WA_SECRETARIA_NUMBER, WA_SECRETARIA_TEMPLATE_NAME, WA_SECRETARIA_TEMPLATE_LANG, [resumo]);
+      tpl = { ok: true };
+    } catch (e) {
+      const err = e?.response?.data?.error || {};
+      tpl = { ok: false, code: err.code ?? null, message: err.message || e.message };
+    }
+    if (tpl.ok) {
+      console.log(`[Espelho]${label} ✅ ENTREGUE à secretária ${WA_SECRETARIA_NUMBER} via TEMPLATE "${WA_SECRETARIA_TEMPLATE_NAME}" (janela 24h estava fechada).`);
+      return { entregue: true, canal: "secretaria-template" };
+    }
+    console.error(`[Espelho]${label} ❌ Template "${WA_SECRETARIA_TEMPLATE_NAME}" também falhou (code=${tpl.code}) ${tpl.message}. Confira se está APROVADO na Meta e com 1 variável {{1}}.`);
+  } else if (r1.isWindow && !WA_SECRETARIA_TEMPLATE_NAME) {
+    console.error(`[Espelho]${label} ⚠️ Janela de 24h fechada e NENHUM template configurado (WA_SECRETARIA_TEMPLATE_NAME vazio) — a Meta só entrega fora da janela por template aprovado.`);
+  }
+
+  // Salvaguarda 2: espelha para o número da clínica (mesma limitação de janela).
   const aviso = `⚠️ (não entregue à secretária ${WA_SECRETARIA_NUMBER} — ${r1.isWindow ? "janela 24h fechada" : "erro API"})\n${texto}`;
   const r2 = await trySendWhatsApp(NUMERO_CLINICA, aviso);
   if (r2.ok) {
     console.log(`[Espelho]${label} ↪️ SALVAGUARDA OK: espelhado para a clínica ${NUMERO_CLINICA}.`);
     return { entregue: true, canal: "clinica" };
   }
-  console.error(`[Espelho]${label} ⛔ SALVAGUARDA TAMBÉM FALHOU: clínica ${NUMERO_CLINICA} (code=${r2.code}) ${r2.message}. Recado NÃO entregue por nenhum canal (configure um template aprovado ou peça à secretária que envie uma msg ao número da Ana para abrir a janela de 24h).`);
+  console.error(`[Espelho]${label} ⛔ SALVAGUARDA TAMBÉM FALHOU: clínica ${NUMERO_CLINICA} (code=${r2.code}) ${r2.message}. Recado NÃO entregue por nenhum canal (configure WA_SECRETARIA_TEMPLATE_NAME com um template aprovado, ou peça à secretária que envie uma msg ao número da Ana para abrir a janela de 24h).`);
   return { entregue: false, canal: null };
 }
 
