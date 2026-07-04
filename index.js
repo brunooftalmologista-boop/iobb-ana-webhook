@@ -2018,6 +2018,7 @@ const LP_HTML = {};
 for (const [tema, arquivo] of Object.entries({
   consulta: "landings/consulta.html",
   ceratocone: "landings/ceratocone.html",
+  refrativa: "landings/refrativa.html",
   taguatinga: "landings/taguatinga.html",
   "aguas-claras": "landings/aguas-claras.html",
   "asa-norte": "landings/asa-norte.html",
