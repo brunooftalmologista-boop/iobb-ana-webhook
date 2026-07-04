@@ -1107,6 +1107,56 @@ async function handleAdminConsultaPreAgenda(from, text) {
   return true;
 }
 
+// ── Resumo diário de pré-agendamentos → secretária (fim do expediente) ────────
+// Hora do envio configurável via RESUMO_DIARIO_HORA (0–23, padrão 19h Brasília);
+// use RESUMO_DIARIO_HORA=off para desligar. Vai por espelharParaSecretaria, então
+// usa o template aprovado se a janela de 24h estiver fechada.
+const RESUMO_DIARIO_HORA = (() => {
+  const raw = String(process.env.RESUMO_DIARIO_HORA ?? "19").trim().toLowerCase();
+  if (raw === "off" || raw === "false" || raw === "0off") return null;
+  const h = parseInt(raw, 10);
+  return Number.isInteger(h) && h >= 0 && h <= 23 ? h : 19;
+})();
+
+async function enviarResumoDiarioPreAgenda() {
+  const n = await contarPreAgendamentos("hoje");
+  if (n === null) { console.error("[ResumoDiário] Consulta falhou (migração aplicada?) — resumo não enviado."); return false; }
+  const hoje = brasiliaAgora().hoje; // ex.: "sexta-feira, 04/07/2026"
+  if (!n) {
+    await espelharParaSecretaria("[ResumoDiário]", `🌙 *Resumo do dia — pré-agendamentos*\n${hoje}\n\nHoje não houve pré-agendamentos registrados pela Ana.`);
+    return true;
+  }
+  const rows = (await listarPreAgendamentos("hoje", 50)) || [];
+  const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}`).join("\n");
+  const extra = n > rows.length ? `\n… e mais ${n - rows.length}.` : "";
+  await espelharParaSecretaria("[ResumoDiário]", `🌙 *Resumo do dia — pré-agendamentos*\n${hoje}\n\nHoje houve *${n}* pré-agendamento(s):\n${linhas}${extra}`);
+  return true;
+}
+
+// Verifica a cada 30 min; dispara uma vez por dia a partir da hora configurada.
+// Persiste a data do último envio em settings (preagenda_last_report) para não
+// duplicar em reinícios do Render.
+function startResumoDiarioScheduler() {
+  if (RESUMO_DIARIO_HORA === null) { console.log("[ResumoDiário] Desativado (RESUMO_DIARIO_HORA=off)."); return; }
+  const check = async () => {
+    try {
+      const nowBr = new Date(new Date().toLocaleString("en-US", { timeZone: TZ_BR }));
+      if (nowBr.getHours() < RESUMO_DIARIO_HORA) return;
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR }); // YYYY-MM-DD (BR)
+      const { data } = await supabase.from("settings").select("value").eq("key", "preagenda_last_report").single();
+      if (data?.value === today) return;
+      console.log("[ResumoDiário] Disparando resumo diário de pré-agendamentos...");
+      const ok = await enviarResumoDiarioPreAgenda();
+      if (ok) await supabase.from("settings").upsert({ key: "preagenda_last_report", value: today });
+    } catch (e) {
+      console.error("[ResumoDiário] Scheduler:", e.message);
+    }
+  };
+  setInterval(check, 30 * 60 * 1000);
+  check(); // checa uma vez no startup (recupera o envio se o servidor reiniciou)
+  console.log(`[ResumoDiário] Agendador ativo (diário às ${RESUMO_DIARIO_HORA}h ${TZ_BR}) → secretária ${WA_SECRETARIA_NUMBER}.`);
+}
+
 // Extrai o bloco técnico [RECADO]...[/RECADO] que a Ana anexa ao encaminhar algo
 // para a equipe humana (dúvida, urgência, pedido de contato). Devolve
 // { limpo, recado } — `limpo` é a mensagem SEM o bloco (o que o paciente vê) e
@@ -2259,5 +2309,6 @@ app.get("/painel", (req, res) => res.sendFile(__dirname + "/painel.html"));
 
 // Agendador do relatório semanal do Google Ads (segunda 08h, Brasília)
 googleAds.startScheduler({ supabase, sendWhatsApp });
+startResumoDiarioScheduler();
 
 app.listen(process.env.PORT || 3000, () => console.log("Ana online!"));
