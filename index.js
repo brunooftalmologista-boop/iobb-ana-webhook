@@ -280,7 +280,10 @@ Se a criança tiver MENOS de 8 anos, acolha com gentileza e explique que, para e
 
 const NUMERO_CLINICA = "5561982879853";
 // Números autorizados a dar comandos à Ana pelo WhatsApp (#ANA ON/OFF/STATUS,
-// #ADS e o envio a paciente #ENVIAR/#MSG). E.164 sem "+".
+// #ADS, o envio a paciente #ENVIAR/#MSG e as CONSULTAS de pré-agendamento em
+// linguagem natural — ex.: "quantos pré-agendamentos hoje?", "enviar o último").
+// E.164 sem "+". O número da secretária (WA_SECRETARIA_NUMBER) é adicionado logo
+// após sua definição, para ela também poder consultar os pré-agendamentos.
 const NUMEROS_ADMIN = ["5561984060001", "556182879853", "5561982879853"];
 // Número (E.164, sem "+") da Ana para onde a landing de anúncios envia o paciente.
 // IMPORTANTE: deve ser o número do WhatsApp Business conectado à Cloud API (o que
@@ -290,6 +293,9 @@ const WA_LP_NUMBER = process.env.WA_LP_NUMBER || NUMERO_CLINICA;
 // pré-agendamento concluído pela Ana. Configurável por env; default = número
 // informado pela clínica. Atenção à janela de 24h da Meta (ver notificarSecretaria).
 const WA_SECRETARIA_NUMBER = process.env.WA_SECRETARIA_NUMBER || "5561992997639";
+// A secretária também é um número admin: reconhece comandos e consultas de
+// pré-agendamento pelo WhatsApp. (Só adiciona se ainda não estiver na lista.)
+if (WA_SECRETARIA_NUMBER && !NUMEROS_ADMIN.includes(WA_SECRETARIA_NUMBER)) NUMEROS_ADMIN.push(WA_SECRETARIA_NUMBER);
 // Template APROVADO na Meta usado para notificar a secretária QUANDO a janela de
 // 24h está fechada (ela não mandou mensagem ao número da Ana nas últimas 24h). Sem
 // isto, o espelhamento livre é bloqueado pela Meta (code 131047) e o recado/pré-
@@ -958,7 +964,7 @@ function extrairPreAgendamento(reply) {
 // 24h da Meta: se o envio livre falhar (número não falou com o Business nas
 // últimas 24h), registra o erro e espelha para o número da clínica como
 // salvaguarda, para o pré-agendamento nunca se perder. NUNCA lança.
-async function notificarSecretaria(registros, patient, from) {
+async function notificarSecretaria(registros, patient, from, conversationId) {
   if (!registros || !registros.length) return;
   const val = (r, k) => { const v = r[k]; return v && v !== "-" ? v : "—"; };
   const blocos = registros.map((r, i) => {
@@ -968,7 +974,137 @@ async function notificarSecretaria(registros, patient, from) {
     return `${cab}\n👤 Nome: ${nome}\n📱 Telefone: ${tel}\n🏥 Convênio: ${val(r, "convenio")}\n📍 Unidade: ${val(r, "unidade")}\n🕐 Período: ${val(r, "periodo")}\n📝 Motivo: ${val(r, "motivo")}`;
   }).join("\n");
   const texto = `📋 *NOVO PRÉ-AGENDAMENTO*\n${blocos}`;
+  // Persiste ANTES do espelhamento para não perder o registro se o envio falhar.
+  await persistirPreAgendamentos(registros, patient, from, conversationId);
   await espelharParaSecretaria(`[PréAgenda ${registros.length}p]`, texto);
+}
+
+// Grava cada pré-agendamento na tabela `preagendamentos` (para as consultas admin
+// por WhatsApp). Best-effort: NUNCA lança nem interrompe o atendimento. Requer a
+// migração sql/preagendamentos.sql — sem ela, apenas loga o erro.
+async function persistirPreAgendamentos(registros, patient, from, conversationId) {
+  try {
+    const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
+    const rows = registros.map(r => ({
+      conversation_id: conversationId ? String(conversationId) : null,
+      patient_phone: from || null,
+      nome: limpo(r.nome) || patient?.name || null,
+      telefone: limpo(r.telefone) || patient?.phone || from || null,
+      convenio: limpo(r.convenio),
+      unidade: limpo(r.unidade),
+      periodo: limpo(r.periodo),
+      motivo: limpo(r.motivo),
+    }));
+    const { error } = await supabase.from("preagendamentos").insert(rows);
+    if (error) console.error("[PréAgenda] Falha ao persistir (rodou a migração sql/preagendamentos.sql?):", error.message);
+    else console.log(`[PréAgenda] ${rows.length} registro(s) gravado(s) na tabela preagendamentos.`);
+  } catch (e) {
+    console.error("[PréAgenda] Exceção ao persistir:", e.message);
+  }
+}
+
+// ── Consultas de pré-agendamento pelos números admin (linguagem natural) ──────
+// Limites de um período (hoje/ontem/semana/mês) em UTC, ancorados no fuso de
+// Brasília — meia-noite de Brasília = 03:00 UTC (UTC-3 o ano todo desde 2019).
+function periodoBoundsUTC(p) {
+  const { ano, mes, dia } = brasiliaAgora().ymd;
+  const mk = (d) => new Date(Date.UTC(ano, mes - 1, d, 3, 0, 0)); // 00:00 BR
+  if (p === "ontem") return { start: mk(dia - 1), end: mk(dia) };
+  if (p === "semana") return { start: mk(dia - 6), end: mk(dia + 1) };   // últimos 7 dias
+  if (p === "mes") return { start: mk(dia - 29), end: mk(dia + 1) };     // últimos 30 dias
+  return { start: mk(dia), end: mk(dia + 1) };                          // hoje (padrão)
+}
+function rotuloPeriodo(p) {
+  return p === "ontem" ? "de ontem"
+    : p === "semana" ? "nos últimos 7 dias"
+    : p === "mes" ? "nos últimos 30 dias"
+    : "de hoje";
+}
+function fmtDataHoraBR(iso) {
+  return new Date(iso).toLocaleString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+function fmtHoraBR(iso) {
+  return new Date(iso).toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
+}
+function formatarPreAgendamento(r) {
+  const v = (x) => (x && x !== "-") ? x : "—";
+  const tel = (r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—");
+  return `👤 Nome: ${v(r.nome)}\n📱 Telefone: ${tel}\n🏥 Convênio: ${v(r.convenio)}\n📍 Unidade: ${v(r.unidade)}\n🕐 Período: ${v(r.periodo)}\n📝 Motivo: ${v(r.motivo)}`;
+}
+async function contarPreAgendamentos(p) {
+  const { start, end } = periodoBoundsUTC(p);
+  const { count, error } = await supabase.from("preagendamentos")
+    .select("*", { count: "exact", head: true })
+    .gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
+  if (error) { console.error("[PréAgenda] contar:", error.message); return null; }
+  return count ?? 0;
+}
+async function listarPreAgendamentos(p, limit = 30) {
+  const { start, end } = periodoBoundsUTC(p);
+  const { data, error } = await supabase.from("preagendamentos")
+    .select("*").gte("created_at", start.toISOString()).lt("created_at", end.toISOString())
+    .order("created_at", { ascending: false }).limit(limit);
+  if (error) { console.error("[PréAgenda] listar:", error.message); return null; }
+  return data || [];
+}
+async function ultimoPreAgendamento() {
+  const { data, error } = await supabase.from("preagendamentos")
+    .select("*").order("created_at", { ascending: false }).limit(1);
+  if (error) { console.error("[PréAgenda] último:", error.message); return null; }
+  return (data && data[0]) || null;
+}
+
+// Interpreta e responde uma consulta de pré-agendamento vinda de um número admin.
+// Retorna true se tratou a mensagem (e já respondeu), false para deixar o fluxo
+// normal da Ana seguir. Só age quando o texto é claramente sobre pré-agendamento.
+async function handleAdminConsultaPreAgenda(from, text) {
+  const norm = String(text).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  // Termo específico do recurso ("pré-agendamento") vs. palavra genérica
+  // ("agendamento"), que um número admin pode usar em conversa normal.
+  const topicoEspecifico = /pre-?agenda|preagenda/.test(norm);
+  const topicoGenerico = /agendament/.test(norm);
+  if (!topicoEspecifico && !topicoGenerico) return false;
+  const erroTabela = "Não consegui consultar os pré-agendamentos agora. (Confira se a migração sql/preagendamentos.sql já foi aplicada no Supabase.)";
+  const periodo = /\bhoje\b/.test(norm) ? "hoje"
+    : /\bontem\b/.test(norm) ? "ontem"
+    : /semana|7 ?dias|ultimos dias/.test(norm) ? "semana"
+    : /\bm[eê]s\b|mensal|30 ?dias/.test(norm) ? "mes"
+    : null;
+
+  // Enviar/mostrar o ÚLTIMO pré-agendamento.
+  if (/\bultim|\blast\b/.test(norm)) {
+    const row = await ultimoPreAgendamento();
+    if (row === null) { await sendWhatsApp(from, erroTabela); return true; }
+    if (!row) { await sendWhatsApp(from, "Ainda não há nenhum pré-agendamento registrado."); return true; }
+    await sendWhatsApp(from, `📋 *Último pré-agendamento* (${fmtDataHoraBR(row.created_at)}):\n${formatarPreAgendamento(row)}`);
+    return true;
+  }
+  // CONTAR pré-agendamentos de um período.
+  if (/quant/.test(norm)) {
+    const p = periodo || "hoje";
+    const n = await contarPreAgendamentos(p);
+    if (n === null) { await sendWhatsApp(from, erroTabela); return true; }
+    await sendWhatsApp(from, `📊 Pré-agendamentos ${rotuloPeriodo(p)}: *${n}*.`);
+    return true;
+  }
+  // LISTAR / enviar os pré-agendamentos de um período. Verbos genéricos (mandar/
+  // enviar/mostrar/passar) só disparam a lista quando há também um período citado,
+  // para não capturar conversa normal de um número admin.
+  if (/\b(list|listar|quais|todos|todas|relac|relatori)/.test(norm) || (/mand|envi|mostr|passa/.test(norm) && periodo)) {
+    const p = periodo || "hoje";
+    const rows = await listarPreAgendamentos(p);
+    if (rows === null) { await sendWhatsApp(from, erroTabela); return true; }
+    if (!rows.length) { await sendWhatsApp(from, `Nenhum pré-agendamento ${rotuloPeriodo(p)}.`); return true; }
+    const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}`).join("\n");
+    await sendWhatsApp(from, `📋 Pré-agendamentos ${rotuloPeriodo(p)} (${rows.length}):\n${linhas}`);
+    return true;
+  }
+  // Sem intenção reconhecida: só mostra o menu de ajuda quando a pessoa usou o
+  // termo específico "pré-agendamento" (claramente querendo o recurso admin). Se
+  // foi só a palavra genérica "agendamento", devolve o controle à Ana normal.
+  if (!topicoEspecifico) return false;
+  await sendWhatsApp(from, `Posso te ajudar com os pré-agendamentos 😊 Você pode pedir, por exemplo:\n• "quantos pré-agendamentos hoje?"\n• "enviar o último pré-agendamento"\n• "listar pré-agendamentos de hoje"\n(também aceito "ontem", "semana" e "mês")`);
+  return true;
 }
 
 // Extrai o bloco técnico [RECADO]...[/RECADO] que a Ana anexa ao encaminhar algo
@@ -1257,6 +1393,10 @@ app.post("/webhook", async (req, res) => {
         await handleAdminSend(from, sendCmd[1]);
         return;
       }
+      // Consultas de pré-agendamento em linguagem natural ("quantos pré-agendamentos
+      // hoje?", "enviar o último pré-agendamento", "listar de hoje"). Só intercepta
+      // quando o texto é claramente sobre pré-agendamento; senão, segue o fluxo normal.
+      if (await handleAdminConsultaPreAgenda(from, text)) return;
     }
 
     // Salvar no banco
@@ -1381,7 +1521,7 @@ app.post("/webhook", async (req, res) => {
 
     // Espelhamento à secretária. Evita duplicar: pré-agendamento já tem seu
     // próprio resumo, então o [RECADO] só dispara quando NÃO houver pré-agenda.
-    if (registros.length) await notificarSecretaria(registros, patient, from);
+    if (registros.length) await notificarSecretaria(registros, patient, from, conversation.id);
     else if (rec.recado) await notificarRecadoEquipe(rec.recado, patient, from);
 
     // Espelhar para clínica (isolado: notificarClinica nunca lança)
