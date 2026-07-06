@@ -68,7 +68,7 @@
   .icon-btn.armed::after{content:'';position:absolute;width:7px;height:7px;border-radius:50%;background:var(--green);margin:-14px 0 0 14px;box-shadow:0 0 0 2px var(--header);}
   #btn-sound{position:relative;}
   /* Barra de status GLOBAL da Ana (visível a todos; clique abre controle admin) */
-  .ana-bar{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:1px solid var(--border);user-select:none;background:var(--header);color:var(--muted);}
+  .ana-bar{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:13px;font-weight:600;cursor:default;border-bottom:1px solid var(--border);user-select:none;background:var(--header);color:var(--muted);}
   .ana-bar .ana-dot{width:9px;height:9px;border-radius:50%;background:#9aa5ac;flex:0 0 auto;}
   .ana-bar.on{background:#e7f8f0;color:#0a7a54;}
   .ana-bar.on .ana-dot{background:#00a884;}
@@ -180,10 +180,9 @@
         <button class="icon-btn" id="btn-logout" title="Sair">⎋</button>
       </div>
     </div>
-    <div class="ana-bar" id="ana-bar" title="Status global da Ana — clique para ativar/desativar (requer senha de administrador)">
+    <div class="ana-bar" id="ana-bar" title="Status global da Ana (somente leitura). O ligar/desligar é feito apenas pelo WhatsApp: #ANA ON / #ANA OFF.">
       <span class="ana-dot"></span>
       <span id="ana-label">Ana: verificando…</span>
-      <span class="ana-cog">⚙️ admin</span>
     </div>
     <div class="search-wrap">
       <div class="search-box">
@@ -1099,11 +1098,10 @@ $('#login-pass').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); doLogin
 $('#login-agent').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#login-pass').focus(); } };
 $('#btn-logout').onclick=logout;
 
-// ---------- Controle global da Ana (admin) ----------
-$('#ana-bar').onclick=openAnaModal;
-$('#ana-cancel').onclick=closeAnaModal;
-$('#ana-confirm').onclick=confirmAnaToggle;
-$('#ana-pass').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); confirmAnaToggle(); } };
+// ---------- Status global da Ana (somente leitura) ----------
+// O ligar/desligar da Ana NÃO é feito pelo painel web: é exclusivo do WhatsApp
+// (#ANA ON / #ANA OFF, números em NUMEROS_ADMIN). A barra apenas EXIBE o estado.
+// Por isso não há mais handler de clique/modal de senha aqui.
 
 // ---------- Alerta sonoro: sino + desbloqueio de áudio ----------
 $('#btn-sound').onclick=toggleSound;

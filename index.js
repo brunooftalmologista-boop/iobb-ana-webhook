@@ -1865,23 +1865,20 @@ app.post("/api/settings", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ===== Controle GLOBAL da Ana (ligar/desligar) — mesmo flag do #ANA ON/OFF =====
-// GET: qualquer secretária logada consulta o estado (para exibir no painel).
-// POST: exige a SENHA DE ADMIN (ADMIN_PASSWORD), validada aqui no backend, para
-// alterar o flag global `anaAtiva` — persistido em settings.ai_enabled, igual ao
-// comando #ANA. Ambas as rotas já passam por requirePanelAuth (login da equipe).
+// ===== Controle GLOBAL da Ana (ligar/desligar) =====
+// GET: qualquer secretária logada consulta o estado (para exibir no painel — só leitura).
+// O ligar/desligar global NÃO é mais permitido pelo painel web: é exclusivo do
+// comando #ANA ON/OFF no WhatsApp (números em NUMEROS_ADMIN). A rota POST abaixo
+// existe apenas para recusar qualquer tentativa vinda do web de forma explícita.
 app.get("/api/ana-status", async (req, res) => {
   res.json({ ativa: anaAtiva });
 });
 app.post("/api/ana-toggle", async (req, res) => {
-  const { ativa, adminPassword } = req.body || {};
-  if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
-    return res.status(403).json({ ok: false, error: "Senha de administrador incorreta." });
-  }
-  anaAtiva = !!ativa;
-  await supabase.from("settings").upsert({ key: "ai_enabled", value: anaAtiva ? "true" : "false" });
-  console.log(`[Admin] Ana ${anaAtiva ? "ATIVADA" : "DESATIVADA"} pelo painel (senha admin OK).`);
-  res.json({ ok: true, ativa: anaAtiva });
+  console.log("[Admin] Tentativa de ligar/desligar a Ana pelo painel web — recusada (controle é exclusivo do WhatsApp #ANA).");
+  return res.status(403).json({
+    ok: false,
+    error: "O ligar/desligar da Ana é feito apenas pelo WhatsApp (#ANA ON / #ANA OFF).",
+  });
 });
 
 // Dispara o relatório do Google Ads sob demanda (painel). Envia pelo WhatsApp
