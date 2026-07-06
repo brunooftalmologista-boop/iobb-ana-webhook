@@ -126,6 +126,14 @@
   .emoji-panel.show{display:grid;}
   .emoji-panel button{font-size:22px;padding:4px;border-radius:6px;}
   .emoji-panel button:hover{background:var(--hover);}
+  /* Respostas rápidas (atalho "/") */
+  .qr-panel{position:absolute;bottom:70px;left:12px;right:64px;max-width:520px;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.2);padding:6px;display:none;flex-direction:column;gap:2px;z-index:21;max-height:300px;overflow-y:auto;}
+  .qr-panel.show{display:flex;}
+  .qr-hint{font-size:11.5px;color:var(--muted);padding:4px 10px 6px;border-bottom:1px solid var(--border);margin-bottom:2px;}
+  .qr-item{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:8px;cursor:pointer;}
+  .qr-item.sel,.qr-item:hover{background:var(--hover);}
+  .qr-item .qr-cmd{font-size:12.5px;font-weight:700;color:var(--green-dark);}
+  .qr-item .qr-prev{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:20px;background:var(--header);}
   .empty .big{width:220px;height:220px;border-radius:50%;background:#dae0e2;display:flex;align-items:center;justify-content:center;font-size:90px;margin-bottom:24px;color:#c0c8cc;}
@@ -230,6 +238,7 @@
       </div>
 
       <div class="emoji-panel" id="emoji-panel"></div>
+      <div class="qr-panel" id="qr-panel"></div>
       <div class="composer">
         <button class="icon-btn" id="btn-emoji" title="Emoji">😀</button>
         <button class="icon-btn" id="btn-attach" title="Anexar arquivo">📎</button>
@@ -393,7 +402,7 @@ const el = {
   cName: $('#c-name'), cStatus: $('#c-status'), cAvatar: $('#c-avatar'),
   input: $('#input'), typing: $('#typing'),
   anaToggle: $('#ana-toggle'), anaSwitch: $('#ana-switch'),
-  emojiPanel: $('#emoji-panel'),
+  emojiPanel: $('#emoji-panel'), qrPanel: $('#qr-panel'),
 };
 
 // ---------- Utilidades ----------
@@ -966,6 +975,135 @@ function buildEmoji(){
   });
 }
 
+// ---------- Respostas rápidas (atalho "/") ----------
+// Mensagens prontas para a secretária enviar. Para editar/adicionar, mexa aqui:
+// cada item tem cmd (atalho), label (título na lista) e text (o que é inserido).
+// Use ____ (underscores) onde a secretária deve preencher — o cursor pula pra lá.
+const QUICK_REPLIES=[
+  // ----- Consulta e informações gerais -----
+  { cmd:'/valor', label:'Valor da consulta particular',
+    text:'A consulta particular é R$ 200,00. 😊 Aceitamos PIX, cartão de débito ou crédito. Deseja que eu verifique um horário para você?' },
+  { cmd:'/horario', label:'Telefone e horário de funcionamento',
+    text:'Nosso atendimento é de segunda a sexta, das 8h às 18h (intervalo de almoço das 13h às 14h). 😊 Telefone: (61) 3033-6605. Não atendemos aos sábados, domingos e feriados.' },
+  { cmd:'/unidades', label:'Endereços e dias de atendimento',
+    text:'Temos duas unidades:\n\n📍 Conjunto Nacional (Asa Norte) — Sala 6017 · segundas, quartas e sextas\n📍 Taguatinga Shopping — Sala 615, Torre B · terças e quintas\n\nQual fica melhor para você?' },
+  { cmd:'/localizacao', label:'Enviar localização / como chegar',
+    text:'Vou te enviar a localização da unidade por aqui. 📍 Qualquer dúvida para chegar ou sobre estacionamento, é só me falar! 😊' },
+  { cmd:'/documentos', label:'O que levar na consulta',
+    text:'Para a consulta, leve por favor:\n• Documento com foto\n• Carteirinha do convênio (se tiver)\n• Exames oculares recentes\n• Os óculos ou a receita em uso, se houver 😊' },
+  { cmd:'/pagamento', label:'Formas de pagamento',
+    text:'Aceitamos PIX, cartão de débito e cartão de crédito. 😊 Para cirurgias, o parcelamento é em até 5x no cartão.' },
+  { cmd:'/consulta', label:'O que inclui a consulta (dilatação/jejum)',
+    text:'A consulta inclui a avaliação com o médico e, quando necessário, a prescrição de óculos. 😊 Pode haver dilatação da pupila conforme o caso — a visão fica embaçada por algumas horas, então é bom vir acompanhado(a) e evitar dirigir na volta. Não é preciso jejum.' },
+  { cmd:'/oculos', label:'Conferência de óculos (não precisa agendar)',
+    text:'Para conferência de óculos não é preciso agendar. 😊 É só comparecer com os óculos e a receita no nosso horário de atendimento.' },
+  { cmd:'/idade', label:'Faixa etária (a partir de 8 anos)',
+    text:'Atendemos a partir de 8 anos. 😊 Crianças de 8 anos ou mais são atendidas normalmente, inclusive para óculos.' },
+  { cmd:'/crianca', label:'Criança com menos de 8 anos',
+    text:'Para crianças com menos de 8 anos, o agendamento é avaliado pela nossa equipe. 😊 Pode falar com a gente pelo (61) 3033-6605 (seg a sex, 8h às 18h) que confirmamos certinho para você.' },
+  { cmd:'/fimdesemana', label:'Não atende fim de semana / feriado',
+    text:'Não temos atendimento aos sábados, domingos e feriados. 😊 Posso agendar para o próximo dia útil da unidade que você preferir?' },
+  { cmd:'/atestado', label:'Atestados, laudos e relatórios',
+    text:'Atestados, laudos e relatórios são avaliados e emitidos pelo médico durante a consulta, conforme o caso. 😊' },
+
+  // ----- Convênios -----
+  { cmd:'/convenio', label:'Perguntar qual é o convênio',
+    text:'Para confirmar a cobertura, me informa o nome do seu convênio, por favor? 😊 Assim já verifico certinho para você.' },
+  { cmd:'/convenio-sim', label:'Atende o convênio (positivo)',
+    text:'Sim, atendemos o convênio ____! 😊 A consulta é pelo plano, você não paga o valor particular. Deseja que eu verifique um horário?' },
+  { cmd:'/convenio-nao', label:'Não atende + oferece particular',
+    text:'No momento não atendemos o convênio ____. 😊 Mas posso te atender de forma particular: a consulta é R$ 200,00 (PIX, débito ou crédito). Quer que eu verifique um horário?' },
+  { cmd:'/unimed', label:'Unimed — pedir carteirinha',
+    text:'Para Unimed, você pode me enviar o número da carteirinha ou uma foto dela, por favor? 😊 Assim confirmo a cobertura certinho.' },
+
+  // ----- Cirurgias -----
+  { cmd:'/catarata', label:'Cirurgia de catarata (valor)',
+    text:'A cirurgia de catarata é R$ 5.000,00 por olho (inclui honorários médicos, bloco cirúrgico e anestesista). 😊 A lente intraocular é cobrada à parte, com valor conforme a lente escolhida, definido na avaliação. A indicação é sempre confirmada em consulta.' },
+  { cmd:'/refrativa', label:'Cirurgia refrativa a laser (miopia/astig.)',
+    text:'A cirurgia refrativa a laser corrige miopia, hipermetropia e astigmatismo, reduzindo a dependência dos óculos. 😊 O primeiro passo é sempre uma avaliação completa, que verifica com exames se a pessoa é candidata e a melhor técnica. Os valores e as condições são apresentados na própria avaliação. Posso agendar essa avaliação para você?' },
+  { cmd:'/crosslinking', label:'Crosslinking (valor)',
+    text:'O crosslinking é R$ 5.980,00 por olho, em até 5x no cartão. 😊 É um procedimento que visa estabilizar a progressão do ceratocone — a indicação é sempre definida pelo médico na avaliação.' },
+  { cmd:'/anel', label:'Anel de Ferrara (valor)',
+    text:'O anel de Ferrara (anel intraestromal) é R$ 8.700,00 por olho, em até 5x no cartão. 😊 A indicação é sempre confirmada na avaliação com o médico.' },
+  { cmd:'/ceratocone', label:'Ceratocone (referência / tratamentos)',
+    text:'Somos referência em ceratocone. 😊 Conforme cada caso, oferecemos crosslinking, anel de Ferrara e lentes de contato especiais (rígidas/esclerais). A melhor conduta é sempre definida pelo médico na avaliação. Posso agendar uma consulta para você?' },
+  { cmd:'/naorealizamos', label:'Cirurgia que NÃO realizamos + 2ª opinião',
+    text:'Esse procedimento nós não realizamos aqui. 😊 O ideal é procurar um serviço especializado nele. Se quiser, podemos oferecer uma consulta de avaliação / segunda opinião conosco — a cirurgia em si não é feita aqui.' },
+  { cmd:'/glaucoma', label:'Glaucoma (acompanhamento sim, cirurgia não)',
+    text:'Para glaucoma, fazemos os exames de acompanhamento (tonometria, curva de pressão, gonioscopia), mas não realizamos a cirurgia de glaucoma. 😊 Posso agendar uma consulta de avaliação?' },
+  { cmd:'/pterigio', label:'Pterígio / "carne no olho" (não operamos)',
+    text:'A cirurgia de pterígio (a "carne no olho") nós não realizamos aqui. 😊 O ideal é procurar um serviço especializado. Se quiser, podemos oferecer uma consulta de avaliação conosco.' },
+
+  // ----- Lentes de contato -----
+  { cmd:'/esclerais', label:'Lentes esclerais (valores)',
+    text:'Sobre as lentes esclerais 😊:\n• Esclera SG — R$ 7.800,00 o par / R$ 4.280,00 a unidade\n• ZenLens — R$ 5.980,00 o par\nO modelo ideal é definido na consulta com a especialista, conforme a sua córnea e adaptação.' },
+  { cmd:'/testelente', label:'Teste de lentes (valores)',
+    text:'O teste de lentes é particular e feito apenas no Conjunto Nacional 😊: gelatinosas R$ 120,00 · rígidas/esclerais R$ 150,00. Damos preferência a PIX e débito.' },
+
+  // ----- Exames -----
+  { cmd:'/exames', label:'Exames que realizamos',
+    text:'Realizamos, entre outros: Pentacam, Paquimetria, Topografia, Microscopia Especular, Retinografia, Tonometria, Curva de Pressão (CDPO), Mapeamento de Retina, Gonioscopia, Teste de Lente de Contato, Teste de Visão Cromática e Estereopsia. 😊 Me diz qual exame você precisa que eu confirmo os detalhes.' },
+  { cmd:'/exameconvenio', label:'Exame coberto pelo convênio',
+    text:'Pelo seu convênio, os exames de rotina são cobertos — você não paga nada por eles. 😊' },
+  { cmd:'/pentacam', label:'Pentacam (valor / unidade)',
+    text:'O Pentacam é R$ 300,00 (particular) e é realizado apenas na unidade do Conjunto Nacional. 😊' },
+  { cmd:'/campimetria', label:'Campimetria (não realizamos)',
+    text:'A campimetria não é um exame que realizamos aqui. 😊 Posso ajudar com mais alguma coisa?' },
+  { cmd:'/exameconfirmar', label:'Exame não listado (confirmar com equipe)',
+    text:'Sobre esse exame, deixa eu confirmar com a equipe se realizamos, tá? 😊 Se preferir, já posso agendar uma consulta de avaliação.' },
+  { cmd:'/detran', label:'Exame CNH / DETRAN',
+    text:'O exame oficial do DETRAN é feito em clínicas credenciadas, então não emitimos esse laudo específico. 😊 Mas posso agendar uma consulta oftalmológica comum, se você quiser.' },
+
+  // ----- Agendamento -----
+  { cmd:'/preferencia', label:'Coletar dados / preferência de agendamento',
+    text:'Para deixar tudo encaminhado, me passa por favor 😊: seu nome completo, telefone, a unidade que prefere (Conjunto Nacional ou Taguatinga), o período (manhã ou tarde) e se é convênio ou particular. Nossa equipe confirma o horário e retorna.' },
+  { cmd:'/confirmar', label:'Confirmar horário de consulta',
+    text:'Olá, ____! 😊 Passando para confirmar sua consulta no dia ____ às ____, na unidade ____. Podemos confirmar?' },
+  { cmd:'/reagendar', label:'Reagendamento de consulta',
+    text:'Claro, podemos reagendar! 😊 Qual dia e período ficam melhores para você — manhã ou tarde? Assim já verifico a disponibilidade.' },
+  { cmd:'/recado', label:'Deixar recado para a equipe',
+    text:'Vou deixar seu recado com a nossa equipe e retornamos pelo WhatsApp assim que possível, dentro do horário de atendimento (seg a sex, 8h às 18h). 😊' },
+
+  // ----- Urgência -----
+  { cmd:'/urgencia', label:'Sintoma agudo / urgência',
+    text:'Para sintomas mais fortes (dor intensa, perda súbita de visão, trauma ou vermelhidão intensa), o ideal é atendimento imediato. 😊 No horário comercial, ligue para (61) 3033-6605. Fora do horário ou no fim de semana, procure um pronto-socorro oftalmológico, por favor.' },
+];
+let qrOpen=false, qrItems=[], qrIndex=0;
+
+function qrRender(){
+  el.qrPanel.innerHTML='<div class="qr-hint">Respostas rápidas · ↑↓ navega · Enter/Tab escolhe · Esc fecha</div>'+
+    qrItems.map((r,i)=>`<div class="qr-item${i===qrIndex?' sel':''}" data-i="${i}">`+
+      `<span class="qr-cmd">${r.cmd} · ${r.label}</span>`+
+      `<span class="qr-prev">${r.text.replace(/\n/g,' ')}</span></div>`).join('');
+  el.qrPanel.querySelectorAll('.qr-item').forEach(d=>{
+    d.onmousedown=e=>{ e.preventDefault(); qrApply(+d.dataset.i); };
+  });
+  const sel=el.qrPanel.querySelector('.qr-item.sel');
+  if(sel) sel.scrollIntoView({block:'nearest'});
+}
+function qrUpdate(){
+  const m=el.input.value.match(/^\/(\S*)$/);
+  if(!m){ qrClose(); return; }
+  const q=m[1].toLowerCase();
+  // Pontua para o atalho vir antes do rótulo, e prefixo antes de "contém".
+  const score=r=>{ const c=r.cmd.slice(1).toLowerCase(), l=r.label.toLowerCase();
+    if(!q) return 0;
+    if(c.startsWith(q)) return 0; if(c.includes(q)) return 1;
+    if(l.startsWith(q)) return 2; if(l.includes(q)) return 3; return 99; };
+  qrItems=QUICK_REPLIES.map((r,idx)=>({r,s:score(r),idx})).filter(x=>x.s<99)
+    .sort((a,b)=>a.s-b.s||a.idx-b.idx).map(x=>x.r);
+  if(!qrItems.length){ qrClose(); return; }
+  qrIndex=0; qrOpen=true; el.qrPanel.classList.add('show'); qrRender();
+}
+function qrApply(i){
+  const r=qrItems[i]; if(!r) return;
+  el.input.value=r.text; qrClose(); autoGrow(); el.input.focus();
+  const ph=r.text.search(/_{2,}/); // pula pro 1º campo a preencher, se houver
+  if(ph>=0){ const len=r.text.slice(ph).match(/^_+/)[0].length; el.input.setSelectionRange(ph,ph+len); }
+  else el.input.setSelectionRange(r.text.length,r.text.length);
+}
+function qrClose(){ qrOpen=false; el.qrPanel.classList.remove('show'); }
+
 // ---------- Config modal ----------
 function openConfig(){
   $('#cfg-api').value=API_BASE; $('#cfg-agent').value=AGENT;
@@ -1083,8 +1221,17 @@ $('#tab-closed').onclick=()=>switchTab('closed');
 el.anaToggle.onclick=toggleAna;
 $('#btn-emoji').onclick=()=>el.emojiPanel.classList.toggle('show');
 document.addEventListener('click',e=>{ if(!e.target.closest('#emoji-panel,#btn-emoji')) el.emojiPanel.classList.remove('show'); });
-el.input.oninput=autoGrow;
-el.input.onkeydown=e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); } };
+el.input.oninput=()=>{ autoGrow(); qrUpdate(); };
+el.input.onkeydown=e=>{
+  if(qrOpen){
+    if(e.key==='ArrowDown'){ e.preventDefault(); qrIndex=(qrIndex+1)%qrItems.length; qrRender(); return; }
+    if(e.key==='ArrowUp'){ e.preventDefault(); qrIndex=(qrIndex-1+qrItems.length)%qrItems.length; qrRender(); return; }
+    if(e.key==='Enter'||e.key==='Tab'){ e.preventDefault(); qrApply(qrIndex); return; }
+    if(e.key==='Escape'){ e.preventDefault(); qrClose(); return; }
+  }
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); }
+};
+document.addEventListener('click',e=>{ if(!e.target.closest('#qr-panel,#input')) qrClose(); });
 $('#cfg-cancel').onclick=closeConfig;
 $('#cfg-save').onclick=()=>{
   API_BASE=$('#cfg-api').value.trim(); AGENT=$('#cfg-agent').value.trim()||'Secretária';
