@@ -72,6 +72,52 @@ function isTestMode() {
   return !process.env.GOOGLE_ADS_DEVELOPER_TOKEN || !process.env.GOOGLE_ADS_REFRESH_TOKEN;
 }
 
+// Explica em texto por que estamos (ou não) em modo teste — para log e relatório.
+function testModeReason() {
+  if (process.env.GOOGLE_ADS_TEST_MODE === "true") return "GOOGLE_ADS_TEST_MODE=true força o modo teste";
+  const missing = [];
+  if (!process.env.GOOGLE_ADS_DEVELOPER_TOKEN) missing.push("GOOGLE_ADS_DEVELOPER_TOKEN");
+  if (!process.env.GOOGLE_ADS_REFRESH_TOKEN) missing.push("GOOGLE_ADS_REFRESH_TOKEN");
+  return missing.length ? `faltando credencial(is): ${missing.join(", ")}` : "credenciais presentes";
+}
+
+// Mascara um ID/segredo para logar sem vazar (mostra só os últimos 4).
+function mask(v) {
+  if (!v) return "(vazio)";
+  const s = String(v);
+  return s.length <= 4 ? "****" : "…" + s.slice(-4);
+}
+
+// Estado do último fetch para o relatório saber a origem dos dados.
+// source: "real" | "mock-teste" | "mock-fallback"
+let lastFetchDiag = { source: null, error: null, count: 0, reason: null };
+let lastApiError = null;
+
+// Extrai a mensagem/código úteis de um erro da google-ads-api (GoogleAdsFailure),
+// que traz um array `errors` com { error_code: {<tipo>: <valor>}, message }.
+function describeAdsError(e) {
+  const lines = [];
+  const errs = e?.errors || e?.failure?.errors;
+  if (Array.isArray(errs) && errs.length) {
+    for (const er of errs) {
+      let code = "";
+      const ec = er.error_code || er.errorCode;
+      if (ec && typeof ec === "object") {
+        const k = Object.keys(ec).find(key => ec[key] != null && ec[key] !== "UNSPECIFIED" && ec[key] !== "UNKNOWN");
+        if (k) code = `${k}=${ec[k]}`;
+      }
+      lines.push([code, er.message].filter(Boolean).join(": "));
+    }
+  }
+  if (!lines.length) {
+    if (e?.message) lines.push(e.message);
+    if (e?.code != null) lines.push(`grpc_code=${e.code}`);
+  }
+  const requestId = e?.request_id || e?.requestId || e?.metadata?.request_id ||
+    (typeof e?.metadata?.get === "function" ? e.metadata.get("request-id")?.[0] : undefined);
+  return { text: lines.join(" | ") || "erro desconhecido", requestId };
+}
+
 function classifyGoal(campaign) {
   const name = (campaign.name || "").toLowerCase();
   for (const g of GOALS) {
@@ -141,7 +187,15 @@ function buildReport(campaigns) {
   const L = [];
   L.push("📊 *Relatório semanal — Google Ads IOBB*");
   L.push(`🗓️ Período: ${d(start)} a ${d(end)} (7 dias)`);
-  if (isTestMode()) L.push("🧪 _MODO TESTE — dados simulados. Troque as credenciais para dados reais._");
+  // Banner de origem dos dados (baseado no último fetch).
+  if (lastFetchDiag.source === "mock-fallback") {
+    L.push("⚠️ _FALHA NA API do Google Ads — mostrando dados SIMULADOS (fallback)._");
+    L.push(`❌ _Erro: ${lastFetchDiag.error?.text || "desconhecido"}${lastFetchDiag.error?.requestId ? ` (request_id=${lastFetchDiag.error.requestId})` : ""}_`);
+  } else if (lastFetchDiag.source === "mock-teste" || (lastFetchDiag.source === null && isTestMode())) {
+    L.push(`🧪 _MODO TESTE — dados simulados (${lastFetchDiag.reason || testModeReason()}). Troque/complete as credenciais para dados reais._`);
+  } else if (lastFetchDiag.source === "real") {
+    L.push("🟢 _Dados REAIS da conta (Google Ads API)._");
+  }
   L.push("");
   L.push("*Resumo geral*");
   L.push(`• Investimento: ${brl(totalCost)}`);
@@ -243,6 +297,19 @@ async function fetchRealCampaigns() {
     return null;
   }
   try {
+    // Sanidade das credenciais antes de chamar (evita erro genérico da lib).
+    const required = ["GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET", "GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_REFRESH_TOKEN", "GOOGLE_ADS_CUSTOMER_ID"];
+    const missing = required.filter(k => !process.env[k]);
+    if (missing.length) {
+      lastApiError = { text: `credenciais ausentes: ${missing.join(", ")}`, requestId: undefined };
+      console.error("[GoogleAds] ❌ Não posso chamar a API — " + lastApiError.text);
+      return null;
+    }
+    console.log(
+      `[GoogleAds] Tentando chamada REAL — customer_id=${mask(process.env.GOOGLE_ADS_CUSTOMER_ID)} ` +
+      `login_customer_id=${process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ? mask(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID) : "(nenhum)"} ` +
+      `dev_token=${mask(process.env.GOOGLE_ADS_DEVELOPER_TOKEN)} refresh_token=${mask(process.env.GOOGLE_ADS_REFRESH_TOKEN)}`
+    );
     const client = new GoogleAdsApi({
       client_id: process.env.GOOGLE_ADS_CLIENT_ID,
       client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET,
@@ -271,6 +338,8 @@ async function fetchRealCampaigns() {
       WHERE campaign.status = 'ENABLED'
         AND segments.date DURING LAST_7_DAYS
     `);
+    lastApiError = null;
+    console.log(`[GoogleAds] ✅ API REAL respondeu com sucesso: ${rows.length} campanha(s) ENABLED nos últimos 7 dias.`);
     return rows.map(r => ({
       id: String(r.campaign.id),
       name: r.campaign.name,
@@ -286,18 +355,31 @@ async function fetchRealCampaigns() {
       searchRankLostIS: Number(r.metrics.search_rank_lost_impression_share || 0),
     }));
   } catch (e) {
-    console.error("[GoogleAds] Falha ao consultar a API:", e?.errors?.[0]?.message || e.message);
+    const d = describeAdsError(e);
+    lastApiError = d;
+    console.error(`[GoogleAds] ❌ Falha na chamada REAL à API: ${d.text}` + (d.requestId ? ` (request_id=${d.requestId})` : ""));
+    try {
+      // Dump bruto (limitado) para diagnóstico fino no log do Render.
+      console.error("[GoogleAds] Erro bruto:", JSON.stringify(e, Object.getOwnPropertyNames(e)).slice(0, 2000));
+    } catch (_) {}
     return null;
   }
 }
 
 async function fetchCampaigns() {
-  if (isTestMode()) return mockCampaigns();
-  const real = await fetchRealCampaigns();
-  if (!real) {
-    console.error("[GoogleAds] Consulta real falhou — usando dados simulados como fallback.");
+  if (isTestMode()) {
+    lastFetchDiag = { source: "mock-teste", error: null, count: 0, reason: testModeReason() };
+    console.log(`[GoogleAds] Modo TESTE (dados simulados) — motivo: ${lastFetchDiag.reason}.`);
     return mockCampaigns();
   }
+  const real = await fetchRealCampaigns();
+  if (!real) {
+    lastFetchDiag = { source: "mock-fallback", error: lastApiError, count: 0, reason: "chamada real falhou" };
+    console.error("[GoogleAds] ⚠️ Consulta real falhou — usando dados simulados como FALLBACK. Erro: " +
+      (lastApiError?.text || "desconhecido"));
+    return mockCampaigns();
+  }
+  lastFetchDiag = { source: "real", error: null, count: real.length, reason: null };
   return real;
 }
 
