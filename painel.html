@@ -978,119 +978,142 @@ function buildEmoji(){
 // ---------- Respostas rápidas (atalho "/") ----------
 // Mensagens prontas para a secretária enviar. Para editar/adicionar, mexa aqui:
 // cada item tem cmd (atalho), label (título na lista) e text (o que é inserido).
-// Use ____ (underscores) onde a secretária deve preencher — o cursor pula pra lá.
+// Use marcadores [NOME], [DATA], [HORÁRIO], [UNIDADE], [CONVÊNIO] onde houver
+// dado variável — ao inserir, o cursor pula automaticamente pro primeiro marcador.
 const QUICK_REPLIES=[
-  // ----- Saudações -----
+  // ===== Saudação e abertura =====
   { cmd:'/bomdia', label:'Saudação — Bom dia',
-    text:'Bom dia! 😊 Sou responsável pelo agendamento do Instituto de Olhos Bruno Borges. Em que posso ajudá-lo(a)?' },
+    text:'Bom dia. Sou responsável pelo agendamento do Instituto de Olhos Bruno Borges. Como posso ajudar?' },
   { cmd:'/boatarde', label:'Saudação — Boa tarde',
-    text:'Boa tarde! 😊 Sou responsável pelo agendamento do Instituto de Olhos Bruno Borges. Em que posso ajudá-lo(a)?' },
+    text:'Boa tarde. Sou responsável pelo agendamento do Instituto de Olhos Bruno Borges. Como posso ajudar?' },
   { cmd:'/saudacao', label:'Saudação — genérica',
-    text:'Olá! 😊 Sou responsável pelo agendamento do Instituto de Olhos Bruno Borges. Em que posso ajudá-lo(a)?' },
+    text:'Olá. Sou responsável pelo agendamento do Instituto de Olhos Bruno Borges. Como posso ajudar?' },
+  { cmd:'/aguarde', label:'Pedir um momento ao paciente',
+    text:'Um momento, por gentileza. Vou verificar essa informação e retorno em instantes.' },
 
-  // ----- Consulta e informações gerais -----
+  // ===== Agendamento =====
+  { cmd:'/preferencia', label:'Coletar dados para o agendamento',
+    text:'Para darmos andamento ao agendamento, poderia me informar, por gentileza: nome completo, telefone, a unidade de preferência (Conjunto Nacional ou Taguatinga), o período (manhã ou tarde) e se será por convênio ou particular?' },
+  { cmd:'/oferecerhorario', label:'Oferecer horário disponível',
+    text:'Temos horário disponível no dia [DATA], às [HORÁRIO], na unidade [UNIDADE]. O horário é conveniente para você?' },
+  { cmd:'/confirmar', label:'Confirmação de atendimento (genérica)',
+    text:'Olá, [NOME]. Confirmação do seu atendimento:\nData e horário: [DATA] às [HORÁRIO]\nLocal: unidade [UNIDADE] (enviaremos a localização por aqui)\nCaso utilize lentes de contato, suspenda o uso antes do atendimento: 24 horas para gelatinosas e 48 horas para rígidas/esclerais, o que é essencial para a precisão dos exames da córnea.\nPermaneço à disposição.' },
+  { cmd:'/confirmar-cn', label:'Confirmação — Conjunto Nacional',
+    text:'Olá, [NOME]. Confirmação do seu atendimento:\nData e horário: [DATA] às [HORÁRIO]\nLocal: Conjunto Nacional (Asa Norte) — Sala 6017 (enviaremos a localização por aqui)\nCaso utilize lentes de contato, suspenda o uso antes: 24 horas para gelatinosas e 48 horas para rígidas/esclerais, importante para a precisão dos exames da córnea.\nPermaneço à disposição.' },
+  { cmd:'/confirmar-tag', label:'Confirmação — Taguatinga Shopping',
+    text:'Olá, [NOME]. Confirmação do seu atendimento:\nData e horário: [DATA] às [HORÁRIO]\nLocal: Taguatinga Shopping — Sala 615, Torre B (enviaremos a localização por aqui)\nCaso utilize lentes de contato, suspenda o uso antes: 24 horas para gelatinosas e 48 horas para rígidas/esclerais, importante para a precisão dos exames da córnea.\nPermaneço à disposição.' },
+  { cmd:'/remarcar', label:'Remarcar / reagendar atendimento',
+    text:'Podemos remarcar o seu atendimento. Por gentileza, qual data e período seriam mais convenientes — manhã ou tarde? Verificarei a disponibilidade.' },
+  { cmd:'/cancelar', label:'Cancelar atendimento',
+    text:'Certo, registrarei o cancelamento do seu atendimento. Caso deseje reagendar futuramente, permaneço à disposição.' },
+  { cmd:'/lembrete', label:'Lembrete na véspera do atendimento',
+    text:'Olá, [NOME]. Lembramos do seu atendimento amanhã, dia [DATA], às [HORÁRIO], na unidade [UNIDADE]. Podemos confirmar a sua presença?' },
+  { cmd:'/retorno', label:'Retorno / revisão de consulta',
+    text:'Para o seu retorno ou revisão, poderia informar a unidade de preferência (Conjunto Nacional ou Taguatinga) e o período (manhã ou tarde)? Verificarei a disponibilidade.' },
+  { cmd:'/recado', label:'Registrar solicitação (equipe retorna)',
+    text:'Registrei a sua solicitação. Nossa equipe entrará em contato o mais breve possível, dentro do horário de atendimento (segunda a sexta, das 8h às 18h).' },
+
+  // ===== Valores e convênios =====
   { cmd:'/valor', label:'Valor da consulta particular',
-    text:'A consulta particular tem o valor de R$ 200,00. Aceitamos PIX, cartão de débito e cartão de crédito. Temos horários disponíveis — gostaria de agendar? 😊' },
-  { cmd:'/horario', label:'Telefone e horário de funcionamento',
-    text:'Nosso atendimento é de segunda a sexta-feira, das 8h às 18h (intervalo de almoço das 13h às 14h). Telefone: (61) 3033-6605. Não há atendimento aos sábados, domingos e feriados.' },
-  { cmd:'/unidades', label:'Endereços e dias de atendimento',
-    text:'Contamos com duas unidades:\n\n📍 Conjunto Nacional (Asa Norte) — Sala 6017 · segundas, quartas e sextas\n📍 Taguatinga Shopping — Sala 615, Torre B · terças e quintas\n\nQual delas seria mais conveniente?' },
-  { cmd:'/localizacao', label:'Enviar localização / como chegar',
-    text:'Enviarei a localização da unidade por aqui. 📍 Em caso de dúvida para chegar ou sobre estacionamento, permaneço à disposição.' },
-  { cmd:'/documentos', label:'O que levar na consulta',
-    text:'Para a consulta, solicitamos que traga, por gentileza:\n• Documento com foto\n• Carteirinha do convênio (caso possua)\n• Exames oculares recentes\n• Os óculos ou a receita em uso, se houver' },
+    text:'A consulta particular tem o valor de R$ 200,00. Aceitamos PIX, cartão de débito e cartão de crédito. Temos horário disponível — deseja agendar?' },
+  { cmd:'/convenio', label:'Perguntar qual é o convênio',
+    text:'Para confirmarmos a cobertura, poderia informar o nome do seu convênio, por gentileza?' },
+  { cmd:'/convenio-sim', label:'Convênio aceito (positivo)',
+    text:'Atendemos o convênio [CONVÊNIO]. A consulta é realizada pelo plano, sem cobrança do valor particular. Temos horário disponível — deseja agendar?' },
+  { cmd:'/convenio-nao', label:'Convênio não aceito + oferece particular',
+    text:'No momento não atendemos o convênio [CONVÊNIO]. Contudo, temos horário disponível para atendimento particular: a consulta tem o valor de R$ 200,00 (PIX, débito ou crédito). Deseja agendar?' },
+  { cmd:'/geap', label:'GEAP não é atendido + oferece particular',
+    text:'No momento não atendemos o convênio GEAP. Contudo, temos horário disponível para atendimento particular: a consulta tem o valor de R$ 200,00 (PIX, débito ou crédito). Deseja agendar?' },
+  { cmd:'/unimed', label:'Unimed — pedir carteirinha',
+    text:'Para o convênio Unimed, poderia enviar o número da carteirinha ou uma foto dela, por gentileza? Assim confirmaremos a cobertura.' },
   { cmd:'/pagamento', label:'Formas de pagamento',
     text:'Aceitamos PIX, cartão de débito e cartão de crédito. Para cirurgias, o parcelamento é em até 5x no cartão.' },
+
+  // ===== Unidades e horário =====
+  { cmd:'/unidades', label:'Unidades e dias de atendimento',
+    text:'Contamos com duas unidades:\n• Conjunto Nacional (Asa Norte, região central) — Sala 6017 · atendimento às segundas, quartas e sextas\n• Taguatinga Shopping — Sala 615, Torre B · atendimento às terças e quintas\nQual seria mais conveniente?' },
+  { cmd:'/endereco-cn', label:'Endereço — Conjunto Nacional',
+    text:'Unidade Conjunto Nacional: Sala 6017, no Conjunto Nacional (Asa Norte, região central de Brasília). Atendimento às segundas, quartas e sextas.' },
+  { cmd:'/endereco-tag', label:'Endereço — Taguatinga Shopping',
+    text:'Unidade Taguatinga Shopping: Sala 615, Torre B, no Taguatinga Shopping. Atendimento às terças e quintas.' },
+  { cmd:'/acesso', label:'Enviar localização / como chegar',
+    text:'Posso enviar a localização e as orientações de acesso da unidade por aqui. Para qual delas você deseja — Conjunto Nacional ou Taguatinga?' },
+  { cmd:'/dias', label:'Dias de atendimento de cada unidade',
+    text:'Os dias de atendimento são: Conjunto Nacional às segundas, quartas e sextas; Taguatinga Shopping às terças e quintas.' },
+  { cmd:'/horario', label:'Telefone e horário de funcionamento',
+    text:'Nosso atendimento é de segunda a sexta-feira, das 8h às 18h (intervalo de almoço das 13h às 14h). Telefone: (61) 3033-6605. Não há atendimento aos sábados, domingos e feriados.' },
+  { cmd:'/fimdesemana', label:'Não atende fim de semana / feriado',
+    text:'Não há atendimento aos sábados, domingos e feriados. Podemos agendar para o próximo dia útil da unidade de sua preferência.' },
+  { cmd:'/forahorario', label:'Mensagem fora do horário de atendimento',
+    text:'No momento estamos fora do horário de atendimento (segunda a sexta, das 8h às 18h). Registrarei a sua mensagem e retornaremos o contato no próximo horário de expediente.' },
+
+  // ===== Consulta e preparo =====
   { cmd:'/consulta', label:'O que inclui a consulta (dilatação/jejum)',
-    text:'A consulta inclui a avaliação com o médico e, quando necessário, a prescrição de óculos. Conforme o caso, pode haver dilatação da pupila — a visão fica embaçada por algumas horas, portanto recomendamos vir acompanhado(a) e evitar dirigir no retorno. Não é necessário jejum.' },
-  { cmd:'/dilatacao', label:'Aviso sobre dilatação da pupila',
-    text:'Um aviso importante: conforme o caso, a consulta pode incluir dilatação da pupila. Nesse período a visão fica embaçada por algumas horas, portanto recomendamos vir acompanhado(a) e evitar dirigir no retorno.' },
+    text:'A consulta inclui a avaliação com o médico e, quando necessário, a prescrição de óculos. Conforme o caso, pode haver dilatação da pupila; nesse período a visão fica embaçada por algumas horas, portanto recomendamos vir acompanhado(a) e evitar dirigir no retorno. Não é necessário jejum.' },
+  { cmd:'/documentos', label:'O que levar na consulta',
+    text:'Para a consulta, solicitamos que traga: documento com foto, carteirinha do convênio (caso possua), exames oculares recentes e os óculos ou a receita em uso, se houver.' },
   { cmd:'/preparolentes', label:'Suspender lentes de contato antes do exame',
-    text:'Caso utilize lentes de contato, é importante suspender o uso antes dos exames da córnea (topografia, Pentacam) e da avaliação para cirurgia. O tempo indicado é de 24 horas para lentes gelatinosas e 48 horas para rígidas/esclerais.' },
+    text:'Caso utilize lentes de contato, é necessário suspender o uso antes dos exames da córnea (topografia, Pentacam) e da avaliação para cirurgia: 24 horas para lentes gelatinosas e 48 horas para rígidas/esclerais.' },
+  { cmd:'/dilatacao', label:'Aviso sobre dilatação da pupila',
+    text:'A consulta pode incluir dilatação da pupila, conforme o caso. Nesse período a visão fica embaçada por algumas horas, portanto recomendamos vir acompanhado(a) e evitar dirigir no retorno.' },
   { cmd:'/oculos', label:'Conferência de óculos (não precisa agendar)',
-    text:'Para a conferência de óculos não é necessário agendamento. Basta comparecer com os óculos e a receita em nosso horário de atendimento.' },
+    text:'Para a conferência de óculos não é necessário agendamento. Basta comparecer com os óculos e a receita no horário de atendimento.' },
   { cmd:'/idade', label:'Faixa etária (a partir de 8 anos)',
     text:'Atendemos a partir de 8 anos. Crianças de 8 anos ou mais são atendidas normalmente, inclusive para óculos.' },
   { cmd:'/crianca', label:'Criança com menos de 8 anos',
-    text:'Para crianças com menos de 8 anos, o agendamento é avaliado por nossa equipe. Por gentileza, entre em contato pelo (61) 3033-6605 (segunda a sexta, das 8h às 18h) para que possamos confirmar o atendimento.' },
-  { cmd:'/fimdesemana', label:'Não atende fim de semana / feriado',
-    text:'Não há atendimento aos sábados, domingos e feriados. Podemos agendar para o próximo dia útil da unidade de sua preferência.' },
+    text:'Para crianças com menos de 8 anos, o agendamento é avaliado por nossa equipe. Por gentileza, entre em contato pelo (61) 3033-6605 (segunda a sexta, das 8h às 18h) para confirmarmos o atendimento.' },
   { cmd:'/atestado', label:'Atestados, laudos e relatórios',
     text:'Atestados, laudos e relatórios são avaliados e emitidos pelo médico durante a consulta, conforme cada caso.' },
 
-  // ----- Convênios -----
-  { cmd:'/convenio', label:'Perguntar qual é o convênio',
-    text:'Para confirmarmos a cobertura, poderia nos informar o nome do seu convênio, por gentileza? Assim faremos a verificação.' },
-  { cmd:'/convenio-sim', label:'Atende o convênio (positivo)',
-    text:'Sim, atendemos o convênio ____. A consulta é realizada pelo plano, sem cobrança do valor particular. Temos horários disponíveis — gostaria de agendar? 😊' },
-  { cmd:'/convenio-nao', label:'Não atende + oferece particular',
-    text:'No momento não atendemos o convênio ____. Contudo, temos horário disponível para atendimento particular: a consulta é de R$ 200,00 (PIX, débito ou crédito). Gostaria de agendar?' },
-  { cmd:'/unimed', label:'Unimed — pedir carteirinha',
-    text:'Para o convênio Unimed, poderia nos enviar o número da carteirinha ou uma foto dela, por gentileza? Assim confirmamos a cobertura.' },
+  // ===== Exames =====
+  { cmd:'/exames', label:'Exames que realizamos',
+    text:'Realizamos, entre outros: Pentacam, Paquimetria, Topografia, Microscopia Especular, Retinografia, Tonometria, Curva de Pressão (CDPO), Mapeamento de Retina, Gonioscopia, Teste de Lente de Contato, Teste de Visão Cromática e Estereopsia. Por gentileza, informe qual exame necessita.' },
+  { cmd:'/exameconvenio', label:'Exame coberto pelo convênio',
+    text:'Pelo seu convênio, os exames de rotina são cobertos, sem cobrança.' },
+  { cmd:'/pentacam', label:'Pentacam (valor / unidade)',
+    text:'O Pentacam tem o valor de R$ 300,00 (particular) e é realizado apenas na unidade do Conjunto Nacional.' },
+  { cmd:'/topografia', label:'Topografia de córnea (ceratocone)',
+    text:'Realizamos a topografia de córnea, exame importante no acompanhamento do ceratocone. Caso utilize lentes de contato, é necessário suspendê-las antes: 24 horas para gelatinosas e 48 horas para rígidas/esclerais. Deseja agendar?' },
+  { cmd:'/campimetria', label:'Campimetria (não realizamos)',
+    text:'A campimetria não é um exame realizado em nossa clínica. Permaneço à disposição para ajudar em algo mais.' },
+  { cmd:'/exameconfirmar', label:'Exame não listado (confirmar com equipe)',
+    text:'Sobre esse exame, confirmarei com a equipe se o realizamos. Caso prefira, podemos agendar uma consulta de avaliação.' },
+  { cmd:'/detran', label:'Exame CNH / DETRAN',
+    text:'O exame oficial do DETRAN é realizado em clínicas credenciadas, portanto não emitimos esse laudo específico. Caso deseje, podemos agendar uma consulta oftalmológica comum.' },
 
-  // ----- Cirurgias -----
+  // ===== Procedimentos e cirurgias =====
+  { cmd:'/refrativa', label:'Cirurgia refrativa (conduz à avaliação)',
+    text:'A cirurgia refrativa a laser corrige miopia, hipermetropia e astigmatismo, reduzindo a dependência dos óculos. O primeiro passo é uma avaliação completa, que verifica, por meio de exames, se a pessoa é candidata e qual a melhor técnica. Os valores e as condições são apresentados na própria avaliação. Deseja agendar a avaliação?' },
   { cmd:'/catarata', label:'Cirurgia de catarata (valor)',
     text:'A cirurgia de catarata tem o valor de R$ 5.000,00 por olho (inclui honorários médicos, bloco cirúrgico e anestesista). A lente intraocular é cobrada à parte, com valor conforme a lente escolhida, definido na avaliação. A indicação é sempre confirmada em consulta.' },
-  { cmd:'/refrativa', label:'Cirurgia refrativa a laser (miopia/astig.)',
-    text:'A cirurgia refrativa a laser corrige miopia, hipermetropia e astigmatismo, reduzindo a dependência dos óculos. O primeiro passo é sempre uma avaliação completa, que verifica, por meio de exames, se a pessoa é candidata e qual a melhor técnica. Os valores e as condições são apresentados na própria avaliação. Podemos agendar a sua avaliação? 😊' },
+  { cmd:'/ceratocone', label:'Ceratocone (referência / tratamentos)',
+    text:'Somos referência em ceratocone. Conforme cada caso, oferecemos crosslinking, anel de Ferrara e lentes de contato especiais (rígidas/esclerais). A conduta é sempre definida pelo médico na avaliação. Deseja agendar uma consulta?' },
   { cmd:'/crosslinking', label:'Crosslinking (valor)',
-    text:'O crosslinking tem o valor de R$ 5.980,00 por olho, em até 5x no cartão. É um procedimento que visa estabilizar a progressão do ceratocone — a indicação é sempre definida pelo médico na avaliação.' },
+    text:'O crosslinking tem o valor de R$ 5.980,00 por olho, em até 5x no cartão. É um procedimento que visa estabilizar a progressão do ceratocone; a indicação é sempre definida pelo médico na avaliação.' },
   { cmd:'/anel', label:'Anel de Ferrara (valor)',
     text:'O anel de Ferrara (anel intraestromal) tem o valor de R$ 8.700,00 por olho, em até 5x no cartão. A indicação é sempre confirmada na avaliação com o médico.' },
-  { cmd:'/ceratocone', label:'Ceratocone (referência / tratamentos)',
-    text:'Somos referência em ceratocone. Conforme cada caso, oferecemos crosslinking, anel de Ferrara e lentes de contato especiais (rígidas/esclerais). A melhor conduta é sempre definida pelo médico na avaliação. Podemos agendar uma consulta? 😊' },
-  { cmd:'/naorealizamos', label:'Cirurgia que NÃO realizamos + 2ª opinião',
-    text:'Esse procedimento não é realizado em nossa clínica. O ideal é procurar um serviço especializado. Caso deseje, podemos oferecer uma consulta de avaliação / segunda opinião — a cirurgia em si não é realizada aqui.' },
+  { cmd:'/esclerais', label:'Lentes esclerais (valores)',
+    text:'Lentes esclerais:\n• Esclera SG — R$ 7.800,00 o par / R$ 4.280,00 a unidade\n• ZenLens — R$ 5.980,00 o par\nO modelo ideal é definido na consulta com a especialista, conforme a córnea e a adaptação de cada paciente.' },
+  { cmd:'/testelente', label:'Teste de lentes (valores)',
+    text:'O teste de lentes é particular e realizado apenas na unidade do Conjunto Nacional: gelatinosas R$ 120,00; rígidas/esclerais R$ 150,00. Damos preferência a PIX e débito.' },
+
+  // ===== Não realizamos / encaminhamento =====
+  { cmd:'/naorealizamos', label:'Procedimento não realizado + 2ª opinião',
+    text:'Esse procedimento não é realizado em nossa clínica. O ideal é procurar um serviço especializado. Caso deseje, podemos oferecer uma consulta de avaliação ou segunda opinião; a cirurgia em si não é realizada aqui.' },
   { cmd:'/glaucoma', label:'Glaucoma (acompanhamento sim, cirurgia não)',
     text:'Para glaucoma, realizamos os exames de acompanhamento (tonometria, curva de pressão, gonioscopia), porém não realizamos a cirurgia de glaucoma. Podemos agendar uma consulta de avaliação?' },
   { cmd:'/pterigio', label:'Pterígio / "carne no olho" (não operamos)',
     text:'A cirurgia de pterígio (a "carne no olho") não é realizada em nossa clínica. O ideal é procurar um serviço especializado. Caso deseje, podemos oferecer uma consulta de avaliação.' },
   { cmd:'/segundaopiniao', label:'Consulta de avaliação / segunda opinião',
-    text:'Com certeza, oferecemos consulta de avaliação / segunda opinião. Por gentileza, poderia informar a unidade de sua preferência (Conjunto Nacional ou Taguatinga) e o período (manhã ou tarde)? Assim faremos o encaminhamento.' },
+    text:'Oferecemos consulta de avaliação e segunda opinião. Por gentileza, informe a unidade de preferência (Conjunto Nacional ou Taguatinga) e o período (manhã ou tarde).' },
 
-  // ----- Lentes de contato -----
-  { cmd:'/esclerais', label:'Lentes esclerais (valores)',
-    text:'Sobre as lentes esclerais:\n• Esclera SG — R$ 7.800,00 o par / R$ 4.280,00 a unidade\n• ZenLens — R$ 5.980,00 o par\nO modelo ideal é definido na consulta com a especialista, conforme a córnea e a adaptação de cada paciente.' },
-  { cmd:'/testelente', label:'Teste de lentes (valores)',
-    text:'O teste de lentes é particular e realizado apenas na unidade do Conjunto Nacional: gelatinosas R$ 120,00 · rígidas/esclerais R$ 150,00. Damos preferência a PIX e débito.' },
-
-  // ----- Exames -----
-  { cmd:'/exames', label:'Exames que realizamos',
-    text:'Realizamos, entre outros: Pentacam, Paquimetria, Topografia, Microscopia Especular, Retinografia, Tonometria, Curva de Pressão (CDPO), Mapeamento de Retina, Gonioscopia, Teste de Lente de Contato, Teste de Visão Cromática e Estereopsia. Por gentileza, informe qual exame necessita para que possamos confirmar os detalhes.' },
-  { cmd:'/exameconvenio', label:'Exame coberto pelo convênio',
-    text:'Pelo seu convênio, os exames de rotina são cobertos, sem qualquer cobrança.' },
-  { cmd:'/pentacam', label:'Pentacam (valor / unidade)',
-    text:'O Pentacam tem o valor de R$ 300,00 (particular) e é realizado apenas na unidade do Conjunto Nacional.' },
-  { cmd:'/campimetria', label:'Campimetria (não realizamos)',
-    text:'A campimetria não é um exame realizado em nossa clínica. Permaneço à disposição para ajudar em algo mais.' },
-  { cmd:'/exameconfirmar', label:'Exame não listado (confirmar com equipe)',
-    text:'Sobre esse exame, iremos confirmar com a equipe se o realizamos. Caso prefira, podemos agendar uma consulta de avaliação.' },
-  { cmd:'/detran', label:'Exame CNH / DETRAN',
-    text:'O exame oficial do DETRAN é realizado em clínicas credenciadas, portanto não emitimos esse laudo específico. Contudo, caso deseje, podemos agendar uma consulta oftalmológica comum.' },
-
-  // ----- Agendamento -----
-  { cmd:'/preferencia', label:'Coletar dados / preferência de agendamento',
-    text:'Para darmos andamento ao agendamento, poderia nos informar, por gentileza: nome completo, telefone, a unidade de preferência (Conjunto Nacional ou Taguatinga), o período (manhã ou tarde) e se será por convênio ou particular? Nossa equipe confirmará o horário e retornará o contato.' },
-  { cmd:'/confirmar', label:'Confirmação de atendimento (genérica)',
-    text:'Olá, ____! Confirmação do seu atendimento:\n📅 ____ às ____\n📍 Unidade ____ (enviaremos a localização exata por aqui)\n\n📌 Caso utilize lentes de contato, suspenda o uso antes do atendimento (24 horas para gelatinosas e 48 horas para rígidas/esclerais) — essencial para a precisão dos exames da córnea.\n\nPermaneço à disposição para ajudar em algo mais. 😊' },
-  { cmd:'/confirmar-cn', label:'Confirmação — Conjunto Nacional',
-    text:'Olá, ____! Confirmação do seu atendimento:\n📅 ____ às ____\n📍 Conjunto Nacional (Asa Norte) — Sala 6017 · enviaremos a localização exata por aqui 📍\n\n📌 Caso utilize lentes de contato, suspenda o uso antes (24 horas para gelatinosas e 48 horas para rígidas/esclerais) — importante para a precisão dos exames da córnea.\n\nPermaneço à disposição para ajudar em algo mais. 😊' },
-  { cmd:'/confirmar-tag', label:'Confirmação — Taguatinga Shopping',
-    text:'Olá, ____! Confirmação do seu atendimento:\n📅 ____ às ____\n📍 Taguatinga Shopping — Sala 615, Torre B · enviaremos a localização exata por aqui 📍\n\n📌 Caso utilize lentes de contato, suspenda o uso antes (24 horas para gelatinosas e 48 horas para rígidas/esclerais) — importante para a precisão dos exames da córnea.\n\nPermaneço à disposição para ajudar em algo mais. 😊' },
-  { cmd:'/reagendar', label:'Reagendamento de consulta',
-    text:'Com certeza, podemos reagendar. Por gentileza, qual dia e período seriam mais convenientes — manhã ou tarde? Assim verificaremos a disponibilidade.' },
-  { cmd:'/recado', label:'Deixar recado para a equipe',
-    text:'Registrarei o seu recado com nossa equipe, que retornará o contato pelo WhatsApp assim que possível, dentro do horário de atendimento (segunda a sexta, das 8h às 18h).' },
-  { cmd:'/lembrete', label:'Lembrete na véspera do atendimento',
-    text:'Olá, ____! Passamos para lembrá-lo(a) do seu atendimento amanhã, dia ____ às ____, na unidade ____. Está tudo certo para o seu comparecimento?' },
-  { cmd:'/retorno', label:'Retorno / revisão de consulta',
-    text:'Para o seu retorno/revisão, poderia informar a unidade de preferência (Conjunto Nacional ou Taguatinga) e o período (manhã ou tarde)? Nossa equipe confirmará o horário e retornará o contato.' },
+  // ===== Urgência e encerramento =====
+  { cmd:'/urgencia', label:'Sintoma agudo / pronto-socorro',
+    text:'Para sintomas mais intensos (dor forte, perda súbita de visão, trauma ou vermelhidão acentuada), recomendamos atendimento imediato. No horário comercial, por gentileza, ligue para (61) 3033-6605. Fora do horário ou nos fins de semana, procure um pronto-socorro oftalmológico.' },
+  { cmd:'/agradecimento', label:'Agradecer o contato',
+    text:'Agradecemos o seu contato. Permaneço à disposição para ajudar em algo mais. 😊' },
   { cmd:'/encerramento', label:'Encerramento cordial',
-    text:'Por nada! Permaneço à disposição para ajudar em algo mais. 😊' },
-
-  // ----- Urgência -----
-  { cmd:'/urgencia', label:'Sintoma agudo / urgência',
-    text:'Para sintomas mais intensos (dor forte, perda súbita de visão, trauma ou vermelhidão acentuada), o ideal é atendimento imediato. No horário comercial, por gentileza, ligue para (61) 3033-6605. Fora do horário ou nos fins de semana, recomendamos procurar um pronto-socorro oftalmológico.' },
+    text:'Por nada. Permaneço à disposição para ajudar em algo mais. 😊' },
 ];
 let qrOpen=false, qrItems=[], qrIndex=0;
 
@@ -1122,8 +1145,8 @@ function qrUpdate(){
 function qrApply(i){
   const r=qrItems[i]; if(!r) return;
   el.input.value=r.text; qrClose(); autoGrow(); el.input.focus();
-  const ph=r.text.search(/_{2,}/); // pula pro 1º campo a preencher, se houver
-  if(ph>=0){ const len=r.text.slice(ph).match(/^_+/)[0].length; el.input.setSelectionRange(ph,ph+len); }
+  const m=r.text.match(/\[[A-ZÀ-Ú][^\]]*\]|_{2,}/); // pula pro 1º marcador ([NOME]) ou campo ____
+  if(m){ el.input.setSelectionRange(m.index, m.index+m[0].length); }
   else el.input.setSelectionRange(r.text.length,r.text.length);
 }
 function qrClose(){ qrOpen=false; el.qrPanel.classList.remove('show'); }
