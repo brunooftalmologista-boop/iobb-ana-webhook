@@ -1444,6 +1444,16 @@ app.post("/webhook", async (req, res) => {
         googleAds.runWeeklyReport({ supabase, sendWhatsApp }).catch(e => console.error("[GoogleAds] Manual:", e.message));
         return;
       }
+      // Envia manualmente as conversões offline pendentes ao Google Ads.
+      // "#ADSCONV" envia de verdade; "#ADSCONV TESTE" faz dry-run (validate_only).
+      if (text === "#ADSCONV" || text === "#ADSCONV TESTE") {
+        const dry = text === "#ADSCONV TESTE";
+        await sendWhatsApp(from, `📤 Enviando conversões ao Google Ads${dry ? " (DRY-RUN)" : ""}...`);
+        googleAds.uploadClickConversions({ supabase, dryRun: dry })
+          .then(r => sendWhatsApp(from, googleAds.buildConversionUploadSummary(r)))
+          .catch(e => sendWhatsApp(from, "⚠️ Falha no upload de conversões: " + e.message));
+        return;
+      }
       // Envio a um paciente por comando do admin: "#ENVIAR <num>: <intenção>" ou
       // "#MSG <num>: <intenção>". \b evita casar com outros comandos.
       const sendCmd = text.match(/^#(?:ENVIAR|MSG)\b([\s\S]*)$/i);
@@ -1836,6 +1846,11 @@ app.post("/api/conversations/:id/booked", async (req, res) => {
       .order("clicked_at", { ascending: false }).limit(1).single();
     if (!data) return res.json({ ok: true, attributed: false });
     await supabase.from("ad_clicks").update({ booked: true, booked_at: new Date(), conversion_value: value }).eq("id", data.id);
+    // Fecha o ciclo: envia a conversão offline ao Google Ads em quase tempo real.
+    // Fire-and-forget — não atrasa a resposta ao painel; erros só vão ao log.
+    googleAds.uploadClickConversions({ supabase })
+      .then(r => console.log(`[Ads] Upload pós-agendamento: ${r.uploaded} enviada(s), ${r.failed} falha(s).`))
+      .catch(e => console.error("[Ads] Upload pós-agendamento falhou:", e.message));
     res.json({ ok: true, attributed: true });
   } catch (e) {
     console.error("[Ads] Falha ao marcar agendamento:", e.message);
@@ -1930,6 +1945,32 @@ app.get("/api/ads/conversions.csv", async (req, res) => {
   } catch (e) {
     console.error("[Ads] Falha ao exportar conversões:", e.message);
     res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Dispara o UPLOAD automático de conversões offline ao Google Ads (via API).
+// Envia as pendentes (booked=true, reported=false, gclid != null) e marca as
+// enviadas. ?dry=1 valida sem contabilizar (validate_only). Uso: teste manual.
+app.get("/api/ads/upload-conversions", async (req, res) => {
+  try {
+    const result = await googleAds.uploadClickConversions({ supabase, dryRun: req.query.dry === "1" });
+    res.status(result.error && !result.uploaded ? 502 : 200).json(result);
+  } catch (e) {
+    console.error("[Ads] Endpoint upload-conversions:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Lista as ações de conversão da conta (descoberta do resource name de
+// "Agendamento IOBB"). Uso: GET /api/ads/conversion-actions.
+app.get("/api/ads/conversion-actions", async (req, res) => {
+  try {
+    if (googleAds.isTestMode()) return res.json({ ok: false, mode: "test", error: "MODO TESTE — sem acesso à API real." });
+    const actions = await googleAds.listConversionActions();
+    res.json({ ok: true, count: actions.length, wanted: process.env.GOOGLE_ADS_CONVERSION_NAME || "Agendamento IOBB", actions });
+  } catch (e) {
+    console.error("[Ads] Endpoint conversion-actions:", e.message);
+    res.status(502).json({ ok: false, error: e.message });
   }
 });
 

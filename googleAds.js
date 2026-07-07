@@ -449,6 +449,14 @@ function startScheduler(deps) {
       if (last === today) return;
       console.log("[GoogleAds] Disparando relatório semanal automático...");
       await runWeeklyReport(deps);
+      // Rede de segurança: reprocessa conversões pendentes que não subiram no
+      // envio em tempo real (ex.: API fora do ar no momento do "Agendou").
+      try {
+        const up = await uploadClickConversions(deps);
+        console.log(`[GoogleAds] Rede de segurança de conversões: ${up.uploaded} enviada(s), ${up.failed} falha(s), ${up.pending} pendente(s).`);
+      } catch (e) {
+        console.error("[GoogleAds] Rede de segurança de conversões falhou:", e.message);
+      }
       await setLastRun(supabase, today);
     } catch (e) {
       console.error("[GoogleAds] Scheduler:", e.message);
@@ -459,4 +467,247 @@ function startScheduler(deps) {
   console.log(`[GoogleAds] Agendador semanal ativo (segunda 08h ${TZ}) — modo ${isTestMode() ? "TESTE" : "PRODUÇÃO"}.`);
 }
 
-module.exports = { runWeeklyReport, startScheduler, buildReport, analyzeCampaign, isTestMode, REPORT_NUMBER };
+// ===========================================================================
+// UPLOAD DE CONVERSÕES OFFLINE → Google Ads (fecha o ciclo de rastreamento)
+//
+// Fluxo completo:
+//   landing /lp/:tema captura gclid → token viaja no [ref:...] da msg do WhatsApp
+//   → Ana vincula token ao telefone/conversa → secretária clica "Agendou" no
+//   painel (booked=true) → ESTE módulo envia a conversão offline ao Google Ads
+//   (UploadClickConversions) e marca reported=true para não duplicar.
+//
+// Requer as MESMAS credenciais do relatório + a ação de conversão "Agendamento
+// IOBB" criada na conta (tipo "Importar de cliques"). O resource name da ação é
+// resolvido automaticamente pelo NOME (GOOGLE_ADS_CONVERSION_NAME) — sem hardcode.
+// ===========================================================================
+
+// Nome da ação de conversão a procurar na conta (env vence o default).
+const CONVERSION_NAME = (process.env.GOOGLE_ADS_CONVERSION_NAME || "Agendamento IOBB").trim();
+// Valor padrão da conversão quando a linha não tem conversion_value.
+const CONVERSION_DEFAULT_VALUE = Number(process.env.GOOGLE_ADS_CONVERSION_VALUE || 200);
+
+// Cria o objeto Customer da google-ads-api reaproveitando as env vars.
+// Lança erro claro se faltar credencial (nunca derruba o app — quem chama trata).
+function buildCustomer() {
+  let GoogleAdsApi;
+  try {
+    ({ GoogleAdsApi } = require("google-ads-api"));
+  } catch (e) {
+    throw new Error("pacote 'google-ads-api' não instalado (rode `npm i google-ads-api`)");
+  }
+  const required = ["GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET", "GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_REFRESH_TOKEN", "GOOGLE_ADS_CUSTOMER_ID"];
+  const missing = required.filter(k => !process.env[k]);
+  if (missing.length) throw new Error("credenciais ausentes: " + missing.join(", "));
+  const client = new GoogleAdsApi({
+    client_id: process.env.GOOGLE_ADS_CLIENT_ID,
+    client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET,
+    developer_token: process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+  });
+  return client.Customer({
+    customer_id: String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g, ""),
+    login_customer_id: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ? String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID).replace(/-/g, "") : undefined,
+    refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN,
+  });
+}
+
+// Formata uma data no padrão exigido pela API: "yyyy-MM-dd HH:mm:ss+HH:mm"
+// (data/hora no fuso da conta + offset explícito). Ex.: "2026-07-07 14:30:00-03:00".
+function formatConversionDateTime(date, tz = TZ) {
+  const p = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).formatToParts(date);
+  const g = t => (p.find(x => x.type === t) || {}).value;
+  // Offset real do fuso naquela data (Brasil hoje = -03:00, sem horário de verão).
+  let offset = "-03:00";
+  try {
+    const on = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longOffset" })
+      .formatToParts(date).find(x => x.type === "timeZoneName")?.value;
+    if (on) {
+      const raw = on.replace("GMT", "").replace("UTC", "").trim(); // "-03:00" ou "" p/ UTC
+      offset = raw === "" ? "+00:00" : raw;
+    }
+  } catch (_) {}
+  return `${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")}:${g("second")}${offset}`;
+}
+
+// Lista todas as ações de conversão da conta (para descoberta/diagnóstico).
+async function listConversionActions() {
+  const customer = buildCustomer();
+  const rows = await customer.query(`
+    SELECT
+      conversion_action.id,
+      conversion_action.name,
+      conversion_action.resource_name,
+      conversion_action.status,
+      conversion_action.type
+    FROM conversion_action
+    ORDER BY conversion_action.name
+  `);
+  return rows.map(r => ({
+    id: String(r.conversion_action.id),
+    name: r.conversion_action.name,
+    resourceName: r.conversion_action.resource_name,
+    status: r.conversion_action.status,
+    type: r.conversion_action.type,
+  }));
+}
+
+// Resolve (e memoiza) o resource name da ação "Agendamento IOBB" pelo NOME.
+let cachedConversionActionRN = null;
+async function resolveConversionActionResourceName(customer) {
+  if (cachedConversionActionRN) return cachedConversionActionRN;
+  const c = customer || buildCustomer();
+  const rows = await c.query(`
+    SELECT conversion_action.name, conversion_action.resource_name, conversion_action.status
+    FROM conversion_action
+  `);
+  const wanted = CONVERSION_NAME.toLowerCase();
+  const match =
+    rows.find(r => (r.conversion_action.name || "").trim().toLowerCase() === wanted) ||
+    rows.find(r => (r.conversion_action.name || "").toLowerCase().includes(wanted));
+  if (!match) {
+    const nomes = rows.map(r => `"${r.conversion_action.name}"`).join(", ") || "(nenhuma)";
+    throw new Error(`ação de conversão "${CONVERSION_NAME}" não encontrada na conta. Disponíveis: ${nomes}. Ajuste GOOGLE_ADS_CONVERSION_NAME.`);
+  }
+  cachedConversionActionRN = match.conversion_action.resource_name;
+  console.log(`[AdsConv] Ação de conversão resolvida: "${match.conversion_action.name}" → ${cachedConversionActionRN}`);
+  return cachedConversionActionRN;
+}
+
+// Envia ao Google Ads todas as conversões pendentes (booked=true, reported=false,
+// gclid != null) e marca as enviadas com sucesso como reported=true.
+// deps = { supabase, dryRun? }. Retorna um resumo estruturado.
+async function uploadClickConversions(deps) {
+  const { supabase, dryRun = false } = deps;
+  const result = {
+    ok: false, mode: isTestMode() ? "test" : "prod",
+    pending: 0, uploaded: 0, failed: 0, conversionAction: null,
+    error: null, details: [], dryRun: !!dryRun,
+  };
+
+  if (isTestMode()) {
+    result.error = `MODO TESTE (${testModeReason()}) — upload de conversões desabilitado.`;
+    console.log("[AdsConv] " + result.error);
+    return result;
+  }
+
+  // 1) Buscar pendentes.
+  let pend;
+  try {
+    const { data, error } = await supabase.from("ad_clicks")
+      .select("id, gclid, booked_at, clicked_at, conversion_value")
+      .eq("booked", true).eq("reported", false).not("gclid", "is", null);
+    if (error) throw new Error(error.message);
+    pend = (data || []).filter(r => r.gclid);
+  } catch (e) {
+    result.error = "falha ao ler ad_clicks: " + e.message;
+    console.error("[AdsConv] ❌ " + result.error);
+    return result;
+  }
+  result.pending = pend.length;
+  if (!pend.length) {
+    result.ok = true;
+    console.log("[AdsConv] Nenhuma conversão pendente para enviar.");
+    return result;
+  }
+
+  // 2) Cliente + resource name da ação de conversão.
+  let customer, actionRN;
+  try {
+    customer = buildCustomer();
+    actionRN = await resolveConversionActionResourceName(customer);
+  } catch (e) {
+    result.error = e.message;
+    console.error("[AdsConv] ❌ " + result.error);
+    return result;
+  }
+  result.conversionAction = actionRN;
+
+  // 3) Montar as conversões (índice alinhado com `pend`).
+  const conversions = pend.map(r => ({
+    gclid: r.gclid,
+    conversion_action: actionRN,
+    conversion_date_time: formatConversionDateTime(new Date(r.booked_at || r.clicked_at)),
+    conversion_value: Number(r.conversion_value ?? CONVERSION_DEFAULT_VALUE),
+    currency_code: "BRL",
+  }));
+
+  // 4) Enviar (partial_failure: sucessos passam mesmo se algumas linhas falharem).
+  let response;
+  try {
+    response = await customer.conversionUploads.uploadClickConversions({
+      customer_id: String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g, ""),
+      conversions,
+      partial_failure: true,
+      validate_only: !!dryRun,
+    });
+  } catch (e) {
+    const d = describeAdsError(e);
+    result.error = d.text + (d.requestId ? ` (request_id=${d.requestId})` : "");
+    console.error("[AdsConv] ❌ Falha total no upload: " + result.error);
+    return result;
+  }
+
+  // 5) Determinar sucesso por índice. Com partial_failure, os results das linhas
+  // que falharam voltam vazios (sem gclid); as bem-sucedidas ecoam o gclid.
+  // Tolerante a snake_case/camelCase (depende do parser da lib/gRPC).
+  const results = response?.results || [];
+  const pfErr = response?.partial_failure_error || response?.partialFailureError;
+  const pfMsg = pfErr?.message || "";
+  const okIds = [];
+  // Sem partial_failure_error, o contrato da API garante que TODAS passaram.
+  // Com erro parcial, distinguimos vencedoras (result ecoa os campos) das que
+  // falharam (result vazio).
+  const allSucceeded = !pfErr;
+  pend.forEach((r, i) => {
+    const res = results[i] || {};
+    const success = allSucceeded || !!(res.gclid || res.conversion_date_time || res.conversionDateTime || res.conversion_action || res.conversionAction);
+    const gshort = (r.gclid || "").slice(0, 14) + "…";
+    if (success) {
+      result.uploaded++;
+      okIds.push(r.id);
+      result.details.push({ ok: true, gclid: r.gclid, msg: "enviada" });
+      console.log(`[AdsConv] ✅ ${gshort} enviada (${conversions[i].conversion_date_time}, ${conversions[i].conversion_value} BRL).`);
+    } else {
+      result.failed++;
+      result.details.push({ ok: false, gclid: r.gclid, msg: pfMsg || "recusada pela API" });
+      console.error(`[AdsConv] ❌ ${gshort} recusada${pfMsg ? ": " + pfMsg : ""}.`);
+    }
+  });
+
+  // 6) Marcar as enviadas como reported (a não ser em dry-run/validate_only).
+  if (okIds.length && !dryRun) {
+    try {
+      await supabase.from("ad_clicks").update({ reported: true, reported_at: new Date() }).in("id", okIds);
+    } catch (e) {
+      console.error("[AdsConv] ⚠️ Enviei ao Google mas falhei ao marcar reported:", e.message);
+      result.error = (result.error ? result.error + " | " : "") + "enviado, mas falha ao marcar reported: " + e.message;
+    }
+  }
+
+  result.ok = result.failed === 0;
+  console.log(`[AdsConv] Concluído: ${result.uploaded} enviada(s), ${result.failed} falha(s) de ${result.pending} pendente(s)${dryRun ? " [DRY-RUN]" : ""}.`);
+  return result;
+}
+
+// Monta um resumo curto do upload para envio pelo WhatsApp (comando #ADSCONV).
+function buildConversionUploadSummary(r) {
+  if (!r) return "⚠️ Upload de conversões: sem resultado.";
+  const L = [];
+  L.push("📤 *Upload de conversões — Google Ads IOBB*");
+  if (r.mode === "test") { L.push(`🧪 _${r.error || "MODO TESTE — nada enviado."}_`); return L.join("\n"); }
+  if (r.dryRun) L.push("🧪 _DRY-RUN (validate_only) — nada foi contabilizado._");
+  L.push(`📋 Pendentes: ${r.pending}`);
+  L.push(`✅ Enviadas: ${r.uploaded}`);
+  if (r.failed) L.push(`❌ Falhas: ${r.failed}`);
+  if (r.conversionAction) L.push(`🎯 Ação: ${r.conversionAction}`);
+  if (r.error) L.push(`⚠️ ${r.error}`);
+  return L.join("\n");
+}
+
+module.exports = {
+  runWeeklyReport, startScheduler, buildReport, analyzeCampaign, isTestMode, REPORT_NUMBER,
+  uploadClickConversions, buildConversionUploadSummary, listConversionActions,
+  resolveConversionActionResourceName,
+};
