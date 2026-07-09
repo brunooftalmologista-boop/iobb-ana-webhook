@@ -1455,10 +1455,12 @@ app.post("/webhook", async (req, res) => {
         return;
       }
       // Cria a campanha de Refrativa via API (nasce PAUSADA). Por segurança,
-      // "#CRIARREFRATIVA TESTE" faz dry-run (validate_only) e "#CRIARREFRATIVA
-      // CONFIRMAR" cria de verdade — a palavra CONFIRMAR é obrigatória.
-      if (/^#CRIARREFRATIVA\b/i.test(text)) {
-        const arg = text.replace(/^#CRIARREFRATIVA\b/i, "").trim().toUpperCase();
+      // "TESTE" faz dry-run (validate_only) e "CONFIRMAR" cria de verdade.
+      // Regex TOLERANTE a erros comuns de digitação no nome longo: aceita
+      // #CRIARREFRATIVA, #CRIAREFRATIVA (um R só) e #CRIAR REFRATIVA (com espaço).
+      const refraCmd = text.match(/^#\s*CRIAR ?R?EFRATIVA\b([\s\S]*)$/i);
+      if (refraCmd) {
+        const arg = refraCmd[1].trim().toUpperCase();
         if (arg !== "TESTE" && arg !== "CONFIRMAR") {
           await sendWhatsApp(from, "Uso: *#CRIARREFRATIVA TESTE* (valida sem criar) ou *#CRIARREFRATIVA CONFIRMAR* (cria PAUSADA).");
           return;
