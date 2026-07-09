@@ -437,10 +437,21 @@ function colorFor(key){
 // Todos os horários do painel são exibidos no fuso de Brasília, independente do
 // fuso do dispositivo da secretária (evita mostrar UTC).
 const TZ_BR='America/Sao_Paulo';
+// Timestamps do backend (coluna Postgres SEM fuso) vêm sem 'Z' — o navegador
+// leria como horário LOCAL e erraria pelo offset (~3h). Normaliza: se a string
+// não tiver indicador de fuso, trata como UTC, que é como o backend grava.
+function parseTS(ts){
+  if(ts==null) return new Date(NaN);
+  if(typeof ts==='number' || ts instanceof Date) return new Date(ts);
+  let s=String(ts).trim().replace(' ','T');
+  if(/\d{2}:\d{2}/.test(s) && !/[zZ]$|[+\-]\d{2}:?\d{2}$/.test(s)) s+='Z';
+  const d=new Date(s);
+  return isNaN(d.getTime()) ? new Date(ts) : d;
+}
 function brDateKey(d){ return d.toLocaleDateString('en-CA',{timeZone:TZ_BR}); } // YYYY-MM-DD em Brasília
 function fmtTime(ts){
   if(!ts) return '';
-  const d=new Date(ts), now=new Date();
+  const d=parseTS(ts), now=new Date();
   const dk=brDateKey(d), nk=brDateKey(now);
   if(dk===nk) return d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
   const y=new Date(now.getTime()-86400000);
@@ -448,7 +459,7 @@ function fmtTime(ts){
   return d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,day:'2-digit',month:'2-digit'});
 }
 function fmtDay(ts){
-  const d=new Date(ts), now=new Date();
+  const d=parseTS(ts), now=new Date();
   const dk=brDateKey(d), nk=brDateKey(now);
   if(dk===nk) return 'Hoje';
   const y=new Date(now.getTime()-86400000);
@@ -456,7 +467,7 @@ function fmtDay(ts){
   return d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'long'});
 }
 function isUnread(c){
-  return !readState[c.id] || new Date(readState[c.id]) < new Date(c.updated_at);
+  return !readState[c.id] || parseTS(readState[c.id]) < parseTS(c.updated_at);
 }
 function saveRead(){ localStorage.setItem(LS.read, JSON.stringify(readState)); }
 
@@ -707,7 +718,7 @@ function updateChatHeader(){
   // status "online" heurístico: última msg do paciente < 2min
   let statusTxt, online=false;
   const lastUser=[...messages].reverse().find(m=>m.role==='user');
-  if(lastUser && (Date.now()-new Date(lastUser.timestamp).getTime())<120000){ statusTxt='online'; online=true; }
+  if(lastUser && (Date.now()-parseTS(lastUser.timestamp).getTime())<120000){ statusTxt='online'; online=true; }
   else if(lastUser) statusTxt='visto por último '+fmtTime(lastUser.timestamp);
   else statusTxt = phoneOf(activeConv);
   const modo = activeConv.status==='human' ? ' · atendimento humano'
@@ -757,7 +768,7 @@ function renderMessages(){
   const frag=document.createDocumentFragment();
   let lastDay='';
   messages.forEach(m=>{
-    const day=brDateKey(new Date(m.timestamp)); // agrupa por dia em Brasília
+    const day=brDateKey(parseTS(m.timestamp)); // agrupa por dia em Brasília
     if(day!==lastDay){
       lastDay=day;
       const sep=document.createElement('div');
@@ -774,7 +785,7 @@ function renderMessages(){
     const hideText = m.media_path && /^\[(Imagem recebida|Vídeo recebido)\]$/.test(m.content||'');
     const textHtml = hideText ? '' : esc(m.content);
     b.innerHTML = who + mediaHtml + textHtml +
-      `<span class="meta">${new Date(m.timestamp).toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'})}${incoming?'':' ✓✓'}</span>`;
+      `<span class="meta">${parseTS(m.timestamp).toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'})}${incoming?'':' ✓✓'}</span>`;
     frag.appendChild(b);
   });
   // manter o indicador de digitação ao final
