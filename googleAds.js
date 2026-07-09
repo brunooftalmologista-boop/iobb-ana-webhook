@@ -106,7 +106,26 @@ function describeAdsError(e) {
         const k = Object.keys(ec).find(key => ec[key] != null && ec[key] !== "UNSPECIFIED" && ec[key] !== "UNKNOWN");
         if (k) code = `${k}=${ec[k]}`;
       }
-      lines.push([code, er.message].filter(Boolean).join(": "));
+      // Campo que falhou (útil p/ "required field not present"): ex. "operations[12].ad_group_ad.ad"
+      const fpe = er.location?.field_path_elements || er.location?.fieldPathElements;
+      let field = "";
+      if (Array.isArray(fpe) && fpe.length) {
+        field = fpe.map(f => {
+          const n = f.field_name || f.fieldName;
+          const i = f.index ?? f.index_;
+          return n != null ? (i != null && i !== "" ? `${n}[${i}]` : n) : null;
+        }).filter(Boolean).join(".");
+      }
+      // Detalhe de violação de política: qual texto violou e se é isentável.
+      const pvd = er.details?.policy_violation_details || er.details?.policyViolationDetails;
+      let pol = "";
+      if (pvd) {
+        const vt = pvd.key?.violating_text || pvd.key?.violatingText;
+        const pn = pvd.external_policy_name || pvd.externalPolicyName || pvd.key?.policy_name || pvd.key?.policyName;
+        const exempt = pvd.is_exemptible ?? pvd.isExemptible;
+        pol = `{policy:${pn || "?"}${vt ? ` texto="${vt}"` : ""}${exempt != null ? ` isentavel=${exempt ? "sim" : "nao"}` : ""}}`;
+      }
+      lines.push([code, field ? `@${field}` : "", er.message, pol].filter(Boolean).join(" "));
     }
   }
   if (!lines.length) {
@@ -1106,6 +1125,8 @@ async function createSearchCampaign(deps = {}) {
     const d = describeAdsError(e);
     result.error = d.text + (d.requestId ? ` (request_id=${d.requestId})` : "");
     console.error("[AdsCampaign] ❌ Falha ao criar campanha: " + result.error);
+    // Dump bruto completo no log do Render p/ diagnóstico fino (field paths + policy).
+    try { console.error("[AdsCampaign] Erro bruto:", JSON.stringify(e, Object.getOwnPropertyNames(e)).slice(0, 6000)); } catch (_) {}
     return result;
   }
 
