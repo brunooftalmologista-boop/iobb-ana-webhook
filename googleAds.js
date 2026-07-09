@@ -869,42 +869,52 @@ const MATCH_ENUM = { EXACT: 2, PHRASE: 3, BROAD: 4 }; // enums.KeywordMatchType
 // Português = 1014, Espanhol = 1003, Inglês = 1000. Usamos só o que a spec pedir.
 const LANGUAGE_IDS = { Portuguese: "1014", Spanish: "1003", English: "1000" };
 
-// Resolve nomes de geo-target (ex.: "Distrito Federal") → resource names via API,
-// filtrando por país BR. Preferimos status ENABLED e o nome que casa exatamente.
-// Memoizado por nome. Lança erro claro se um nome pedido não existir.
+// Resolve nomes de geo-target (ex.: "Distrito Federal") → resource names via o
+// serviço SuggestGeoTargetConstants, passando locale=pt + country=BR. Isso aceita
+// o nome EM PORTUGUÊS (o constante interno tem nome em inglês, "Federal District")
+// — bem mais robusto que casar geo_target_constant.name por igualdade via GAQL.
+// Memoizado por nome. Lança erro claro se um nome pedido não retornar sugestão.
 const geoTargetCache = new Map();
 async function resolveGeoTargetConstants(customer, names) {
   const out = [];
   for (const raw of names) {
     const name = raw.trim();
     if (!name) continue;
-    if (geoTargetCache.has(name.toLowerCase())) { out.push(geoTargetCache.get(name.toLowerCase())); continue; }
-    // Escapa aspas simples no GAQL.
-    const safe = name.replace(/'/g, "\\'");
-    const rows = await customer.query(`
-      SELECT geo_target_constant.id, geo_target_constant.name,
-             geo_target_constant.canonical_name, geo_target_constant.country_code,
-             geo_target_constant.target_type, geo_target_constant.status
-      FROM geo_target_constant
-      WHERE geo_target_constant.country_code = 'BR'
-        AND geo_target_constant.name = '${safe}'
-    `);
-    const cands = rows.map(r => r.geo_target_constant).filter(Boolean);
-    // Prefere ENABLED (status=2) e tipos geográficos amplos (State/Region/Province).
-    const pick =
-      cands.find(g => g.status === 2 && /state|region|province/i.test(String(g.target_type))) ||
-      cands.find(g => g.status === 2) ||
-      cands[0];
+    const key = name.toLowerCase();
+    if (geoTargetCache.has(key)) { out.push(geoTargetCache.get(key)); continue; }
+
+    let suggestions;
+    try {
+      const resp = await customer.geoTargetConstants.suggestGeoTargetConstants({
+        locale: "pt",
+        country_code: "BR",
+        location_names: { names: [name] },
+      });
+      suggestions = (resp?.geo_target_constant_suggestions || resp?.geoTargetConstantSuggestions || [])
+        .map(s => s.geo_target_constant || s.geoTargetConstant).filter(Boolean);
+    } catch (e) {
+      throw new Error(`falha ao consultar geo-target "${name}": ${describeAdsError(e).text}`);
+    }
+
+    // Só BR + ENABLED; prefere tipos amplos (State/Region/Province/Federal…).
+    const cc = g => String(g.country_code || g.countryCode || "");
+    const st = g => (g.status === 2 || g.status === "ENABLED");
+    const tt = g => String(g.target_type || g.targetType || "");
+    const br = suggestions.filter(g => cc(g) === "BR");
+    const enabled = br.filter(st);
+    const pool = enabled.length ? enabled : (br.length ? br : suggestions);
+    const pick = pool.find(g => /state|region|province|federal|territor/i.test(tt(g))) || pool[0];
     if (!pick) {
-      const disp = cands.map(g => `"${g.name}" (${g.canonical_name})`).join(", ") || "(nenhum)";
-      throw new Error(`geo-target "${name}" não encontrado no BR. Candidatos: ${disp}. Ajuste GOOGLE_ADS_REFRATIVA_GEO.`);
+      throw new Error(`geo-target "${name}" não retornou sugestão no BR. Ajuste GOOGLE_ADS_REFRATIVA_GEO.`);
     }
     const info = {
-      resourceName: `geoTargetConstants/${pick.id}`,
-      name: pick.name, canonicalName: pick.canonical_name, targetType: pick.target_type,
+      resourceName: pick.resource_name || pick.resourceName || `geoTargetConstants/${pick.id}`,
+      name: pick.name,
+      canonicalName: pick.canonical_name || pick.canonicalName,
+      targetType: tt(pick),
     };
-    geoTargetCache.set(name.toLowerCase(), info);
-    console.log(`[AdsCampaign] Geo resolvido: "${name}" → ${info.canonicalName} (${info.resourceName}, ${info.targetType})`);
+    geoTargetCache.set(key, info);
+    console.log(`[AdsCampaign] Geo resolvido (suggest): "${name}" → ${info.canonicalName} (${info.resourceName}, ${info.targetType})`);
     out.push(info);
   }
   return out;
