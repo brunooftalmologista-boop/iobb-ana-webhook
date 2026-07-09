@@ -1470,6 +1470,24 @@ app.post("/webhook", async (req, res) => {
           .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
         return;
       }
+      // Aproveita o histórico das campanhas antigas de refrativa: minera os
+      // termos de pesquisa e adiciona palavras-chave vencedoras + negativas de
+      // desperdício na campanha nova. "TESTE" = prévia (dry-run); "CONFIRMAR"
+      // aplica. Tolerante a #ADSHIST / #ADSHISTORICO.
+      const histCmd = text.match(/^#ADSHIST(?:ORICO)?\b([\s\S]*)$/i);
+      if (histCmd) {
+        const arg = histCmd[1].trim().toUpperCase();
+        if (arg !== "TESTE" && arg !== "CONFIRMAR") {
+          await sendWhatsApp(from, "Uso: *#ADSHISTORICO TESTE* (prévia) ou *#ADSHISTORICO CONFIRMAR* (aplica na campanha nova).");
+          return;
+        }
+        const dry = arg === "TESTE";
+        await sendWhatsApp(from, `📈 ${dry ? "Analisando" : "Aplicando"} histórico da refrativa${dry ? " (prévia)" : ""}...`);
+        googleAds.applyHistoricalInsights({ supabase, dryRun: dry })
+          .then(r => sendWhatsApp(from, googleAds.buildHistoricoSummary(r)))
+          .catch(e => sendWhatsApp(from, "⚠️ Falha ao aproveitar histórico: " + e.message));
+        return;
+      }
       // Envio a um paciente por comando do admin: "#ENVIAR <num>: <intenção>" ou
       // "#MSG <num>: <intenção>". \b evita casar com outros comandos.
       const sendCmd = text.match(/^#(?:ENVIAR|MSG)\b([\s\S]*)$/i);
@@ -2001,6 +2019,21 @@ app.get("/api/ads/create-campaign", async (req, res) => {
     res.status(result.ok ? 200 : 502).json(result);
   } catch (e) {
     console.error("[Ads] Endpoint create-campaign:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Aproveita o histórico das campanhas antigas de refrativa (termos de pesquisa)
+// para enriquecer a campanha nova com palavras-chave vencedoras + negativas.
+//   GET /api/ads/historico            → prévia (dry-run), NÃO grava
+//   GET /api/ads/historico?confirm=1  → aplica na campanha nova
+app.get("/api/ads/historico", async (req, res) => {
+  try {
+    const dryRun = req.query.confirm !== "1";
+    const result = await googleAds.applyHistoricalInsights({ supabase, dryRun });
+    res.status(result.ok ? 200 : 502).json(result);
+  } catch (e) {
+    console.error("[Ads] Endpoint historico:", e.message);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
