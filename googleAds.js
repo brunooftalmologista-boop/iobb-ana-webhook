@@ -864,6 +864,100 @@ function buildRefrativaSpec() {
   };
 }
 
+// Spec da campanha de Lentes Esclerais (nicho de alto valor: adaptação com
+// contactóloga p/ ceratocone e córneas irregulares). Mesmo formato da refrativa.
+// Destino /lp/escleral (tema adicionado em LP_TEMAS). Negativas focadas em cortar
+// lente cosmética/colorida/descartável (o grande ruído do termo "lente de contato").
+function buildEscleralSpec() {
+  const base = (process.env.GOOGLE_ADS_LP_BASE_URL || "").replace(/\/+$/, "");
+  const finalUrl = base ? `${base}/lp/escleral` : null;
+  const geoTargets = (process.env.GOOGLE_ADS_ESCLERAL_GEO || "Distrito Federal")
+    .split(",").map(s => s.trim()).filter(Boolean);
+  const desc = [
+    "Adaptação de lentes esclerais e rígidas para ceratocone. Avaliação especializada.",
+    "Contactóloga experiente em Brasília. Fale pelo WhatsApp e agende sua consulta.",
+    "Lentes esclerais para ceratocone e córneas irregulares. Avaliação com especialista.",
+    "Melhore a visão com lentes esclerais sob medida. Agende pelo WhatsApp.",
+  ];
+  const heads = [
+    "Lentes Esclerais em Brasília", "Lente Escleral p/ Ceratocone", "Adaptação c/ Contactóloga",
+    "Lentes de Contato Especiais", "Rígidas e Esclerais", "Agende sua Avaliação",
+  ];
+  return {
+    name: process.env.GOOGLE_ADS_ESCLERAL_NAME || "IOBB | Lentes Esclerais",
+    dailyBudget: Number(process.env.GOOGLE_ADS_ESCLERAL_BUDGET || 12), // R$/dia
+    finalUrl,
+    geoTargets,
+    languages: ["Portuguese"],
+    adGroups: [
+      {
+        name: "Lente Escleral",
+        maxCpc: 10,
+        keywords: [
+          { text: "lente escleral", match: "EXACT", cpc: 10 },
+          { text: "lente escleral", match: "PHRASE", cpc: 10 },
+          { text: "lente escleral brasília", match: "EXACT", cpc: 10 },
+          { text: "lente escleral df", match: "EXACT", cpc: 10 },
+          { text: "lente escleral preço", match: "PHRASE", cpc: 9 },
+          { text: "quanto custa lente escleral", match: "PHRASE", cpc: 8 },
+          { text: "adaptação de lente escleral", match: "PHRASE", cpc: 9 },
+        ],
+        headlines: heads,
+        descriptions: desc,
+      },
+      {
+        name: "Escleral para Ceratocone",
+        maxCpc: 10,
+        keywords: [
+          { text: "lente para ceratocone", match: "PHRASE", cpc: 10 },
+          { text: "lente escleral para ceratocone", match: "PHRASE", cpc: 10 },
+          { text: "lente de contato para ceratocone", match: "PHRASE", cpc: 9 },
+          { text: "lente rígida para ceratocone", match: "PHRASE", cpc: 9 },
+        ],
+        headlines: heads,
+        descriptions: desc,
+      },
+      {
+        name: "Lentes Rígidas e Especiais",
+        maxCpc: 9,
+        keywords: [
+          { text: "lente de contato rígida", match: "PHRASE", cpc: 8 },
+          { text: "lente esclerótica", match: "PHRASE", cpc: 8 },
+          { text: "lente gás permeável", match: "PHRASE", cpc: 8 },
+        ],
+        headlines: heads,
+        descriptions: desc,
+      },
+    ],
+    // Cortam o ruído do termo "lente de contato": cosmética/colorida/descartável,
+    // intenção errada (óculos/cirurgia) e informacional.
+    negatives: [
+      { text: "colorida", match: "BROAD" },
+      { text: "colorido", match: "BROAD" },
+      { text: "cosplay", match: "BROAD" },
+      { text: "halloween", match: "BROAD" },
+      { text: "estética", match: "BROAD" },
+      { text: "gelatinosa", match: "BROAD" },
+      { text: "descartável", match: "BROAD" },
+      { text: "diária", match: "BROAD" },
+      { text: "estojo", match: "BROAD" },
+      { text: "solução para lente", match: "PHRASE" },
+      { text: "óculos", match: "BROAD" },
+      { text: "cirurgia refrativa", match: "PHRASE" },
+      { text: "lasik", match: "BROAD" },
+      { text: "catarata", match: "BROAD" },
+      { text: "onde comprar", match: "PHRASE" },
+      { text: "o que é", match: "PHRASE" },
+      { text: "como funciona", match: "PHRASE" },
+      { text: "dói", match: "PHRASE" },
+      { text: "vídeo", match: "BROAD" },
+      { text: "grátis", match: "BROAD" },
+      { text: "sus", match: "BROAD" },
+      { text: "barato", match: "BROAD" },
+    ],
+  };
+}
+
 // Valida a spec ANTES de chamar a API (falha claro em vez de erro genérico).
 // Limites do RSA: 3–15 títulos ≤30 chars, 2–4 descrições ≤90 chars.
 function validateCampaignSpec(spec) {
@@ -1441,7 +1535,7 @@ module.exports = {
   runWeeklyReport, startScheduler, buildReport, analyzeCampaign, isTestMode, REPORT_NUMBER,
   uploadClickConversions, buildConversionUploadSummary, listConversionActions,
   resolveConversionActionResourceName,
-  createSearchCampaign, buildCampaignCreateSummary, buildRefrativaSpec,
+  createSearchCampaign, buildCampaignCreateSummary, buildRefrativaSpec, buildEscleralSpec,
   resolveGeoTargetConstants,
   applyHistoricalInsights, buildHistoricoSummary,
 };

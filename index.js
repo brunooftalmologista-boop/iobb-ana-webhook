@@ -1470,6 +1470,22 @@ app.post("/webhook", async (req, res) => {
           .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
         return;
       }
+      // Cria a campanha de Lentes Esclerais (nasce PAUSADA). "TESTE" = dry-run,
+      // "CONFIRMAR" cria. Tolerante a #CRIARESCLERAL / #CRIARESCLERAIS.
+      const esclCmd = text.match(/^#CRIARESCLERA(?:L|IS)?\b([\s\S]*)$/i);
+      if (esclCmd) {
+        const arg = esclCmd[1].trim().toUpperCase();
+        if (arg !== "TESTE" && arg !== "CONFIRMAR") {
+          await sendWhatsApp(from, "Uso: *#CRIARESCLERAL TESTE* (valida sem criar) ou *#CRIARESCLERAL CONFIRMAR* (cria PAUSADA).");
+          return;
+        }
+        const dry = arg === "TESTE";
+        await sendWhatsApp(from, `🔵 ${dry ? "Validando" : "Criando"} campanha de Lentes Esclerais${dry ? " (DRY-RUN)" : " (nasce PAUSADA)"}...`);
+        googleAds.createSearchCampaign({ supabase, dryRun: dry, spec: googleAds.buildEscleralSpec() })
+          .then(r => sendWhatsApp(from, googleAds.buildCampaignCreateSummary(r)))
+          .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
+        return;
+      }
       // Aproveita o histórico das campanhas antigas de refrativa: minera os
       // termos de pesquisa e adiciona palavras-chave vencedoras + negativas de
       // desperdício na campanha nova. "TESTE" = prévia (dry-run); "CONFIRMAR"
@@ -2023,6 +2039,20 @@ app.get("/api/ads/create-campaign", async (req, res) => {
   }
 });
 
+// Cria a campanha de Lentes Esclerais via API (mutate atômico). Nasce PAUSADA.
+//   GET /api/ads/create-escleral            → valida, NÃO cria (validate_only)
+//   GET /api/ads/create-escleral?confirm=1  → cria de verdade (pausada)
+app.get("/api/ads/create-escleral", async (req, res) => {
+  try {
+    const dryRun = req.query.confirm !== "1";
+    const result = await googleAds.createSearchCampaign({ supabase, dryRun, spec: googleAds.buildEscleralSpec() });
+    res.status(result.ok ? 200 : 502).json(result);
+  } catch (e) {
+    console.error("[Ads] Endpoint create-escleral:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Aproveita o histórico das campanhas antigas de refrativa (termos de pesquisa)
 // para enriquecer a campanha nova com palavras-chave vencedoras + negativas.
 //   GET /api/ads/historico            → prévia (dry-run), NÃO grava
@@ -2284,6 +2314,16 @@ const LP_TEMAS = {
       "Atendimento acolhedor pelo WhatsApp, sem compromisso",
     ],
     msg: "Olá! Vim pelo Google e quero saber sobre ceratocone.",
+  },
+  escleral: {
+    titulo: "Lentes esclerais e rígidas — visão nítida no ceratocone",
+    sub: "Instituto de Olhos Bruno Borges • Brasília — Asa Norte e Taguatinga",
+    bullets: [
+      "Adaptação de lentes esclerais e rígidas com contactóloga experiente",
+      "Ideais para ceratocone e córneas irregulares",
+      "Avaliação acolhedora pelo WhatsApp, sem compromisso",
+    ],
+    msg: "Olá! Vim pelo Google e quero saber sobre lentes esclerais.",
   },
   refrativa: {
     titulo: "Livre-se dos óculos com cirurgia refrativa a laser",
