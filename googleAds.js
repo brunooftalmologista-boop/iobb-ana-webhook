@@ -1210,10 +1210,238 @@ function buildCampaignCreateSummary(r) {
   return L.join("\n");
 }
 
+// ===========================================================================
+// APROVEITAR HISTÓRICO → enriquece a campanha nova com dados das campanhas
+// antigas de refrativa. Minera os TERMOS DE PESQUISA reais:
+//   • termos que CONVERTERAM → viram palavra-chave (EXATA) na campanha nova
+//   • termos que só GASTARAM (0 conversão, custo alto) → viram NEGATIVA
+// Deduplica contra o que a campanha nova já tem. Aplica via mutate atômico
+// (com isenção de política p/ keywords de saúde). dryRun → validate_only.
+// ===========================================================================
+
+// Nomes das campanhas antigas a minerar (env CSV vence o default).
+function histSourceNames() {
+  return (process.env.GOOGLE_ADS_REFRA_HIST_CAMPAIGNS ||
+    "[SEARCH] Cirurgia Refrativa,[SEARCH] Cirurgia Refrativa CPC")
+    .split(",").map(s => s.trim()).filter(Boolean);
+}
+const HIST_TARGET = (process.env.GOOGLE_ADS_REFRA_TARGET || "IOBB | Refrativa").trim();
+const HIST_DAYS = Number(process.env.GOOGLE_ADS_REFRA_HIST_DAYS || 730);      // janela "desde o início"
+const HIST_WASTE_MIN = Number(process.env.GOOGLE_ADS_REFRA_WASTE_MIN || 20);  // R$ min p/ negativar
+const HIST_WASTE_CLICKS = Number(process.env.GOOGLE_ADS_REFRA_WASTE_CLICKS || 3);
+const HIST_MAX_EACH = Number(process.env.GOOGLE_ADS_REFRA_MAX || 60);         // teto p/ nao inflar demais
+
+// Limpa o texto p/ virar keyword válida (Google barra pontuação/símbolos).
+function sanitizeKeyword(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^0-9a-zà-ú+\-'\s]/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Resolve campanhas pelo nome (case-insensitive). Retorna [{id, name}].
+async function resolveCampaignsByName(customer, names) {
+  const rows = await customer.query(`
+    SELECT campaign.id, campaign.name, campaign.status FROM campaign
+  `);
+  const wanted = names.map(n => n.toLowerCase());
+  const out = [];
+  for (const r of rows) {
+    const nm = (r.campaign.name || "").trim();
+    if (wanted.includes(nm.toLowerCase())) out.push({ id: String(r.campaign.id), name: nm });
+  }
+  return out;
+}
+
+// Roteia um termo p/ o grupo temático mais adequado da campanha nova.
+function routeAdGroupRN(term, groups) {
+  const t = term.toLowerCase();
+  const byName = name => (groups.find(g => g.name.toLowerCase() === name.toLowerCase()) || {}).rn;
+  let rn;
+  if (/miop|astigmat|hiperm/.test(t)) rn = byName("Miopia e Astigmatismo");
+  else if (/lasik|prk|femto|laser/.test(t)) rn = byName("LASIK PRK Femto");
+  else if (/óculos|oculos|grau|enxerg/.test(t)) rn = byName("Largar os Óculos");
+  else rn = byName("Cirurgia Refrativa");
+  return rn || (groups[0] && groups[0].rn) || null;
+}
+
+// Estrutura atual da campanha nova (p/ rotear e deduplicar).
+async function getTargetCampaignStructure(customer, campaignName) {
+  const camps = await resolveCampaignsByName(customer, [campaignName]);
+  if (!camps.length) throw new Error(`campanha de destino "${campaignName}" não encontrada na conta.`);
+  const cid = camps[0].id;
+  const groups = (await customer.query(`
+    SELECT ad_group.id, ad_group.name, ad_group.resource_name
+    FROM ad_group WHERE campaign.id = ${cid} AND ad_group.status != 'REMOVED'
+  `)).map(r => ({ name: r.ad_group.name, rn: r.ad_group.resource_name }));
+  const kws = new Set((await customer.query(`
+    SELECT ad_group_criterion.keyword.text FROM ad_group_criterion
+    WHERE campaign.id = ${cid} AND ad_group_criterion.type = 'KEYWORD'
+      AND ad_group_criterion.negative = FALSE AND ad_group_criterion.status != 'REMOVED'
+  `)).map(r => (r.ad_group_criterion.keyword.text || "").toLowerCase()).filter(Boolean));
+  const negs = new Set((await customer.query(`
+    SELECT campaign_criterion.keyword.text FROM campaign_criterion
+    WHERE campaign.id = ${cid} AND campaign_criterion.type = 'KEYWORD'
+      AND campaign_criterion.negative = TRUE AND campaign_criterion.status != 'REMOVED'
+  `)).map(r => (r.campaign_criterion.keyword.text || "").toLowerCase()).filter(Boolean));
+  const campaignRN = `customers/${String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g, "")}/campaigns/${cid}`;
+  return { cid, campaignRN, groups, keywords: kws, negatives: negs };
+}
+
+// Agrega os termos de pesquisa das campanhas de origem na janela definida.
+async function fetchHistoricalSearchTerms(customer, campaignIds, sinceDays) {
+  const end = new Date();
+  const start = new Date(end.getTime() - sinceDays * 86400000);
+  const fmt = d => d.toISOString().slice(0, 10);
+  const rows = await customer.query(`
+    SELECT
+      search_term_view.search_term,
+      metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions
+    FROM search_term_view
+    WHERE campaign.id IN (${campaignIds.join(",")})
+      AND segments.date BETWEEN '${fmt(start)}' AND '${fmt(end)}'
+  `);
+  const agg = new Map();
+  for (const r of rows) {
+    const term = (r.search_term_view.search_term || "").trim().toLowerCase();
+    if (!term) continue;
+    const a = agg.get(term) || { term, clicks: 0, cost: 0, conversions: 0, impressions: 0 };
+    a.impressions += Number(r.metrics.impressions || 0);
+    a.clicks += Number(r.metrics.clicks || 0);
+    a.cost += Number(r.metrics.cost_micros || 0) / 1e6;
+    a.conversions += Number(r.metrics.conversions || 0);
+    agg.set(term, a);
+  }
+  return { terms: [...agg.values()], range: { start: fmt(start), end: fmt(end) } };
+}
+
+// Orquestra: analisa o histórico e (se não for dry-run) aplica na campanha nova.
+async function applyHistoricalInsights(deps = {}) {
+  const { dryRun = false } = deps;
+  const result = {
+    ok: false, mode: isTestMode() ? "test" : "prod", dryRun: !!dryRun,
+    sources: [], target: HIST_TARGET, range: null,
+    analyzed: { terms: 0, spend: 0 },
+    keywordsAdded: 0, negativesAdded: 0, policyExemptions: 0,
+    keywordSamples: [], negativeSamples: [], skipped: { existingKw: 0, existingNeg: 0 },
+    error: null,
+  };
+
+  if (isTestMode()) {
+    result.error = `MODO TESTE (${testModeReason()}) — aproveitamento de histórico desabilitado.`;
+    console.log("[AdsHist] " + result.error);
+    return result;
+  }
+
+  let customer;
+  try { customer = buildCustomer(); }
+  catch (e) { result.error = e.message; console.error("[AdsHist] ❌ " + result.error); return result; }
+
+  try {
+    // 1) Campanhas de origem.
+    const sources = await resolveCampaignsByName(customer, histSourceNames());
+    if (!sources.length) {
+      result.error = `nenhuma campanha de origem encontrada. Procurei por: ${histSourceNames().map(n => `"${n}"`).join(", ")}. Ajuste GOOGLE_ADS_REFRA_HIST_CAMPAIGNS.`;
+      console.error("[AdsHist] ❌ " + result.error);
+      return result;
+    }
+    result.sources = sources.map(s => s.name);
+
+    // 2) Termos de pesquisa históricos.
+    const { terms, range } = await fetchHistoricalSearchTerms(customer, sources.map(s => s.id), HIST_DAYS);
+    result.range = range;
+    result.analyzed.terms = terms.length;
+    result.analyzed.spend = Math.round(terms.reduce((s, t) => s + t.cost, 0));
+
+    // 3) Estrutura da campanha nova (rotear + deduplicar).
+    const target = await getTargetCampaignStructure(customer, HIST_TARGET);
+
+    // 4) Classificar.
+    const winners = terms.filter(t => t.conversions >= 1).sort((a, b) => b.conversions - a.conversions || b.clicks - a.clicks);
+    const wasteful = terms.filter(t => t.conversions === 0 && t.cost >= HIST_WASTE_MIN && t.clicks >= HIST_WASTE_CLICKS)
+      .sort((a, b) => b.cost - a.cost);
+
+    const ops = [];
+    // 4a) Vencedores → palavras-chave EXATAS (roteadas ao grupo temático).
+    for (const w of winners.slice(0, HIST_MAX_EACH)) {
+      const kw = sanitizeKeyword(w.term);
+      if (!kw || kw.length > 80) continue;
+      if (target.keywords.has(kw)) { result.skipped.existingKw++; continue; }
+      const agRN = routeAdGroupRN(kw, target.groups);
+      if (!agRN) continue;
+      target.keywords.add(kw); // evita duplicar dentro do mesmo lote
+      ops.push({
+        entity: "ad_group_criterion", operation: "create",
+        resource: { ad_group: agRN, status: 2, keyword: { text: kw, match_type: 2 } },
+      });
+      if (result.keywordSamples.length < 12) result.keywordSamples.push({ term: kw, conv: Number(w.conversions.toFixed(1)) });
+      result.keywordsAdded++;
+    }
+    // 4b) Desperdício → negativas EXATAS de campanha.
+    for (const x of wasteful.slice(0, HIST_MAX_EACH)) {
+      const kw = sanitizeKeyword(x.term);
+      if (!kw || kw.length > 80) continue;
+      if (target.negatives.has(kw)) { result.skipped.existingNeg++; continue; }
+      target.negatives.add(kw);
+      ops.push({
+        entity: "campaign_criterion", operation: "create",
+        resource: { campaign: target.campaignRN, negative: true, keyword: { text: kw, match_type: 2 } },
+      });
+      if (result.negativeSamples.length < 12) result.negativeSamples.push({ term: kw, cost: Math.round(x.cost) });
+      result.negativesAdded++;
+    }
+
+    if (!ops.length) {
+      result.ok = true;
+      console.log("[AdsHist] Nada novo a aplicar (sem vencedores/desperdício inéditos).");
+      return result;
+    }
+
+    // 5) Aplicar (isenção de política p/ keywords de saúde). dryRun → validate_only.
+    console.log(`[AdsHist] ${dryRun ? "[DRY-RUN] " : ""}Aplicando ${result.keywordsAdded} keyword(s) + ${result.negativesAdded} negativa(s) em "${HIST_TARGET}".`);
+    const out = await mutateWithPolicyExemptions(customer, ops, dryRun);
+    result.policyExemptions = out.exempted;
+    result.ok = true;
+    return result;
+  } catch (e) {
+    const d = describeAdsError(e);
+    result.error = d.text + (d.requestId ? ` (request_id=${d.requestId})` : "");
+    console.error("[AdsHist] ❌ " + result.error);
+    try { console.error("[AdsHist] Erro bruto:", JSON.stringify(e, Object.getOwnPropertyNames(e)).slice(0, 4000)); } catch (_) {}
+    return result;
+  }
+}
+
+// Resumo p/ WhatsApp do aproveitamento de histórico.
+function buildHistoricoSummary(r) {
+  if (!r) return "⚠️ Aproveitamento de histórico: sem resultado.";
+  const L = [];
+  L.push("📈 *Aproveitar histórico — Refrativa*");
+  if (r.mode === "test") { L.push(`🧪 _${r.error || "MODO TESTE."}_`); return L.join("\n"); }
+  if (r.error) { L.push(`❌ ${r.error}`); return L.join("\n"); }
+  L.push(`🔎 Origem: ${r.sources.join(" + ") || "(nenhuma)"}`);
+  if (r.range) L.push(`🗓️ Período: ${r.range.start} a ${r.range.end}`);
+  L.push(`📊 ${r.analyzed.terms} termos analisados · R$ ${r.analyzed.spend} gastos`);
+  L.push(r.dryRun ? "🧪 _DRY-RUN — nada gravado (prévia)._" : "✅ _Aplicado na campanha nova._");
+  L.push("");
+  L.push(`🟢 *Palavras-chave a adicionar: ${r.keywordsAdded}*${r.skipped.existingKw ? ` (${r.skipped.existingKw} já existiam)` : ""}`);
+  for (const k of r.keywordSamples) L.push(`   • ${k.term} (${k.conv} conv)`);
+  if (r.keywordsAdded > r.keywordSamples.length) L.push(`   … +${r.keywordsAdded - r.keywordSamples.length}`);
+  L.push("");
+  L.push(`🔴 *Negativas a adicionar: ${r.negativesAdded}*${r.skipped.existingNeg ? ` (${r.skipped.existingNeg} já existiam)` : ""}`);
+  for (const n of r.negativeSamples) L.push(`   • ${n.term} (R$ ${n.cost} sem conversão)`);
+  if (r.negativesAdded > r.negativeSamples.length) L.push(`   … +${r.negativesAdded - r.negativeSamples.length}`);
+  if (r.policyExemptions) { L.push(""); L.push(`🩺 ${r.policyExemptions} keyword(s) de saúde via isenção.`); }
+  if (r.dryRun && (r.keywordsAdded || r.negativesAdded)) { L.push(""); L.push("Envie *#ADSHISTORICO CONFIRMAR* para aplicar."); }
+  return L.join("\n");
+}
+
 module.exports = {
   runWeeklyReport, startScheduler, buildReport, analyzeCampaign, isTestMode, REPORT_NUMBER,
   uploadClickConversions, buildConversionUploadSummary, listConversionActions,
   resolveConversionActionResourceName,
   createSearchCampaign, buildCampaignCreateSummary, buildRefrativaSpec,
   resolveGeoTargetConstants,
+  applyHistoricalInsights, buildHistoricoSummary,
 };
