@@ -1,0 +1,26 @@
+Campaign,Keyword,Match Type,Level,Motivo
+IOBB | Refrativa,ceratocone,Broad,Campaign,Público errado - ceratocone geralmente contraindica refrativa (fonte principal de clique ruim)
+IOBB | Refrativa,quem tem ceratocone,Phrase,Campaign,Termo informacional de ceratocone-crossover
+IOBB | Refrativa,ceratocone pode fazer,Phrase,Campaign,Termo informacional de ceratocone-crossover
+IOBB | Refrativa,catarata,Broad,Campaign,Outro procedimento - público errado
+IOBB | Refrativa,glaucoma,Broad,Campaign,Outro procedimento - público errado
+IOBB | Refrativa,gratis,Broad,Campaign,Nao-comprador
+IOBB | Refrativa,gratuito,Broad,Campaign,Nao-comprador
+IOBB | Refrativa,sus,Broad,Campaign,Nao-comprador (busca por SUS)
+IOBB | Refrativa,pelo sus,Phrase,Campaign,Nao-comprador (busca por SUS)
+IOBB | Refrativa,mutirao,Broad,Campaign,Nao-comprador
+IOBB | Refrativa,o que é,Phrase,Campaign,Informacional - baixa intencao
+IOBB | Refrativa,como funciona,Phrase,Campaign,Informacional - baixa intencao
+IOBB | Refrativa,tem cura,Phrase,Campaign,Informacional - baixa intencao
+IOBB | Refrativa,dói,Phrase,Campaign,Informacional (medo/duvida) - baixa intencao
+IOBB | Refrativa,recuperação,Broad,Campaign,Pos-operatorio - ja operou em outro lugar
+IOBB | Refrativa,pós operatório,Phrase,Campaign,Pos-operatorio - ja operou em outro lugar
+IOBB | Refrativa,pós-operatório,Phrase,Campaign,Pos-operatorio - ja operou em outro lugar
+IOBB | Refrativa,cuidados,Broad,Campaign,Informacional pos-op
+IOBB | Refrativa,exercícios,Broad,Campaign,Busca por alternativa sem cirurgia
+IOBB | Refrativa,colírio,Broad,Campaign,Busca por alternativa sem cirurgia
+IOBB | Refrativa,óculos de grau,Phrase,Campaign,Quer oculos - nao cirurgia
+IOBB | Refrativa,lente de contato,Phrase,Campaign,Quer lente - nao cirurgia
+IOBB | Refrativa,concurso,Broad,Campaign,Cirurgia para concurso - fora de escopo/edital
+IOBB | Refrativa,edital,Broad,Campaign,Cirurgia para concurso - fora de escopo
+IOBB | Refrativa,exército,Broad,Campaign,Cirurgia para concurso militar - fora de escopo
