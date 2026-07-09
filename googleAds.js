@@ -970,6 +970,8 @@ function buildCampaignOperations(customerId, spec, ResourceNames, geoResourceNam
       advertising_channel_type: 2, // AdvertisingChannelType.SEARCH
       status: 3,                   // CampaignStatus.PAUSED
       campaign_budget: budgetRN,
+      // Campo obrigatório (API v16+): declara que NÃO há propaganda política da UE.
+      contains_eu_political_advertising: 3, // EuPoliticalAdvertisingStatus.DOES_NOT_CONTAIN
       manual_cpc: { enhanced_cpc_enabled: false },
       network_settings: {
         target_google_search: true,
@@ -1053,6 +1055,39 @@ function buildCampaignOperations(customerId, spec, ResourceNames, geoResourceNam
   return ops;
 }
 
+// Executa o mutate atômico e, se a API reprovar por violações de política
+// ISENTÁVEIS (ex.: "Health in personalized advertising" em keywords de saúde),
+// reenvia UMA vez anexando `exempt_policy_violation_keys` nas operações afetadas
+// — o fluxo oficial do Google para aceitar essas keywords. Violações NÃO
+// isentáveis (ou outros erros, ex. campo faltando) propagam o erro original.
+async function mutateWithPolicyExemptions(customer, ops, dryRun) {
+  const opts = { validate_only: !!dryRun, partial_failure: false };
+  try {
+    return { response: await customer.mutateResources(ops, opts), exempted: 0 };
+  } catch (e1) {
+    const errs = e1?.errors || e1?.failure?.errors || [];
+    const exemptionsByOp = {};
+    for (const er of errs) {
+      const pvd = er.details?.policy_violation_details || er.details?.policyViolationDetails;
+      const isExempt = pvd && (pvd.is_exemptible ?? pvd.isExemptible);
+      if (!isExempt) continue; // só coletamos as isentáveis
+      const fpe = er.location?.field_path_elements || er.location?.fieldPathElements || [];
+      const top = fpe.find(f => (f.field_name || f.fieldName) === "mutate_operations");
+      const idx = top ? (top.index ?? top.index_) : undefined;
+      const key = pvd.key || {};
+      const k = { policy_name: key.policy_name || key.policyName, violating_text: key.violating_text || key.violatingText };
+      if (idx == null || !k.policy_name) continue;
+      (exemptionsByOp[idx] = exemptionsByOp[idx] || []).push(k);
+    }
+    const nOps = Object.keys(exemptionsByOp).length;
+    if (!nOps) throw e1; // nada isentável (ou erro estrutural) → propaga
+    // Anexa as isenções nas operações reprovadas e re-tenta uma única vez.
+    const ops2 = ops.map((op, i) => exemptionsByOp[i] ? { ...op, exempt_policy_violation_keys: exemptionsByOp[i] } : op);
+    console.log(`[AdsCampaign] Reenviando com ${nOps} operação(ões) isenta(s) de política (exemptível).`);
+    return { response: await customer.mutateResources(ops2, opts), exempted: nOps };
+  }
+}
+
 // Cria a campanha de Refrativa na conta. deps = { dryRun? }.
 // Retorna resumo estruturado (nunca lança — quem chama trata pelo campo error).
 async function createSearchCampaign(deps = {}) {
@@ -1120,7 +1155,10 @@ async function createSearchCampaign(deps = {}) {
 
   let response;
   try {
-    response = await customer.mutateResources(ops, { validate_only: !!dryRun, partial_failure: false });
+    const out = await mutateWithPolicyExemptions(customer, ops, dryRun);
+    response = out.response;
+    result.policyExemptions = out.exempted;
+    if (out.exempted) console.log(`[AdsCampaign] ${out.exempted} keyword(s) de saúde aceita(s) via isenção de política.`);
   } catch (e) {
     const d = describeAdsError(e);
     result.error = d.text + (d.requestId ? ` (request_id=${d.requestId})` : "");
@@ -1162,6 +1200,7 @@ function buildCampaignCreateSummary(r) {
   if (r.dryRun) {
     L.push("🧪 _DRY-RUN (validate_only) — validação OK, NADA foi criado._");
     L.push(`🌎 Geo: ${geoTxt}`);
+    if (r.policyExemptions) L.push(`🩺 ${r.policyExemptions} keyword(s) de saúde OK (isenção aplicada).`);
     L.push("Rode a versão real para criar (nasce PAUSADA).");
     return L.join("\n");
   }
