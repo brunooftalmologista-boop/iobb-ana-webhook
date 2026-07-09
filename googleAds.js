@@ -958,6 +958,156 @@ function buildEscleralSpec() {
   };
 }
 
+// Spec da campanha de Ceratocone — CORREÇÃO CIRÚRGICA (crosslinking + anel
+// intraestromal) e termos gerais de ceratocone (diagnóstico → tratamento).
+// A parte de LENTES fica na campanha "IOBB | Lentes Esclerais" (separada).
+// Negativas cortam intenção de LENTE (vai p/ a outra campanha) + ruído de
+// benefício/legal (aposentadoria/INSS/CID/CNH) que é grande no ceratocone.
+function buildCeratoconeCirurgicoSpec() {
+  const base = (process.env.GOOGLE_ADS_LP_BASE_URL || "").replace(/\/+$/, "");
+  const finalUrl = base ? `${base}/lp/ceratocone` : null;
+  const geoTargets = (process.env.GOOGLE_ADS_CERATOCONE_GEO || "Distrito Federal")
+    .split(",").map(s => s.trim()).filter(Boolean);
+  const desc = [
+    "Crosslinking e anel intraestromal para ceratocone em Brasília. Avaliação especializada.",
+    "Referência em ceratocone. Agende sua avaliação com especialista pelo WhatsApp.",
+    "Tratamento do ceratocone com tecnologia e experiência. Fale pelo WhatsApp.",
+  ];
+  const heads = [
+    "Especialista em Ceratocone", "Ceratocone em Brasília", "Crosslinking e Anel",
+    "Tratamento do Ceratocone", "Avaliação Especializada", "Referência em Ceratocone",
+    "Agende pelo WhatsApp",
+  ];
+  return {
+    name: process.env.GOOGLE_ADS_CERATOCONE_NAME || "IOBB | Ceratocone Cirúrgico",
+    dailyBudget: Number(process.env.GOOGLE_ADS_CERATOCONE_BUDGET || 12), // R$/dia
+    finalUrl,
+    geoTargets,
+    languages: ["Portuguese"],
+    adGroups: [
+      {
+        name: "Crosslinking",
+        maxCpc: 9,
+        keywords: [
+          { text: "crosslinking", match: "EXACT", cpc: 8 },
+          { text: "crosslinking corneano", match: "PHRASE", cpc: 8 },
+          { text: "crosslinking ceratocone", match: "PHRASE", cpc: 9 },
+          { text: "crosslinking brasília", match: "EXACT", cpc: 9 },
+          { text: "crosslinking preço", match: "PHRASE", cpc: 8 },
+        ],
+        headlines: heads,
+        descriptions: desc,
+      },
+      {
+        name: "Anel Intraestromal",
+        maxCpc: 9,
+        keywords: [
+          { text: "anel de ferrara", match: "PHRASE", cpc: 8 },
+          { text: "anel de ferrara valor", match: "EXACT", cpc: 8 },
+          { text: "anel intraestromal", match: "PHRASE", cpc: 8 },
+          { text: "anel para ceratocone", match: "PHRASE", cpc: 9 },
+        ],
+        headlines: heads,
+        descriptions: desc,
+      },
+      {
+        name: "Ceratocone Tratamento",
+        maxCpc: 12,
+        keywords: [
+          { text: "ceratocone brasília", match: "EXACT", cpc: 10 },
+          { text: "especialista em ceratocone", match: "PHRASE", cpc: 12 },
+          { text: "médico especialista em ceratocone", match: "PHRASE", cpc: 12 },
+          { text: "tratamento de ceratocone", match: "PHRASE", cpc: 10 },
+          { text: "cirurgia de ceratocone", match: "PHRASE", cpc: 10 },
+          { text: "cirurgia ceratocone preço", match: "PHRASE", cpc: 10 },
+        ],
+        headlines: heads,
+        descriptions: desc,
+      },
+    ],
+    negatives: [
+      // Intenção de LENTE → vai para a campanha "IOBB | Lentes Esclerais".
+      { text: "lente", match: "BROAD" },
+      { text: "óculos", match: "BROAD" },
+      // Ruído de benefício/legal (grande no ceratocone).
+      { text: "aposentadoria", match: "BROAD" },
+      { text: "inss", match: "BROAD" },
+      { text: "laudo", match: "BROAD" },
+      { text: "cid", match: "BROAD" },
+      { text: "isenção", match: "BROAD" },
+      { text: "imposto", match: "BROAD" },
+      { text: "cnh", match: "BROAD" },
+      { text: "carteira de motorista", match: "PHRASE" },
+      { text: "exército", match: "BROAD" },
+      { text: "concurso", match: "BROAD" },
+      // Informacional / não-comprador.
+      { text: "o que é", match: "PHRASE" },
+      { text: "tem cura", match: "PHRASE" },
+      { text: "cura", match: "BROAD" },
+      { text: "exercícios", match: "BROAD" },
+      { text: "colírio", match: "BROAD" },
+      { text: "natural", match: "BROAD" },
+      { text: "caseiro", match: "BROAD" },
+      { text: "dói", match: "PHRASE" },
+      { text: "vídeo", match: "BROAD" },
+      { text: "sus", match: "BROAD" },
+      { text: "grátis", match: "BROAD" },
+      { text: "gratuito", match: "BROAD" },
+    ],
+  };
+}
+
+// Muda o STATUS de campanha(s) resolvida(s) pelo nome (ex.: pausar a antiga).
+// status: 3=PAUSED, 4=REMOVED, 2=ENABLED. dryRun → validate_only.
+// A lib gera o update_mask automaticamente a partir dos campos do resource.
+async function setCampaignStatusByName(deps = {}) {
+  const { name, status = 3, dryRun = false } = deps;
+  const label = { 2: "ATIVAR", 3: "PAUSAR", 4: "REMOVER" }[status] || `status=${status}`;
+  const result = { ok: false, mode: isTestMode() ? "test" : "prod", dryRun: !!dryRun, name, action: label, affected: 0, error: null };
+
+  if (isTestMode()) {
+    result.error = `MODO TESTE (${testModeReason()}) — alteração de status desabilitada.`;
+    console.log("[AdsStatus] " + result.error);
+    return result;
+  }
+  let ResourceNames;
+  try { ({ ResourceNames } = require("google-ads-api")); }
+  catch (e) { result.error = "pacote 'google-ads-api' não instalado."; return result; }
+  let customer;
+  try { customer = buildCustomer(); }
+  catch (e) { result.error = e.message; return result; }
+
+  try {
+    const camps = await resolveCampaignsByName(customer, [name]);
+    if (!camps.length) { result.error = `campanha "${name}" não encontrada na conta.`; return result; }
+    const cid = String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g, "");
+    const ops = camps.map(c => ({
+      entity: "campaign", operation: "update",
+      resource: { resource_name: ResourceNames.campaign(cid, c.id), status },
+    }));
+    await customer.mutateResources(ops, { validate_only: !!dryRun, partial_failure: false });
+    result.affected = ops.length;
+    result.ok = true;
+    console.log(`[AdsStatus] ${dryRun ? "[DRY-RUN] " : ""}${label} "${name}" — ${ops.length} campanha(s).`);
+    return result;
+  } catch (e) {
+    const d = describeAdsError(e);
+    result.error = d.text + (d.requestId ? ` (request_id=${d.requestId})` : "");
+    console.error("[AdsStatus] ❌ " + result.error);
+    return result;
+  }
+}
+
+function buildStatusSummary(r) {
+  if (!r) return "⚠️ Alteração de status: sem resultado.";
+  const L = ["🎚️ *Status de campanha — Google Ads IOBB*", `📛 ${r.name}`, `🔧 Ação: ${r.action}`];
+  if (r.mode === "test") { L.push(`🧪 _${r.error || "MODO TESTE."}_`); return L.join("\n"); }
+  if (r.error) { L.push(`❌ ${r.error}`); return L.join("\n"); }
+  L.push(r.dryRun ? `🧪 _DRY-RUN — ${r.affected} campanha(s) seria(m) afetada(s), nada gravado._`
+                  : `✅ ${r.affected} campanha(s) ${r.action.toLowerCase()}ada(s).`);
+  return L.join("\n");
+}
+
 // Valida a spec ANTES de chamar a API (falha claro em vez de erro genérico).
 // Limites do RSA: 3–15 títulos ≤30 chars, 2–4 descrições ≤90 chars.
 function validateCampaignSpec(spec) {
@@ -1536,6 +1686,7 @@ module.exports = {
   uploadClickConversions, buildConversionUploadSummary, listConversionActions,
   resolveConversionActionResourceName,
   createSearchCampaign, buildCampaignCreateSummary, buildRefrativaSpec, buildEscleralSpec,
+  buildCeratoconeCirurgicoSpec, setCampaignStatusByName, buildStatusSummary,
   resolveGeoTargetConstants,
   applyHistoricalInsights, buildHistoricoSummary,
 };

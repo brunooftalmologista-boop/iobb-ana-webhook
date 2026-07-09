@@ -1470,6 +1470,39 @@ app.post("/webhook", async (req, res) => {
           .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
         return;
       }
+      // Cria a campanha de Ceratocone Cirúrgico (crosslinking + anel). Nasce
+      // PAUSADA. "TESTE" = dry-run; "CONFIRMAR" cria. Tolerante a variações.
+      const ceratoCmd = text.match(/^#CRIARCERATOCONE\b([\s\S]*)$/i);
+      if (ceratoCmd) {
+        const arg = ceratoCmd[1].trim().toUpperCase();
+        if (arg !== "TESTE" && arg !== "CONFIRMAR") {
+          await sendWhatsApp(from, "Uso: *#CRIARCERATOCONE TESTE* (valida sem criar) ou *#CRIARCERATOCONE CONFIRMAR* (cria PAUSADA).");
+          return;
+        }
+        const dry = arg === "TESTE";
+        await sendWhatsApp(from, `🟠 ${dry ? "Validando" : "Criando"} campanha de Ceratocone Cirúrgico${dry ? " (DRY-RUN)" : " (nasce PAUSADA)"}...`);
+        googleAds.createSearchCampaign({ supabase, dryRun: dry, spec: googleAds.buildCeratoconeCirurgicoSpec() })
+          .then(r => sendWhatsApp(from, googleAds.buildCampaignCreateSummary(r)))
+          .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
+        return;
+      }
+      // Pausa a campanha combinada antiga de ceratocone/esclerais (alvo por env).
+      // "TESTE" = dry-run; "CONFIRMAR" pausa de verdade.
+      const pausarCmd = text.match(/^#PAUSARCERATOCONE\b([\s\S]*)$/i);
+      if (pausarCmd) {
+        const arg = pausarCmd[1].trim().toUpperCase();
+        if (arg !== "TESTE" && arg !== "CONFIRMAR") {
+          await sendWhatsApp(from, "Uso: *#PAUSARCERATOCONE TESTE* (prévia) ou *#PAUSARCERATOCONE CONFIRMAR* (pausa a campanha antiga combinada).");
+          return;
+        }
+        const dry = arg === "TESTE";
+        const alvo = process.env.GOOGLE_ADS_CERATOCONE_OLD || "[SEARCH] Ceratocone e Esclerais";
+        await sendWhatsApp(from, `🎚️ ${dry ? "Validando pausa" : "Pausando"} "${alvo}"${dry ? " (DRY-RUN)" : ""}...`);
+        googleAds.setCampaignStatusByName({ supabase, name: alvo, status: 3, dryRun: dry })
+          .then(r => sendWhatsApp(from, googleAds.buildStatusSummary(r)))
+          .catch(e => sendWhatsApp(from, "⚠️ Falha ao pausar: " + e.message));
+        return;
+      }
       // Cria a campanha de Lentes Esclerais (nasce PAUSADA). "TESTE" = dry-run,
       // "CONFIRMAR" cria. Tolerante a #CRIARESCLERAL / #CRIARESCLERAIS.
       const esclCmd = text.match(/^#CRIARESCLERA(?:L|IS)?\b([\s\S]*)$/i);
@@ -2049,6 +2082,35 @@ app.get("/api/ads/create-escleral", async (req, res) => {
     res.status(result.ok ? 200 : 502).json(result);
   } catch (e) {
     console.error("[Ads] Endpoint create-escleral:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Cria a campanha de Ceratocone Cirúrgico (crosslinking + anel). Nasce PAUSADA.
+//   GET /api/ads/create-ceratocone            → valida, NÃO cria
+//   GET /api/ads/create-ceratocone?confirm=1  → cria de verdade (pausada)
+app.get("/api/ads/create-ceratocone", async (req, res) => {
+  try {
+    const dryRun = req.query.confirm !== "1";
+    const result = await googleAds.createSearchCampaign({ supabase, dryRun, spec: googleAds.buildCeratoconeCirurgicoSpec() });
+    res.status(result.ok ? 200 : 502).json(result);
+  } catch (e) {
+    console.error("[Ads] Endpoint create-ceratocone:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Pausa a campanha combinada antiga de ceratocone/esclerais (alvo por env).
+//   GET /api/ads/pausar-ceratocone            → prévia (dry-run)
+//   GET /api/ads/pausar-ceratocone?confirm=1  → pausa de verdade
+app.get("/api/ads/pausar-ceratocone", async (req, res) => {
+  try {
+    const dryRun = req.query.confirm !== "1";
+    const name = process.env.GOOGLE_ADS_CERATOCONE_OLD || "[SEARCH] Ceratocone e Esclerais";
+    const result = await googleAds.setCampaignStatusByName({ supabase, name, status: 3, dryRun });
+    res.status(result.ok ? 200 : 502).json(result);
+  } catch (e) {
+    console.error("[Ads] Endpoint pausar-ceratocone:", e.message);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
