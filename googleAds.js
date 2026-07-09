@@ -706,8 +706,444 @@ function buildConversionUploadSummary(r) {
   return L.join("\n");
 }
 
+// ===========================================================================
+// CRIAÇÃO DE CAMPANHA DE PESQUISA → Google Ads (mutate ATÔMICO)
+//
+// Cria, numa ÚNICA requisição (mutateResources com resource names TEMPORÁRIOS),
+// a cadeia completa: orçamento → campanha → grupos de anúncios → palavras-chave
+// → anúncio responsivo (RSA) → negativas de campanha. Se qualquer passo falhar,
+// NADA é criado (atomicidade real, diferente de N chamadas sequenciais).
+//
+// TRAVAS DE SEGURANÇA:
+//  - A campanha SEMPRE nasce PAUSADA. Você revisa no painel e ativa à mão —
+//    nunca começa a gastar sozinha.
+//  - dryRun=true → validate_only: a API valida tudo mas NÃO cria nada.
+//  - Bloqueada em MODO TESTE (só roda em produção, como o upload de conversões).
+//  - NÃO define segmentação geográfica: configure o GEO no painel ANTES de
+//    ativar. Sem geo, ao ativar, a campanha exibiria em locais indesejados.
+// ===========================================================================
+
+// Spec da campanha de Refrativa — espelha estrutura_campanha_refrativa_google_ads.csv
+// e negativas_refrativa_google_ads.csv. Textos RSA seguem o padrão do
+// PLANO_CAMPANHAS.md (títulos ≤30, descrições ≤90, sem promessas médicas).
+// finalUrl exige GOOGLE_ADS_LP_BASE_URL (domínio público onde /lp/refrativa é
+// servido) — sem ele o clique não captura o gclid e o ciclo de conversão quebra.
+function buildRefrativaSpec() {
+  const base = (process.env.GOOGLE_ADS_LP_BASE_URL || "").replace(/\/+$/, "");
+  const finalUrl = base ? `${base}/lp/refrativa` : null;
+  // Descrições reaproveitadas entre os grupos (todas ≤90 caracteres).
+  const descComuns = [
+    "Avaliação para cirurgia refrativa em Brasília. Agende pelo WhatsApp, sem burocracia.",
+    "Descubra se você é candidato à cirurgia. Agende sua avaliação pelo WhatsApp.",
+    "LASIK, PRK e Femto-LASIK com avaliação especializada. Fale com a gente hoje.",
+    "Cirurgia a laser para miopia, astigmatismo e hipermetropia. Avaliação com especialista.",
+  ];
+  // Segmentação geográfica: nomes resolvidos PELO NOME via API em runtime
+  // (não hardcodamos IDs de geo-target). Default: Distrito Federal.
+  // Override por env (CSV), ex.: "Distrito Federal,Goiânia".
+  const geoTargets = (process.env.GOOGLE_ADS_REFRATIVA_GEO || "Distrito Federal")
+    .split(",").map(s => s.trim()).filter(Boolean);
+  return {
+    name: process.env.GOOGLE_ADS_REFRATIVA_NAME || "IOBB | Refrativa",
+    dailyBudget: Number(process.env.GOOGLE_ADS_REFRATIVA_BUDGET || 15), // R$/dia
+    finalUrl,
+    geoTargets,
+    languages: ["Portuguese"], // segmenta idioma pt (corta impressões em outros idiomas)
+    adGroups: [
+      {
+        name: "Cirurgia Refrativa",
+        maxCpc: 7,
+        keywords: [
+          { text: "cirurgia refrativa brasília", match: "EXACT", cpc: 6 },
+          { text: "cirurgia refrativa df", match: "EXACT", cpc: 6 },
+          { text: "cirurgia refrativa preço", match: "PHRASE", cpc: 7 },
+          { text: "cirurgia refrativa valor", match: "PHRASE", cpc: 7 },
+          { text: "cirurgia para tirar o grau", match: "PHRASE", cpc: 7 },
+        ],
+        headlines: [
+          "Cirurgia Refrativa Brasília", "Cirurgia a Laser nos Olhos", "Avaliação com Especialista",
+          "Oftalmologista em Brasília", "Agende pelo WhatsApp", "Tecnologia a Laser",
+        ],
+        descriptions: descComuns,
+      },
+      {
+        name: "Miopia e Astigmatismo",
+        maxCpc: 8,
+        keywords: [
+          { text: "cirurgia de miopia brasília", match: "EXACT", cpc: 7 },
+          { text: "cirurgia de miopia preço", match: "PHRASE", cpc: 8 },
+          { text: "cirurgia para miopia", match: "PHRASE", cpc: 8 },
+          { text: "cirurgia astigmatismo brasília", match: "PHRASE", cpc: 8 },
+          { text: "cirurgia miopia e astigmatismo", match: "PHRASE", cpc: 8 },
+        ],
+        headlines: [
+          "Cirurgia de Miopia Brasília", "Miopia e Astigmatismo", "Cirurgia a Laser nos Olhos",
+          "Avaliação com Especialista", "Agende pelo WhatsApp", "Reduza o Grau dos Óculos",
+        ],
+        descriptions: descComuns,
+      },
+      {
+        name: "LASIK PRK Femto",
+        maxCpc: 9,
+        keywords: [
+          { text: "lasik brasília", match: "EXACT", cpc: 9 },
+          { text: "cirurgia lasik preço", match: "PHRASE", cpc: 9 },
+          { text: "prk brasília", match: "EXACT", cpc: 8 },
+          { text: "cirurgia prk", match: "PHRASE", cpc: 8 },
+          { text: "femto lasik brasília", match: "PHRASE", cpc: 9 },
+          { text: "cirurgia a laser nos olhos", match: "PHRASE", cpc: 8 },
+        ],
+        headlines: [
+          "LASIK, PRK e Femto-LASIK", "Cirurgia a Laser nos Olhos", "LASIK em Brasília",
+          "Avaliação com Especialista", "Agende pelo WhatsApp", "Tecnologia a Laser",
+        ],
+        descriptions: descComuns,
+      },
+      {
+        name: "Largar os Óculos",
+        maxCpc: 7,
+        keywords: [
+          { text: "cirurgia para parar de usar óculos", match: "PHRASE", cpc: 7 },
+          { text: "cirurgia para largar os óculos", match: "PHRASE", cpc: 7 },
+          { text: "operar a vista brasília", match: "PHRASE", cpc: 7 },
+        ],
+        headlines: [
+          "Reduza a Dependência do Grau", "Cirurgia a Laser nos Olhos", "Cirurgia Refrativa Brasília",
+          "Avaliação com Especialista", "Agende pelo WhatsApp", "Oftalmologista em Brasília",
+        ],
+        descriptions: descComuns,
+      },
+    ],
+    // Negativas de campanha (espelha negativas_refrativa_google_ads.csv).
+    negatives: [
+      { text: "ceratocone", match: "BROAD" },
+      { text: "quem tem ceratocone", match: "PHRASE" },
+      { text: "ceratocone pode fazer", match: "PHRASE" },
+      { text: "catarata", match: "BROAD" },
+      { text: "glaucoma", match: "BROAD" },
+      { text: "gratis", match: "BROAD" },
+      { text: "gratuito", match: "BROAD" },
+      { text: "sus", match: "BROAD" },
+      { text: "pelo sus", match: "PHRASE" },
+      { text: "mutirao", match: "BROAD" },
+      { text: "o que é", match: "PHRASE" },
+      { text: "como funciona", match: "PHRASE" },
+      { text: "tem cura", match: "PHRASE" },
+      { text: "dói", match: "PHRASE" },
+      { text: "recuperação", match: "BROAD" },
+      { text: "pós operatório", match: "PHRASE" },
+      { text: "pós-operatório", match: "PHRASE" },
+      { text: "cuidados", match: "BROAD" },
+      { text: "exercícios", match: "BROAD" },
+      { text: "colírio", match: "BROAD" },
+      { text: "óculos de grau", match: "PHRASE" },
+      { text: "lente de contato", match: "PHRASE" },
+      { text: "concurso", match: "BROAD" },
+      { text: "edital", match: "BROAD" },
+      { text: "exército", match: "BROAD" },
+    ],
+  };
+}
+
+// Valida a spec ANTES de chamar a API (falha claro em vez de erro genérico).
+// Limites do RSA: 3–15 títulos ≤30 chars, 2–4 descrições ≤90 chars.
+function validateCampaignSpec(spec) {
+  const errs = [];
+  if (!spec.finalUrl) errs.push("GOOGLE_ADS_LP_BASE_URL não definido — sem URL de destino o clique não captura o gclid (defina no Render, ex.: https://seu-app.onrender.com).");
+  if (!spec.dailyBudget || spec.dailyBudget <= 0) errs.push("orçamento diário inválido.");
+  if (!spec.adGroups?.length) errs.push("nenhum grupo de anúncios.");
+  spec.adGroups?.forEach(ag => {
+    if (!ag.keywords?.length) errs.push(`grupo "${ag.name}" sem palavras-chave.`);
+    const hs = ag.headlines || [], ds = ag.descriptions || [];
+    if (hs.length < 3 || hs.length > 15) errs.push(`grupo "${ag.name}": RSA exige 3–15 títulos (tem ${hs.length}).`);
+    if (ds.length < 2 || ds.length > 4) errs.push(`grupo "${ag.name}": RSA exige 2–4 descrições (tem ${ds.length}).`);
+    hs.filter(h => h.length > 30).forEach(h => errs.push(`grupo "${ag.name}": título >30 chars: "${h}" (${h.length}).`));
+    ds.filter(d => d.length > 90).forEach(d => errs.push(`grupo "${ag.name}": descrição >90 chars: "${d}" (${d.length}).`));
+  });
+  return errs;
+}
+
+const MATCH_ENUM = { EXACT: 2, PHRASE: 3, BROAD: 4 }; // enums.KeywordMatchType
+
+// IDs de idioma são estáveis e globais no Google Ads (constantes públicas).
+// Português = 1014, Espanhol = 1003, Inglês = 1000. Usamos só o que a spec pedir.
+const LANGUAGE_IDS = { Portuguese: "1014", Spanish: "1003", English: "1000" };
+
+// Resolve nomes de geo-target (ex.: "Distrito Federal") → resource names via API,
+// filtrando por país BR. Preferimos status ENABLED e o nome que casa exatamente.
+// Memoizado por nome. Lança erro claro se um nome pedido não existir.
+const geoTargetCache = new Map();
+async function resolveGeoTargetConstants(customer, names) {
+  const out = [];
+  for (const raw of names) {
+    const name = raw.trim();
+    if (!name) continue;
+    if (geoTargetCache.has(name.toLowerCase())) { out.push(geoTargetCache.get(name.toLowerCase())); continue; }
+    // Escapa aspas simples no GAQL.
+    const safe = name.replace(/'/g, "\\'");
+    const rows = await customer.query(`
+      SELECT geo_target_constant.id, geo_target_constant.name,
+             geo_target_constant.canonical_name, geo_target_constant.country_code,
+             geo_target_constant.target_type, geo_target_constant.status
+      FROM geo_target_constant
+      WHERE geo_target_constant.country_code = 'BR'
+        AND geo_target_constant.name = '${safe}'
+    `);
+    const cands = rows.map(r => r.geo_target_constant).filter(Boolean);
+    // Prefere ENABLED (status=2) e tipos geográficos amplos (State/Region/Province).
+    const pick =
+      cands.find(g => g.status === 2 && /state|region|province/i.test(String(g.target_type))) ||
+      cands.find(g => g.status === 2) ||
+      cands[0];
+    if (!pick) {
+      const disp = cands.map(g => `"${g.name}" (${g.canonical_name})`).join(", ") || "(nenhum)";
+      throw new Error(`geo-target "${name}" não encontrado no BR. Candidatos: ${disp}. Ajuste GOOGLE_ADS_REFRATIVA_GEO.`);
+    }
+    const info = {
+      resourceName: `geoTargetConstants/${pick.id}`,
+      name: pick.name, canonicalName: pick.canonical_name, targetType: pick.target_type,
+    };
+    geoTargetCache.set(name.toLowerCase(), info);
+    console.log(`[AdsCampaign] Geo resolvido: "${name}" → ${info.canonicalName} (${info.resourceName}, ${info.targetType})`);
+    out.push(info);
+  }
+  return out;
+}
+
+// Monta o array de operações do mutate atômico a partir da spec, usando resource
+// names TEMPORÁRIOS (ids negativos) para encadear recursos ainda não criados.
+function buildCampaignOperations(customerId, spec, ResourceNames, geoResourceNames = []) {
+  const cid = String(customerId).replace(/-/g, "");
+  const toMicros = reais => Math.round(Number(reais) * 1e6);
+  const ops = [];
+
+  const budgetRN = ResourceNames.campaignBudget(cid, "-1");
+  const campaignRN = ResourceNames.campaign(cid, "-2");
+
+  // 1) Orçamento diário (compartilhável=false por padrão nesta campanha).
+  ops.push({
+    entity: "campaign_budget", operation: "create",
+    resource: {
+      resource_name: budgetRN,
+      name: `${spec.name} — Orçamento`,
+      delivery_method: 2, // BudgetDeliveryMethod.STANDARD
+      amount_micros: toMicros(spec.dailyBudget),
+      explicitly_shared: false,
+    },
+  });
+
+  // 2) Campanha — nasce PAUSADA, Pesquisa, CPC manual (sem eCPC).
+  ops.push({
+    entity: "campaign", operation: "create",
+    resource: {
+      resource_name: campaignRN,
+      name: spec.name,
+      advertising_channel_type: 2, // AdvertisingChannelType.SEARCH
+      status: 3,                   // CampaignStatus.PAUSED
+      campaign_budget: budgetRN,
+      manual_cpc: { enhanced_cpc_enabled: false },
+      network_settings: {
+        target_google_search: true,
+        target_search_network: false, // sem parceiros de pesquisa (tráfego mais limpo no início)
+        target_content_network: false,
+        target_partner_search_network: false,
+      },
+    },
+  });
+
+  // 2b) Segmentação geográfica (localização) e de idioma — critérios de campanha.
+  geoResourceNames.forEach(geoRN => {
+    ops.push({
+      entity: "campaign_criterion", operation: "create",
+      resource: { campaign: campaignRN, location: { geo_target_constant: geoRN } },
+    });
+  });
+  (spec.languages || []).forEach(langName => {
+    const id = LANGUAGE_IDS[langName];
+    if (!id) return;
+    ops.push({
+      entity: "campaign_criterion", operation: "create",
+      resource: { campaign: campaignRN, language: { language_constant: `languageConstants/${id}` } },
+    });
+  });
+
+  // 3) Grupos + palavras-chave + RSA (um anúncio por grupo).
+  let tmp = -10;
+  spec.adGroups.forEach(ag => {
+    const agRN = ResourceNames.adGroup(cid, String(tmp--));
+    ops.push({
+      entity: "ad_group", operation: "create",
+      resource: {
+        resource_name: agRN,
+        name: ag.name,
+        campaign: campaignRN,
+        status: 2,               // AdGroupStatus.ENABLED
+        type: 2,                 // AdGroupType.SEARCH_STANDARD
+        cpc_bid_micros: toMicros(ag.maxCpc),
+      },
+    });
+    ag.keywords.forEach(kw => {
+      ops.push({
+        entity: "ad_group_criterion", operation: "create",
+        resource: {
+          ad_group: agRN,
+          status: 2,             // AdGroupCriterionStatus.ENABLED
+          keyword: { text: kw.text, match_type: MATCH_ENUM[kw.match] },
+          ...(kw.cpc ? { cpc_bid_micros: toMicros(kw.cpc) } : {}),
+        },
+      });
+    });
+    ops.push({
+      entity: "ad_group_ad", operation: "create",
+      resource: {
+        ad_group: agRN,
+        status: 2,               // AdGroupAdStatus.ENABLED
+        ad: {
+          final_urls: [spec.finalUrl],
+          responsive_search_ad: {
+            headlines: ag.headlines.map(t => ({ text: t })),
+            descriptions: ag.descriptions.map(t => ({ text: t })),
+          },
+        },
+      },
+    });
+  });
+
+  // 4) Negativas de campanha.
+  spec.negatives.forEach(neg => {
+    ops.push({
+      entity: "campaign_criterion", operation: "create",
+      resource: {
+        campaign: campaignRN,
+        negative: true,
+        keyword: { text: neg.text, match_type: MATCH_ENUM[neg.match] },
+      },
+    });
+  });
+
+  return ops;
+}
+
+// Cria a campanha de Refrativa na conta. deps = { dryRun? }.
+// Retorna resumo estruturado (nunca lança — quem chama trata pelo campo error).
+async function createSearchCampaign(deps = {}) {
+  const { dryRun = false, spec: specOverride } = deps;
+  const result = {
+    ok: false, mode: isTestMode() ? "test" : "prod", dryRun: !!dryRun,
+    campaignName: null, created: {}, resourceNames: [], error: null,
+  };
+
+  if (isTestMode()) {
+    result.error = `MODO TESTE (${testModeReason()}) — criação de campanha desabilitada.`;
+    console.log("[AdsCampaign] " + result.error);
+    return result;
+  }
+
+  let ResourceNames;
+  try {
+    ({ ResourceNames } = require("google-ads-api"));
+  } catch (e) {
+    result.error = "pacote 'google-ads-api' não instalado (rode `npm i google-ads-api`).";
+    console.error("[AdsCampaign] ❌ " + result.error);
+    return result;
+  }
+
+  const spec = specOverride || buildRefrativaSpec();
+  result.campaignName = spec.name;
+  const errs = validateCampaignSpec(spec);
+  if (errs.length) {
+    result.error = "spec inválida: " + errs.join(" | ");
+    console.error("[AdsCampaign] ❌ " + result.error);
+    return result;
+  }
+
+  let customer;
+  try { customer = buildCustomer(); }
+  catch (e) { result.error = e.message; console.error("[AdsCampaign] ❌ " + result.error); return result; }
+
+  // Resolve a segmentação geográfica PELO NOME via API (não hardcodamos IDs).
+  // Se a spec pede geo mas nada resolve, ABORTA — não criamos campanha sem geo.
+  let geoResourceNames = [];
+  const geoNames = spec.geoTargets || [];
+  if (geoNames.length) {
+    try {
+      const geos = await resolveGeoTargetConstants(customer, geoNames);
+      geoResourceNames = geos.map(g => g.resourceName);
+      result.geo = geos.map(g => ({ name: g.name, canonicalName: g.canonicalName, resourceName: g.resourceName }));
+    } catch (e) {
+      result.error = "falha ao resolver geo-target: " + e.message;
+      console.error("[AdsCampaign] ❌ " + result.error);
+      return result;
+    }
+    if (!geoResourceNames.length) {
+      result.error = `geo-target pedido (${geoNames.join(", ")}) não resolveu para nenhum ID — abortando para não criar campanha sem segmentação.`;
+      console.error("[AdsCampaign] ❌ " + result.error);
+      return result;
+    }
+  }
+
+  const cid = String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g, "");
+  const ops = buildCampaignOperations(cid, spec, ResourceNames, geoResourceNames);
+  const nKw = spec.adGroups.reduce((s, ag) => s + ag.keywords.length, 0);
+  console.log(`[AdsCampaign] ${dryRun ? "[DRY-RUN] " : ""}Criando "${spec.name}" — orçamento R$${spec.dailyBudget}/dia, ` +
+    `${spec.adGroups.length} grupo(s), ${nKw} palavra(s)-chave, ${spec.negatives.length} negativa(s), ` +
+    `geo=[${geoResourceNames.join(", ") || "nenhum"}], idioma=[${(spec.languages || []).join(", ") || "nenhum"}]. PAUSADA. destino=${spec.finalUrl}`);
+
+  let response;
+  try {
+    response = await customer.mutateResources(ops, { validate_only: !!dryRun, partial_failure: false });
+  } catch (e) {
+    const d = describeAdsError(e);
+    result.error = d.text + (d.requestId ? ` (request_id=${d.requestId})` : "");
+    console.error("[AdsCampaign] ❌ Falha ao criar campanha: " + result.error);
+    return result;
+  }
+
+  const rns = (response?.results || response?.mutate_operation_responses || [])
+    .map(r => r?.resource_name || r?.campaign?.resource_name).filter(Boolean);
+  result.resourceNames = rns;
+  // Contagens: geo/idioma/negativas são todos campaign_criterion (mesmo prefixo
+  // no resource name), então reportamos pelos números que efetivamente enviamos.
+  result.created = {
+    budget: rns.find(n => n.includes("/campaignBudgets/")) || null,
+    campaign: rns.find(n => n.includes("/campaigns/")) || null,
+    adGroups: spec.adGroups.length,
+    keywords: nKw,
+    ads: spec.adGroups.length,
+    negatives: spec.negatives.length,
+    geoTargets: geoResourceNames.length,
+    languages: (spec.languages || []).length,
+  };
+  result.ok = true;
+  console.log(`[AdsCampaign] ✅ ${dryRun ? "Validação OK (nada criado — DRY-RUN)." : `Campanha criada PAUSADA: ${result.created.campaign}`}`);
+  return result;
+}
+
+// Resumo curto do resultado da criação para o WhatsApp (comando admin).
+function buildCampaignCreateSummary(r) {
+  if (!r) return "⚠️ Criação de campanha: sem resultado.";
+  const L = [];
+  L.push("🚀 *Criação de campanha — Google Ads IOBB*");
+  L.push(`📛 ${r.campaignName || "(sem nome)"}`);
+  if (r.mode === "test") { L.push(`🧪 _${r.error || "MODO TESTE — nada criado."}_`); return L.join("\n"); }
+  if (r.error) { L.push(`❌ ${r.error}`); return L.join("\n"); }
+  const geoTxt = (r.geo || []).map(g => g.canonicalName || g.name).join(", ") || "(nenhum)";
+  if (r.dryRun) {
+    L.push("🧪 _DRY-RUN (validate_only) — validação OK, NADA foi criado._");
+    L.push(`🌎 Geo: ${geoTxt}`);
+    L.push("Rode a versão real para criar (nasce PAUSADA).");
+    return L.join("\n");
+  }
+  L.push("✅ Criada com sucesso — *PAUSADA* (ative no painel após revisar).");
+  L.push(`💰 Orçamento · ${r.created.adGroups} grupo(s) · ${r.created.keywords} palavras-chave · ${r.created.negatives} negativa(s).`);
+  L.push(`🌎 Geo: ${geoTxt}${r.created.languages ? " · idioma pt" : ""}`);
+  return L.join("\n");
+}
+
 module.exports = {
   runWeeklyReport, startScheduler, buildReport, analyzeCampaign, isTestMode, REPORT_NUMBER,
   uploadClickConversions, buildConversionUploadSummary, listConversionActions,
   resolveConversionActionResourceName,
+  createSearchCampaign, buildCampaignCreateSummary, buildRefrativaSpec,
+  resolveGeoTargetConstants,
 };

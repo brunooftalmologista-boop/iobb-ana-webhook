@@ -1454,6 +1454,22 @@ app.post("/webhook", async (req, res) => {
           .catch(e => sendWhatsApp(from, "⚠️ Falha no upload de conversões: " + e.message));
         return;
       }
+      // Cria a campanha de Refrativa via API (nasce PAUSADA). Por segurança,
+      // "#CRIARREFRATIVA TESTE" faz dry-run (validate_only) e "#CRIARREFRATIVA
+      // CONFIRMAR" cria de verdade — a palavra CONFIRMAR é obrigatória.
+      if (/^#CRIARREFRATIVA\b/i.test(text)) {
+        const arg = text.replace(/^#CRIARREFRATIVA\b/i, "").trim().toUpperCase();
+        if (arg !== "TESTE" && arg !== "CONFIRMAR") {
+          await sendWhatsApp(from, "Uso: *#CRIARREFRATIVA TESTE* (valida sem criar) ou *#CRIARREFRATIVA CONFIRMAR* (cria PAUSADA).");
+          return;
+        }
+        const dry = arg === "TESTE";
+        await sendWhatsApp(from, `🚀 ${dry ? "Validando" : "Criando"} campanha de Refrativa${dry ? " (DRY-RUN)" : " (nasce PAUSADA)"}...`);
+        googleAds.createSearchCampaign({ supabase, dryRun: dry })
+          .then(r => sendWhatsApp(from, googleAds.buildCampaignCreateSummary(r)))
+          .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
+        return;
+      }
       // Envio a um paciente por comando do admin: "#ENVIAR <num>: <intenção>" ou
       // "#MSG <num>: <intenção>". \b evita casar com outros comandos.
       const sendCmd = text.match(/^#(?:ENVIAR|MSG)\b([\s\S]*)$/i);
@@ -1971,6 +1987,21 @@ app.get("/api/ads/conversion-actions", async (req, res) => {
   } catch (e) {
     console.error("[Ads] Endpoint conversion-actions:", e.message);
     res.status(502).json({ ok: false, error: e.message });
+  }
+});
+
+// Cria uma campanha de PESQUISA no Google Ads via API (mutate atômico).
+// A campanha nasce PAUSADA. Por segurança, o padrão é DRY-RUN (validate_only):
+//   GET /api/ads/create-campaign            → valida, NÃO cria (validate_only)
+//   GET /api/ads/create-campaign?confirm=1  → cria de verdade (pausada)
+app.get("/api/ads/create-campaign", async (req, res) => {
+  try {
+    const dryRun = req.query.confirm !== "1";
+    const result = await googleAds.createSearchCampaign({ supabase, dryRun });
+    res.status(result.ok ? 200 : 502).json(result);
+  } catch (e) {
+    console.error("[Ads] Endpoint create-campaign:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
