@@ -97,6 +97,15 @@ Você atende pelo WhatsApp. Sua missão é acolher cada pessoa com atenção gen
 4. Coleta de dados para pré-agendamento: Nome completo, telefone, unidade preferida (Conjunto Nacional ou Taguatinga), convênio ou particular, motivo da consulta, melhor período (manhã ou tarde). Ao solicitar: "Por gentileza, poderia me informar seu nome completo e telefone? O mais breve possível, dentro do horário comercial (segunda a sexta, das 8h às 18h), a nossa equipe de agendamento entrará em contato para confirmar o horário."
 5. Encerramento: Confirme os dados e informe que a equipe de agendamento entrará em contato o mais breve possível, dentro do horário comercial, para confirmar o horário.
 
+### Controle da coleta de pré-agendamento (LEIA O HISTÓRICO — REGRA CRÍTICA CONTRA REPETIÇÃO)
+Antes de perguntar QUALQUER dado, releia toda a conversa acima e monte mentalmente uma lista do que o paciente JÁ informou. Os dados de pré-agendamento são: (1) nome completo, (2) telefone, (3) unidade preferida (Conjunto Nacional ou Taguatinga), (4) convênio ou particular, (5) motivo da consulta, (6) período preferido (manhã ou tarde).
+- NUNCA peça um dado que o paciente já forneceu em qualquer mensagem anterior — mesmo que tenha sido no começo da conversa. Se ele já disse o nome lá atrás, considere o nome COLETADO e não pergunte de novo.
+- Observação: o telefone do WhatsApp já é conhecido; só peça telefone se precisar de um número alternativo. Não trave a coleta por causa do telefone.
+- Peça APENAS os dados que ainda faltam. Se faltar só um, pergunte só aquele. Não reinicie a coleta do zero a cada mensagem, e não "reconfirme" itens já confirmados.
+- Ao reunir todos os dados necessários (na prática: nome, unidade, período, e convênio/particular — motivo quando fizer sentido), ENCERRE a coleta: dê a mensagem de conclusão UMA vez e anexe o bloco [PREAGENDAMENTO]. Não faça mais perguntas de coleta depois disso.
+- DEPOIS de encerrar um pré-agendamento, a coleta está FECHADA. Se o paciente escrever de novo, trate como continuação (ex.: uma dúvida, um ajuste pontual, um segundo paciente) — NUNCA recomece a pedir nome, unidade, período etc. do zero. Só reabra a coleta se o paciente claramente pedir um NOVO agendamento com dados diferentes.
+- Se você já disse ao paciente que a equipe vai entrar em contato para confirmar, a coleta daquele agendamento está concluída: não volte a perguntar os mesmos dados.
+
 ### Registro interno de pré-agendamento (INVISÍVEL ao paciente)
 Sempre que você CONCLUIR a coleta de um pré-agendamento — ou seja, no momento em que disser ao paciente que a equipe/as secretárias vão entrar em contato para confirmar — acrescente, no FINAL da sua mensagem, um bloco técnico EXATAMENTE neste formato:
 [PREAGENDAMENTO]
@@ -686,9 +695,14 @@ async function lastInboundAt(phone) {
 }
 
 async function getConversationMessages(conversationId) {
-  // Buscar as 20 mensagens MAIS RECENTES (desc) e devolver em ordem cronológica.
+  // Buscar as 40 mensagens MAIS RECENTES (desc) e devolver em ordem cronológica.
   // Assim o histórico sempre inclui a última mensagem do usuário recém-salva.
-  const { data } = await supabase.from("messages").select("role, content").eq("conversation_id", conversationId).order("timestamp", { ascending: false }).limit(20);
+  // 40 (e não 20) porque a coleta de um pré-agendamento é feita campo a campo,
+  // turno a turno: nome → telefone → unidade → convênio → motivo → período. Uma
+  // janela curta faz os PRIMEIROS dados informados (nome/telefone) saírem de
+  // contexto no meio da coleta — a Ana deixa de "enxergá-los" e pergunta de novo,
+  // dando a falsa impressão de que reinicia o checklist. Ver slice() abaixo.
+  const { data } = await supabase.from("messages").select("role, content").eq("conversation_id", conversationId).order("timestamp", { ascending: false }).limit(40);
   return (data || []).reverse();
 }
 
@@ -1637,7 +1651,15 @@ app.post("/webhook", async (req, res) => {
     // A API da Anthropic exige que o array de mensagens comece e termine com
     // role "user" (sem prefill do assistente). Garantimos isso removendo
     // quaisquer mensagens do assistente nas pontas do payload.
-    const apiMessages = messages.slice(-10);
+    //
+    // Janela de 30 mensagens (antes eram 10). Uma janela de 10 cobre só ~5 turnos,
+    // e a coleta do pré-agendamento (nome, telefone, unidade, convênio, motivo,
+    // período) costuma passar disso: os PRIMEIROS dados informados escorregavam
+    // para fora do contexto e a Ana os pedia de novo — a causa raiz do "loop" em
+    // que ela confirmava um dado, avançava e depois voltava a perguntar o que já
+    // tinha. Mensagens de WhatsApp são curtas, então 30 cabe bem no orçamento de
+    // tokens e mantém toda a coleta visível até o fechamento.
+    const apiMessages = messages.slice(-30);
     while (apiMessages.length && apiMessages[apiMessages.length - 1].role === "assistant") apiMessages.pop();
     while (apiMessages.length && apiMessages[0].role === "assistant") apiMessages.shift();
     // Salvaguarda: se nada sobrar, usar ao menos a mensagem atual do usuário.
