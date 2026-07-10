@@ -109,7 +109,7 @@ Antes de perguntar QUALQUER dado, releia toda a conversa acima e monte mentalmen
 ### Registro interno de pré-agendamento (INVISÍVEL ao paciente)
 Sempre que você CONCLUIR a coleta de um pré-agendamento — ou seja, no momento em que disser ao paciente que a equipe/as secretárias vão entrar em contato para confirmar — acrescente, no FINAL da sua mensagem, um bloco técnico EXATAMENTE neste formato:
 [PREAGENDAMENTO]
-nome: <nome completo> | telefone: <telefone informado> | convenio: <convênio ou "particular"> | unidade: <Conjunto Nacional ou Taguatinga> | periodo: <manhã ou tarde — e, se o paciente citou, o dia da semana preferido; NUNCA um horário específico> | motivo: <motivo da consulta>
+nome: <nome completo> | telefone: <telefone informado> | convenio: <convênio ou "particular"> | unidade: <Conjunto Nacional ou Taguatinga> | periodo: <manhã ou tarde — e, se o paciente citou, o dia da semana preferido; pode incluir o horário-âncora sugerido (ex.: "manhã (sugestão 11h)"); NUNCA um horário fora dos âncoras> | motivo: <motivo da consulta>
 [/PREAGENDAMENTO]
 Regras do bloco:
 - Use "-" em qualquer campo que você não tenha (nunca invente dados).
@@ -247,7 +247,7 @@ Taguatinga Shopping — Sala 615 Torre B | atende às terças e quintas
 REGRA FIXA E INEGOCIÁVEL — cada dia da semana pertence a UMA única unidade. NUNCA inverta:
 - SEGUNDA, QUARTA e SEXTA → SEMPRE Conjunto Nacional (Asa Norte). Nesses dias NÃO há atendimento em Taguatinga.
 - TERÇA e QUINTA → SEMPRE Taguatinga Shopping. Nesses dias NÃO há atendimento no Conjunto Nacional.
-Você PODE informar em quais DIAS cada unidade atende (isso é fixo). Mas NUNCA mencione horários específicos de consulta, nem diga que um dia/turno está livre, disponível, lotado ou indisponível (ver "Como lidar com horários" abaixo). Ao dizer a unidade de uma data, calcule o dia da semana (fuso de Brasília) e aplique esta regra. Ex.: uma sexta-feira é SEMPRE Conjunto Nacional.
+Você PODE informar em quais DIAS cada unidade atende (isso é fixo) e pode sugerir o HORÁRIO-ÂNCORA do turno (ver "Como lidar com horários"). NÃO invente outros horários nem diga que um dia/turno está livre, disponível, lotado ou indisponível. Ao dizer a unidade de uma data, use a seção "Agenda de referência" (que já traz data → dia → unidade calculados); não deduza a unidade de cabeça. Ex.: uma sexta-feira é SEMPRE Conjunto Nacional.
 Telefone: (61) 3033-6605 | seg-sex 08h-18h.
 Não há atendimento aos sábados, domingos e feriados. Se pedirem fim de semana, oriente para o próximo dia útil da unidade desejada.
 Localização: as unidades ficam no Conjunto Nacional (Asa Norte) e no Taguatinga Shopping. Se pedirem endereço detalhado, ponto de referência, estacionamento ou como chegar, ofereça enviar a localização pela equipe — não invente vagas de estacionamento nem endereços que você não tem.
@@ -255,15 +255,17 @@ Localização: as unidades ficam no Conjunto Nacional (Asa Norte) e no Taguating
 ### Conferência de óculos
 Não precisa agendar. Comparecer com óculos e receita no horário de atendimento.
 
-### Como lidar com horários (REGRA CRÍTICA — sem exceções)
-Você NÃO tem acesso à agenda e NÃO oferece horários. NUNCA, em hipótese alguma:
-- mencione, sugira ou pergunte por horários específicos (ex.: "temos 10h", "que tal às 14h?", "prefere 9h ou 11h?");
+### Como lidar com horários (REGRA CRÍTICA)
+Você NÃO tem acesso à agenda real e NÃO controla disponibilidade. O único horário que você pode mencionar é o HORÁRIO-ÂNCORA de cada turno (manhã ou tarde), que aparece na seção "Agenda de referência — próximos dias úteis" que é injetada mais abaixo (calculada automaticamente). Ele é apenas uma SUGESTÃO de referência; quem confirma o horário exato é sempre a equipe de agendamento.
+NUNCA, em hipótese alguma:
+- invente ou "chute" um horário diferente dos horários-âncora daquela seção (não diga "temos 10h", "que tal 14h?", "prefere 9h ou 11h30?");
 - diga que um dia, turno ou horário está livre, disponível, cheio, lotado ou indisponível;
-- afirme, confirme ou negue qualquer disponibilidade de agenda.
-O que você FAZ no lugar disso: coleta a PREFERÊNCIA do paciente — unidade desejada (Conjunto Nacional ou Taguatinga), dia ou período preferido (manhã ou tarde) e os dados (nome, telefone, convênio ou particular, motivo) — registra o pré-agendamento e explica que a equipe de agendamento entrará em contato o mais breve possível, dentro do horário comercial, para confirmar o horário.
-Você PODE informar em quais DIAS cada unidade atende (é fixo). O horário exato é SEMPRE definido pela equipe, nunca por você.
-Fala modelo ao concluir a coleta (varie as palavras, mantenha o sentido e as informações): "Registrei a sua preferência pela unidade [unidade] no período da [manhã/tarde]. O mais breve possível, dentro do horário comercial (segunda a sexta, das 8h às 18h), a nossa equipe de agendamento entrará em contato para confirmar o horário."
-Se o paciente insistir por um horário específico, explique com gentileza que a confirmação do horário é feita pela equipe e que você já deixou a preferência registrada para eles retornarem — não invente nem "chute" um horário para satisfazer o pedido.
+- afirme, confirme ou negue qualquer disponibilidade de agenda — você não a conhece.
+O que você FAZ: coleta a PREFERÊNCIA do paciente — unidade desejada, dia/período preferido (manhã ou tarde) e os dados (nome, telefone, convênio ou particular, motivo). Ao falar de um dia, pegue a UNIDADE e o HORÁRIO-ÂNCORA correspondentes na tabela de referência (nunca deduza a unidade por conta própria) e ofereça o horário-âncora daquele turno como sugestão — sempre deixando claro que a equipe confirma. Registre o pré-agendamento e explique que a equipe entrará em contato o mais breve possível, dentro do horário comercial, para confirmar.
+IMPORTANTE sobre unidade × dia: cada dia pertence a UMA unidade só (regra fixa). Se o paciente pedir uma unidade num dia que não é dela (ex.: Taguatinga numa segunda), explique com gentileza qual unidade atende naquele dia e ofereça a alternativa correta pela tabela — nunca force uma combinação que não existe.
+Fala modelo ao sugerir (varie as palavras, mantenha o sentido): "Para [dia], o atendimento é na unidade [unidade]. Posso deixar como sugestão o horário das [horário-âncora] no período da [manhã/tarde]? A nossa equipe de agendamento confirma o horário exato com você, dentro do horário comercial (segunda a sexta, das 8h às 18h)."
+Fala modelo ao concluir a coleta (varie as palavras): "Registrei a sua preferência pela unidade [unidade], no período da [manhã/tarde], com sugestão de horário às [horário-âncora]. O mais breve possível, dentro do horário comercial, a nossa equipe de agendamento entrará em contato para confirmar o horário."
+Se o paciente insistir por um horário fora dos âncoras, explique com gentileza que a confirmação do horário é feita pela equipe e que você já deixou a preferência registrada — não invente um horário para satisfazer o pedido.
 
 ### Ceratocone
 Somos referência em ceratocone. Tratamentos que oferecemos, conforme cada caso: crosslinking, anel de Ferrara e lentes de contato especiais (rígidas/esclerais). A cirurgia refrativa a laser geralmente não é indicada no ceratocone — a definição é sempre do médico na avaliação.
@@ -416,6 +418,33 @@ function brasiliaAgora() {
     hojeDow: now.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long" }),
     amanhaDow: amanha.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long" }),
   };
+}
+
+// Horários-ÂNCORA que a Ana pode SUGERIR ao paciente — um por turno, fixos,
+// seg–sex. NÃO são reserva: a equipe confirma o horário exato. Servem só para dar
+// ao paciente um horário concreto de referência em vez de "manhã/tarde" abstrato.
+const HORARIO_ANCORA = { manha: "11h", tarde: "16h" };
+
+// Monta a tabela dos próximos dias úteis: data → dia da semana → unidade (pela
+// REGRA FIXA dia→unidade, reaproveitando AGENDA_REGRAS) → horários-âncora do dia.
+// É injetada pronta no prompt para que a Ana LEIA a unidade e o horário certos em
+// vez de CALCULAR — o que elimina o risco de ela trocar unidade/dia. Só dias úteis
+// (pula fim de semana). Mesmo padrão de ancoragem já usado para "hoje/amanhã".
+function tabelaAncora(dias = 10) {
+  const { ano, mes, dia } = brasiliaAgora().ymd;
+  const linhas = [];
+  for (let d = 0; d <= dias; d++) {
+    // Âncora ao meio-dia UTC do dia-alvo: soma d dias sem risco de virada de dia.
+    const base = new Date(Date.UTC(ano, mes - 1, dia, 12, 0, 0));
+    base.setUTCDate(base.getUTCDate() + d);
+    const dowName = DOW_BR[base.getUTCDay()];
+    const regra = Object.values(AGENDA_REGRAS).find(r => r.dias.includes(dowName));
+    if (!regra) continue; // fim de semana / sem atendimento
+    const dataStr = `${String(base.getUTCDate()).padStart(2, "0")}/${String(base.getUTCMonth() + 1).padStart(2, "0")}`;
+    const unidadeLonga = regra.nome === "Conjunto Nacional" ? "Conjunto Nacional (Asa Norte)" : "Taguatinga Shopping";
+    linhas.push(`- ${dowName}-feira, ${dataStr} → ${unidadeLonga} — sugestão de horário: manhã ${HORARIO_ANCORA.manha} ou tarde ${HORARIO_ANCORA.tarde}`);
+  }
+  return linhas.join("\n");
 }
 
 // Calcula os horários REALMENTE livres nos próximos 14 dias, cruzando a grade de
@@ -1556,6 +1585,12 @@ app.post("/webhook", async (req, res) => {
     const dt = brasiliaAgora();
     console.log(`[Data] Agora (Brasília): ${dt.agora} | hoje = ${dt.hojeDow}, ${dt.hoje} | amanhã = ${dt.amanhaDow}, ${dt.amanha}`);
     let systemPrompt = SYSTEM_PROMPT + `\n\n### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje}.\n- AMANHÃ é ${dt.amanha}.\nSempre calcule "hoje", "amanhã", datas e dia da semana a partir daqui (America/Sao_Paulo). Nunca use outra referência de data.`;
+
+    // Tabela de dias × unidade × horário-âncora, JÁ CALCULADA. A Ana deve LER
+    // daqui a unidade e o horário a sugerir — nunca deduzir por conta própria — o
+    // que impede troca de unidade/dia e horário inventado. Ver "Como lidar com
+    // horários" no SYSTEM_PROMPT.
+    systemPrompt += `\n\n### Agenda de referência — próximos dias úteis (JÁ CALCULADA — LEIA DAQUI, não deduza)\nCada dia pertence a UMA unidade (regra fixa). Para sugerir dia/unidade/horário, use SOMENTE as linhas abaixo — não calcule dia da semana nem unidade por conta própria, e não invente outros horários:\n${tabelaAncora(10)}\nOs horários acima (manhã ${HORARIO_ANCORA.manha}, tarde ${HORARIO_ANCORA.tarde}) são uma SUGESTÃO de referência; quem confirma o horário exato é a equipe de agendamento.`;
 
     // ─────────────────────────────────────────────────────────────────────────
     // DESATIVADO (decisão de produto): a Ana NÃO oferece mais horários específicos.
