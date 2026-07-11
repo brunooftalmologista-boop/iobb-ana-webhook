@@ -1568,6 +1568,42 @@ app.post("/webhook", async (req, res) => {
           .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
         return;
       }
+      // Cria a campanha COMBINADA Ceratocone + Esclerais (nasce PAUSADA). Reúne as
+      // duas que estavam separadas. "TESTE" = dry-run; "CONFIRMAR" cria.
+      const combCmd = text.match(/^#CRIARCOMBINADA\b([\s\S]*)$/i);
+      if (combCmd) {
+        const arg = combCmd[1].trim().toUpperCase();
+        if (arg !== "TESTE" && arg !== "CONFIRMAR") {
+          await sendWhatsApp(from, "Uso: *#CRIARCOMBINADA TESTE* (valida sem criar) ou *#CRIARCOMBINADA CONFIRMAR* (cria PAUSADA a campanha Ceratocone + Esclerais).");
+          return;
+        }
+        const dry = arg === "TESTE";
+        await sendWhatsApp(from, `🟣 ${dry ? "Validando" : "Criando"} campanha combinada Ceratocone + Esclerais${dry ? " (DRY-RUN)" : " (nasce PAUSADA)"}...`);
+        googleAds.createSearchCampaign({ supabase, dryRun: dry, spec: googleAds.buildCeratoconeEscleralSpec() })
+          .then(r => sendWhatsApp(from, googleAds.buildCampaignCreateSummary(r)))
+          .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
+        return;
+      }
+      // Pausa AS DUAS campanhas separadas (Lentes Esclerais + Ceratocone Cirúrgico)
+      // quando a combinada assume. "TESTE" = prévia; "CONFIRMAR" pausa de verdade.
+      const pausarSepCmd = text.match(/^#PAUSARSEPARADAS\b([\s\S]*)$/i);
+      if (pausarSepCmd) {
+        const arg = pausarSepCmd[1].trim().toUpperCase();
+        if (arg !== "TESTE" && arg !== "CONFIRMAR") {
+          await sendWhatsApp(from, "Uso: *#PAUSARSEPARADAS TESTE* (prévia) ou *#PAUSARSEPARADAS CONFIRMAR* (pausa as campanhas Lentes Esclerais e Ceratocone Cirúrgico).");
+          return;
+        }
+        const dry = arg === "TESTE";
+        const alvos = [
+          process.env.GOOGLE_ADS_ESCLERAL_NAME || "IOBB | Lentes Esclerais",
+          process.env.GOOGLE_ADS_CERATOCONE_NAME || "IOBB | Ceratocone Cirúrgico",
+        ];
+        await sendWhatsApp(from, `🎚️ ${dry ? "Validando pausa" : "Pausando"} as separadas: ${alvos.join(" + ")}${dry ? " (DRY-RUN)" : ""}...`);
+        googleAds.setCampaignStatusByName({ supabase, names: alvos, status: 3, dryRun: dry })
+          .then(r => sendWhatsApp(from, googleAds.buildStatusSummary(r)))
+          .catch(e => sendWhatsApp(from, "⚠️ Falha ao pausar: " + e.message));
+        return;
+      }
       // Aproveita o histórico das campanhas antigas de refrativa: minera os
       // termos de pesquisa e adiciona palavras-chave vencedoras + negativas de
       // desperdício na campanha nova. "TESTE" = prévia (dry-run); "CONFIRMAR"
@@ -2167,6 +2203,38 @@ app.get("/api/ads/pausar-ceratocone", async (req, res) => {
     res.status(result.ok ? 200 : 502).json(result);
   } catch (e) {
     console.error("[Ads] Endpoint pausar-ceratocone:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Cria a campanha COMBINADA Ceratocone + Esclerais (reúne as duas). Nasce PAUSADA.
+//   GET /api/ads/create-ceratocone-escleral            → valida, NÃO cria
+//   GET /api/ads/create-ceratocone-escleral?confirm=1  → cria de verdade (pausada)
+app.get("/api/ads/create-ceratocone-escleral", async (req, res) => {
+  try {
+    const dryRun = req.query.confirm !== "1";
+    const result = await googleAds.createSearchCampaign({ supabase, dryRun, spec: googleAds.buildCeratoconeEscleralSpec() });
+    res.status(result.ok ? 200 : 502).json(result);
+  } catch (e) {
+    console.error("[Ads] Endpoint create-ceratocone-escleral:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Pausa AS DUAS campanhas separadas (Lentes Esclerais + Ceratocone Cirúrgico).
+//   GET /api/ads/pausar-separadas            → prévia (dry-run)
+//   GET /api/ads/pausar-separadas?confirm=1  → pausa de verdade
+app.get("/api/ads/pausar-separadas", async (req, res) => {
+  try {
+    const dryRun = req.query.confirm !== "1";
+    const names = [
+      process.env.GOOGLE_ADS_ESCLERAL_NAME || "IOBB | Lentes Esclerais",
+      process.env.GOOGLE_ADS_CERATOCONE_NAME || "IOBB | Ceratocone Cirúrgico",
+    ];
+    const result = await googleAds.setCampaignStatusByName({ supabase, names, status: 3, dryRun });
+    res.status(result.ok ? 200 : 502).json(result);
+  } catch (e) {
+    console.error("[Ads] Endpoint pausar-separadas:", e.message);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
