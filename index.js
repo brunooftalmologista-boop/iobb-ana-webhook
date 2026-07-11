@@ -1511,6 +1511,26 @@ app.post("/webhook", async (req, res) => {
         await sendWhatsApp(from, `ℹ️ Ana está ${anaAtiva ? "✅ ATIVA" : "❌ DESATIVADA"}.`);
         return;
       }
+      // Tráfego real de pacientes (mensagens recebidas) — responde pelo WhatsApp,
+      // sem precisar do painel. Se você recebeu ESTA resposta, o webhook está
+      // funcionando; se os números vierem zerados, ninguém está escrevendo para a Ana.
+      if (text === "#TRAFEGO" || text === "#TRÁFEGO") {
+        try {
+          const t = await coletarTrafego();
+          const j = t.janelas;
+          const u = t.ultima_mensagem_paciente;
+          const ult = !u ? "nenhuma registrada"
+            : u.ha_horas < 48 ? `há ${u.ha_horas}h`
+            : `há ${Math.round(u.ha_horas / 24)} dia(s)`;
+          const alerta = t.semTrafego48h
+            ? "\n\n⚠️ ZERO mensagens de pacientes em 48h. Se você recebeu esta resposta, o webhook funciona — então provavelmente ninguém está escrevendo para a Ana (número divulgado? campanhas ativas?)."
+            : "";
+          await sendWhatsApp(from, `📈 *Mensagens recebidas de pacientes*\n• 24h: ${j["24h"].pacienteToAna}\n• 48h: ${j["48h"].pacienteToAna}\n• 7 dias: ${j["7d"].pacienteToAna}\n• Última: ${ult}${alerta}`);
+        } catch (e) {
+          await sendWhatsApp(from, "⚠️ Não consegui consultar o tráfego agora: " + e.message);
+        }
+        return;
+      }
       if (text === "#ADS" || text === "#ADS RELATORIO") {
         await sendWhatsApp(from, `📊 Gerando relatório do Google Ads (modo ${googleAds.isTestMode() ? "TESTE" : "PRODUÇÃO"})...`);
         googleAds.runWeeklyReport({ supabase, sendWhatsApp }).catch(e => console.error("[GoogleAds] Manual:", e.message));
@@ -2517,39 +2537,44 @@ app.get("/api/diag/ana", async (req, res) => {
 // mensagem de paciente. Serve para separar "sistema saudável mas ocioso" de
 // "sistema no ar mas sem tráfego" (ligado ao aviso de inatividade do Supabase e
 // ao 0 conversões dos anúncios). Auth via requirePanelAuth (já aplicado em /api).
+// Coleta as contagens de tráfego: mensagens por papel (paciente→Ana / Ana→paciente
+// / total) em 24h/48h/7d + a última mensagem de paciente. Reusado pelo endpoint
+// /api/diag/trafego e pelo comando admin de WhatsApp #TRAFEGO.
+async function coletarTrafego() {
+  const now = Date.now();
+  const H = 60 * 60 * 1000, D = 24 * H;
+  const iso = (msAgo) => new Date(now - msAgo).toISOString();
+  const conta = async (role, msAgo) => {
+    let q = supabase.from("messages").select("*", { count: "exact", head: true }).gte("timestamp", iso(msAgo));
+    if (role) q = q.eq("role", role);
+    const { count, error } = await q;
+    if (error) throw new Error(error.message);
+    return count || 0;
+  };
+  const janelas = {};
+  for (const [label, msAgo] of [["24h", D], ["48h", 2 * D], ["7d", 7 * D]]) {
+    janelas[label] = {
+      pacienteToAna: await conta("user", msAgo),      // mensagens recebidas de pacientes
+      anaToPaciente: await conta("assistant", msAgo), // respostas da Ana
+      total: await conta(null, msAgo),
+    };
+  }
+  const { data: ult } = await supabase.from("messages").select("timestamp")
+    .eq("role", "user").order("timestamp", { ascending: false }).limit(1).maybeSingle();
+  const ultima = ult?.timestamp ? { quando: ult.timestamp, ha_horas: Math.round((now - new Date(ult.timestamp).getTime()) / H) } : null;
+  return { agora: new Date(now).toISOString(), janelas, ultima_mensagem_paciente: ultima, semTrafego48h: janelas["48h"].pacienteToAna === 0 };
+}
+
+function diagnosticoTrafego(t) {
+  return t.semTrafego48h
+    ? "⚠️ SEM mensagens de pacientes nas últimas 48h — a Ana não está recebendo tráfego (verifique: webhook da Meta apontando para /webhook, número correto, Ana ligada, Render acordado)."
+    : "✅ Há tráfego de pacientes recente.";
+}
+
 app.get("/api/diag/trafego", async (req, res) => {
   try {
-    const now = Date.now();
-    const H = 60 * 60 * 1000, D = 24 * H;
-    const iso = (msAgo) => new Date(now - msAgo).toISOString();
-    const conta = async (role, msAgo) => {
-      let q = supabase.from("messages").select("*", { count: "exact", head: true }).gte("timestamp", iso(msAgo));
-      if (role) q = q.eq("role", role);
-      const { count, error } = await q;
-      if (error) throw new Error(error.message);
-      return count || 0;
-    };
-    const janelas = {};
-    for (const [label, msAgo] of [["24h", D], ["48h", 2 * D], ["7d", 7 * D]]) {
-      janelas[label] = {
-        pacienteToAna: await conta("user", msAgo),      // mensagens recebidas de pacientes
-        anaToPaciente: await conta("assistant", msAgo), // respostas da Ana
-        total: await conta(null, msAgo),
-      };
-    }
-    const { data: ult } = await supabase.from("messages").select("timestamp")
-      .eq("role", "user").order("timestamp", { ascending: false }).limit(1).maybeSingle();
-    const ultima = ult?.timestamp ? { quando: ult.timestamp, ha_horas: Math.round((now - new Date(ult.timestamp).getTime()) / H) } : null;
-    const semTrafego48h = janelas["48h"].pacienteToAna === 0;
-    res.json({
-      ok: true,
-      agora: new Date(now).toISOString(),
-      janelas,
-      ultima_mensagem_paciente: ultima,
-      diagnostico: semTrafego48h
-        ? "⚠️ SEM mensagens de pacientes nas últimas 48h — a Ana não está recebendo tráfego (verifique: webhook da Meta apontando para /webhook, número correto, Ana ligada, Render acordado)."
-        : "✅ Há tráfego de pacientes recente.",
-    });
+    const t = await coletarTrafego();
+    res.json({ ok: true, ...t, diagnostico: diagnosticoTrafego(t) });
   } catch (e) {
     console.error("[Diag] trafego:", e.message);
     res.status(500).json({ ok: false, error: e.message });
