@@ -97,6 +97,15 @@ Você atende pelo WhatsApp. Sua missão é acolher cada pessoa com atenção gen
 4. Coleta de dados para pré-agendamento: Nome completo, telefone, unidade preferida (Conjunto Nacional ou Taguatinga), convênio ou particular, motivo da consulta, melhor período (manhã ou tarde). Ao solicitar: "Por gentileza, poderia me informar seu nome completo e telefone? O mais breve possível, dentro do horário comercial (segunda a sexta, das 8h às 18h), a nossa equipe de agendamento entrará em contato para confirmar o horário."
 5. Encerramento: Confirme os dados e informe que a equipe de agendamento entrará em contato o mais breve possível, dentro do horário comercial, para confirmar o horário.
 
+### Controle da coleta de pré-agendamento (LEIA O HISTÓRICO — REGRA CRÍTICA CONTRA REPETIÇÃO)
+Antes de perguntar QUALQUER dado, releia toda a conversa acima e monte mentalmente uma lista do que o paciente JÁ informou. Os dados de pré-agendamento são: (1) nome completo, (2) telefone, (3) unidade preferida (Conjunto Nacional ou Taguatinga), (4) convênio ou particular, (5) motivo da consulta, (6) período preferido (manhã ou tarde).
+- NUNCA peça um dado que o paciente já forneceu em qualquer mensagem anterior — mesmo que tenha sido no começo da conversa. Se ele já disse o nome lá atrás, considere o nome COLETADO e não pergunte de novo.
+- Observação: o telefone do WhatsApp já é conhecido; só peça telefone se precisar de um número alternativo. Não trave a coleta por causa do telefone.
+- Peça APENAS os dados que ainda faltam. Se faltar só um, pergunte só aquele. Não reinicie a coleta do zero a cada mensagem, e não "reconfirme" itens já confirmados.
+- Ao reunir todos os dados necessários (na prática: nome, unidade, período, e convênio/particular — motivo quando fizer sentido), ENCERRE a coleta: dê a mensagem de conclusão UMA vez e anexe o bloco [PREAGENDAMENTO]. Não faça mais perguntas de coleta depois disso.
+- DEPOIS de encerrar um pré-agendamento, a coleta está FECHADA. Se o paciente escrever de novo, trate como continuação (ex.: uma dúvida, um ajuste pontual, um segundo paciente) — NUNCA recomece a pedir nome, unidade, período etc. do zero. Só reabra a coleta se o paciente claramente pedir um NOVO agendamento com dados diferentes.
+- Se você já disse ao paciente que a equipe vai entrar em contato para confirmar, a coleta daquele agendamento está concluída: não volte a perguntar os mesmos dados.
+
 ### Registro interno de pré-agendamento (INVISÍVEL ao paciente)
 Sempre que você CONCLUIR a coleta de um pré-agendamento — ou seja, no momento em que disser ao paciente que a equipe/as secretárias vão entrar em contato para confirmar — acrescente, no FINAL da sua mensagem, um bloco técnico EXATAMENTE neste formato:
 [PREAGENDAMENTO]
@@ -686,9 +695,14 @@ async function lastInboundAt(phone) {
 }
 
 async function getConversationMessages(conversationId) {
-  // Buscar as 20 mensagens MAIS RECENTES (desc) e devolver em ordem cronológica.
+  // Buscar as 40 mensagens MAIS RECENTES (desc) e devolver em ordem cronológica.
   // Assim o histórico sempre inclui a última mensagem do usuário recém-salva.
-  const { data } = await supabase.from("messages").select("role, content").eq("conversation_id", conversationId).order("timestamp", { ascending: false }).limit(20);
+  // 40 (e não 20) porque a coleta de um pré-agendamento é feita campo a campo,
+  // turno a turno: nome → telefone → unidade → convênio → motivo → período. Uma
+  // janela curta faz os PRIMEIROS dados informados (nome/telefone) saírem de
+  // contexto no meio da coleta — a Ana deixa de "enxergá-los" e pergunta de novo,
+  // dando a falsa impressão de que reinicia o checklist. Ver slice() abaixo.
+  const { data } = await supabase.from("messages").select("role, content").eq("conversation_id", conversationId).order("timestamp", { ascending: false }).limit(40);
   return (data || []).reverse();
 }
 
@@ -1013,6 +1027,36 @@ async function persistirPreAgendamentos(registros, patient, from, conversationId
     else console.log(`[PréAgenda] ${rows.length} registro(s) gravado(s) na tabela preagendamentos.`);
   } catch (e) {
     console.error("[PréAgenda] Exceção ao persistir:", e.message);
+  }
+}
+
+// Marca a conversão de AGENDAMENTO (booked=true) do clique de anúncio vinculado a
+// esta conversa e dispara o upload da conversão offline ao Google Ads. É o que
+// FECHA o ciclo de atribuição — antes, dependia 100% do clique manual "agendou"
+// no painel (POST /api/conversations/:id/booked), então pré-agendamentos vindos de
+// anúncio não eram contados. Agora a Ana marca sozinha ao concluir a coleta.
+// IDEMPOTENTE: só age no ad_click mais recente da conversa que AINDA não está
+// booked, para nunca contar a mesma conversão duas vezes (a Ana pode reemitir o
+// bloco, o paciente pode voltar etc.). Só faz upload se DE FATO virou a marca.
+// NUNCA lança — atribuição jamais pode quebrar o atendimento.
+async function marcarConversaoAgendada(conversationId, value = 200) {
+  if (!conversationId) return { attributed: false };
+  try {
+    const { data } = await supabase.from("ad_clicks").select("id, booked")
+      .eq("conversation_id", String(conversationId))
+      .order("clicked_at", { ascending: false }).limit(1).single();
+    if (!data) return { attributed: false };                 // conversa não veio de anúncio
+    if (data.booked) return { attributed: true, alreadyBooked: true };
+    await supabase.from("ad_clicks").update({ booked: true, booked_at: new Date(), conversion_value: value }).eq("id", data.id);
+    // Fire-and-forget: não atrasa o atendimento; erros só vão ao log. A rede de
+    // segurança semanal reprocessa qualquer conversão que não suba agora.
+    googleAds.uploadClickConversions({ supabase })
+      .then(r => console.log(`[Ads] Upload pós-agendamento: ${r.uploaded} enviada(s), ${r.failed} falha(s).`))
+      .catch(e => console.error("[Ads] Upload pós-agendamento falhou:", e.message));
+    return { attributed: true, alreadyBooked: false };
+  } catch (e) {
+    console.error("[Ads] Falha ao marcar conversão de agendamento:", e.message);
+    return { attributed: false, error: e.message };
   }
 }
 
@@ -1637,7 +1681,15 @@ app.post("/webhook", async (req, res) => {
     // A API da Anthropic exige que o array de mensagens comece e termine com
     // role "user" (sem prefill do assistente). Garantimos isso removendo
     // quaisquer mensagens do assistente nas pontas do payload.
-    const apiMessages = messages.slice(-10);
+    //
+    // Janela de 30 mensagens (antes eram 10). Uma janela de 10 cobre só ~5 turnos,
+    // e a coleta do pré-agendamento (nome, telefone, unidade, convênio, motivo,
+    // período) costuma passar disso: os PRIMEIROS dados informados escorregavam
+    // para fora do contexto e a Ana os pedia de novo — a causa raiz do "loop" em
+    // que ela confirmava um dado, avançava e depois voltava a perguntar o que já
+    // tinha. Mensagens de WhatsApp são curtas, então 30 cabe bem no orçamento de
+    // tokens e mantém toda a coleta visível até o fechamento.
+    const apiMessages = messages.slice(-30);
     while (apiMessages.length && apiMessages[apiMessages.length - 1].role === "assistant") apiMessages.pop();
     while (apiMessages.length && apiMessages[0].role === "assistant") apiMessages.shift();
     // Salvaguarda: se nada sobrar, usar ao menos a mensagem atual do usuário.
@@ -1677,7 +1729,13 @@ app.post("/webhook", async (req, res) => {
 
     // Espelhamento à secretária. Evita duplicar: pré-agendamento já tem seu
     // próprio resumo, então o [RECADO] só dispara quando NÃO houver pré-agenda.
-    if (registros.length) await notificarSecretaria(registros, patient, from, conversation.id);
+    if (registros.length) {
+      await notificarSecretaria(registros, patient, from, conversation.id);
+      // Fecha o ciclo de atribuição: se esta conversa veio de um anúncio (tem
+      // ad_click/gclid vinculado), o pré-agendamento concluído VIRA conversão
+      // offline no Google Ads, sem depender do clique manual no painel.
+      await marcarConversaoAgendada(conversation.id);
+    }
     else if (rec.recado) await notificarRecadoEquipe(rec.recado, patient, from);
 
     // Espelhar para clínica (isolado: notificarClinica nunca lança)
@@ -1929,17 +1987,10 @@ app.post("/api/conversations/:id/reopen", async (req, res) => {
 app.post("/api/conversations/:id/booked", async (req, res) => {
   try {
     const value = Number(req.body?.value) || 200;
-    const { data } = await supabase.from("ad_clicks").select("id")
-      .eq("conversation_id", String(req.params.id))
-      .order("clicked_at", { ascending: false }).limit(1).single();
-    if (!data) return res.json({ ok: true, attributed: false });
-    await supabase.from("ad_clicks").update({ booked: true, booked_at: new Date(), conversion_value: value }).eq("id", data.id);
-    // Fecha o ciclo: envia a conversão offline ao Google Ads em quase tempo real.
-    // Fire-and-forget — não atrasa a resposta ao painel; erros só vão ao log.
-    googleAds.uploadClickConversions({ supabase })
-      .then(r => console.log(`[Ads] Upload pós-agendamento: ${r.uploaded} enviada(s), ${r.failed} falha(s).`))
-      .catch(e => console.error("[Ads] Upload pós-agendamento falhou:", e.message));
-    res.json({ ok: true, attributed: true });
+    // Mesma lógica usada quando a Ana conclui o pré-agendamento (idempotente).
+    // O clique manual no painel continua valendo — só deixou de ser a única via.
+    const r = await marcarConversaoAgendada(req.params.id, value);
+    res.json({ ok: true, attributed: !!r.attributed, alreadyBooked: !!r.alreadyBooked });
   } catch (e) {
     console.error("[Ads] Falha ao marcar agendamento:", e.message);
     res.status(500).json({ ok: false, error: e.message });
