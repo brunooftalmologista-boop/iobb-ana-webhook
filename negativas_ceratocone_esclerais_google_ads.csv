@@ -1,0 +1,27 @@
+Campaign,Keyword,Match Type,Level,Motivo
+IOBB | Ceratocone e Esclerais,cura,Broad,Campaign,Informacional - "ceratocone tem cura" nao converte
+IOBB | Ceratocone e Esclerais,tem cura,Phrase,Campaign,Informacional - baixa intencao
+IOBB | Ceratocone e Esclerais,o que é,Phrase,Campaign,Informacional - "o que é lente escleral / ceratocone"
+IOBB | Ceratocone e Esclerais,o que e,Phrase,Campaign,Informacional - variacao sem acento
+IOBB | Ceratocone e Esclerais,sintomas,Broad,Campaign,Informacional - pesquisa de sintoma, nao de tratamento
+IOBB | Ceratocone e Esclerais,causas,Broad,Campaign,Informacional
+IOBB | Ceratocone e Esclerais,exercícios,Broad,Campaign,Informacional - "exercicios para ceratocone"
+IOBB | Ceratocone e Esclerais,colírio,Broad,Campaign,Publico errado - busca medicamento
+IOBB | Ceratocone e Esclerais,caseiro,Broad,Campaign,Publico errado - tratamento caseiro
+IOBB | Ceratocone e Esclerais,natural,Broad,Campaign,Publico errado - tratamento natural
+IOBB | Ceratocone e Esclerais,aposentadoria,Broad,Campaign,Publico errado - INSS/beneficio
+IOBB | Ceratocone e Esclerais,inss,Broad,Campaign,Publico errado - beneficio/laudo
+IOBB | Ceratocone e Esclerais,cid,Broad,Campaign,Publico errado - busca codigo CID
+IOBB | Ceratocone e Esclerais,isenção,Broad,Campaign,Publico errado - isencao de imposto
+IOBB | Ceratocone e Esclerais,exército,Broad,Campaign,Publico errado - junta militar/alistamento
+IOBB | Ceratocone e Esclerais,concurso,Broad,Campaign,Publico errado - apto em concurso
+IOBB | Ceratocone e Esclerais,comprar,Broad,Campaign,Nao vendemos lente avulsa online - busca de e-commerce
+IOBB | Ceratocone e Esclerais,mercado livre,Phrase,Campaign,E-commerce - nao vendemos lente avulsa
+IOBB | Ceratocone e Esclerais,usada,Broad,Campaign,E-commerce/segunda mao
+IOBB | Ceratocone e Esclerais,grátis,Broad,Campaign,Nao-comprador
+IOBB | Ceratocone e Esclerais,gratuito,Broad,Campaign,Nao-comprador
+IOBB | Ceratocone e Esclerais,sus,Broad,Campaign,Publico errado - busca atendimento publico/SUS
+IOBB | Ceratocone e Esclerais,curso,Broad,Campaign,Publico errado - curso/faculdade
+IOBB | Ceratocone e Esclerais,estrabismo,Broad,Campaign,Outro procedimento - publico errado
+IOBB | Ceratocone e Esclerais,refrativa,Broad,Campaign,Outro procedimento - separar da campanha refrativa
+IOBB | Ceratocone e Esclerais,lasik,Broad,Campaign,Outro procedimento - refrativa
