@@ -1088,6 +1088,16 @@ function formatarPreAgendamento(r) {
   const tel = (r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—");
   return `👤 Nome: ${v(r.nome)}\n📱 Telefone: ${tel}\n🏥 Convênio: ${v(r.convenio)}\n📍 Unidade: ${v(r.unidade)}\n🕐 Período: ${v(r.periodo)}\n📝 Motivo: ${v(r.motivo)}`;
 }
+// Guarda o detalhe do último erro de consulta (código + mensagem do Postgres/
+// PostgREST) para a Ana poder devolvê-lo no WhatsApp — assim o diagnóstico não
+// depende de olhar os logs do Render. Ex.: "42P01: relation ... does not exist"
+// (tabela ausente), "PGRST205" (cache da API), "permission denied" (RLS/grants).
+let ultimoErroPreAgenda = null;
+const capturaErroPreAgenda = (error, ctx) => {
+  ultimoErroPreAgenda = (error.code ? error.code + ": " : "") + (error.message || "erro desconhecido");
+  console.error(`[PréAgenda] ${ctx}:`, ultimoErroPreAgenda);
+};
+
 // Núcleos que operam sobre um intervalo {start,end} em UTC. As versões por preset
 // (hoje/ontem/semana/mês) e por DATAS específicas (#PREAGENDA 01/07 a 10/07) usam
 // os mesmos núcleos.
@@ -1095,14 +1105,14 @@ async function contarPreAgendamentosBounds({ start, end }) {
   const { count, error } = await supabase.from("preagendamentos")
     .select("*", { count: "exact", head: true })
     .gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
-  if (error) { console.error("[PréAgenda] contar:", error.message); return null; }
+  if (error) { capturaErroPreAgenda(error, "contar"); return null; }
   return count ?? 0;
 }
 async function listarPreAgendamentosBounds({ start, end }, limit = 30) {
   const { data, error } = await supabase.from("preagendamentos")
     .select("*").gte("created_at", start.toISOString()).lt("created_at", end.toISOString())
     .order("created_at", { ascending: false }).limit(limit);
-  if (error) { console.error("[PréAgenda] listar:", error.message); return null; }
+  if (error) { capturaErroPreAgenda(error, "listar"); return null; }
   return data || [];
 }
 async function contarPreAgendamentos(p) { return contarPreAgendamentosBounds(periodoBoundsUTC(p)); }
@@ -1132,7 +1142,7 @@ function rotuloDatas(d1, d2) {
 async function ultimoPreAgendamento() {
   const { data, error } = await supabase.from("preagendamentos")
     .select("*").order("created_at", { ascending: false }).limit(1);
-  if (error) { console.error("[PréAgenda] último:", error.message); return null; }
+  if (error) { capturaErroPreAgenda(error, "último"); return null; }
   return (data && data[0]) || null;
 }
 
@@ -1146,7 +1156,7 @@ async function handleAdminConsultaPreAgenda(from, text) {
   const topicoEspecifico = /pre-?agenda|preagenda/.test(norm);
   const topicoGenerico = /agendament/.test(norm);
   if (!topicoEspecifico && !topicoGenerico) return false;
-  const erroTabela = "Não consegui consultar os pré-agendamentos agora. (Confira se a migração sql/preagendamentos.sql já foi aplicada no Supabase.)";
+  const erroTabela = () => `Não consegui consultar os pré-agendamentos agora.${ultimoErroPreAgenda ? `\n[detalhe técnico: ${ultimoErroPreAgenda}]` : ""}\n(Confira se a migração sql/preagendamentos.sql já foi aplicada no Supabase — e se é o mesmo projeto do SUPABASE_URL.)`;
   const periodo = /\bhoje\b/.test(norm) ? "hoje"
     : /\bontem\b/.test(norm) ? "ontem"
     : /semana|7 ?dias|ultimos dias/.test(norm) ? "semana"
@@ -1163,12 +1173,12 @@ async function handleAdminConsultaPreAgenda(from, text) {
     const rotulo = rotuloDatas(d1, d2);
     if (/quant/.test(norm)) {
       const n = await contarPreAgendamentosBounds(bounds);
-      if (n === null) { await sendWhatsApp(from, erroTabela); return true; }
+      if (n === null) { await sendWhatsApp(from, erroTabela()); return true; }
       await sendWhatsApp(from, `📊 Pré-agendamentos ${rotulo}: *${n}*.`);
       return true;
     }
     const rows = await listarPreAgendamentosBounds(bounds, 200);
-    if (rows === null) { await sendWhatsApp(from, erroTabela); return true; }
+    if (rows === null) { await sendWhatsApp(from, erroTabela()); return true; }
     if (!rows.length) { await sendWhatsApp(from, `Nenhum pré-agendamento ${rotulo}.`); return true; }
     const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtDataHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}`).join("\n");
     await sendWhatsApp(from, `📋 Pré-agendamentos ${rotulo} (${rows.length}):\n${linhas}`);
@@ -1178,7 +1188,7 @@ async function handleAdminConsultaPreAgenda(from, text) {
   // Enviar/mostrar o ÚLTIMO pré-agendamento.
   if (/\bultim|\blast\b/.test(norm)) {
     const row = await ultimoPreAgendamento();
-    if (row === null) { await sendWhatsApp(from, erroTabela); return true; }
+    if (row === null) { await sendWhatsApp(from, erroTabela()); return true; }
     if (!row) { await sendWhatsApp(from, "Ainda não há nenhum pré-agendamento registrado."); return true; }
     await sendWhatsApp(from, `📋 *Último pré-agendamento* (${fmtDataHoraBR(row.created_at)}):\n${formatarPreAgendamento(row)}`);
     return true;
@@ -1187,7 +1197,7 @@ async function handleAdminConsultaPreAgenda(from, text) {
   if (/quant/.test(norm)) {
     const p = periodo || "hoje";
     const n = await contarPreAgendamentos(p);
-    if (n === null) { await sendWhatsApp(from, erroTabela); return true; }
+    if (n === null) { await sendWhatsApp(from, erroTabela()); return true; }
     await sendWhatsApp(from, `📊 Pré-agendamentos ${rotuloPeriodo(p)}: *${n}*.`);
     return true;
   }
@@ -1197,7 +1207,7 @@ async function handleAdminConsultaPreAgenda(from, text) {
   if (/\b(list|listar|quais|todos|todas|relac|relatori)/.test(norm) || (/mand|envi|mostr|passa/.test(norm) && periodo)) {
     const p = periodo || "hoje";
     const rows = await listarPreAgendamentos(p);
-    if (rows === null) { await sendWhatsApp(from, erroTabela); return true; }
+    if (rows === null) { await sendWhatsApp(from, erroTabela()); return true; }
     if (!rows.length) { await sendWhatsApp(from, `Nenhum pré-agendamento ${rotuloPeriodo(p)}.`); return true; }
     const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}`).join("\n");
     await sendWhatsApp(from, `📋 Pré-agendamentos ${rotuloPeriodo(p)} (${rows.length}):\n${linhas}`);
