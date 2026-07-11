@@ -1390,6 +1390,29 @@ async function sendWhatsApp(to, body) {
   for (const c of chunks) await sendWhatsAppRaw(to, c);
 }
 
+// Health check PÚBLICO (sem auth — fora de /api de propósito) para KEEPALIVE.
+// Faz um SELECT trivial no Supabase (count head em `settings`, sem trazer linhas)
+// para GERAR ATIVIDADE e evitar o auto-pause do plano free (pausa após 7 dias sem
+// atividade) — e, de quebra, mantém o serviço do Render acordado. Um pinger externo
+// (ex.: cron-job.org / UptimeRobot a cada ~10 min) deve bater aqui. NÃO expõe dado
+// sensível: devolve só ok/latência. Responde a GET e HEAD (Express roteia HEAD ao
+// handler de GET). 503 se o banco não responder — sinal útil para o próprio pinger.
+app.get("/health", async (req, res) => {
+  const t0 = Date.now();
+  try {
+    const { error } = await supabase.from("settings").select("key", { count: "exact", head: true });
+    const ms = Date.now() - t0;
+    if (error) {
+      console.error("[Health] Banco indisponível:", error.message);
+      return res.status(503).json({ ok: false, db: false, ms });
+    }
+    res.json({ ok: true, db: true, ms });
+  } catch (e) {
+    console.error("[Health] Exceção:", e.message);
+    res.status(503).json({ ok: false, db: false, error: e.message });
+  }
+});
+
 // Webhook verification
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
