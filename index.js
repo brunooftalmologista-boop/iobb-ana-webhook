@@ -2444,6 +2444,50 @@ app.get("/api/diag/ana", async (req, res) => {
   }
 });
 
+// Diagnóstico de TRÁFEGO REAL: a Ana está recebendo mensagens de pacientes? Conta
+// mensagens por papel (paciente/Ana) em 24h/48h/7d e mostra quando foi a última
+// mensagem de paciente. Serve para separar "sistema saudável mas ocioso" de
+// "sistema no ar mas sem tráfego" (ligado ao aviso de inatividade do Supabase e
+// ao 0 conversões dos anúncios). Auth via requirePanelAuth (já aplicado em /api).
+app.get("/api/diag/trafego", async (req, res) => {
+  try {
+    const now = Date.now();
+    const H = 60 * 60 * 1000, D = 24 * H;
+    const iso = (msAgo) => new Date(now - msAgo).toISOString();
+    const conta = async (role, msAgo) => {
+      let q = supabase.from("messages").select("*", { count: "exact", head: true }).gte("timestamp", iso(msAgo));
+      if (role) q = q.eq("role", role);
+      const { count, error } = await q;
+      if (error) throw new Error(error.message);
+      return count || 0;
+    };
+    const janelas = {};
+    for (const [label, msAgo] of [["24h", D], ["48h", 2 * D], ["7d", 7 * D]]) {
+      janelas[label] = {
+        pacienteToAna: await conta("user", msAgo),      // mensagens recebidas de pacientes
+        anaToPaciente: await conta("assistant", msAgo), // respostas da Ana
+        total: await conta(null, msAgo),
+      };
+    }
+    const { data: ult } = await supabase.from("messages").select("timestamp")
+      .eq("role", "user").order("timestamp", { ascending: false }).limit(1).maybeSingle();
+    const ultima = ult?.timestamp ? { quando: ult.timestamp, ha_horas: Math.round((now - new Date(ult.timestamp).getTime()) / H) } : null;
+    const semTrafego48h = janelas["48h"].pacienteToAna === 0;
+    res.json({
+      ok: true,
+      agora: new Date(now).toISOString(),
+      janelas,
+      ultima_mensagem_paciente: ultima,
+      diagnostico: semTrafego48h
+        ? "⚠️ SEM mensagens de pacientes nas últimas 48h — a Ana não está recebendo tráfego (verifique: webhook da Meta apontando para /webhook, número correto, Ana ligada, Render acordado)."
+        : "✅ Há tráfego de pacientes recente.",
+    });
+  } catch (e) {
+    console.error("[Diag] trafego:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ===== Landing pages de anúncios (captura de gclid → WhatsApp com token) =====
 const LP_TEMAS = {
   ceratocone: {
