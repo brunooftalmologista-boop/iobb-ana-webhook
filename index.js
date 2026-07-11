@@ -1737,14 +1737,30 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
-    // Para imagens e documentos, Ana responde e notifica equipe
+    // Para imagens/documentos/vídeos: por padrão a Ana só acusa o recebimento e
+    // encaminha à equipe. EXCEÇÃO: se ela acabou de pedir a carteirinha (fluxo
+    // Unimed) e o paciente responde com uma FOTO, não dead-enda — a equipe é
+    // notificada e o atendimento SEGUE para a Ana concluir o pré-agendamento.
+    let fotoDeCarteirinha = false;
     if (msg.type === "image" || msg.type === "document" || msg.type === "video") {
-      const tipoArquivo = msg.type === "image" ? "imagem" : msg.type === "document" ? "documento" : "vídeo";
-      const reply = `Recebi ${tipoArquivo === "imagem" ? "a" : "o"} ${tipoArquivo}! 😊 Vou encaminhar para nossa equipe verificar. Assim que abrir o atendimento — segunda a sexta, das 8h às 18h — elas entram em contato com você. Posso ajudar com mais alguma coisa?`;
-      await sendWhatsApp(from, reply);
-      await saveMessage(conversation.id, "assistant", reply);
-      await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification}\n\n🤖 *Ana:*\n${reply}`);
-      return;
+      if (msg.type === "image") {
+        try {
+          const recent = await getConversationMessages(conversation.id);
+          const ultimaAna = recent.filter(m => m.role === "assistant").slice(-1).map(m => (m.content || "").toLowerCase()).join(" ");
+          fotoDeCarteirinha = /carteirinha|carteira do conv|unimed/.test(ultimaAna);
+        } catch (_) {}
+      }
+      if (!fotoDeCarteirinha) {
+        const tipoArquivo = msg.type === "image" ? "imagem" : msg.type === "document" ? "documento" : "vídeo";
+        const reply = `Recebi ${tipoArquivo === "imagem" ? "a" : "o"} ${tipoArquivo}! 😊 Vou encaminhar para nossa equipe verificar. Assim que abrir o atendimento — segunda a sexta, das 8h às 18h — elas entram em contato com você. Posso ajudar com mais alguma coisa?`;
+        await sendWhatsApp(from, reply);
+        await saveMessage(conversation.id, "assistant", reply);
+        await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification}\n\n🤖 *Ana:*\n${reply}`);
+        return;
+      }
+      // Provável carteirinha: notifica a equipe (que recebe a imagem) e NÃO retorna
+      // — cai no fluxo normal, com uma orientação extra no prompt (ver adiante).
+      await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification} (provável carteirinha — a Ana segue o pré-agendamento)`);
     }
 
     // Buscar histórico do banco
@@ -1760,6 +1776,13 @@ app.post("/webhook", async (req, res) => {
     const dt = brasiliaAgora();
     console.log(`[Data] Agora (Brasília): ${dt.agora} | hoje = ${dt.hojeDow}, ${dt.hoje} | amanhã = ${dt.amanhaDow}, ${dt.amanha}`);
     let systemPrompt = SYSTEM_PROMPT + `\n\n### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje}.\n- AMANHÃ é ${dt.amanha}.\nSempre calcule "hoje", "amanhã", datas e dia da semana a partir daqui (America/Sao_Paulo). Nunca use outra referência de data.`;
+
+    // O paciente respondeu ao pedido de carteirinha com uma FOTO. A Ana não vê o
+    // conteúdo, mas a equipe já recebeu — então ela deve considerar entregue e
+    // seguir, em vez de dead-endar como faria com uma imagem qualquer.
+    if (fotoDeCarteirinha) {
+      systemPrompt += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nVocê havia pedido a carteirinha e ele respondeu com uma imagem. Você NÃO vê o conteúdo, mas a NOSSA EQUIPE já recebeu a foto. Considere a carteirinha ENTREGUE: agradeça, e CONTINUE/CONCLUA o pré-agendamento normalmente (registre no bloco como "carteirinha por foto"). NÃO peça a carteirinha de novo e NÃO diga apenas que "vai encaminhar" — conclua o pré-agendamento, explicando que a equipe confirma a cobertura da Unimed junto com o horário.`;
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // DESATIVADO (decisão de produto): a Ana NÃO oferece mais horários específicos.
