@@ -1088,21 +1088,46 @@ function formatarPreAgendamento(r) {
   const tel = (r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—");
   return `👤 Nome: ${v(r.nome)}\n📱 Telefone: ${tel}\n🏥 Convênio: ${v(r.convenio)}\n📍 Unidade: ${v(r.unidade)}\n🕐 Período: ${v(r.periodo)}\n📝 Motivo: ${v(r.motivo)}`;
 }
-async function contarPreAgendamentos(p) {
-  const { start, end } = periodoBoundsUTC(p);
+// Núcleos que operam sobre um intervalo {start,end} em UTC. As versões por preset
+// (hoje/ontem/semana/mês) e por DATAS específicas (#PREAGENDA 01/07 a 10/07) usam
+// os mesmos núcleos.
+async function contarPreAgendamentosBounds({ start, end }) {
   const { count, error } = await supabase.from("preagendamentos")
     .select("*", { count: "exact", head: true })
     .gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
   if (error) { console.error("[PréAgenda] contar:", error.message); return null; }
   return count ?? 0;
 }
-async function listarPreAgendamentos(p, limit = 30) {
-  const { start, end } = periodoBoundsUTC(p);
+async function listarPreAgendamentosBounds({ start, end }, limit = 30) {
   const { data, error } = await supabase.from("preagendamentos")
     .select("*").gte("created_at", start.toISOString()).lt("created_at", end.toISOString())
     .order("created_at", { ascending: false }).limit(limit);
   if (error) { console.error("[PréAgenda] listar:", error.message); return null; }
   return data || [];
+}
+async function contarPreAgendamentos(p) { return contarPreAgendamentosBounds(periodoBoundsUTC(p)); }
+async function listarPreAgendamentos(p, limit = 30) { return listarPreAgendamentosBounds(periodoBoundsUTC(p), limit); }
+
+// Converte um match de data "DD/MM" ou "DD/MM/AAAA" em {ano,mes,dia} (ano padrão =
+// ano atual em Brasília; 2 dígitos → 20xx). Retorna null se a data for inválida.
+function parseDataBR(m) {
+  const dia = parseInt(m[1], 10), mes = parseInt(m[2], 10);
+  let ano = m[3] ? parseInt(m[3], 10) : brasiliaAgora().ymd.ano;
+  if (ano < 100) ano += 2000;
+  if (!(dia >= 1 && dia <= 31 && mes >= 1 && mes <= 12)) return null;
+  return { ano, mes, dia };
+}
+// Intervalo UTC de d1..d2 INCLUSIVE (meia-noite BR = 03:00 UTC). Ordena se invertido.
+function boundsDeDatas(d1, d2) {
+  let a = new Date(Date.UTC(d1.ano, d1.mes - 1, d1.dia, 3, 0, 0));
+  let b = new Date(Date.UTC(d2.ano, d2.mes - 1, d2.dia, 3, 0, 0));
+  if (a > b) { const t = a; a = b; b = t; }
+  return { start: a, end: new Date(b.getTime() + 24 * 60 * 60 * 1000) }; // dia final inclusivo
+}
+function rotuloDatas(d1, d2) {
+  const f = (d) => `${String(d.dia).padStart(2, "0")}/${String(d.mes).padStart(2, "0")}`;
+  const mesmoDia = d1.ano === d2.ano && d1.mes === d2.mes && d1.dia === d2.dia;
+  return mesmoDia ? `de ${f(d1)}` : `de ${f(d1)} a ${f(d2)}`;
 }
 async function ultimoPreAgendamento() {
   const { data, error } = await supabase.from("preagendamentos")
@@ -1127,6 +1152,28 @@ async function handleAdminConsultaPreAgenda(from, text) {
     : /semana|7 ?dias|ultimos dias/.test(norm) ? "semana"
     : /\bm[eê]s\b|mensal|30 ?dias/.test(norm) ? "mes"
     : null;
+
+  // Período por DATAS específicas: ex. "01/07 a 10/07", "de 1/7 até 10/7" ou só
+  // "05/07" (um dia). Tem prioridade sobre os presets. Uma data → aquele dia;
+  // duas → intervalo inclusivo. Verbo "quant..." conta; senão lista todos.
+  const datas = [...norm.matchAll(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/g)].map(parseDataBR).filter(Boolean);
+  if (datas.length) {
+    const d1 = datas[0], d2 = datas[1] || datas[0];
+    const bounds = boundsDeDatas(d1, d2);
+    const rotulo = rotuloDatas(d1, d2);
+    if (/quant/.test(norm)) {
+      const n = await contarPreAgendamentosBounds(bounds);
+      if (n === null) { await sendWhatsApp(from, erroTabela); return true; }
+      await sendWhatsApp(from, `📊 Pré-agendamentos ${rotulo}: *${n}*.`);
+      return true;
+    }
+    const rows = await listarPreAgendamentosBounds(bounds, 200);
+    if (rows === null) { await sendWhatsApp(from, erroTabela); return true; }
+    if (!rows.length) { await sendWhatsApp(from, `Nenhum pré-agendamento ${rotulo}.`); return true; }
+    const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtDataHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}`).join("\n");
+    await sendWhatsApp(from, `📋 Pré-agendamentos ${rotulo} (${rows.length}):\n${linhas}`);
+    return true;
+  }
 
   // Enviar/mostrar o ÚLTIMO pré-agendamento.
   if (/\bultim|\blast\b/.test(norm)) {
@@ -1160,7 +1207,7 @@ async function handleAdminConsultaPreAgenda(from, text) {
   // termo específico "pré-agendamento" (claramente querendo o recurso admin). Se
   // foi só a palavra genérica "agendamento", devolve o controle à Ana normal.
   if (!topicoEspecifico) return false;
-  await sendWhatsApp(from, `Posso te ajudar com os pré-agendamentos 😊 Você pode pedir, por exemplo:\n• "quantos pré-agendamentos hoje?"\n• "enviar o último pré-agendamento"\n• "listar pré-agendamentos de hoje"\n(também aceito "ontem", "semana" e "mês")`);
+  await sendWhatsApp(from, `Posso te ajudar com os pré-agendamentos 😊 Você pode pedir, por exemplo:\n• "quantos pré-agendamentos hoje?"\n• "enviar o último pré-agendamento"\n• "listar pré-agendamentos de hoje"\n• "pré-agendamentos de 01/07 a 10/07" (período específico)\n(também aceito "ontem", "semana" e "mês")`);
   return true;
 }
 
