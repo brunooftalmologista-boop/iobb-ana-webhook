@@ -1057,13 +1057,58 @@ function buildCeratoconeCirurgicoSpec() {
   };
 }
 
+// Spec da campanha COMBINADA Ceratocone + Esclerais (decisão do usuário 2026-07-11:
+// reunir as duas que tinham sido separadas). NÃO duplica keywords/negativas: REUSA
+// buildEscleralSpec() + buildCeratoconeCirurgicoSpec() como fonte única (evita
+// divergência). Cada grupo mantém seu próprio destino (escleral→/lp/escleral,
+// cirúrgico→/lp/ceratocone) via ag.finalUrl. As negativas são unidas e deduplicadas,
+// MAS removendo as SEPARADORAS que só existiam para as duas não competirem entre si —
+// sobretudo "lente" BROAD (do cirúrgico), que numa campanha só MATARIA os grupos de
+// escleral (todas as keywords deles contêm "lente"). Com a campanha unida, a query de
+// lente é roteada ao grupo de escleral pelo próprio Google (keyword mais específica).
+function buildCeratoconeEscleralSpec() {
+  const escleral = buildEscleralSpec();
+  const cirurgico = buildCeratoconeCirurgicoSpec();
+  // Cada grupo carrega o destino da sua origem.
+  const escGroups = escleral.adGroups.map(ag => ({ ...ag, finalUrl: escleral.finalUrl }));
+  const cirGroups = cirurgico.adGroups.map(ag => ({ ...ag, finalUrl: cirurgico.finalUrl }));
+  // Só "lente" é fatal (keywords de escleral a contêm). "óculos" e demais são inócuas
+  // aqui (nenhuma keyword do conjunto as contém) e úteis, então ficam.
+  const SEPARADORAS = new Set(["lente"]);
+  const vistos = new Set();
+  const negatives = [];
+  for (const n of [...escleral.negatives, ...cirurgico.negatives]) {
+    if (SEPARADORAS.has(n.text.toLowerCase())) continue;
+    const k = `${n.text.toLowerCase()}|${n.match}`;
+    if (vistos.has(k)) continue;
+    vistos.add(k);
+    negatives.push(n);
+  }
+  const geoTargets = (process.env.GOOGLE_ADS_CERATOCONE_ESCLERAL_GEO || "Distrito Federal")
+    .split(",").map(s => s.trim()).filter(Boolean);
+  return {
+    name: process.env.GOOGLE_ADS_CERATOCONE_ESCLERAL_NAME || "IOBB | Ceratocone e Esclerais",
+    dailyBudget: Number(process.env.GOOGLE_ADS_CERATOCONE_ESCLERAL_BUDGET || 20), // R$/dia (≈ soma das duas)
+    // finalUrl de campanha: fallback p/ validação e p/ grupos sem destino próprio.
+    finalUrl: cirurgico.finalUrl || escleral.finalUrl,
+    geoTargets,
+    languages: ["Portuguese"],
+    adGroups: [...escGroups, ...cirGroups],
+    negatives,
+  };
+}
+
 // Muda o STATUS de campanha(s) resolvida(s) pelo nome (ex.: pausar a antiga).
 // status: 3=PAUSED, 4=REMOVED, 2=ENABLED. dryRun → validate_only.
 // A lib gera o update_mask automaticamente a partir dos campos do resource.
 async function setCampaignStatusByName(deps = {}) {
-  const { name, status = 3, dryRun = false } = deps;
+  const { name, names, status = 3, dryRun = false } = deps;
+  // Aceita um nome (name) OU vários (names[]) — ex.: pausar as duas campanhas
+  // separadas de uma vez. Compatível com os chamadores antigos que passam `name`.
+  const nameList = (names && names.length) ? names : (name ? [name] : []);
   const label = { 2: "ATIVAR", 3: "PAUSAR", 4: "REMOVER" }[status] || `status=${status}`;
-  const result = { ok: false, mode: isTestMode() ? "test" : "prod", dryRun: !!dryRun, name, action: label, affected: 0, error: null };
+  const result = { ok: false, mode: isTestMode() ? "test" : "prod", dryRun: !!dryRun, name: nameList.join(" + "), action: label, affected: 0, error: null };
+  if (!nameList.length) { result.error = "nenhum nome de campanha informado."; return result; }
 
   if (isTestMode()) {
     result.error = `MODO TESTE (${testModeReason()}) — alteração de status desabilitada.`;
@@ -1078,8 +1123,8 @@ async function setCampaignStatusByName(deps = {}) {
   catch (e) { result.error = e.message; return result; }
 
   try {
-    const camps = await resolveCampaignsByName(customer, [name]);
-    if (!camps.length) { result.error = `campanha "${name}" não encontrada na conta.`; return result; }
+    const camps = await resolveCampaignsByName(customer, nameList);
+    if (!camps.length) { result.error = `campanha(s) "${nameList.join(", ")}" não encontrada(s) na conta.`; return result; }
     const cid = String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g, "");
     const ops = camps.map(c => ({
       entity: "campaign", operation: "update",
@@ -1274,7 +1319,11 @@ function buildCampaignOperations(customerId, spec, ResourceNames, geoResourceNam
         ad_group: agRN,
         status: 2,               // AdGroupAdStatus.ENABLED
         ad: {
-          final_urls: [spec.finalUrl],
+          // Destino por GRUPO quando definido (ag.finalUrl), senão o da campanha.
+          // Permite uma campanha com grupos que apontam para landings diferentes
+          // (ex.: escleral→/lp/escleral, ceratocone→/lp/ceratocone). Sem ag.finalUrl,
+          // comportamento inalterado para as specs existentes.
+          final_urls: [ag.finalUrl || spec.finalUrl],
           responsive_search_ad: {
             headlines: ag.headlines.map(t => ({ text: t })),
             descriptions: ag.descriptions.map(t => ({ text: t })),
@@ -1686,7 +1735,7 @@ module.exports = {
   uploadClickConversions, buildConversionUploadSummary, listConversionActions,
   resolveConversionActionResourceName,
   createSearchCampaign, buildCampaignCreateSummary, buildRefrativaSpec, buildEscleralSpec,
-  buildCeratoconeCirurgicoSpec, setCampaignStatusByName, buildStatusSummary,
+  buildCeratoconeCirurgicoSpec, buildCeratoconeEscleralSpec, setCampaignStatusByName, buildStatusSummary,
   resolveGeoTargetConstants,
   applyHistoricalInsights, buildHistoricoSummary,
 };
