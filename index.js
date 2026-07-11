@@ -1390,6 +1390,29 @@ async function sendWhatsApp(to, body) {
   for (const c of chunks) await sendWhatsAppRaw(to, c);
 }
 
+// Health check PÚBLICO (sem auth — fora de /api de propósito) para KEEPALIVE.
+// Faz um SELECT trivial no Supabase (count head em `settings`, sem trazer linhas)
+// para GERAR ATIVIDADE e evitar o auto-pause do plano free (pausa após 7 dias sem
+// atividade) — e, de quebra, mantém o serviço do Render acordado. Um pinger externo
+// (ex.: cron-job.org / UptimeRobot a cada ~10 min) deve bater aqui. NÃO expõe dado
+// sensível: devolve só ok/latência. Responde a GET e HEAD (Express roteia HEAD ao
+// handler de GET). 503 se o banco não responder — sinal útil para o próprio pinger.
+app.get("/health", async (req, res) => {
+  const t0 = Date.now();
+  try {
+    const { error } = await supabase.from("settings").select("key", { count: "exact", head: true });
+    const ms = Date.now() - t0;
+    if (error) {
+      console.error("[Health] Banco indisponível:", error.message);
+      return res.status(503).json({ ok: false, db: false, ms });
+    }
+    res.json({ ok: true, db: true, ms });
+  } catch (e) {
+    console.error("[Health] Exceção:", e.message);
+    res.status(503).json({ ok: false, db: false, error: e.message });
+  }
+});
+
 // Webhook verification
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
@@ -2486,6 +2509,50 @@ app.get("/api/diag/ana", async (req, res) => {
       anthropicError: err?.response?.data || null,
       mensagem: err.message,
     });
+  }
+});
+
+// Diagnóstico de TRÁFEGO REAL: a Ana está recebendo mensagens de pacientes? Conta
+// mensagens por papel (paciente/Ana) em 24h/48h/7d e mostra quando foi a última
+// mensagem de paciente. Serve para separar "sistema saudável mas ocioso" de
+// "sistema no ar mas sem tráfego" (ligado ao aviso de inatividade do Supabase e
+// ao 0 conversões dos anúncios). Auth via requirePanelAuth (já aplicado em /api).
+app.get("/api/diag/trafego", async (req, res) => {
+  try {
+    const now = Date.now();
+    const H = 60 * 60 * 1000, D = 24 * H;
+    const iso = (msAgo) => new Date(now - msAgo).toISOString();
+    const conta = async (role, msAgo) => {
+      let q = supabase.from("messages").select("*", { count: "exact", head: true }).gte("timestamp", iso(msAgo));
+      if (role) q = q.eq("role", role);
+      const { count, error } = await q;
+      if (error) throw new Error(error.message);
+      return count || 0;
+    };
+    const janelas = {};
+    for (const [label, msAgo] of [["24h", D], ["48h", 2 * D], ["7d", 7 * D]]) {
+      janelas[label] = {
+        pacienteToAna: await conta("user", msAgo),      // mensagens recebidas de pacientes
+        anaToPaciente: await conta("assistant", msAgo), // respostas da Ana
+        total: await conta(null, msAgo),
+      };
+    }
+    const { data: ult } = await supabase.from("messages").select("timestamp")
+      .eq("role", "user").order("timestamp", { ascending: false }).limit(1).maybeSingle();
+    const ultima = ult?.timestamp ? { quando: ult.timestamp, ha_horas: Math.round((now - new Date(ult.timestamp).getTime()) / H) } : null;
+    const semTrafego48h = janelas["48h"].pacienteToAna === 0;
+    res.json({
+      ok: true,
+      agora: new Date(now).toISOString(),
+      janelas,
+      ultima_mensagem_paciente: ultima,
+      diagnostico: semTrafego48h
+        ? "⚠️ SEM mensagens de pacientes nas últimas 48h — a Ana não está recebendo tráfego (verifique: webhook da Meta apontando para /webhook, número correto, Ana ligada, Render acordado)."
+        : "✅ Há tráfego de pacientes recente.",
+    });
+  } catch (e) {
+    console.error("[Diag] trafego:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
