@@ -1531,6 +1531,34 @@ app.post("/webhook", async (req, res) => {
         }
         return;
       }
+      // Origem dos pacientes: quantas CONVERSAS vieram de ANÚNCIO (têm ad_click com
+      // origem rastreada) vs. orgânico, e quantas de anúncio viraram pré-agendamento.
+      // Mostra o peso real dos anúncios no movimento total. Aproximado: conta por
+      // conversa distinta vinculada a clique no período (janela por clicked_at).
+      if (text === "#ORIGEM" || text === "#ORIGENS") {
+        try {
+          const now = Date.now(), D = 24 * 60 * 60 * 1000;
+          const iso = (msAgo) => new Date(now - msAgo).toISOString();
+          let msg = "🧭 *Origem dos pacientes* (conversas iniciadas)";
+          for (const [label, msAgo] of [["7 dias", 7 * D], ["30 dias", 30 * D]]) {
+            const { count: total } = await supabase.from("conversations")
+              .select("*", { count: "exact", head: true }).gte("started_at", iso(msAgo));
+            const { data: adRows } = await supabase.from("ad_clicks")
+              .select("conversation_id, booked").gte("clicked_at", iso(msAgo)).not("conversation_id", "is", null);
+            const deAnuncio = new Set((adRows || []).map(r => r.conversation_id)).size;
+            const preAgend = new Set((adRows || []).filter(r => r.booked).map(r => r.conversation_id)).size;
+            const tot = total || 0;
+            const organico = Math.max(0, tot - deAnuncio);
+            const pct = tot ? Math.round((deAnuncio / tot) * 100) : 0;
+            msg += `\n\n*${label}* — ${tot} conversas\n• De anúncio: ${deAnuncio} (${pct}%) → ${preAgend} pré-agendamento(s)\n• Orgânico/indicação: ${organico}`;
+          }
+          msg += "\n\n_Anúncio = clique de campanha com origem rastreada; o resto é orgânico (indicação, WhatsApp direto, etc.)._";
+          await sendWhatsApp(from, msg);
+        } catch (e) {
+          await sendWhatsApp(from, "⚠️ Não consegui consultar a origem agora: " + e.message);
+        }
+        return;
+      }
       if (text === "#ADS" || text === "#ADS RELATORIO") {
         await sendWhatsApp(from, `📊 Gerando relatório do Google Ads (modo ${googleAds.isTestMode() ? "TESTE" : "PRODUÇÃO"})...`);
         googleAds.runWeeklyReport({ supabase, sendWhatsApp }).catch(e => console.error("[GoogleAds] Manual:", e.message));
