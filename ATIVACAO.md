@@ -29,22 +29,23 @@ Referências: `PLANO_CAMPANHAS.md`, `RASTREAMENTO.md`, `sql/ad_clicks.sql`.
 
   | Campanha | Grupo de anúncio | URL final |
   |---|---|---|
-  | IOBB \| Consulta DF | Águas Claras | `https://SEU-DOMINIO/lp/aguas-claras` |
-  | IOBB \| Consulta DF | Taguatinga | `https://SEU-DOMINIO/lp/taguatinga` |
-  | IOBB \| Consulta DF | Asa Norte e Brasília | `https://SEU-DOMINIO/lp/asa-norte` |
-  | IOBB \| Ceratocone e Esclerais | Ceratocone | `https://SEU-DOMINIO/lp/ceratocone` |
-  | IOBB \| Ceratocone e Esclerais | Lente Escleral | `https://SEU-DOMINIO/lp/ceratocone` |
-  | IOBB \| Ceratocone e Esclerais | Anel | `https://SEU-DOMINIO/lp/ceratocone` |
+  | IOBB \| Consulta DF | Águas Claras | `https://iobb.com.br/aguas-claras` |
+  | IOBB \| Consulta DF | Taguatinga | `https://iobb.com.br/taguatinga` |
+  | IOBB \| Consulta DF | Asa Norte e Brasília | `https://iobb.com.br/asa-norte` |
+  | IOBB \| Ceratocone e Esclerais | Ceratocone | `https://iobb.com.br/ceratocone` |
+  | IOBB \| Ceratocone e Esclerais | Lente Escleral | `https://iobb.com.br/ceratocone` |
+  | IOBB \| Ceratocone e Esclerais | Anel | `https://iobb.com.br/ceratocone` |
 
   - **Por quê:** cada landing de bairro tem hero + unidade destacada da região, aumentando a relevância (Índice de Qualidade) e a conversão para termos locais. Todos os grupos de ceratocone/esclerais/anel usam a landing de condição, que já cobre os 3 tratamentos.
-  - `/lp/consulta` (geral) fica como **fallback** para tráfego amplo/genérico de Brasília (ex.: futuro grupo "Brasília" sem bairro definido) ou testes.
-  - Dá para sobrescrever a URL final por **palavra-chave** se quiser (ex.: `oftalmologista brasília` no grupo "Asa Norte e Brasília" → `/lp/consulta`).
+  - `iobb.com.br/consulta` (geral) fica como **fallback** para tráfego amplo/genérico de Brasília (ex.: futuro grupo "Brasília" sem bairro definido) ou testes.
+  - Dá para sobrescrever a URL final por **palavra-chave** se quiser (ex.: `oftalmologista brasília` no grupo "Asa Norte e Brasília" → `iobb.com.br/consulta`).
+  - As mesmas landings continuam acessíveis também sob `/lp/...` (ex.: `iobb.com.br/lp/aguas-claras`) — as URLs limpas na raiz são só um atalho mais bonito para os anúncios.
 - [ ] Aplicar as negativas às 2 campanhas.
 - [ ] **Pausar/minimizar Performance Max**; manter **refrativa e catarata pausadas**.
 - [ ] Ativar primeiro **Consulta DF**; ativar **Ceratocone** só após testar o fluxo (Fase 5).
 
 ## Fase 5 — Teste ponta a ponta (antes de gastar de verdade)
-- [ ] Acessar `https://SEU-DOMINIO/lp/ceratocone?gclid=TESTE123` no celular.
+- [ ] Acessar `https://iobb.com.br/ceratocone?gclid=TESTE123` no celular.
 - [ ] Clicar em "Falar no WhatsApp" → confere se abre a Ana com a mensagem + `[ref:...]`.
 - [ ] Enviar a mensagem → conferir no Supabase que a linha em `ad_clicks` ganhou `phone`/`conversation_id`.
 - [ ] No painel: a conversa deve mostrar **🎯 veio de anúncio**.

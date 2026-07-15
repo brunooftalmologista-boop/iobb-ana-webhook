@@ -2838,8 +2838,11 @@ function injectTracking(html, token) {
 // Imagens otimizadas das landings, servidas com cache longo (carregamento rápido)
 app.use("/lp/assets", express.static(`${__dirname}/landings/assets`, { maxAge: "30d", immutable: true }));
 
-app.get("/lp/:tema", async (req, res) => {
-  const tema = String(req.params.tema || "").toLowerCase();
+// Handler compartilhado: registra o clique (gclid/wbraid/gbraid), injeta o
+// rastreamento e devolve a landing. Usado tanto pela rota /lp/:tema quanto
+// pelas URLs "limpas" na raiz do domínio (ex.: iobb.com.br/aguas-claras).
+async function serveLanding(tema, req, res) {
+  tema = String(tema || "").toLowerCase();
   const custom = LP_HTML[tema];
   const cfg = LP_TEMAS[tema];
   if (!custom && !cfg) return res.status(404).send("Página não encontrada");
@@ -2850,7 +2853,20 @@ app.get("/lp/:tema", async (req, res) => {
   if (custom) return res.send(injectTracking(custom, token)); // design próprio (ex.: consulta)
   const waLink = `https://wa.me/${WA_LP_NUMBER}?text=${encodeURIComponent(`${cfg.msg} [ref:${token}]`)}`;
   res.send(renderLanding(cfg, waLink)); // template genérico (ceratocone/refrativa/catarata)
-});
+}
+
+app.get("/lp/:tema", (req, res) => serveLanding(req.params.tema, req, res));
+
+// URLs limpas na RAIZ do domínio (ex.: iobb.com.br/aguas-claras). O Cloudflare
+// encaminha apenas estes paths (e /lp/assets) para este app; todo o resto do
+// domínio continua servido pelo site institucional. Registramos uma rota
+// explícita por tema conhecido — de propósito, em vez de um coringa /:tema,
+// para não capturar /painel, /webhook, /api etc. Os assets das landings
+// continuam sob /lp/assets, então o Cloudflare também deve encaminhar /lp/*.
+const LP_SLUGS = [...new Set([...Object.keys(LP_HTML), ...Object.keys(LP_TEMAS)])];
+for (const slug of LP_SLUGS) {
+  app.get(`/${slug}`, (req, res) => serveLanding(slug, req, res));
+}
 
 // Servir o painel web das secretárias
 app.get("/painel", (req, res) => res.sendFile(__dirname + "/painel.html"));
