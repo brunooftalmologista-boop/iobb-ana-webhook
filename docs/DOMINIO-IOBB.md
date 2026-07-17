@@ -51,7 +51,13 @@ continua no site institucional, intacto.
    iobb.com.br/consulta
    iobb.com.br/escleral
    iobb.com.br/catarata
+   iobb.com.br/painel
    ```
+
+   > `iobb.com.br/painel` serve o painel das secretárias (mesmo app no Render). Não
+   > precisa de mudança de código: o CORS do backend é `*` e o login usa token
+   > Bearer (não cookie), então o painel servido de iobb.com.br chama a API no
+   > Render normalmente. O painel continua protegido por login (Supabase).
 
    > ⚠️ **Só adicione os slugs que você realmente vai usar.** Cada slug nesta lista
    > passa a ser servido pelo Render — se o site institucional já tiver uma página
