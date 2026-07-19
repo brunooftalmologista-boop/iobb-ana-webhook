@@ -1014,17 +1014,21 @@ async function notificarSecretaria(registros, patient, from, conversationId) {
   }).join("\n");
   const texto = `📋 *NOVO PRÉ-AGENDAMENTO*\n${blocos}`;
   // Persiste ANTES do espelhamento para não perder o registro se o envio falhar.
-  await persistirPreAgendamentos(registros, patient, from, conversationId);
-  await espelharParaSecretaria(`[PréAgenda ${registros.length}p]`, texto);
+  // Se TUDO era duplicata (a Ana reemitiu o bloco), não grava nem reenvia à equipe.
+  const novos = await persistirPreAgendamentos(registros, patient, from, conversationId);
+  if (novos > 0) await espelharParaSecretaria(`[PréAgenda ${novos}p]`, texto);
+  else console.log("[PréAgenda] Reemissão duplicada — não reenviado à secretária.");
 }
 
 // Grava cada pré-agendamento na tabela `preagendamentos` (para as consultas admin
 // por WhatsApp). Best-effort: NUNCA lança nem interrompe o atendimento. Requer a
 // migração sql/preagendamentos.sql — sem ela, apenas loga o erro.
+// Devolve quantos registros NOVOS foram gravados (0 quando tudo era duplicata) —
+// usado por notificarSecretaria para não reenviar à equipe uma reemissão repetida.
 async function persistirPreAgendamentos(registros, patient, from, conversationId) {
   try {
     const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
-    const rows = registros.map(r => ({
+    let rows = registros.map(r => ({
       conversation_id: conversationId ? String(conversationId) : null,
       patient_phone: from || null,
       nome: limpo(r.nome) || patient?.name || null,
@@ -1034,11 +1038,32 @@ async function persistirPreAgendamentos(registros, patient, from, conversationId
       periodo: limpo(r.periodo),
       motivo: limpo(r.motivo),
     }));
+
+    // Anti-duplicata: a Ana às vezes reemite o bloco [PREAGENDAMENTO] em mensagens
+    // seguidas do mesmo fechamento, gerando linhas repetidas no relatório. Descarta
+    // um registro se já houver, NA MESMA conversa e nos últimos 30 min, outro com o
+    // mesmo nome+unidade+período (chave estável do "mesmo agendamento").
+    if (conversationId) {
+      const desde = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const { data: recentes } = await supabase.from("preagendamentos")
+        .select("nome, unidade, periodo")
+        .eq("conversation_id", String(conversationId))
+        .gte("created_at", desde);
+      const chave = (x) => [x.nome, x.unidade, x.periodo].map(v => (v || "").toString().trim().toLowerCase()).join("|");
+      const jaTem = new Set((recentes || []).map(chave));
+      const antes = rows.length;
+      rows = rows.filter(r => !jaTem.has(chave(r)));
+      if (rows.length < antes) console.log(`[PréAgenda] ${antes - rows.length} duplicata(s) ignorada(s) na conversa ${conversationId}.`);
+    }
+    if (!rows.length) return 0;
+
     const { error } = await supabase.from("preagendamentos").insert(rows);
     if (error) console.error("[PréAgenda] Falha ao persistir (rodou a migração sql/preagendamentos.sql?):", error.message);
     else console.log(`[PréAgenda] ${rows.length} registro(s) gravado(s) na tabela preagendamentos.`);
+    return rows.length;
   } catch (e) {
     console.error("[PréAgenda] Exceção ao persistir:", e.message);
+    return registros?.length || 0; // em exceção, não suprime a notificação à equipe
   }
 }
 
