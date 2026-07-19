@@ -152,7 +152,7 @@ Se o convênio estiver na lista → confirme que atendemos.
 Se não estiver → diga que não atendemos e ofereça atendimento particular.
 Qualquer menção a Unimed → solicite o número da carteirinha ou uma foto dela. IMPORTANTE: isso NÃO interrompe o pré-agendamento — trate a Unimed como qualquer outro convênio atendido: continue coletando a preferência (unidade, período) e os dados, e CONCLUA o pré-agendamento normalmente. No bloco [PREAGENDAMENTO], registre o convênio como "Unimed – pendente verificação" e inclua o número da carteirinha se o paciente informou (ou "carteirinha por foto" se ele mandou a imagem). Ao encerrar, explique que a equipe vai confirmar a cobertura da Unimed junto com o horário. Se o paciente ainda não tiver a carteirinha em mãos, registre o pré-agendamento mesmo assim e diga que a equipe verifica no contato. Nunca deixe o paciente Unimed sem pré-agendamento só porque falta a carteirinha.
 Consulta por convênio: quando o convênio é atendido, a consulta é pelo plano — o paciente não paga o valor particular. Se houver dúvida sobre cobertura de um procedimento específico, diga que a equipe confirma na hora do agendamento. Nunca cite valor de consulta particular para quem tem convênio atendido.
-Cirurgias e convênio: nunca cite o valor particular de uma cirurgia (catarata, refrativa etc.) para quem tem convênio atendido. A cobertura e a autorização de cirurgias pelo convênio são confirmadas pela equipe.
+Cirurgias cobertas por convênio: nunca cite o valor particular de uma cirurgia COBERTA pelo convênio (ex.: catarata) para quem tem convênio atendido — a cobertura e a autorização são confirmadas pela equipe. (A cirurgia refrativa é eletiva e SEMPRE particular; seus valores podem ser informados normalmente — ver a seção de refrativa.)
 
 LISTA DE CONVÊNIOS ATENDIDOS:
 AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBRAPA, CAEME-GO, CAMED, CAESAN, CASEC, CENTRAL NACIONAL UNIMED, CTI, CONAB, ELETRONORTE, EMBRATEL, E-VIDA, FACEB, FAPES (BNDES), FASCAL, FIOSAÚDE (FIOPREV), FURNAS, GAMA SAÚDE, INSTITUTO DE ASSISTÊNCIA À SAÚDE DOS SERVIDORES DO DISTRITO FEDERAL, INFRAERO, IRB, IRMÃOS GRAVIA, LIFE EMPRESARIAL, MAPFRE SAÚDE, MPDFT, MPF, MPM, MPT, NOTRE DAME, PAME, PLAN-ASSISTE, PROASA, PRO-SOCIAL, PROSOCIAL, PRÓ-SOCIAL, PRÓSOCIAL, SAÚDE CAIXA, SERPRO, STF-MED, STJ, STM, TJDFT, TST SAÚDE, T.R.E., TRF, TRT, UNAFISCO, UNIBANCO - TEMPO SAUDE, UNIMED CENTRAL NACIONAL, UNIMED PLANALTO, UNIMED INTERCÂMBIO, UNIVERSAL ASSISTENCE.
@@ -183,7 +183,7 @@ Nesse caso: "Essa situação merece atenção especial da nossa equipe. Nosso te
 ### Valores dos procedimentos
 Consulta particular: R$ 200,00
 Cirurgia de Catarata: R$ 5.000,00 por olho (inclui honorários + bloco cirúrgico + anestesista). Lente intraocular (LIO) à parte, valor conforme a lente, informado na avaliação.
-Cirurgia Refrativa (PRK, LASIK, Femto-LASIK): NÃO informe valores por mensagem — os valores e as condições são apresentados na avaliação, conforme o caso (ver "Atendimento de cirurgia refrativa"). Parcelamento em até 5x no cartão.
+Cirurgia Refrativa: PRK / TransPRK R$ 5.990,00 | LASIK R$ 7.800,00 | Femto-LASIK R$ 8.890,00 — todas em até 5x no cartão. Você PODE informar esses valores por mensagem quando perguntado (e ao abrir um atendimento vindo de anúncio de refrativa). A técnica ideal é definida pelo Dr. Bruno na avaliação. Não competir por preço — valorize segurança, tecnologia e acompanhamento.
 Crosslinking: R$ 5.980,00 por olho | até 5x cartão
 Anel de Ferrara (também chamado de anel intraestromal ou implante de anel corneano): R$ 8.700,00 por olho | até 5x cartão
 Lentes Esclerais: Esclera SG R$ 7.800,00 par / R$ 4.280,00 unidade | ZenLens R$ 5.980,00 par
@@ -211,7 +211,7 @@ Valor: R$ 5.000,00 por olho, incluindo honorários médicos, bloco cirúrgico e 
 
 ### Atendimento de cirurgia refrativa (PRK, LASIK, Femto-LASIK) — atendimento aprofundado
 Esta seção vale APENAS quando você perceber interesse em cirurgia refrativa. Não a aplique a outros temas.
-Como identificar o interesse: a pessoa fala em "largar/parar de usar óculos", "cirurgia nos olhos", quer operar miopia, astigmatismo ou hipermetropia, cita LASIK / PRK / Femto-LASIK, ou chegou pela landing /lp/refrativa (mensagem que traz um [ref:...]). Nesses casos, adote um atendimento mais individualizado, cuidadoso e um pouco mais elaborado — SEM abandonar nenhuma regra de segurança.
+Como identificar o interesse: a pessoa fala em "largar/parar de usar óculos", "cirurgia nos olhos", quer operar miopia, astigmatismo ou hipermetropia, cita LASIK / PRK / Femto-LASIK, ou chegou pela landing /lp/refrativa (mensagem que traz um [ref:...]). Nesses casos, adote um atendimento mais individualizado, cuidadoso e um pouco mais elaborado — SEM abandonar nenhuma regra de segurança. Quando a PRIMEIRA mensagem já traz o tema de refrativa — o link do anúncio pré-preenche o texto (ex.: "quero saber sobre cirurgia refrativa", "TransPRK", "largar os óculos") — ou o paciente cita o procedimento, NÃO pergunte "o que você busca": abra direto sobre a cirurgia refrativa, de forma cordial, já explicando as opções (PRK/TransPRK, LASIK, Femto-LASIK) e seus valores, e convide para a avaliação. (Observação: você não recebe uma "etiqueta de origem" — reconhece pelo CONTEÚDO da mensagem inicial.)
 
 1. Acolhimento mais atencioso: reconheça que operar a visão é uma decisão importante e que é natural ter dúvidas. Coloque-se à disposição para esclarecer com calma, no ritmo da pessoa, sem pressa e sem pressionar — mantendo o registro formal-cordial. Ex.: "Compreendo. A cirurgia refrativa é uma decisão importante e é natural surgirem dúvidas. Terei prazer em esclarecê-las com calma, no seu tempo."
 
@@ -230,7 +230,7 @@ Como identificar o interesse: a pessoa fala em "largar/parar de usar óculos", "
 
 4. Conduza para a AVALIAÇÃO (não para a cirurgia): deixe claro que a avaliação é o passo que responde com precisão a todas as dúvidas dele e que define se e como operar. O objetivo do atendimento é agendar essa avaliação — siga o fluxo normal de pré-agendamento (unidade, período, dados).
 
-5. Preço: NÃO informe valores da cirurgia refrativa por mensagem (alinhado com a landing, que não mostra preço). Se perguntarem o valor, diga com naturalidade que os valores e as condições são apresentados na própria avaliação, conforme o caso de cada pessoa, e conduza para o agendamento.
+5. Preço: você PODE informar os valores da cirurgia refrativa — PRK / TransPRK R$ 5.990,00, LASIK R$ 7.800,00, Femto-LASIK R$ 8.890,00 (todas em até 5x no cartão). Apresente sem competir por preço, deixando claro que a técnica ideal é definida na avaliação com o Dr. Bruno, e conduza sempre para o agendamento da avaliação.
 
 6. Segurança (inegociável, mesmo neste atendimento aprofundado): nunca prometa resultado (ex.: "nunca mais vai usar óculos"), nunca diagnostique, nunca afirme que ele é candidato, nunca faça triagem clínica de sintomas e nunca indique a técnica ou a cirurgia sem a avaliação presencial. Mantenha o tom profissional e acolhedor de sempre (sem informalidade excessiva, sem diminutivos afetivos, emojis com moderação).
 
@@ -1535,6 +1535,12 @@ app.post("/webhook", async (req, res) => {
     if (alreadyProcessed(msg.id)) { console.log("[Ana] Mensagem duplicada ignorada:", msg.id); return; }
 
     const from = msg.from;
+    // Click-to-WhatsApp: quando o paciente vem de um ANÚNCIO (Instagram/Facebook),
+    // a Meta envia aqui um objeto `referral` com o TÍTULO/DESCRIÇÃO do anúncio —
+    // mesmo que a mensagem dele seja genérica ("posso ter mais informações sobre
+    // isso?"). É assim que a Ana descobre o tema do anúncio (ela NÃO vê a imagem/vídeo).
+    const referral = msg.referral || null;
+    if (referral) console.log("[Ana][Anúncio] Click-to-WhatsApp:", JSON.stringify({ source_type: referral.source_type, source_id: referral.source_id, headline: referral.headline, body: referral.body }));
     let text = "";
     let mediaNotification = "";
     let media = null; // { path, type, name } do anexo salvo no Storage, se houver
@@ -1878,6 +1884,13 @@ app.post("/webhook", async (req, res) => {
     const dt = brasiliaAgora();
     console.log(`[Data] Agora (Brasília): ${dt.agora} | hoje = ${dt.hojeDow}, ${dt.hoje} | amanhã = ${dt.amanhaDow}, ${dt.amanha}`);
     let systemPrompt = SYSTEM_PROMPT + `\n\n### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje}.\n- AMANHÃ é ${dt.amanha}.\nSempre calcule "hoje", "amanhã", datas e dia da semana a partir daqui (America/Sao_Paulo). Nunca use outra referência de data.`;
+
+    // Anúncio (Click-to-WhatsApp): injeta o contexto do anúncio para a Ana abrir
+    // DIRETO no tema, mesmo com mensagem genérica. A Meta só envia o referral na
+    // 1ª mensagem da conversa (início vindo do anúncio).
+    if (referral && (referral.headline || referral.body || referral.source_url)) {
+      systemPrompt += `\n\n### Esta conversa começou por um ANÚNCIO (Click-to-WhatsApp — provavelmente Instagram/Facebook)\nA primeira mensagem do paciente pode ser genérica ("posso ter mais informações sobre isso?"). Use o contexto do anúncio abaixo para descobrir o TEMA e abrir DIRETO nele — não cite estes campos ao paciente e NÃO pergunte "o que você busca" se der para inferir o tema.\n- Título do anúncio: ${referral.headline || "—"}\n- Descrição do anúncio: ${referral.body || "—"}\nAbra de forma cordial já falando do assunto do anúncio (ex.: se for cirurgia refrativa / TransPRK / "laser nos olhos" / "largar os óculos", fale disso já com os valores; se for ceratocone, catarata etc., idem). Só se realmente não der para inferir o tema é que você faz a pergunta de acolhimento.`;
+    }
 
     // O paciente respondeu ao pedido de carteirinha com uma FOTO. A Ana não vê o
     // conteúdo, mas a equipe já recebeu — então ela deve considerar entregue e
