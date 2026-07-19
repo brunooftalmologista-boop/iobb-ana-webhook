@@ -211,7 +211,7 @@ Valor: R$ 5.000,00 por olho, incluindo honorários médicos, bloco cirúrgico e 
 
 ### Atendimento de cirurgia refrativa (PRK, LASIK, Femto-LASIK) — atendimento aprofundado
 Esta seção vale APENAS quando você perceber interesse em cirurgia refrativa. Não a aplique a outros temas.
-Como identificar o interesse: a pessoa fala em "largar/parar de usar óculos", "cirurgia nos olhos", quer operar miopia, astigmatismo ou hipermetropia, cita LASIK / PRK / Femto-LASIK, ou chegou pela landing /lp/refrativa (mensagem que traz um [ref:...]). Nesses casos, adote um atendimento mais individualizado, cuidadoso e um pouco mais elaborado — SEM abandonar nenhuma regra de segurança. Quando a conversa CLARAMENTE vem de um anúncio de refrativa (traz [ref:...] ou o paciente já cita o procedimento/TransPRK), NÃO pergunte "o que você busca": abra direto sobre a cirurgia refrativa, de forma cordial, já explicando as opções (PRK/TransPRK, LASIK, Femto-LASIK) e seus valores, e convide para a avaliação.
+Como identificar o interesse: a pessoa fala em "largar/parar de usar óculos", "cirurgia nos olhos", quer operar miopia, astigmatismo ou hipermetropia, cita LASIK / PRK / Femto-LASIK, ou chegou pela landing /lp/refrativa (mensagem que traz um [ref:...]). Nesses casos, adote um atendimento mais individualizado, cuidadoso e um pouco mais elaborado — SEM abandonar nenhuma regra de segurança. Quando a PRIMEIRA mensagem já traz o tema de refrativa — o link do anúncio pré-preenche o texto (ex.: "quero saber sobre cirurgia refrativa", "TransPRK", "largar os óculos") — ou o paciente cita o procedimento, NÃO pergunte "o que você busca": abra direto sobre a cirurgia refrativa, de forma cordial, já explicando as opções (PRK/TransPRK, LASIK, Femto-LASIK) e seus valores, e convide para a avaliação. (Observação: você não recebe uma "etiqueta de origem" — reconhece pelo CONTEÚDO da mensagem inicial.)
 
 1. Acolhimento mais atencioso: reconheça que operar a visão é uma decisão importante e que é natural ter dúvidas. Coloque-se à disposição para esclarecer com calma, no ritmo da pessoa, sem pressa e sem pressionar — mantendo o registro formal-cordial. Ex.: "Compreendo. A cirurgia refrativa é uma decisão importante e é natural surgirem dúvidas. Terei prazer em esclarecê-las com calma, no seu tempo."
 
@@ -1535,6 +1535,12 @@ app.post("/webhook", async (req, res) => {
     if (alreadyProcessed(msg.id)) { console.log("[Ana] Mensagem duplicada ignorada:", msg.id); return; }
 
     const from = msg.from;
+    // Click-to-WhatsApp: quando o paciente vem de um ANÚNCIO (Instagram/Facebook),
+    // a Meta envia aqui um objeto `referral` com o TÍTULO/DESCRIÇÃO do anúncio —
+    // mesmo que a mensagem dele seja genérica ("posso ter mais informações sobre
+    // isso?"). É assim que a Ana descobre o tema do anúncio (ela NÃO vê a imagem/vídeo).
+    const referral = msg.referral || null;
+    if (referral) console.log("[Ana][Anúncio] Click-to-WhatsApp:", JSON.stringify({ source_type: referral.source_type, source_id: referral.source_id, headline: referral.headline, body: referral.body }));
     let text = "";
     let mediaNotification = "";
     let media = null; // { path, type, name } do anexo salvo no Storage, se houver
@@ -1878,6 +1884,13 @@ app.post("/webhook", async (req, res) => {
     const dt = brasiliaAgora();
     console.log(`[Data] Agora (Brasília): ${dt.agora} | hoje = ${dt.hojeDow}, ${dt.hoje} | amanhã = ${dt.amanhaDow}, ${dt.amanha}`);
     let systemPrompt = SYSTEM_PROMPT + `\n\n### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje}.\n- AMANHÃ é ${dt.amanha}.\nSempre calcule "hoje", "amanhã", datas e dia da semana a partir daqui (America/Sao_Paulo). Nunca use outra referência de data.`;
+
+    // Anúncio (Click-to-WhatsApp): injeta o contexto do anúncio para a Ana abrir
+    // DIRETO no tema, mesmo com mensagem genérica. A Meta só envia o referral na
+    // 1ª mensagem da conversa (início vindo do anúncio).
+    if (referral && (referral.headline || referral.body || referral.source_url)) {
+      systemPrompt += `\n\n### Esta conversa começou por um ANÚNCIO (Click-to-WhatsApp — provavelmente Instagram/Facebook)\nA primeira mensagem do paciente pode ser genérica ("posso ter mais informações sobre isso?"). Use o contexto do anúncio abaixo para descobrir o TEMA e abrir DIRETO nele — não cite estes campos ao paciente e NÃO pergunte "o que você busca" se der para inferir o tema.\n- Título do anúncio: ${referral.headline || "—"}\n- Descrição do anúncio: ${referral.body || "—"}\nAbra de forma cordial já falando do assunto do anúncio (ex.: se for cirurgia refrativa / TransPRK / "laser nos olhos" / "largar os óculos", fale disso já com os valores; se for ceratocone, catarata etc., idem). Só se realmente não der para inferir o tema é que você faz a pergunta de acolhimento.`;
+    }
 
     // O paciente respondeu ao pedido de carteirinha com uma FOTO. A Ana não vê o
     // conteúdo, mas a equipe já recebeu — então ela deve considerar entregue e
