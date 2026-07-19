@@ -1157,7 +1157,7 @@ function buildStatusSummary(r) {
 // Limites do RSA: 3–15 títulos ≤30 chars, 2–4 descrições ≤90 chars.
 function validateCampaignSpec(spec) {
   const errs = [];
-  if (!spec.finalUrl) errs.push("GOOGLE_ADS_LP_BASE_URL não definido — sem URL de destino o clique não captura o gclid (defina no Render, ex.: https://seu-app.onrender.com).");
+  if (!spec.finalUrl) errs.push("GOOGLE_ADS_LP_BASE_URL não definido — sem URL de destino o clique não captura o gclid (defina no Render, ex.: https://iobb.com.br).");
   if (!spec.dailyBudget || spec.dailyBudget <= 0) errs.push("orçamento diário inválido.");
   if (!spec.adGroups?.length) errs.push("nenhum grupo de anúncios.");
   spec.adGroups?.forEach(ag => {

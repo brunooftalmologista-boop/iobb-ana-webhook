@@ -38,15 +38,15 @@ Troque a **URL final** de cada **grupo de anúncio** para a landing corresponden
 
 | Campanha | Grupo de anúncio | URL final |
 |---|---|---|
-| IOBB \| Consulta DF | Águas Claras | `https://SEU-DOMINIO/lp/aguas-claras` |
-| IOBB \| Consulta DF | Taguatinga | `https://SEU-DOMINIO/lp/taguatinga` |
-| IOBB \| Consulta DF | Asa Norte e Brasília | `https://SEU-DOMINIO/lp/asa-norte` |
-| IOBB \| Ceratocone e Esclerais | Ceratocone / Lente Escleral / Anel | `https://SEU-DOMINIO/lp/ceratocone` |
+| IOBB \| Consulta DF | Águas Claras | `https://iobb.com.br/aguas-claras` |
+| IOBB \| Consulta DF | Taguatinga | `https://iobb.com.br/taguatinga` |
+| IOBB \| Consulta DF | Asa Norte e Brasília | `https://iobb.com.br/asa-norte` |
+| IOBB \| Ceratocone e Esclerais | Ceratocone / Lente Escleral / Anel | `https://iobb.com.br/ceratocone` |
 
 **Landings disponíveis** (todas capturam `gclid` e redirecionam para a Ana):
-`/lp/consulta` (geral — fallback), `/lp/ceratocone`, `/lp/taguatinga`, `/lp/aguas-claras`, `/lp/asa-norte`.
+`iobb.com.br/consulta` (geral — fallback), `iobb.com.br/ceratocone`, `iobb.com.br/taguatinga`, `iobb.com.br/aguas-claras`, `iobb.com.br/asa-norte`. As mesmas páginas também respondem sob `/lp/...` (ex.: `iobb.com.br/lp/aguas-claras`).
 
-(`SEU-DOMINIO` = a URL pública do app no Render.) O Google adiciona o `gclid` automaticamente; a landing captura, cria o token e redireciona para o WhatsApp da Ana com `[ref:token]`.
+O `iobb.com.br` é servido pela Cloudflare, que encaminha esses paths de landing (e `/lp/*`) para o app no Render, mantendo o restante do domínio no site institucional. O Google adiciona o `gclid` automaticamente; a landing captura, cria o token e redireciona para o WhatsApp da Ana com `[ref:token]`.
 
 ---
 

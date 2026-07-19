@@ -1014,17 +1014,21 @@ async function notificarSecretaria(registros, patient, from, conversationId) {
   }).join("\n");
   const texto = `📋 *NOVO PRÉ-AGENDAMENTO*\n${blocos}`;
   // Persiste ANTES do espelhamento para não perder o registro se o envio falhar.
-  await persistirPreAgendamentos(registros, patient, from, conversationId);
-  await espelharParaSecretaria(`[PréAgenda ${registros.length}p]`, texto);
+  // Se TUDO era duplicata (a Ana reemitiu o bloco), não grava nem reenvia à equipe.
+  const novos = await persistirPreAgendamentos(registros, patient, from, conversationId);
+  if (novos > 0) await espelharParaSecretaria(`[PréAgenda ${novos}p]`, texto);
+  else console.log("[PréAgenda] Reemissão duplicada — não reenviado à secretária.");
 }
 
 // Grava cada pré-agendamento na tabela `preagendamentos` (para as consultas admin
 // por WhatsApp). Best-effort: NUNCA lança nem interrompe o atendimento. Requer a
 // migração sql/preagendamentos.sql — sem ela, apenas loga o erro.
+// Devolve quantos registros NOVOS foram gravados (0 quando tudo era duplicata) —
+// usado por notificarSecretaria para não reenviar à equipe uma reemissão repetida.
 async function persistirPreAgendamentos(registros, patient, from, conversationId) {
   try {
     const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
-    const rows = registros.map(r => ({
+    let rows = registros.map(r => ({
       conversation_id: conversationId ? String(conversationId) : null,
       patient_phone: from || null,
       nome: limpo(r.nome) || patient?.name || null,
@@ -1034,11 +1038,32 @@ async function persistirPreAgendamentos(registros, patient, from, conversationId
       periodo: limpo(r.periodo),
       motivo: limpo(r.motivo),
     }));
+
+    // Anti-duplicata: a Ana às vezes reemite o bloco [PREAGENDAMENTO] em mensagens
+    // seguidas do mesmo fechamento, gerando linhas repetidas no relatório. Descarta
+    // um registro se já houver, NA MESMA conversa e nos últimos 30 min, outro com o
+    // mesmo nome+unidade+período (chave estável do "mesmo agendamento").
+    if (conversationId) {
+      const desde = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const { data: recentes } = await supabase.from("preagendamentos")
+        .select("nome, unidade, periodo")
+        .eq("conversation_id", String(conversationId))
+        .gte("created_at", desde);
+      const chave = (x) => [x.nome, x.unidade, x.periodo].map(v => (v || "").toString().trim().toLowerCase()).join("|");
+      const jaTem = new Set((recentes || []).map(chave));
+      const antes = rows.length;
+      rows = rows.filter(r => !jaTem.has(chave(r)));
+      if (rows.length < antes) console.log(`[PréAgenda] ${antes - rows.length} duplicata(s) ignorada(s) na conversa ${conversationId}.`);
+    }
+    if (!rows.length) return 0;
+
     const { error } = await supabase.from("preagendamentos").insert(rows);
     if (error) console.error("[PréAgenda] Falha ao persistir (rodou a migração sql/preagendamentos.sql?):", error.message);
     else console.log(`[PréAgenda] ${rows.length} registro(s) gravado(s) na tabela preagendamentos.`);
+    return rows.length;
   } catch (e) {
     console.error("[PréAgenda] Exceção ao persistir:", e.message);
+    return registros?.length || 0; // em exceção, não suprime a notificação à equipe
   }
 }
 
@@ -1099,6 +1124,14 @@ function formatarPreAgendamento(r) {
   const v = (x) => (x && x !== "-") ? x : "—";
   const tel = (r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—");
   return `👤 Nome: ${v(r.nome)}\n📱 Telefone: ${tel}\n🏥 Convênio: ${v(r.convenio)}\n📍 Unidade: ${v(r.unidade)}\n🕐 Período: ${v(r.periodo)}\n📝 Motivo: ${v(r.motivo)}`;
+}
+
+// Sufixo compacto (convênio + motivo) para as LINHAS das listas de pré-agendamento.
+// Antes as linhas mostravam só nome/telefone/unidade/período — escondendo convênio
+// (particular ou qual plano) e o motivo, embora a Ana os colete e o banco os guarde.
+function extrasPreAgenda(r) {
+  const v = (x) => (x && x !== "-") ? x : "—";
+  return ` · 🏥 ${v(r.convenio)} · 📝 ${v(r.motivo)}`;
 }
 // Guarda o detalhe do último erro de consulta (código + mensagem do Postgres/
 // PostgREST) para a Ana poder devolvê-lo no WhatsApp — assim o diagnóstico não
@@ -1192,7 +1225,7 @@ async function handleAdminConsultaPreAgenda(from, text) {
     const rows = await listarPreAgendamentosBounds(bounds, 200);
     if (rows === null) { await sendWhatsApp(from, erroTabela()); return true; }
     if (!rows.length) { await sendWhatsApp(from, `Nenhum pré-agendamento ${rotulo}.`); return true; }
-    const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtDataHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}`).join("\n");
+    const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtDataHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}${extrasPreAgenda(r)}`).join("\n");
     await sendWhatsApp(from, `📋 Pré-agendamentos ${rotulo} (${rows.length}):\n${linhas}`);
     return true;
   }
@@ -1221,7 +1254,7 @@ async function handleAdminConsultaPreAgenda(from, text) {
     const rows = await listarPreAgendamentos(p);
     if (rows === null) { await sendWhatsApp(from, erroTabela()); return true; }
     if (!rows.length) { await sendWhatsApp(from, `Nenhum pré-agendamento ${rotuloPeriodo(p)}.`); return true; }
-    const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}`).join("\n");
+    const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}${extrasPreAgenda(r)}`).join("\n");
     await sendWhatsApp(from, `📋 Pré-agendamentos ${rotuloPeriodo(p)} (${rows.length}):\n${linhas}`);
     return true;
   }
@@ -1253,7 +1286,7 @@ async function enviarResumoDiarioPreAgenda() {
     return true;
   }
   const rows = (await listarPreAgendamentos("hoje", 50)) || [];
-  const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}`).join("\n");
+  const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}${extrasPreAgenda(r)}`).join("\n");
   const extra = n > rows.length ? `\n… e mais ${n - rows.length}.` : "";
   await espelharParaSecretaria("[ResumoDiário]", `🌙 *Resumo do dia — pré-agendamentos*\n${hoje}\n\nHoje houve *${n}* pré-agendamento(s):\n${linhas}${extra}`);
   return true;
@@ -2838,8 +2871,11 @@ function injectTracking(html, token) {
 // Imagens otimizadas das landings, servidas com cache longo (carregamento rápido)
 app.use("/lp/assets", express.static(`${__dirname}/landings/assets`, { maxAge: "30d", immutable: true }));
 
-app.get("/lp/:tema", async (req, res) => {
-  const tema = String(req.params.tema || "").toLowerCase();
+// Handler compartilhado: registra o clique (gclid/wbraid/gbraid), injeta o
+// rastreamento e devolve a landing. Usado tanto pela rota /lp/:tema quanto
+// pelas URLs "limpas" na raiz do domínio (ex.: iobb.com.br/aguas-claras).
+async function serveLanding(tema, req, res) {
+  tema = String(tema || "").toLowerCase();
   const custom = LP_HTML[tema];
   const cfg = LP_TEMAS[tema];
   if (!custom && !cfg) return res.status(404).send("Página não encontrada");
@@ -2850,7 +2886,20 @@ app.get("/lp/:tema", async (req, res) => {
   if (custom) return res.send(injectTracking(custom, token)); // design próprio (ex.: consulta)
   const waLink = `https://wa.me/${WA_LP_NUMBER}?text=${encodeURIComponent(`${cfg.msg} [ref:${token}]`)}`;
   res.send(renderLanding(cfg, waLink)); // template genérico (ceratocone/refrativa/catarata)
-});
+}
+
+app.get("/lp/:tema", (req, res) => serveLanding(req.params.tema, req, res));
+
+// URLs limpas na RAIZ do domínio (ex.: iobb.com.br/aguas-claras). O Cloudflare
+// encaminha apenas estes paths (e /lp/assets) para este app; todo o resto do
+// domínio continua servido pelo site institucional. Registramos uma rota
+// explícita por tema conhecido — de propósito, em vez de um coringa /:tema,
+// para não capturar /painel, /webhook, /api etc. Os assets das landings
+// continuam sob /lp/assets, então o Cloudflare também deve encaminhar /lp/*.
+const LP_SLUGS = [...new Set([...Object.keys(LP_HTML), ...Object.keys(LP_TEMAS)])];
+for (const slug of LP_SLUGS) {
+  app.get(`/${slug}`, (req, res) => serveLanding(slug, req, res));
+}
 
 // Servir o painel web das secretárias
 app.get("/painel", (req, res) => res.sendFile(__dirname + "/painel.html"));
