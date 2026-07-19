@@ -1100,6 +1100,14 @@ function formatarPreAgendamento(r) {
   const tel = (r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—");
   return `👤 Nome: ${v(r.nome)}\n📱 Telefone: ${tel}\n🏥 Convênio: ${v(r.convenio)}\n📍 Unidade: ${v(r.unidade)}\n🕐 Período: ${v(r.periodo)}\n📝 Motivo: ${v(r.motivo)}`;
 }
+
+// Sufixo compacto (convênio + motivo) para as LINHAS das listas de pré-agendamento.
+// Antes as linhas mostravam só nome/telefone/unidade/período — escondendo convênio
+// (particular ou qual plano) e o motivo, embora a Ana os colete e o banco os guarde.
+function extrasPreAgenda(r) {
+  const v = (x) => (x && x !== "-") ? x : "—";
+  return ` · 🏥 ${v(r.convenio)} · 📝 ${v(r.motivo)}`;
+}
 // Guarda o detalhe do último erro de consulta (código + mensagem do Postgres/
 // PostgREST) para a Ana poder devolvê-lo no WhatsApp — assim o diagnóstico não
 // depende de olhar os logs do Render. Ex.: "42P01: relation ... does not exist"
@@ -1192,7 +1200,7 @@ async function handleAdminConsultaPreAgenda(from, text) {
     const rows = await listarPreAgendamentosBounds(bounds, 200);
     if (rows === null) { await sendWhatsApp(from, erroTabela()); return true; }
     if (!rows.length) { await sendWhatsApp(from, `Nenhum pré-agendamento ${rotulo}.`); return true; }
-    const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtDataHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}`).join("\n");
+    const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtDataHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}${extrasPreAgenda(r)}`).join("\n");
     await sendWhatsApp(from, `📋 Pré-agendamentos ${rotulo} (${rows.length}):\n${linhas}`);
     return true;
   }
@@ -1221,7 +1229,7 @@ async function handleAdminConsultaPreAgenda(from, text) {
     const rows = await listarPreAgendamentos(p);
     if (rows === null) { await sendWhatsApp(from, erroTabela()); return true; }
     if (!rows.length) { await sendWhatsApp(from, `Nenhum pré-agendamento ${rotuloPeriodo(p)}.`); return true; }
-    const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}`).join("\n");
+    const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}${extrasPreAgenda(r)}`).join("\n");
     await sendWhatsApp(from, `📋 Pré-agendamentos ${rotuloPeriodo(p)} (${rows.length}):\n${linhas}`);
     return true;
   }
@@ -1253,7 +1261,7 @@ async function enviarResumoDiarioPreAgenda() {
     return true;
   }
   const rows = (await listarPreAgendamentos("hoje", 50)) || [];
-  const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}`).join("\n");
+  const linhas = rows.map((r, i) => `*${i + 1}.* ${fmtHoraBR(r.created_at)} — ${r.nome || "—"} / ${(r.telefone && r.telefone !== "-") ? r.telefone : (r.patient_phone || "—")} · ${r.unidade || "—"} · ${r.periodo || "—"}${extrasPreAgenda(r)}`).join("\n");
   const extra = n > rows.length ? `\n… e mais ${n - rows.length}.` : "";
   await espelharParaSecretaria("[ResumoDiário]", `🌙 *Resumo do dia — pré-agendamentos*\n${hoje}\n\nHoje houve *${n}* pré-agendamento(s):\n${linhas}${extra}`);
   return true;
