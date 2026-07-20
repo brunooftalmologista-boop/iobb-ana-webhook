@@ -382,7 +382,7 @@
     <label>Telefone</label>
     <input id="agbook-tel" placeholder="Ex.: 61 98406-0001" inputmode="tel" autocomplete="off">
     <label>Convênio</label>
-    <input id="agbook-conv" placeholder="Convênio ou 'particular'" autocomplete="off">
+    <select id="agbook-conv"></select>
     <label>Motivo (opcional)</label>
     <input id="agbook-motivo" placeholder="Ex.: consulta de rotina" autocomplete="off">
     <div id="agbook-error" style="color:#d33;font-size:13px;margin-top:8px;display:none"></div>
@@ -1308,6 +1308,9 @@ $('#ads-close').onclick=closeAds;
 // de cada unidade por dia e marca com 1 clique; a trava anti-duplicidade é do
 // backend/Postgres. Os horários são sempre exibidos em Brasília (TZ_BR).
 let agUnidade='Conjunto Nacional', agDate=new Date(), agFree=[], agBooked=[], agBookIni=null;
+// Convênios atendidos (fonte: LISTA DE CONVÊNIOS ATENDIDOS no index.js), com
+// Particular no topo e as variações de Pró-Social/Unimed Central Nacional unidas.
+const CONVENIOS=["Particular","AMHPDF","AFEB BRASAL","AFFEGO","ASETE","ASFUB","BACEN","BBB SAÚDE","CARE PLUS","CASEMBRAPA","CAEME-GO","CAMED","CAESAN","CASEC","CTI","CONAB","ELETRONORTE","EMBRATEL","E-VIDA","FACEB","FAPES (BNDES)","FASCAL","FIOSAÚDE (FIOPREV)","FURNAS","GAMA SAÚDE","INSTITUTO DE ASSISTÊNCIA À SAÚDE DOS SERVIDORES DO DISTRITO FEDERAL","INFRAERO","IRB","IRMÃOS GRAVIA","LIFE EMPRESARIAL","MAPFRE SAÚDE","MPDFT","MPF","MPM","MPT","NOTRE DAME","PAME","PLAN-ASSISTE","PROASA","PRÓ-SOCIAL","SAÚDE CAIXA","SERPRO","SIS SENADO","STF-MED","STJ","STM","TJDFT","TST SAÚDE","T.R.E.","TRF","TRT","UNAFISCO","UNIBANCO - TEMPO SAUDE","UNIMED CENTRAL NACIONAL","UNIMED PLANALTO","UNIMED INTERCÂMBIO","UNIVERSAL ASSISTENCE"];
 function agDayStr(d){ return d.toLocaleDateString('en-CA',{timeZone:TZ_BR}); }   // 'YYYY-MM-DD' em Brasília
 function openAgenda(){ agDate=new Date(); $('#ag-unidade').value=agUnidade; $('#agenda-modal').classList.add('show'); agLoad(); }
 function closeAgenda(){ $('#agenda-modal').classList.remove('show'); }
@@ -1359,6 +1362,9 @@ function openAgBook(ini){
   agBookIni=ini;
   const d=new Date(ini);
   $('#agbook-slot').textContent=agUnidade+' — '+d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'})+' às '+d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+  if(!$('#agbook-conv').options.length){
+    $('#agbook-conv').innerHTML='<option value="">Selecione o convênio…</option>'+CONVENIOS.map(c=>'<option>'+c+'</option>').join('');
+  }
   $('#agbook-nome').value=''; $('#agbook-tel').value=''; $('#agbook-conv').value=''; $('#agbook-motivo').value='';
   $('#agbook-error').style.display='none';
   $('#agbook-modal').classList.add('show'); $('#agbook-nome').focus();
