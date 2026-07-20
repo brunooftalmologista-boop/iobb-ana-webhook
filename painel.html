@@ -148,6 +148,25 @@
   .btn.primary{background:var(--green);color:#fff;}
   .btn.ghost{background:var(--header);color:#54656f;}
   .modal.ads{width:min(640px,94vw);}
+  /* ===== Agenda ===== */
+  .modal.agenda{width:min(560px,95vw);max-height:88vh;display:flex;flex-direction:column;}
+  .ag-head{display:flex;justify-content:space-between;align-items:center;}
+  .ag-head h3{margin:0;}
+  .ag-controls{display:flex;gap:10px;align-items:center;margin:14px 0 10px;}
+  .ag-controls select{flex:1;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#fff;}
+  .ag-nav{display:flex;align-items:center;gap:6px;}
+  .ag-nav .btn{padding:6px 12px;font-size:16px;line-height:1;}
+  #ag-date-label{min-width:150px;text-align:center;font-weight:600;text-transform:capitalize;font-size:13.5px;}
+  .ag-body{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px 2px;min-height:220px;}
+  .ag-empty{color:var(--muted);text-align:center;padding:34px 12px;font-size:14px;}
+  .ag-slot{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:8px;font-size:14px;text-align:left;}
+  .ag-slot.free{background:var(--out);color:#075e54;font-weight:600;width:100%;}
+  .ag-slot.free:hover{background:#c9f7c0;}
+  .ag-slot.booked{background:var(--header);}
+  .ag-slot.booked small{color:var(--muted);}
+  .ag-hold{background:#ffe0a3;color:#8a5a00;padding:1px 6px;border-radius:6px;font-size:11px;margin-left:4px;}
+  .ag-cancel{width:28px;height:28px;border-radius:50%;color:#d33;font-size:14px;flex:0 0 28px;}
+  .ag-cancel:hover{background:rgba(221,51,51,.1);}
   .ads-content{white-space:pre-wrap;font-size:13.5px;line-height:1.45;max-height:60vh;overflow:auto;background:var(--header);border-radius:8px;padding:14px;color:#111b21;margin-top:4px;}
   .ads-content:empty{display:none;}
 
@@ -177,6 +196,7 @@
         <button class="icon-btn" id="btn-sound" title="Alerta sonoro">🔔</button>
         <button class="icon-btn" id="btn-newchat" title="Nova conversa">✏️</button>
         <button class="icon-btn" id="btn-refresh" title="Atualizar">⟳</button>
+        <button class="icon-btn" id="btn-agenda" title="Agenda">🗓️</button>
         <button class="icon-btn" id="btn-config" title="Configurações">⚙️</button>
         <button class="icon-btn" id="btn-ads" title="Relatório Google Ads">📊</button>
         <button class="icon-btn" id="btn-logout" title="Sair">⎋</button>
@@ -322,6 +342,53 @@
     <div class="modal-actions">
       <button class="btn ghost" id="nc-cancel">Cancelar</button>
       <button class="btn primary" id="nc-send">Iniciar conversa</button>
+    </div>
+  </div>
+</div>
+
+<!-- Agenda (Modelo B — fonte única) -->
+<div class="modal-bg" id="agenda-modal">
+  <div class="modal agenda">
+    <div class="ag-head">
+      <h3>🗓️ Agenda</h3>
+      <button class="icon-btn" id="ag-close-x" title="Fechar">✕</button>
+    </div>
+    <div class="ag-controls">
+      <select id="ag-unidade">
+        <option value="Conjunto Nacional">Conjunto Nacional</option>
+        <option value="Taguatinga">Taguatinga</option>
+      </select>
+      <div class="ag-nav">
+        <button class="btn ghost" id="ag-prev" title="Dia anterior">‹</button>
+        <span id="ag-date-label"></span>
+        <button class="btn ghost" id="ag-next" title="Próximo dia">›</button>
+      </div>
+    </div>
+    <div id="ag-body" class="ag-body"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="ag-close">Fechar</button>
+      <button class="btn ghost" id="ag-today">Hoje</button>
+    </div>
+  </div>
+</div>
+
+<!-- Marcar horário (secretária) -->
+<div class="modal-bg" id="agbook-modal">
+  <div class="modal">
+    <h3>Marcar horário</h3>
+    <p id="agbook-slot"></p>
+    <label>Nome do paciente</label>
+    <input id="agbook-nome" placeholder="Nome completo" autocomplete="off">
+    <label>Telefone</label>
+    <input id="agbook-tel" placeholder="Ex.: 61 98406-0001" inputmode="tel" autocomplete="off">
+    <label>Convênio</label>
+    <input id="agbook-conv" placeholder="Convênio ou 'particular'" autocomplete="off">
+    <label>Motivo (opcional)</label>
+    <input id="agbook-motivo" placeholder="Ex.: consulta de rotina" autocomplete="off">
+    <div id="agbook-error" style="color:#d33;font-size:13px;margin-top:8px;display:none"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="agbook-cancel">Cancelar</button>
+      <button class="btn primary" id="agbook-save">Marcar</button>
     </div>
   </div>
 </div>
@@ -1235,6 +1302,92 @@ $('#nc-send').onclick=submitNewChat;
 $('#btn-config').onclick=openConfig;
 $('#btn-ads').onclick=openAds;
 $('#ads-close').onclick=closeAds;
+
+// ===== Agenda (Modelo B) ======================================================
+// Fonte única no banco (tabela appointments). A secretária vê os horários livres
+// de cada unidade por dia e marca com 1 clique; a trava anti-duplicidade é do
+// backend/Postgres. Os horários são sempre exibidos em Brasília (TZ_BR).
+let agUnidade='Conjunto Nacional', agDate=new Date(), agFree=[], agBooked=[], agBookIni=null;
+function agDayStr(d){ return d.toLocaleDateString('en-CA',{timeZone:TZ_BR}); }   // 'YYYY-MM-DD' em Brasília
+function openAgenda(){ agDate=new Date(); $('#ag-unidade').value=agUnidade; $('#agenda-modal').classList.add('show'); agLoad(); }
+function closeAgenda(){ $('#agenda-modal').classList.remove('show'); }
+async function agLoad(){
+  agUnidade=$('#ag-unidade').value;
+  $('#ag-date-label').textContent=agDate.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'});
+  $('#ag-body').innerHTML='<div class="ag-empty">Carregando…</div>';
+  try{
+    const dia=agDayStr(agDate);
+    const from=new Date(dia+'T00:00:00-03:00'), to=new Date(from.getTime()+24*3600*1000);
+    const u=encodeURIComponent(agUnidade);
+    const [fs,ap]=await Promise.all([
+      api('/api/agenda/slots?unidade='+u),
+      api('/api/agenda/appointments?unidade='+u+'&from='+from.toISOString()+'&to='+to.toISOString()),
+    ]);
+    agFree=(fs&&fs.slots)||[]; agBooked=(ap&&ap.appointments)||[];
+    agRender();
+  }catch(e){ $('#ag-body').innerHTML='<div class="ag-empty">Erro ao carregar a agenda. Rodou a migração sql/agenda.sql?</div>'; }
+}
+function agRender(){
+  const dia=agDayStr(agDate);
+  const free=agFree.filter(s=>agDayStr(new Date(s.inicio))===dia);
+  const booked=agBooked.filter(a=>agDayStr(new Date(a.inicio))===dia);
+  const items=[
+    ...booked.map(a=>({t:new Date(a.inicio).getTime(),type:'booked',a})),
+    ...free.map(s=>({t:new Date(s.inicio).getTime(),type:'free',s})),
+  ].sort((x,y)=>x.t-y.t);
+  if(!items.length){ $('#ag-body').innerHTML='<div class="ag-empty">Sem horários para esta unidade neste dia.<br><small>(Cada unidade atende em dias específicos.)</small></div>'; return; }
+  $('#ag-body').innerHTML=items.map(it=>{
+    const hora=new Date(it.t).toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+    if(it.type==='free') return `<button class="ag-slot free" data-ini="${esc(it.s.inicio)}">${hora} · livre</button>`;
+    const a=it.a, nome=esc(a.paciente_nome||'—');
+    const hold=a.status==='reservado'?'<span class="ag-hold">reservando…</span>':'';
+    const via=a.origem==='ana'?' · via Ana':'';
+    return `<div class="ag-slot booked"><div><b>${hora}</b> · ${nome} ${hold}<br><small>${esc(a.convenio||'')}${via}</small></div><button class="ag-cancel" data-id="${a.id}" title="Cancelar">✕</button></div>`;
+  }).join('');
+}
+$('#ag-body').addEventListener('click', async e=>{
+  const free=e.target.closest('.ag-slot.free');
+  if(free){ openAgBook(free.dataset.ini); return; }
+  const cancel=e.target.closest('.ag-cancel');
+  if(cancel){
+    if(!confirm('Cancelar este agendamento? O horário volta a ficar livre.')) return;
+    try{ await api('/api/agenda/'+cancel.dataset.id+'/cancel',{method:'POST'}); toast('Agendamento cancelado.'); agLoad(); }
+    catch(err){ toast('Falha ao cancelar.'); }
+  }
+});
+function openAgBook(ini){
+  agBookIni=ini;
+  const d=new Date(ini);
+  $('#agbook-slot').textContent=agUnidade+' — '+d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'})+' às '+d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+  $('#agbook-nome').value=''; $('#agbook-tel').value=''; $('#agbook-conv').value=''; $('#agbook-motivo').value='';
+  $('#agbook-error').style.display='none';
+  $('#agbook-modal').classList.add('show'); $('#agbook-nome').focus();
+}
+function closeAgBook(){ $('#agbook-modal').classList.remove('show'); }
+function agBookErr(m){ const el=$('#agbook-error'); el.textContent=m; el.style.display='block'; }
+async function agBookSave(){
+  const body={ unidade:agUnidade, inicio:agBookIni,
+    nome:$('#agbook-nome').value.trim(), telefone:$('#agbook-tel').value.trim(),
+    convenio:$('#agbook-conv').value.trim(), motivo:$('#agbook-motivo').value.trim() };
+  if(!body.nome){ agBookErr('Informe o nome do paciente.'); return; }
+  try{
+    const r=await fetch(API_BASE.replace(/\/$/,'')+'/api/agenda/book',{
+      method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+AUTH}, body:JSON.stringify(body) });
+    if(r.status===401){ logout(); return; }
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){ agBookErr(d.error||('Erro '+r.status)); if(r.status===409){ closeAgBook(); agLoad(); } return; }
+    closeAgBook(); toast('Horário marcado ✓'); agLoad();
+  }catch(e){ agBookErr('Falha de conexão.'); }
+}
+$('#btn-agenda').onclick=openAgenda;
+$('#ag-close').onclick=closeAgenda;
+$('#ag-close-x').onclick=closeAgenda;
+$('#ag-unidade').onchange=agLoad;
+$('#ag-prev').onclick=()=>{ agDate.setDate(agDate.getDate()-1); agLoad(); };
+$('#ag-next').onclick=()=>{ agDate.setDate(agDate.getDate()+1); agLoad(); };
+$('#ag-today').onclick=()=>{ agDate=new Date(); agLoad(); };
+$('#agbook-cancel').onclick=closeAgBook;
+$('#agbook-save').onclick=agBookSave;
 $('#ads-refresh').onclick=openAds;
 $('#ads-conv').onclick=downloadConversions;
 $('#btn-booked').onclick=markBooked;

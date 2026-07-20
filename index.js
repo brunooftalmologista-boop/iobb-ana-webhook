@@ -580,6 +580,116 @@ async function fetchSlots(unidadePref) {
   return slots;
 }
 
+// ============================================================================
+// AGENDA PRÓPRIA (fonte única — tabela `appointments`, ver sql/agenda.sql)
+// Substitui o iCal como fonte do "ocupado". A grade de horários continua vindo
+// das REGRAS (AGENDA_REGRAS) — reaproveitando todo o cálculo de fuso já testado
+// em getAvailableSlots. Aqui só trocamos a origem dos eventos ocupados: em vez do
+// feed iCal (só-leitura/atrasado), lemos os agendamentos ativos do banco.
+// ----------------------------------------------------------------------------
+
+// Lê os agendamentos ATIVOS dos próximos ~15 dias e devolve como eventos
+// "ocupado" (start/end) para getAvailableSlots subtrair da grade. Ativo =
+// 'confirmado' OU 'reservado' (hold) ainda não vencido. `null` = falha ao ler
+// (para a Ana/painel não inventarem vaga sobre uma agenda que não carregou).
+async function fetchBusyFromDB() {
+  const now = Date.now();
+  const desdeIso = new Date(now).toISOString();
+  const ateIso = new Date(now + 15 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase.from("appointments")
+    .select("unidade, inicio, fim, status, hold_expira_em")
+    .neq("status", "cancelado")
+    .gte("inicio", desdeIso).lte("inicio", ateIso);
+  if (error) { console.error("[Agenda DB] Falha ao ler agendamentos:", error.message); return null; }
+  const events = (data || [])
+    // Hold vencido não ocupa (será liberado no próximo criarAgendamento do slot).
+    .filter(a => a.status === "confirmado" || !a.hold_expira_em || new Date(a.hold_expira_em).getTime() > now)
+    .map(a => ({ start: new Date(a.inicio), end: new Date(a.fim), unidade: a.unidade }));
+  return events;
+}
+
+// Devolve os horários livres a partir da agenda do banco (mesma forma que o antigo
+// fetchSlots devolvia a partir do iCal). `null` = falha ao carregar; `[]` = sem vaga.
+async function fetchSlotsDB(unidadePref) {
+  const events = await fetchBusyFromDB();
+  if (events === null) return null;
+  const slots = getAvailableSlots(events, unidadePref);
+  console.log(`[Agenda DB] ${events.length} ocupado(s) → ${slots.length} vaga(s) nos próximos 14 dias.`);
+  return slots;
+}
+
+// Cria (ou SEGURA, via hold) um horário na agenda. A trava de duplicidade é do
+// BANCO: se o slot já tiver agendamento ativo, o índice único devolve 23505 e
+// retornamos { ok:false, taken:true } SEM lançar. Antes de inserir, cancela um
+// eventual hold VENCIDO do mesmo slot (que não ocupa de fato, mas ainda prende o
+// índice). status 'reservado' + holdMin cria um hold temporário (uso da Ana);
+// status 'confirmado' marca direto (uso da secretária no painel).
+async function criarAgendamento({ unidade, inicio, fim, status, nome, telefone, convenio, motivo, origem, conversationId, criadoPor, holdMin }) {
+  if (!unidade || !inicio || !fim) return { ok: false, error: "unidade, inicio e fim são obrigatórios" };
+  const inicioIso = new Date(inicio).toISOString();
+  const fimIso = new Date(fim).toISOString();
+  const st = status || "confirmado";
+  try {
+    // Libera holds vencidos do MESMO slot para não bloquear uma marcação legítima.
+    await supabase.from("appointments")
+      .update({ status: "cancelado", updated_at: new Date().toISOString() })
+      .eq("unidade", unidade).eq("inicio", inicioIso)
+      .eq("status", "reservado").lt("hold_expira_em", new Date().toISOString());
+
+    const row = {
+      unidade, inicio: inicioIso, fim: fimIso, status: st,
+      paciente_nome: nome || null, paciente_telefone: telefone || null,
+      convenio: convenio || null, motivo: motivo || null,
+      origem: origem || null, conversation_id: conversationId ? String(conversationId) : null,
+      criado_por: criadoPor || null,
+      hold_expira_em: (st === "reservado" && holdMin) ? new Date(Date.now() + holdMin * 60000).toISOString() : null,
+    };
+    const { data, error } = await supabase.from("appointments").insert(row).select().single();
+    if (error) {
+      if (error.code === "23505") return { ok: false, taken: true };   // trava única: slot ocupado
+      console.error("[Agenda DB] Falha ao criar agendamento:", error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true, appointment: data };
+  } catch (e) {
+    console.error("[Agenda DB] Exceção ao criar agendamento:", e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+// Confirma um hold (reservado → confirmado). Mantém a unicidade do slot: a mesma
+// linha só muda de status. Usado na Fase 2 quando o paciente aceita o horário.
+async function confirmarAgendamento(id) {
+  const { data, error } = await supabase.from("appointments")
+    .update({ status: "confirmado", hold_expira_em: null, updated_at: new Date().toISOString() })
+    .eq("id", id).neq("status", "cancelado").select().single();
+  if (error) { console.error("[Agenda DB] Falha ao confirmar:", error.message); return { ok: false, error: error.message }; }
+  return { ok: true, appointment: data };
+}
+
+// Cancela um agendamento (libera o slot). Best-effort.
+async function cancelarAgendamento(id) {
+  const { error } = await supabase.from("appointments")
+    .update({ status: "cancelado", updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) { console.error("[Agenda DB] Falha ao cancelar:", error.message); return { ok: false, error: error.message }; }
+  return { ok: true };
+}
+
+// Lista agendamentos ativos numa janela [de, ate] para a grade do painel.
+async function listarAgendamentos({ de, ate, unidade }) {
+  let q = supabase.from("appointments")
+    .select("id, unidade, inicio, fim, status, paciente_nome, paciente_telefone, convenio, motivo, origem, hold_expira_em")
+    .neq("status", "cancelado")
+    .gte("inicio", new Date(de).toISOString()).lte("inicio", new Date(ate).toISOString())
+    .order("inicio", { ascending: true });
+  if (unidade) q = q.eq("unidade", unidade);
+  const { data, error } = await q;
+  if (error) { console.error("[Agenda DB] Falha ao listar:", error.message); return null; }
+  const now = Date.now();
+  // Esconde holds vencidos (tratados como livres).
+  return (data || []).filter(a => a.status === "confirmado" || !a.hold_expira_em || new Date(a.hold_expira_em).getTime() > now);
+}
+
 // Chamada à API de mensagens da Anthropic com retry curto SOMENTE em erros
 // TRANSITÓRIOS: 429 (limite), 500/502/503/504 (servidor), 529 (sobrecarga) e
 // falhas SEM resposta HTTP (timeout/rede). Erros DEFINITIVOS (401 chave, 400
@@ -2643,6 +2753,104 @@ app.get("/api/diag/anexos", async (req, res) => {
 // Autoteste da AGENDA: mostra se o iCal carrega, quantos eventos ocupados há e
 // quais vagas o sistema calcula. Use ?unidade=conjunto|taguatinga para filtrar.
 // Abra autenticado no painel: /api/diag/agenda
+// ===== Agenda própria (Modelo B) — usada pela aba "Agenda" do painel ==========
+// Todas atrás do requirePanelAuth (app.use("/api", ...)). A trava anti-overbooking
+// é do banco (índice único parcial em sql/agenda.sql); aqui só orquestramos.
+
+// Horários LIVRES nos próximos `dias` dias (para o modal de marcação e diagnóstico).
+app.get("/api/agenda/slots", async (req, res) => {
+  try {
+    const unidade = req.query.unidade ? String(req.query.unidade) : null;
+    const slots = await fetchSlotsDB(unidade);
+    if (slots === null) return res.status(502).json({ ok: false, error: "Não foi possível ler a agenda (banco)." });
+    res.json({ ok: true, vagas: slots.length, slots: slots.map(s => ({
+      inicio: s.start.toISOString(), unidade: s.unidade, dia: s.dia, hora: s.hora, periodo: s.periodo,
+    })) });
+  } catch (e) {
+    console.error("[Agenda] /slots falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Agendamentos ATIVOS numa janela (para desenhar a grade dia/semana do painel).
+// from/to em ISO ou YYYY-MM-DD; default = próximos 7 dias a partir de agora.
+app.get("/api/agenda/appointments", async (req, res) => {
+  try {
+    const de = req.query.from ? new Date(String(req.query.from)) : new Date();
+    const ate = req.query.to ? new Date(String(req.query.to)) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const unidade = req.query.unidade ? String(req.query.unidade) : null;
+    const lista = await listarAgendamentos({ de, ate, unidade });
+    if (lista === null) return res.status(502).json({ ok: false, error: "Não foi possível ler a agenda (banco)." });
+    res.json({ ok: true, total: lista.length, appointments: lista });
+  } catch (e) {
+    console.error("[Agenda] /appointments falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Marca um horário direto pela secretária (status confirmado). O `inicio` deve ser
+// exatamente o de um slot livre devolvido por /api/agenda/slots.
+app.post("/api/agenda/book", async (req, res) => {
+  try {
+    const { unidade, inicio, nome, telefone, convenio, motivo } = req.body || {};
+    if (!unidade || !inicio) return res.status(400).json({ ok: false, error: "Informe unidade e horário (inicio)." });
+    const ini = new Date(inicio);
+    if (isNaN(ini.getTime())) return res.status(400).json({ ok: false, error: "Horário (inicio) inválido." });
+    if (ini.getTime() <= Date.now()) return res.status(400).json({ ok: false, error: "Não é possível marcar em horário passado." });
+    const fim = new Date(ini.getTime() + SLOT_MIN * 60000);
+    const r = await criarAgendamento({
+      unidade, inicio: ini, fim, status: "confirmado",
+      nome, telefone, convenio, motivo,
+      origem: "secretaria", criadoPor: req.panelUser?.email || null,
+    });
+    if (r.taken) return res.status(409).json({ ok: false, taken: true, error: "Esse horário acabou de ser ocupado. Atualize a agenda e escolha outro." });
+    if (!r.ok) return res.status(500).json({ ok: false, error: r.error || "Falha ao marcar." });
+    res.json({ ok: true, appointment: r.appointment });
+  } catch (e) {
+    console.error("[Agenda] /book falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Cancela um agendamento (libera o slot).
+app.post("/api/agenda/:id/cancel", async (req, res) => {
+  try {
+    const r = await cancelarAgendamento(req.params.id);
+    if (!r.ok) return res.status(500).json({ ok: false, error: r.error });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[Agenda] /cancel falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Remarca: cria o NOVO horário primeiro (se estiver livre) e só então cancela o
+// antigo. Se o novo estiver ocupado, o antigo permanece intacto (nada se perde).
+app.post("/api/agenda/:id/move", async (req, res) => {
+  try {
+    const { inicio, unidade } = req.body || {};
+    if (!inicio) return res.status(400).json({ ok: false, error: "Informe o novo horário (inicio)." });
+    const ini = new Date(inicio);
+    if (isNaN(ini.getTime())) return res.status(400).json({ ok: false, error: "Horário (inicio) inválido." });
+    if (ini.getTime() <= Date.now()) return res.status(400).json({ ok: false, error: "Não é possível remarcar para horário passado." });
+    const { data: atual, error } = await supabase.from("appointments").select("*").eq("id", req.params.id).single();
+    if (error || !atual) return res.status(404).json({ ok: false, error: "Agendamento não encontrado." });
+    const fim = new Date(ini.getTime() + SLOT_MIN * 60000);
+    const novo = await criarAgendamento({
+      unidade: unidade || atual.unidade, inicio: ini, fim, status: "confirmado",
+      nome: atual.paciente_nome, telefone: atual.paciente_telefone, convenio: atual.convenio, motivo: atual.motivo,
+      origem: "secretaria", conversationId: atual.conversation_id, criadoPor: req.panelUser?.email || null,
+    });
+    if (novo.taken) return res.status(409).json({ ok: false, taken: true, error: "O novo horário acabou de ser ocupado. O agendamento antigo foi mantido." });
+    if (!novo.ok) return res.status(500).json({ ok: false, error: novo.error || "Falha ao remarcar." });
+    await cancelarAgendamento(req.params.id);   // só depois de garantir o novo
+    res.json({ ok: true, appointment: novo.appointment });
+  } catch (e) {
+    console.error("[Agenda] /move falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.get("/api/diag/agenda", async (req, res) => {
   try {
     const ics = await fetchICS();
