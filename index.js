@@ -421,6 +421,15 @@ const AGENDA_REGRAS = {
   taguatinga: { nome: "Taguatinga",        dias: ["terça","quinta"],           inicio: 10, fim: 18 },
 };
 const SLOT_MIN = 20; // duração de cada horário, em minutos
+// Antecedência mínima (em horas) para a ANA oferecer/marcar um horário. Rede de
+// segurança da fase inicial: dá tempo à equipe conferir cada agendamento antes de
+// acontecer. Vale SÓ para a Ana — a secretária marca a qualquer momento pelo painel
+// (o endpoint /api/agenda/slots NÃO aplica este filtro). Ajustável no Render via
+// ANA_ANTECEDENCIA_HORAS (aceita 0 para desligar). Padrão: 24h corridas.
+const ANA_ANTECEDENCIA_HORAS = (() => {
+  const v = readEnv("ANA_ANTECEDENCIA_HORAS");
+  return (v != null && v !== "" && !isNaN(Number(v))) ? Number(v) : 24;
+})();
 const TZ_BR = "America/Sao_Paulo";
 // Nomes dos dias na ordem de getUTCDay() (0=domingo), batendo com AGENDA_REGRAS.
 const DOW_BR = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
@@ -760,7 +769,8 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId }
     if (r.taken) {
       // Corrida: a vaga foi ocupada durante a conversa. Oferece a próxima livre.
       const slots = await fetchSlotsDB(unidade);
-      const prox = (slots || []).find(s => s.start.getTime() > Date.now());
+      const minTs = Date.now() + ANA_ANTECEDENCIA_HORAS * 3600 * 1000;   // mesma antecedência
+      const prox = (slots || []).find(s => s.start.getTime() >= minTs);
       const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve para você?` : `Vou verificar outra opção e já te retorno.`;
       await trySendWhatsApp(from, `Ah, o horário de ${fmtDataHoraBR(ini.toISOString())} acabou de ser preenchido. 🙏 ${alt}`);
       console.log(`[Agendar] Corrida: ${unidade} ${inicioRaw} já ocupado — ofereci alternativa.`);
@@ -2102,10 +2112,15 @@ app.post("/webhook", async (req, res) => {
     if (detectSchedulingIntent(messages)) {
       const unidade = detectUnidade(messages);
       const slots = await fetchSlotsDB(unidade);
-      if (slots === null) {
+      // Rede de segurança: a Ana só oferece horários com pelo menos
+      // ANA_ANTECEDENCIA_HORAS de antecedência (padrão 24h). O painel não filtra.
+      // Se slots===null (falha ao carregar), mantém null para o ramo "indisponível".
+      const minTs = Date.now() + ANA_ANTECEDENCIA_HORAS * 3600 * 1000;
+      const slotsOferta = Array.isArray(slots) ? slots.filter(s => s.start.getTime() >= minTs) : slots;
+      if (slotsOferta === null) {
         systemPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
-      } else if (slots.length > 0) {
-        systemPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slots)}\n\nOfereça UM por vez (em linguagem humana) e, ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.`;
+      } else if (slotsOferta.length > 0) {
+        systemPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta)}\n\nOfereça UM por vez (em linguagem humana) e, ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.`;
       } else {
         systemPrompt += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias para a unidade pedida. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       }
