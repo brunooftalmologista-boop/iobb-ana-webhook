@@ -624,7 +624,7 @@ async function fetchSlotsDB(unidadePref) {
 // eventual hold VENCIDO do mesmo slot (que não ocupa de fato, mas ainda prende o
 // índice). status 'reservado' + holdMin cria um hold temporário (uso da Ana);
 // status 'confirmado' marca direto (uso da secretária no painel).
-async function criarAgendamento({ unidade, inicio, fim, status, nome, telefone, convenio, motivo, origem, conversationId, criadoPor, holdMin }) {
+async function criarAgendamento({ unidade, inicio, fim, status, nome, telefone, convenio, motivo, observacoes, origem, conversationId, criadoPor, holdMin }) {
   if (!unidade || !inicio || !fim) return { ok: false, error: "unidade, inicio e fim são obrigatórios" };
   const inicioIso = new Date(inicio).toISOString();
   const fimIso = new Date(fim).toISOString();
@@ -639,7 +639,7 @@ async function criarAgendamento({ unidade, inicio, fim, status, nome, telefone, 
     const row = {
       unidade, inicio: inicioIso, fim: fimIso, status: st,
       paciente_nome: nome || null, paciente_telefone: telefone || null,
-      convenio: convenio || null, motivo: motivo || null,
+      convenio: convenio || null, motivo: motivo || null, observacoes: observacoes || null,
       origem: origem || null, conversation_id: conversationId ? String(conversationId) : null,
       criado_por: criadoPor || null,
       hold_expira_em: (st === "reservado" && holdMin) ? new Date(Date.now() + holdMin * 60000).toISOString() : null,
@@ -678,7 +678,7 @@ async function cancelarAgendamento(id) {
 // Lista agendamentos ativos numa janela [de, ate] para a grade do painel.
 async function listarAgendamentos({ de, ate, unidade }) {
   let q = supabase.from("appointments")
-    .select("id, unidade, inicio, fim, status, paciente_nome, paciente_telefone, convenio, motivo, origem, hold_expira_em")
+    .select("id, unidade, inicio, fim, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, origem, hold_expira_em")
     .neq("status", "cancelado")
     .gte("inicio", new Date(de).toISOString()).lte("inicio", new Date(ate).toISOString())
     .order("inicio", { ascending: true });
@@ -2792,7 +2792,7 @@ app.get("/api/agenda/appointments", async (req, res) => {
 // exatamente o de um slot livre devolvido por /api/agenda/slots.
 app.post("/api/agenda/book", async (req, res) => {
   try {
-    const { unidade, inicio, nome, telefone, convenio, motivo } = req.body || {};
+    const { unidade, inicio, nome, telefone, convenio, motivo, observacoes } = req.body || {};
     if (!unidade || !inicio) return res.status(400).json({ ok: false, error: "Informe unidade e horário (inicio)." });
     const ini = new Date(inicio);
     if (isNaN(ini.getTime())) return res.status(400).json({ ok: false, error: "Horário (inicio) inválido." });
@@ -2800,7 +2800,7 @@ app.post("/api/agenda/book", async (req, res) => {
     const fim = new Date(ini.getTime() + SLOT_MIN * 60000);
     const r = await criarAgendamento({
       unidade, inicio: ini, fim, status: "confirmado",
-      nome, telefone, convenio, motivo,
+      nome, telefone, convenio, motivo, observacoes,
       origem: "secretaria", criadoPor: req.panelUser?.email || null,
     });
     if (r.taken) return res.status(409).json({ ok: false, taken: true, error: "Esse horário acabou de ser ocupado. Atualize a agenda e escolha outro." });
@@ -2838,7 +2838,7 @@ app.post("/api/agenda/:id/move", async (req, res) => {
     const fim = new Date(ini.getTime() + SLOT_MIN * 60000);
     const novo = await criarAgendamento({
       unidade: unidade || atual.unidade, inicio: ini, fim, status: "confirmado",
-      nome: atual.paciente_nome, telefone: atual.paciente_telefone, convenio: atual.convenio, motivo: atual.motivo,
+      nome: atual.paciente_nome, telefone: atual.paciente_telefone, convenio: atual.convenio, motivo: atual.motivo, observacoes: atual.observacoes,
       origem: "secretaria", conversationId: atual.conversation_id, criadoPor: req.panelUser?.email || null,
     });
     if (novo.taken) return res.status(409).json({ ok: false, taken: true, error: "O novo horário acabou de ser ocupado. O agendamento antigo foi mantido." });

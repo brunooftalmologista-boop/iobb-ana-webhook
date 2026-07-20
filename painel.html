@@ -141,8 +141,8 @@
   .modal h3{margin:0 0 4px;}
   .modal p{color:var(--muted);font-size:14px;margin:0 0 16px;}
   .modal label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px;}
-  .modal input, .modal select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px;outline:none;background:#fff;}
-  .modal input:focus, .modal select:focus{border-color:var(--green);}
+  .modal input, .modal select, .modal textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px;outline:none;background:#fff;font-family:inherit;resize:vertical;}
+  .modal input:focus, .modal select:focus, .modal textarea:focus{border-color:var(--green);}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
   .btn{padding:10px 18px;border-radius:8px;font-weight:600;font-size:14px;}
   .btn.primary{background:var(--green);color:#fff;}
@@ -383,8 +383,10 @@
     <input id="agbook-tel" placeholder="Ex.: 61 98406-0001" inputmode="tel" autocomplete="off">
     <label>Convênio</label>
     <select id="agbook-conv"></select>
-    <label>Motivo (opcional)</label>
-    <input id="agbook-motivo" placeholder="Ex.: consulta de rotina" autocomplete="off">
+    <label>Motivo</label>
+    <select id="agbook-motivo"></select>
+    <label>Observações (opcional)</label>
+    <textarea id="agbook-obs" rows="2" placeholder="Alguma observação para a equipe" autocomplete="off"></textarea>
     <div id="agbook-error" style="color:#d33;font-size:13px;margin-top:8px;display:none"></div>
     <div class="modal-actions">
       <button class="btn ghost" id="agbook-cancel">Cancelar</button>
@@ -1311,6 +1313,12 @@ let agUnidade='Conjunto Nacional', agDate=new Date(), agFree=[], agBooked=[], ag
 // Convênios atendidos (fonte: LISTA DE CONVÊNIOS ATENDIDOS no index.js), com
 // Particular no topo e as variações de Pró-Social/Unimed Central Nacional unidas.
 const CONVENIOS=["Particular","AMHPDF","AFEB BRASAL","AFFEGO","ASETE","ASFUB","BACEN","BBB SAÚDE","CARE PLUS","CASEMBRAPA","CAEME-GO","CAMED","CAESAN","CASEC","CTI","CONAB","ELETRONORTE","EMBRATEL","E-VIDA","FACEB","FAPES (BNDES)","FASCAL","FIOSAÚDE (FIOPREV)","FURNAS","GAMA SAÚDE","INSTITUTO DE ASSISTÊNCIA À SAÚDE DOS SERVIDORES DO DISTRITO FEDERAL","INFRAERO","IRB","IRMÃOS GRAVIA","LIFE EMPRESARIAL","MAPFRE SAÚDE","MPDFT","MPF","MPM","MPT","NOTRE DAME","PAME","PLAN-ASSISTE","PROASA","PRÓ-SOCIAL","SAÚDE CAIXA","SERPRO","SIS SENADO","STF-MED","STJ","STM","TJDFT","TST SAÚDE","T.R.E.","TRF","TRT","UNAFISCO","UNIBANCO - TEMPO SAUDE","UNIMED CENTRAL NACIONAL","UNIMED PLANALTO","UNIMED INTERCÂMBIO","UNIVERSAL ASSISTENCE"];
+// Exames realizados (fonte: seção "### Exames realizados" no index.js).
+const EXAMES=["Pentacam HR","Paquimetria","Topografia","Microscopia Especular","Retinografia","Tonometria","CDPO (Curva Diária de Pressão Ocular)","Teste de Sobrecarga Hídrica","Mapeamento de Retina","Gonioscopia","Teste de Lente de Contato","Teste de Visão Cromática","Teste de Estereopsia"];
+// HTML das opções do campo Motivo: Consulta, grupo Exames, Avaliação de cirurgia.
+const MOTIVO_OPTIONS='<option value="">Selecione o motivo…</option><option>Consulta</option>'
+  +'<optgroup label="Exames">'+EXAMES.map(e=>'<option>'+e+'</option>').join('')+'</optgroup>'
+  +'<option>Avaliação de cirurgia</option>';
 function agDayStr(d){ return d.toLocaleDateString('en-CA',{timeZone:TZ_BR}); }   // 'YYYY-MM-DD' em Brasília
 function openAgenda(){ agDate=new Date(); $('#ag-unidade').value=agUnidade; $('#agenda-modal').classList.add('show'); agLoad(); }
 function closeAgenda(){ $('#agenda-modal').classList.remove('show'); }
@@ -1365,7 +1373,8 @@ function openAgBook(ini){
   if(!$('#agbook-conv').options.length){
     $('#agbook-conv').innerHTML='<option value="">Selecione o convênio…</option>'+CONVENIOS.map(c=>'<option>'+c+'</option>').join('');
   }
-  $('#agbook-nome').value=''; $('#agbook-tel').value=''; $('#agbook-conv').value=''; $('#agbook-motivo').value='';
+  if(!$('#agbook-motivo').options.length){ $('#agbook-motivo').innerHTML=MOTIVO_OPTIONS; }
+  $('#agbook-nome').value=''; $('#agbook-tel').value=''; $('#agbook-conv').value=''; $('#agbook-motivo').value=''; $('#agbook-obs').value='';
   $('#agbook-error').style.display='none';
   $('#agbook-modal').classList.add('show'); $('#agbook-nome').focus();
 }
@@ -1374,7 +1383,7 @@ function agBookErr(m){ const el=$('#agbook-error'); el.textContent=m; el.style.d
 async function agBookSave(){
   const body={ unidade:agUnidade, inicio:agBookIni,
     nome:$('#agbook-nome').value.trim(), telefone:$('#agbook-tel').value.trim(),
-    convenio:$('#agbook-conv').value.trim(), motivo:$('#agbook-motivo').value.trim() };
+    convenio:$('#agbook-conv').value.trim(), motivo:$('#agbook-motivo').value.trim(), observacoes:$('#agbook-obs').value.trim() };
   if(!body.nome){ agBookErr('Informe o nome do paciente.'); return; }
   try{
     const r=await fetch(API_BASE.replace(/\/$/,'')+'/api/agenda/book',{

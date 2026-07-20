@@ -22,7 +22,8 @@ create table if not exists appointments (
   paciente_nome text,
   paciente_telefone text,
   convenio text,                               -- convênio ou 'particular'
-  motivo text,
+  motivo text,                                 -- Consulta | <um dos exames> | Avaliação de cirurgia
+  observacoes text,                            -- observações livres da secretária
   origem text,                                 -- 'ana' | 'secretaria'
   conversation_id text,                        -- conversa da Ana (fecha atribuição de Ads)
   criado_por text,                             -- email da secretária que marcou (auditoria/LGPD)
