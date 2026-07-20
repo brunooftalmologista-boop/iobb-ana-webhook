@@ -259,7 +259,7 @@ A unidade do "Taguatinga Shopping" FICA EM ÁGUAS CLARAS. O shopping tem "Taguat
 REGRA FIXA E INEGOCIÁVEL — cada dia da semana pertence a UMA única unidade. NUNCA inverta:
 - SEGUNDA, QUARTA e SEXTA → SEMPRE Conjunto Nacional (Asa Norte). Nesses dias NÃO há atendimento em Taguatinga.
 - TERÇA e QUINTA → SEMPRE Taguatinga Shopping. Nesses dias NÃO há atendimento no Conjunto Nacional.
-Você PODE informar em quais DIAS cada unidade atende (isso é fixo). Mas NUNCA mencione horários específicos de consulta, nem diga que um dia/turno está livre, disponível, lotado ou indisponível (ver "Como lidar com horários" abaixo). Ao dizer a unidade de uma data, calcule o dia da semana (fuso de Brasília) e aplique esta regra. Ex.: uma sexta-feira é SEMPRE Conjunto Nacional.
+Você PODE informar em quais DIAS cada unidade atende (isso é fixo). Sobre HORÁRIOS específicos, siga a seção "Como lidar com horários" abaixo — você só oferece/marca horários que estejam na lista oficial injetada no seu contexto. Ao dizer a unidade de uma data, calcule o dia da semana (fuso de Brasília) e aplique esta regra. Ex.: uma sexta-feira é SEMPRE Conjunto Nacional.
 Telefone: (61) 3033-6605 | seg-sex 08h-18h.
 Não há atendimento aos sábados, domingos e feriados. Se pedirem fim de semana, oriente para o próximo dia útil da unidade desejada.
 Localização: as unidades ficam no Conjunto Nacional (região central de Brasília / Asa Norte) e no Taguatinga Shopping (localizado em ÁGUAS CLARAS). Se pedirem endereço detalhado, ponto de referência, estacionamento ou como chegar, ofereça enviar a localização pela equipe — não invente vagas de estacionamento nem endereços que você não tem.
@@ -267,15 +267,29 @@ Localização: as unidades ficam no Conjunto Nacional (região central de Brasí
 ### Conferência de óculos
 Não precisa agendar. Comparecer com óculos e receita no horário de atendimento.
 
-### Como lidar com horários (REGRA CRÍTICA — sem exceções)
-Você NÃO define horários específicos — quem confirma o horário exato é a nossa equipe de agendamento. IMPORTANTE (orientação INTERNA): NUNCA diga ao paciente que "não tem acesso à agenda", que "não consegue ver a agenda" ou algo parecido — isso passa uma impressão ruim. Quando o paciente perguntar se há horário/vaga, quando será, ou pedir um horário, RESPONDA explicando que a equipe responsável pelo agendamento e pela confirmação atende de segunda a sexta, das 8h às 18h (com pausa para o almoço, das 13h às 14h), e que, assim que retornarem, confirmam com ele o horário exato do agendamento. NUNCA, em hipótese alguma:
-- mencione, sugira ou pergunte por horários específicos (ex.: "temos 10h", "que tal às 14h?", "prefere 9h ou 11h?");
-- diga que um dia, turno ou horário está livre, disponível, cheio, lotado ou indisponível;
-- afirme, confirme ou negue qualquer disponibilidade de agenda.
-O que você FAZ no lugar disso: coleta a PREFERÊNCIA do paciente — unidade desejada (Conjunto Nacional ou Taguatinga), dia ou período preferido (manhã ou tarde) e os dados (nome, telefone, convênio ou particular, motivo) — registra o pré-agendamento e explica que a equipe de agendamento entrará em contato o mais breve possível, dentro do horário comercial, para confirmar o horário.
-Você PODE informar em quais DIAS cada unidade atende (é fixo). O horário exato é SEMPRE definido pela equipe, nunca por você.
-Fala modelo ao concluir a coleta (varie as palavras, mantenha o sentido e as informações): "Registrei a sua preferência pela unidade [unidade] no período da [manhã/tarde]. A equipe responsável pelo agendamento e pela confirmação atende de segunda a sexta, das 8h às 18h (com pausa para o almoço, das 13h às 14h); assim que retornarem, confirmam com você o horário exato do agendamento."
-Se o paciente insistir por um horário específico ou perguntar se há vaga, explique com gentileza que a confirmação do horário é feita pela equipe de agendamento — que atende de segunda a sexta, das 8h às 18h (com pausa para o almoço, das 13h às 14h) — e que você já deixou a preferência registrada para eles retornarem e confirmarem o horário exato. Não invente nem "chute" um horário para satisfazer o pedido.
+### Como lidar com horários (REGRA CRÍTICA)
+Você MARCA o horário de verdade — mas SOMENTE horários que aparecerem na lista "### Horários REALMENTE disponíveis" que o sistema injeta no seu contexto. Essa lista é a agenda oficial.
+REGRA DE OURO: só ofereça e só marque um horário que esteja EXATAMENTE nessa lista. NUNCA invente, deduza ou "chute" um horário. Se um horário não está na lista, ele não existe para você.
+
+QUANDO A LISTA "### Horários REALMENTE disponíveis" ESTIVER no seu contexto:
+1. Descubra primeiro a unidade desejada (Conjunto Nacional ou Taguatinga) e o convênio/particular. Se o paciente citou um dia/período (manhã/tarde), respeite ao escolher.
+2. Ofereça UM ÚNICO horário por vez, em linguagem humana — ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?". NÃO liste vários horários de uma vez nem despeje a agenda.
+3. Se o paciente recusar ou pedir outro, ofereça o PRÓXIMO horário da lista. Se ele pedir um dia/período específico, ofereça um horário desse dia/período que esteja na lista.
+4. Quando o paciente CONFIRMAR (disse "pode", "sim", "isso", "fechado" etc.), dê a mensagem de confirmação — ex.: "Perfeito! Agendado para quinta, 24/07, às 14h20 no Conjunto Nacional. ✅ Qualquer imprevisto, é só avisar." — e anexe o bloco técnico [AGENDAR] (ver abaixo). É o bloco que grava o horário; sem ele, NADA é marcado.
+
+QUANDO A LISTA NÃO ESTIVER no seu contexto (você não recebeu a agenda) OU vier avisando que está indisponível/sem vagas:
+- NÃO invente horário e NÃO diga que "não tem acesso à agenda". Colete a preferência (unidade + período manhã/tarde) e os dados, registre o PRÉ-AGENDAMENTO (bloco [PREAGENDAMENTO]) e explique que a equipe de agendamento — que atende de segunda a sexta, das 8h às 18h (com pausa para o almoço, das 13h às 14h) — confirma o horário exato assim que retornar.
+
+### Registro do agendamento confirmado [AGENDAR] (INVISÍVEL ao paciente) — CRÍTICO
+Assim que o paciente CONFIRMAR um horário da lista, anexe ao FINAL da sua mensagem, EXATAMENTE neste formato (uma linha):
+[AGENDAR]
+inicio: <copie o valor EXATO do [inicio:...] daquele horário na lista> | unidade: <Conjunto Nacional ou Taguatinga> | nome: <nome completo> | telefone: <telefone informado ou "-"> | convenio: <convênio ou "particular"> | motivo: <Consulta por padrão; Retorno ou "Avaliação de cirurgia" só se o paciente deixar claro>
+[/AGENDAR]
+Regras do bloco:
+- O campo "inicio" TEM que ser copiado ao pé da letra do token [inicio:...] do horário escolhido — é o que garante que você marque o horário certo. Nunca reescreva a data/hora à mão.
+- Emita [AGENDAR] UMA única vez, só quando o paciente confirmar de fato o horário. Não emita [AGENDAR] e [PREAGENDAMENTO] na mesma mensagem — use [AGENDAR] quando marcou um horário real; use [PREAGENDAMENTO] quando NÃO havia agenda/horário.
+- motivo: use "Consulta" por padrão. NUNCA pergunte "qual exame?" nem ofereça/recite a lista de exames ao paciente. Só registre "Retorno" ou "Avaliação de cirurgia" se o próprio paciente disser isso claramente.
+- NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
 
 ### Ceratocone
 Somos referência em ceratocone. Tratamentos que oferecemos, conforme cada caso: crosslinking, anel de Ferrara e lentes de contato especiais (rígidas/esclerais). A cirurgia refrativa a laser geralmente não é indicada no ceratocone — a definição é sempre do médico na avaliação.
@@ -688,6 +702,77 @@ async function listarAgendamentos({ de, ate, unidade }) {
   const now = Date.now();
   // Esconde holds vencidos (tratados como livres).
   return (data || []).filter(a => a.status === "confirmado" || !a.hold_expira_em || new Date(a.hold_expira_em).getTime() > now);
+}
+
+// ===== FASE 2: a Ana marca sozinha ==========================================
+// Formata as vagas REAIS para injetar no prompt, cada uma com um token técnico
+// [inicio:...] que a Ana copia no bloco [AGENDAR] ao confirmar. Limita a
+// `maxSlots` para não estourar o prompt (a Ana oferece UMA por vez, então um
+// punhado basta). O paciente vê só a parte humana ("terça 22/07 às 10:00").
+function formatSlotsParaAgendar(slots, maxSlots = 12) {
+  return slots.slice(0, maxSlots)
+    .map(s => `- ${s.dia} às ${s.hora} (${s.unidade}) [inicio:${s.start.toISOString()}]`)
+    .join("\n");
+}
+
+// Extrai o bloco técnico [AGENDAR]...[/AGENDAR] que a Ana anexa quando o paciente
+// CONFIRMA um horário. Mesma robustez do extrairPreAgendamento (trata bloco sem
+// fechamento). Devolve { limpo, registro } — registro é null se não houver bloco.
+function extrairAgendar(reply) {
+  const re = /\[AGENDAR\]([\s\S]*?)\[\/AGENDAR\]/i;
+  let inner, limpo;
+  const m = reply.match(re);
+  if (m) { inner = m[1]; limpo = reply.replace(re, "").replace(/\n{3,}/g, "\n\n").trim(); }
+  else {
+    const mo = reply.match(/\[AGENDAR\]([\s\S]*)$/i);
+    if (!mo) return { limpo: reply, registro: null };
+    inner = mo[1]; limpo = reply.slice(0, mo.index).replace(/\n{3,}/g, "\n\n").trim();
+  }
+  const campos = {};
+  for (const par of inner.replace(/\n/g, " ").split("|")) {
+    const idx = par.indexOf(":");                     // 1º ":" — preserva o ISO do inicio (que tem ":")
+    if (idx === -1) continue;
+    const chave = par.slice(0, idx).trim().toLowerCase().replace(/^-+\s*/, "");
+    const valor = par.slice(idx + 1).trim();
+    if (chave) campos[chave] = valor;
+  }
+  return { limpo, registro: Object.keys(campos).length ? campos : null };
+}
+
+// Grava DE VERDADE o horário que a Ana confirmou com o paciente. Marca só ao
+// confirmar (decisão v1): se a vaga foi tomada no meio (trava do banco → taken),
+// a Ana manda uma correção oferecendo a próxima vaga — nunca marca duplicado.
+// NUNCA lança. Em sucesso: fecha a conversão de Ads e espelha à secretária.
+async function processarAgendarDaAna({ registro, patient, from, conversationId }) {
+  try {
+    const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
+    const unidade = limpo(registro.unidade);
+    const inicioRaw = limpo(registro.inicio);
+    if (!unidade || !inicioRaw) { console.error("[Agendar] Bloco sem unidade/inicio:", JSON.stringify(registro)); return { ok: false }; }
+    const ini = new Date(inicioRaw);
+    if (isNaN(ini.getTime())) { console.error("[Agendar] inicio inválido:", inicioRaw); return { ok: false }; }
+    const fim = new Date(ini.getTime() + SLOT_MIN * 60000);
+    const nome = limpo(registro.nome) || patient?.name || null;
+    const telefone = limpo(registro.telefone) || patient?.phone || from || null;
+    const convenio = limpo(registro.convenio);
+    const motivo = limpo(registro.motivo) || "Consulta";
+    const r = await criarAgendamento({ unidade, inicio: ini, fim, status: "confirmado", nome, telefone, convenio, motivo, origem: "ana", conversationId });
+    if (r.taken) {
+      // Corrida: a vaga foi ocupada durante a conversa. Oferece a próxima livre.
+      const slots = await fetchSlotsDB(unidade);
+      const prox = (slots || []).find(s => s.start.getTime() > Date.now());
+      const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve para você?` : `Vou verificar outra opção e já te retorno.`;
+      await trySendWhatsApp(from, `Ah, o horário de ${fmtDataHoraBR(ini.toISOString())} acabou de ser preenchido. 🙏 ${alt}`);
+      console.log(`[Agendar] Corrida: ${unidade} ${inicioRaw} já ocupado — ofereci alternativa.`);
+      return { ok: false, taken: true };
+    }
+    if (!r.ok) { console.error("[Agendar] Falha ao gravar:", r.error); return { ok: false, error: r.error }; }
+    await marcarConversaoAgendada(conversationId);   // fecha atribuição de Ads (idempotente)
+    await espelharParaSecretaria("[Agendado pela Ana]",
+      `✅ *AGENDAMENTO (via Ana)*\n👤 Nome: ${nome || "—"}\n📱 Telefone: ${telefone || "—"}\n🏥 Convênio: ${convenio || "—"}\n📍 Unidade: ${unidade}\n🕐 Horário: ${fmtDataHoraBR(ini.toISOString())}\n📝 Motivo: ${motivo || "—"}`);
+    console.log(`[Agendar] ✅ Agendado via Ana: ${unidade} ${fmtDataHoraBR(ini.toISOString())} (${nome || "—"}).`);
+    return { ok: true, appointment: r.appointment };
+  } catch (e) { console.error("[Agendar] Exceção:", e.message); return { ok: false, error: e.message }; }
 }
 
 // Chamada à API de mensagens da Anthropic com retry curto SOMENTE em erros
@@ -2010,26 +2095,21 @@ app.post("/webhook", async (req, res) => {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // DESATIVADO (decisão de produto): a Ana NÃO oferece mais horários específicos.
-    // Ela apenas coleta a preferência (unidade + período manhã/tarde) e a equipe
-    // confirma o horário exato — ver "Como lidar com horários" no SYSTEM_PROMPT.
-    // O cálculo de slots via iCal (detectSchedulingIntent, detectUnidade,
-    // fetchSlots, getAvailableSlots, formatSlotsForPrompt, agendaPorDia) segue no
-    // repositório e ainda alimenta o endpoint GET /api/diag/agenda — só não é mais
-    // injetado no prompt de resposta. Para REATIVAR a oferta de horários, basta
-    // descomentar o bloco abaixo (e reverter o SYSTEM_PROMPT).
-    //
-    // if (detectSchedulingIntent(messages)) {
-    //   const unidade = detectUnidade(messages);
-    //   const slots = await fetchSlots(unidade);
-    //   if (slots === null) {
-    //     systemPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Explique que vai confirmar a disponibilidade com a equipe, e pergunte a unidade e o melhor período (manhã ou tarde) para já deixar anotado.`;
-    //   } else if (slots.length > 0) {
-    //     systemPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — use só estes)\n${formatSlotsForPrompt(slots)}\n\nRegras ao oferecer:\n- Ofereça UM ÚNICO horário por vez...`;
-    //   } else {
-    //     systemPrompt += `\n\n### Sem vagas nos próximos dias\n...`;
-    //   }
-    // }
+    // FASE 2: injeta as vagas REAIS da agenda (tabela appointments) quando há sinal
+    // de agendamento. Com a lista presente, a Ana oferece UM horário e marca de
+    // verdade via [AGENDAR]. Sem lista (banco fora ou sem vaga), ela cai no fluxo
+    // de pré-agendamento (a equipe confirma) — ver "Como lidar com horários".
+    if (detectSchedulingIntent(messages)) {
+      const unidade = detectUnidade(messages);
+      const slots = await fetchSlotsDB(unidade);
+      if (slots === null) {
+        systemPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
+      } else if (slots.length > 0) {
+        systemPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slots)}\n\nOfereça UM por vez (em linguagem humana) e, ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.`;
+      } else {
+        systemPrompt += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias para a unidade pedida. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
+      }
+    }
     // ─────────────────────────────────────────────────────────────────────────
 
     // Chamar Ana
@@ -2063,14 +2143,15 @@ app.post("/webhook", async (req, res) => {
 
     // Separar os blocos técnicos (invisíveis ao paciente) do texto que será
     // realmente enviado. `reply` nunca conterá nenhum dos blocos.
-    const pre = extrairPreAgendamento(reply);
-    const rec = extrairRecado(pre.limpo);   // extrai [RECADO] do texto já sem [PREAGENDAMENTO]
+    const ag = extrairAgendar(reply);              // [AGENDAR] primeiro (agendamento REAL)
+    const pre = extrairPreAgendamento(ag.limpo);   // depois [PREAGENDAMENTO] (fallback)
+    const rec = extrairRecado(pre.limpo);          // por fim [RECADO], no texto já limpo
     const registros = pre.registros;
     reply = rec.limpo;
     // Log de detecção por mensagem: revela se a Ana emitiu (ou não) um bloco de
     // espelhamento. Se a Ana disse "vou encaminhar" mas isto marca "recado=nenhum",
     // o problema está no prompt/modelo, não no envio.
-    console.log(`[Espelho] Detecção na resposta da Ana: pré-agendamento=${registros.length}, recado=${rec.recado ? rec.recado.tipo + (rec.recado.prioritario ? "/PRIORITÁRIO" : "") : "nenhum"}.`);
+    console.log(`[Espelho] Detecção na resposta da Ana: agendar=${ag.registro ? "sim" : "não"}, pré-agendamento=${registros.length}, recado=${rec.recado ? rec.recado.tipo + (rec.recado.prioritario ? "/PRIORITÁRIO" : "") : "nenhum"}.`);
 
     // Salvar resposta (já sem o bloco técnico)
     await saveMessage(conversation.id, "assistant", reply);
@@ -2082,9 +2163,14 @@ app.post("/webhook", async (req, res) => {
       console.error("[Ana] Falha ao enviar resposta ao paciente:", err?.response?.data ? JSON.stringify(err.response.data) : err.message);
     }
 
-    // Espelhamento à secretária. Evita duplicar: pré-agendamento já tem seu
-    // próprio resumo, então o [RECADO] só dispara quando NÃO houver pré-agenda.
-    if (registros.length) {
+    // Prioridade: [AGENDAR] (marca de verdade) > [PREAGENDAMENTO] (fallback) > [RECADO].
+    // A Ana nunca deve emitir mais de um, mas se emitir, o agendamento real vence.
+    if (ag.registro) {
+      // Grava o horário confirmado. Já fecha a conversão de Ads e espelha à
+      // secretária lá dentro; em corrida (vaga tomada) manda a correção ao paciente.
+      await processarAgendarDaAna({ registro: ag.registro, patient, from, conversationId: conversation.id });
+    }
+    else if (registros.length) {
       await notificarSecretaria(registros, patient, from, conversation.id);
       // Fecha o ciclo de atribuição: se esta conversa veio de um anúncio (tem
       // ad_click/gclid vinculado), o pré-agendamento concluído VIRA conversão
