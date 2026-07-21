@@ -443,14 +443,14 @@ const ANA_ANTECEDENCIA_HORAS = (() => {
   return (v != null && v !== "" && !isNaN(Number(v))) ? Number(v) : 24;
 })();
 // Modo de agendamento da Ana (INTERRUPTOR):
-// - PADRÃO (false) = PRÉ-AGENDAMENTO: a Ana coleta a preferência e a equipe confirma
-//   o horário. 100% confiável, sem risco de overbooking, sem depender de a agenda do
-//   painel estar sincronizada com o iClinic.
-// - true = MARCAR SOZINHA (Fase 2): a Ana oferece e grava o horário real. Só ative
-//   quando o painel for a FONTE ÚNICA (secretárias marcando nele, ou sync do iClinic
-//   ligado), senão a agenda diverge do iClinic e a Ana pode oferecer horário ocupado.
-// Reversível a qualquer momento no Render: ANA_MARCA_SOZINHA=1 religa o automático.
-const ANA_MARCA_SOZINHA = readEnv("ANA_MARCA_SOZINHA") === "1";
+// - PADRÃO (ON) = MARCAR SOZINHA (Fase 2): a Ana oferece e GRAVA o horário real. O
+//   pré-agendamento continua como FALLBACK AUTOMÁTICO — só entra quando a Ana não
+//   consegue marcar (agenda fora do ar ou sem vaga).
+// - ANA_MARCA_SOZINHA=0 (no Render) força só pré-agendamento (escotilha de segurança).
+// ATENÇÃO: com o automático ligado, o painel precisa refletir a realidade do iClinic
+// (secretárias marcando no painel OU sync iClinic→painel), senão a agenda diverge e a
+// Ana pode oferecer horário já ocupado no iClinic. Esta semana já foi importada.
+const ANA_MARCA_SOZINHA = readEnv("ANA_MARCA_SOZINHA") !== "0";
 const TZ_BR = "America/Sao_Paulo";
 // Nomes dos dias na ordem de getUTCDay() (0=domingo), batendo com AGENDA_REGRAS.
 const DOW_BR = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
