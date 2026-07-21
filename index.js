@@ -100,7 +100,7 @@ Você atende pelo WhatsApp. Sua missão é acolher cada pessoa com atenção gen
 5. Encerramento: confirme o que ficou combinado. Se marcou um horário, informe o dia e a hora agendados. Se foi pré-agendamento, informe que a equipe de agendamento entra em contato para confirmar o horário, dentro do horário comercial.
 
 ### Controle da coleta de pré-agendamento (LEIA O HISTÓRICO — REGRA CRÍTICA CONTRA REPETIÇÃO)
-Antes de perguntar QUALQUER dado, releia toda a conversa acima e monte mentalmente uma lista do que o paciente JÁ informou. Os dados de pré-agendamento são: (1) nome completo, (2) telefone, (3) unidade preferida (Conjunto Nacional ou Taguatinga), (4) convênio ou particular, (5) motivo da consulta, (6) período preferido (manhã ou tarde).
+Antes de perguntar QUALQUER dado, releia toda a conversa acima e monte mentalmente uma lista do que o paciente JÁ informou. Os dados de pré-agendamento são: (1) nome completo, (2) telefone, (3) unidade preferida (Conjunto Nacional ou Taguatinga), (4) convênio ou particular, (5) motivo da consulta, (6) período preferido (manhã ou tarde), (7) data de nascimento (peça sempre — serve para confirmar a idade; atendemos a partir de 8 anos).
 - NUNCA peça um dado que o paciente já forneceu em qualquer mensagem anterior — mesmo que tenha sido no começo da conversa. Se ele já disse o nome lá atrás, considere o nome COLETADO e não pergunte de novo.
 - Observação: o telefone do WhatsApp já é conhecido; só peça telefone se precisar de um número alternativo. Não trave a coleta por causa do telefone.
 - Peça APENAS os dados que ainda faltam. Se faltar só um, pergunte só aquele. Não reinicie a coleta do zero a cada mensagem, e não "reconfirme" itens já confirmados.
@@ -117,7 +117,7 @@ GATILHO (no fallback) — emita o bloco assim que as DUAS condições valerem:
 Não importa o FRASEADO da sua mensagem — se a coleta de um pré-agendamento terminou, o bloco é OBRIGATÓRIO. Se você disse que "a equipe vai entrar em contato" SEM anexar o bloco, você ERROU e o pré-agendamento se perdeu. Na dúvida ENTRE os dois blocos: se você ofereceu um horário concreto da lista e o paciente topou, use [AGENDAR]; caso contrário, [PREAGENDAMENTO].
 Acrescente-o SEMPRE no FINAL da sua mensagem, EXATAMENTE neste formato:
 [PREAGENDAMENTO]
-nome: <nome completo> | telefone: <telefone informado> | convenio: <convênio ou "particular"> | unidade: <Conjunto Nacional ou Taguatinga> | periodo: <manhã ou tarde — e, se o paciente citou, o dia da semana preferido; NUNCA um horário específico> | motivo: <motivo da consulta>
+nome: <nome completo> | telefone: <telefone informado> | nascimento: <data de nascimento informada, ou "-"> | convenio: <convênio ou "particular"> | unidade: <Conjunto Nacional ou Taguatinga> | periodo: <manhã ou tarde — e, se o paciente citou, o dia da semana preferido; NUNCA um horário específico> | motivo: <motivo da consulta>
 [/PREAGENDAMENTO]
 Regras do bloco:
 - Use "-" em qualquer campo que você não tenha (nunca invente dados). Faltar um campo NÃO é motivo para deixar de emitir o bloco — emita com "-" no que faltar.
@@ -280,6 +280,7 @@ QUANDO A LISTA "### Horários REALMENTE disponíveis" ESTIVER no seu contexto:
 2. Ofereça UM ÚNICO horário por vez, em linguagem humana — ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?". NÃO liste vários horários de uma vez nem despeje a agenda.
 3. Se o paciente recusar ou pedir outro, ofereça o PRÓXIMO horário da lista. Se ele pedir um dia/período específico, ofereça um horário desse dia/período que esteja na lista.
 4. Quando o paciente CONFIRMAR (disse "pode", "sim", "isso", "fechado" etc.), dê a mensagem de confirmação — ex.: "Agendado para quinta, 24/07, às 14h20, no Conjunto Nacional. Caso surja algum imprevisto, por favor nos avise." — e anexe o bloco técnico [AGENDAR] (ver abaixo). É o bloco que grava o horário; sem ele, NADA é marcado.
+5. ENCAIXE, HORÁRIO MAIS CEDO ou ERRO (TRAVA DE SEGURANÇA): se o paciente pedir um ENCAIXE, ou um horário ANTERIOR/mais cedo do que os que estão na lista (ex.: quer amanhã e a lista só tem daqui a alguns dias), ou se por QUALQUER motivo você não conseguir oferecer/encontrar um horário, NÃO invente, NÃO force e NÃO marque um horário fora da lista. Explique com gentileza que vai registrar o pedido e que a nossa equipe de agendamento entrará em contato o mais breve possível (segunda a sexta, das 8h às 18h), e emita o bloco [PREAGENDAMENTO].
 
 QUANDO A LISTA NÃO ESTIVER no seu contexto (você não recebeu a agenda) OU vier avisando que está indisponível/sem vagas:
 - NÃO invente horário e NÃO diga que "não tem acesso à agenda". Colete a preferência (unidade + período manhã/tarde) e os dados, registre o PRÉ-AGENDAMENTO (bloco [PREAGENDAMENTO]) e explique que a equipe de agendamento — que atende de segunda a sexta, das 8h às 18h (com pausa para o almoço, das 13h às 14h) — confirma o horário exato assim que retornar.
@@ -287,7 +288,7 @@ QUANDO A LISTA NÃO ESTIVER no seu contexto (você não recebeu a agenda) OU vie
 ### Registro do agendamento confirmado [AGENDAR] (INVISÍVEL ao paciente) — CRÍTICO
 Assim que o paciente CONFIRMAR um horário da lista, anexe ao FINAL da sua mensagem, EXATAMENTE neste formato (uma linha):
 [AGENDAR]
-inicio: <copie o valor EXATO do [inicio:...] daquele horário na lista> | unidade: <Conjunto Nacional ou Taguatinga> | nome: <nome completo> | telefone: <telefone informado ou "-"> | convenio: <convênio ou "particular"> | motivo: <Consulta por padrão; Retorno ou "Avaliação de cirurgia" só se o paciente deixar claro>
+inicio: <copie o valor EXATO do [inicio:...] daquele horário na lista> | unidade: <Conjunto Nacional ou Taguatinga> | nome: <nome completo> | telefone: <telefone informado ou "-"> | nascimento: <data de nascimento informada, ou "-"> | convenio: <convênio ou "particular"> | motivo: <Consulta por padrão; Retorno ou "Avaliação de cirurgia" só se o paciente deixar claro>
 [/AGENDAR]
 Regras do bloco:
 - O campo "inicio" TEM que ser copiado ao pé da letra do token [inicio:...] do horário escolhido — é o que garante que você marque o horário certo. Nunca reescreva a data/hora à mão.
@@ -334,9 +335,9 @@ Atestados, laudos e relatórios são avaliados e emitidos pelo médico na consul
 - Atendimento online / teleconsulta: o atendimento é presencial, pois a avaliação oftalmológica depende de exames feitos no consultório.
 - Horário de atendimento das unidades: cada unidade atende nos seus dias (Conjunto Nacional seg/qua/sex; Taguatinga ter/qui), em período de manhã e de tarde, dentro do horário comercial. O horário exato de cada consulta segue a seção "Como lidar com horários".
 
-### Faixa etária
-Atendemos a partir de 8 anos — crianças de 8 anos ou mais são atendidas normalmente, inclusive para óculos.
-Se a criança tiver MENOS de 8 anos, acolha com gentileza e explique que, para essa idade, o agendamento é avaliado pela nossa equipe — oriente a falar pelo (61) 3033-6605 (seg a sex, 8h às 18h) ou deixe um recado para retornarmos no próximo dia útil. Não recuse de forma seca nem invente encaminhamento para outro serviço.`;
+### Faixa etária (peça SEMPRE a data de nascimento)
+Durante o agendamento, PEÇA a data de nascimento do paciente (de forma natural, junto com os demais dados) — serve para confirmar a idade. Atendemos a partir de 8 anos. Crianças de 8 anos ou mais são atendidas normalmente, inclusive para óculos.
+Se, pela data de nascimento, a pessoa tiver MENOS de 8 anos, acolha com gentileza e explique que, para essa idade, o agendamento é avaliado pela nossa equipe — NÃO marque um horário ([AGENDAR]) nesse caso; oriente a falar pelo (61) 3033-6605 (seg a sex, 8h às 18h) ou deixe um recado (bloco [PREAGENDAMENTO] ou [RECADO]) para retornarmos no próximo dia útil. Não recuse de forma seca nem invente encaminhamento para outro serviço.`;
 
 const NUMERO_CLINICA = "5561982879853";
 // Números autorizados a dar comandos à Ana pelo WhatsApp (#ANA ON/OFF/STATUS,
@@ -883,7 +884,9 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId }
     const telefone = limpo(registro.telefone) || patient?.phone || from || null;
     const convenio = limpo(registro.convenio);
     const motivo = limpo(registro.motivo) || "Consulta";
-    const r = await criarAgendamento({ unidade, inicio: ini, fim, status: "confirmado", nome, telefone, convenio, motivo, origem: "ana", conversationId });
+    const nascimento = limpo(registro.nascimento);
+    const observacoes = nascimento ? `Nascimento: ${nascimento}` : null;
+    const r = await criarAgendamento({ unidade, inicio: ini, fim, status: "confirmado", nome, telefone, convenio, motivo, observacoes, origem: "ana", conversationId });
     if (r.taken) {
       // Corrida: a vaga foi ocupada durante a conversa. Oferece a próxima livre.
       const slots = await fetchSlotsDB(unidade);
@@ -897,7 +900,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId }
     if (!r.ok) { console.error("[Agendar] Falha ao gravar:", r.error); return { ok: false, error: r.error }; }
     await marcarConversaoAgendada(conversationId);   // fecha atribuição de Ads (idempotente)
     await espelharParaSecretaria("[Agendado pela Ana]",
-      `✅ *AGENDAMENTO (via Ana)*\n👤 Nome: ${nome || "—"}\n📱 Telefone: ${telefone || "—"}\n🏥 Convênio: ${convenio || "—"}\n📍 Unidade: ${unidade}\n🕐 Horário: ${fmtDataHoraBR(ini.toISOString())}\n📝 Motivo: ${motivo || "—"}`);
+      `✅ *AGENDAMENTO (via Ana)*\n👤 Nome: ${nome || "—"}\n📱 Telefone: ${telefone || "—"}\n🎂 Nascimento: ${nascimento || "—"}\n🏥 Convênio: ${convenio || "—"}\n📍 Unidade: ${unidade}\n🕐 Horário: ${fmtDataHoraBR(ini.toISOString())}\n📝 Motivo: ${motivo || "—"}`);
     console.log(`[Agendar] ✅ Agendado via Ana: ${unidade} ${fmtDataHoraBR(ini.toISOString())} (${nome || "—"}).`);
     return { ok: true, appointment: r.appointment };
   } catch (e) { console.error("[Agendar] Exceção:", e.message); return { ok: false, error: e.message }; }
@@ -1383,7 +1386,7 @@ async function notificarSecretaria(registros, patient, from, conversationId) {
     const tel = (r.telefone && r.telefone !== "-") ? r.telefone : (patient?.phone || from || "—");
     const nome = (r.nome && r.nome !== "-") ? r.nome : (patient?.name || "—");
     const cab = registros.length > 1 ? `\n— Paciente ${i + 1} —` : "";
-    return `${cab}\n👤 Nome: ${nome}\n📱 Telefone: ${tel}\n🏥 Convênio: ${val(r, "convenio")}\n📍 Unidade: ${val(r, "unidade")}\n🕐 Período: ${val(r, "periodo")}\n📝 Motivo: ${val(r, "motivo")}`;
+    return `${cab}\n👤 Nome: ${nome}\n📱 Telefone: ${tel}\n🎂 Nascimento: ${val(r, "nascimento")}\n🏥 Convênio: ${val(r, "convenio")}\n📍 Unidade: ${val(r, "unidade")}\n🕐 Período: ${val(r, "periodo")}\n📝 Motivo: ${val(r, "motivo")}`;
   }).join("\n");
   const texto = `📋 *NOVO PRÉ-AGENDAMENTO*\n${blocos}`;
   // Persiste ANTES do espelhamento para não perder o registro se o envio falhar.
