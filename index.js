@@ -968,13 +968,36 @@ async function vincularClique(token, phone, conversationId) {
   }
 }
 
+// Registra um lead vindo de anúncio do Instagram/Facebook (Click-to-WhatsApp). A
+// Meta não manda gclid nem token — só o objeto `referral`. Guardamos como um
+// ad_click com source "meta/<tipo>" para: (1) o lead ser "sempre ativo" (ver
+// ANA_SEMPRE_ATIVA_SOURCES, que inclui "meta/"); e (2) entrar na contagem de
+// conversões da clínica. NUNCA lança. Não duplica se a conversa já tem clique.
+async function registrarLeadMeta(referral, phone, conversationId) {
+  if (!referral || !conversationId) return;
+  try {
+    const { data: existe } = await supabase.from("ad_clicks").select("id")
+      .eq("conversation_id", String(conversationId)).limit(1);
+    if (existe && existe.length) return;   // já vinculado (não duplica)
+    const tipo = String(referral.source_type || "ad").toLowerCase().replace(/[^a-z0-9_]+/g, "") || "ad";
+    await supabase.from("ad_clicks").insert({
+      token: novoToken(), source: `meta/${tipo}`,
+      phone: phone || null, conversation_id: String(conversationId),
+    });
+    console.log(`[Ana][Anúncio] Lead do Instagram/Facebook registrado (meta/${tipo}) na conversa ${conversationId}.`);
+  } catch (e) {
+    console.error("[Ana] Falha ao registrar lead Meta:", e.message);
+  }
+}
+
 // Campanhas cujos pacientes SEMPRE recebem a Ana, mesmo com o liga/desliga global
-// desligado (#ANA OFF). Casa por SUBSTRING no ad_clicks.source (ex.: "refrativa"
-// casa "google/refrativa"). Assim você pode desligar a Ana para o atendimento
-// geral em certos momentos, mas os pacientes vindos da campanha de refrativa
-// continuam sendo atendidos pela Ana 100% do tempo. Configurável no Render via
-// ANA_SEMPRE_ATIVA_SOURCES (lista separada por vírgula). Padrão: "refrativa".
-const ANA_SEMPRE_ATIVA_SOURCES = (readEnv("ANA_SEMPRE_ATIVA_SOURCES") || "refrativa")
+// desligado (#ANA OFF). Casa por SUBSTRING no ad_clicks.source. Assim você pode
+// desligar a Ana para o atendimento geral em certos momentos, mas certos leads
+// continuam sendo atendidos 100% do tempo. Configurável no Render via
+// ANA_SEMPRE_ATIVA_SOURCES (lista separada por vírgula). Padrão: "refrativa,meta/"
+// — "refrativa" cobre a landing do Google Ads (source "google/refrativa"); "meta/"
+// cobre TODOS os leads de anúncio do Instagram/Facebook (registrados como "meta/...").
+const ANA_SEMPRE_ATIVA_SOURCES = (readEnv("ANA_SEMPRE_ATIVA_SOURCES") || "refrativa,meta/")
   .split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
 
 // Diz se a conversa veio de uma campanha "sempre ativa" (pelo source do ad_click
@@ -2075,6 +2098,7 @@ app.post("/webhook", async (req, res) => {
 
     // Vincula o clique de anúncio (se veio da landing) ao paciente/conversa
     if (refToken) await vincularClique(refToken, from, conversation.id);
+    if (referral) await registrarLeadMeta(referral, from, conversation.id);   // lead do IG/FB → rastreio + sempre-ativa
 
     // Verificar se conversa está com humano
     if (conversation.status === "human") {
