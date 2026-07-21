@@ -1782,6 +1782,29 @@ app.get("/health", async (req, res) => {
   }
 });
 
+// DIAGNÓSTICO TEMPORÁRIO: mostra exatamente o que a Ana calcula de vagas em
+// produção (fetchSlotsDB + buffer de antecedência). Sem auth de propósito (só
+// contagens/horários, sem nomes). REMOVER depois de diagnosticar.
+app.get("/diag/agenda-db", async (req, res) => {
+  try {
+    const unidade = req.query.unidade ? String(req.query.unidade) : null;
+    const slots = await fetchSlotsDB(unidade);
+    const minTs = Date.now() + ANA_ANTECEDENCIA_HORAS * 3600 * 1000;
+    const oferta = Array.isArray(slots) ? slots.filter(s => s.start.getTime() >= minTs) : slots;
+    res.json({
+      ok: true,
+      ANA_ANTECEDENCIA_HORAS,
+      now: new Date().toISOString(),
+      unidade,
+      slots_raw: slots === null ? null : slots.length,
+      slots_oferta: oferta === null ? null : oferta.length,
+      amostra: (oferta || []).slice(0, 6).map(s => ({ inicio: s.start.toISOString(), dia: s.dia, hora: s.hora, unidade: s.unidade })),
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, stack: e.stack });
+  }
+});
+
 // Webhook verification
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
