@@ -570,12 +570,13 @@ function detectSchedulingIntent(messages) {
   // ("horário/agendar/marcar/consulta/disponibilidade") passavam, então frases
   // comuns como "tem vaga sexta?", "tem disponível quinta?", "quando me atende?"
   // não injetavam a lista real e a Ana chutava.
-  return /(horario|agend|marcar|remarcar|consulta|disponiv|disponibil|vaga|encaixe|atend|quando|hoje|amanha|semana|manha|tarde|periodo|segunda|terca|quarta|quinta|sexta|feira|que horas|marca[cç])/.test(recent);
+  return /(horario|agend|marcar|remarcar|consulta|disponiv|disponibil|vaga|encaixe|atend|quando|hoje|amanha|semana|manha|tarde|periodo|segunda|terca|quarta|quinta|sexta|feira|que horas|marca[cç]|conjunto|taguatinga|aguas|nacional|asa norte)/.test(recent);
 }
 
 function detectUnidade(messages) {
-  const recent = messages.slice(-6).map(m => m.content.toLowerCase()).join(" ");
-  if (recent.includes("taguatinga")) return "taguatinga";
+  const recent = messages.slice(-6).map(m => (m.content || "").toLowerCase()).join(" ")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (recent.includes("taguatinga") || recent.includes("aguas claras")) return "taguatinga";
   if (recent.includes("conjunto") || recent.includes("asa norte")) return "conjunto";
   return null;
 }
@@ -1782,29 +1783,6 @@ app.get("/health", async (req, res) => {
   }
 });
 
-// DIAGNÓSTICO TEMPORÁRIO: mostra exatamente o que a Ana calcula de vagas em
-// produção (fetchSlotsDB + buffer de antecedência). Sem auth de propósito (só
-// contagens/horários, sem nomes). REMOVER depois de diagnosticar.
-app.get("/diag/agenda-db", async (req, res) => {
-  try {
-    const unidade = req.query.unidade ? String(req.query.unidade) : null;
-    const slots = await fetchSlotsDB(unidade);
-    const minTs = Date.now() + ANA_ANTECEDENCIA_HORAS * 3600 * 1000;
-    const oferta = Array.isArray(slots) ? slots.filter(s => s.start.getTime() >= minTs) : slots;
-    res.json({
-      ok: true,
-      ANA_ANTECEDENCIA_HORAS,
-      now: new Date().toISOString(),
-      unidade,
-      slots_raw: slots === null ? null : slots.length,
-      slots_oferta: oferta === null ? null : oferta.length,
-      amostra: (oferta || []).slice(0, 6).map(s => ({ inicio: s.start.toISOString(), dia: s.dia, hora: s.hora, unidade: s.unidade })),
-    });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, stack: e.stack });
-  }
-});
-
 // Webhook verification
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
@@ -2201,7 +2179,7 @@ app.post("/webhook", async (req, res) => {
     // de agendamento. Com a lista presente, a Ana oferece UM horário e marca de
     // verdade via [AGENDAR]. Sem lista (banco fora ou sem vaga), ela cai no fluxo
     // de pré-agendamento (a equipe confirma) — ver "Como lidar com horários".
-    if (detectSchedulingIntent(messages)) {
+    if (detectSchedulingIntent(messages) || detectUnidade(messages)) {
       const unidade = detectUnidade(messages);
       const slots = await fetchSlotsDB(unidade);
       // Rede de segurança: a Ana só oferece horários com pelo menos
