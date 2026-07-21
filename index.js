@@ -442,6 +442,15 @@ const ANA_ANTECEDENCIA_HORAS = (() => {
   const v = readEnv("ANA_ANTECEDENCIA_HORAS");
   return (v != null && v !== "" && !isNaN(Number(v))) ? Number(v) : 24;
 })();
+// Modo de agendamento da Ana (INTERRUPTOR):
+// - PADRÃO (false) = PRÉ-AGENDAMENTO: a Ana coleta a preferência e a equipe confirma
+//   o horário. 100% confiável, sem risco de overbooking, sem depender de a agenda do
+//   painel estar sincronizada com o iClinic.
+// - true = MARCAR SOZINHA (Fase 2): a Ana oferece e grava o horário real. Só ative
+//   quando o painel for a FONTE ÚNICA (secretárias marcando nele, ou sync do iClinic
+//   ligado), senão a agenda diverge do iClinic e a Ana pode oferecer horário ocupado.
+// Reversível a qualquer momento no Render: ANA_MARCA_SOZINHA=1 religa o automático.
+const ANA_MARCA_SOZINHA = readEnv("ANA_MARCA_SOZINHA") === "1";
 const TZ_BR = "America/Sao_Paulo";
 // Nomes dos dias na ordem de getUTCDay() (0=domingo), batendo com AGENDA_REGRAS.
 const DOW_BR = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
@@ -2179,7 +2188,7 @@ app.post("/webhook", async (req, res) => {
     // de agendamento. Com a lista presente, a Ana oferece UM horário e marca de
     // verdade via [AGENDAR]. Sem lista (banco fora ou sem vaga), ela cai no fluxo
     // de pré-agendamento (a equipe confirma) — ver "Como lidar com horários".
-    if (detectSchedulingIntent(messages) || detectUnidade(messages)) {
+    if (ANA_MARCA_SOZINHA && (detectSchedulingIntent(messages) || detectUnidade(messages))) {
       const unidade = detectUnidade(messages);
       const slots = await fetchSlotsDB(unidade);
       // Rede de segurança: a Ana só oferece horários com pelo menos
