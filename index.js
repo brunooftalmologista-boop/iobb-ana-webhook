@@ -967,6 +967,33 @@ async function vincularClique(token, phone, conversationId) {
   }
 }
 
+// Campanhas cujos pacientes SEMPRE recebem a Ana, mesmo com o liga/desliga global
+// desligado (#ANA OFF). Casa por SUBSTRING no ad_clicks.source (ex.: "refrativa"
+// casa "google/refrativa"). Assim você pode desligar a Ana para o atendimento
+// geral em certos momentos, mas os pacientes vindos da campanha de refrativa
+// continuam sendo atendidos pela Ana 100% do tempo. Configurável no Render via
+// ANA_SEMPRE_ATIVA_SOURCES (lista separada por vírgula). Padrão: "refrativa".
+const ANA_SEMPRE_ATIVA_SOURCES = (readEnv("ANA_SEMPRE_ATIVA_SOURCES") || "refrativa")
+  .split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+
+// Diz se a conversa veio de uma campanha "sempre ativa" (pelo source do ad_click
+// já vinculado a ela). Best-effort: em erro/sem match, devolve false (mantém o
+// comportamento normal do liga/desliga global).
+async function conversaSempreAtiva(conversationId) {
+  if (!ANA_SEMPRE_ATIVA_SOURCES.length || !conversationId) return false;
+  try {
+    const { data } = await supabase.from("ad_clicks").select("source")
+      .eq("conversation_id", String(conversationId)).not("source", "is", null);
+    return (data || []).some(r => {
+      const s = (r.source || "").toLowerCase();
+      return ANA_SEMPRE_ATIVA_SOURCES.some(k => s.includes(k));
+    });
+  } catch (e) {
+    console.error("[Ana] conversaSempreAtiva falhou:", e.message);
+    return false;
+  }
+}
+
 // Baixar mídia do WhatsApp
 async function downloadMedia(mediaId) {
   try {
@@ -2055,10 +2082,16 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
-    // Se Ana desativada, não responde
+    // Se Ana desativada, não responde — EXCEÇÃO: conversas de campanhas "sempre
+    // ativa" (ex.: refrativa) continuam sendo atendidas pela Ana mesmo com #ANA OFF.
+    // (O "assumir" humano por conversa, acima, continua tendo prioridade.)
     if (!anaAtiva) {
-      if (mediaNotification) await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification}`);
-      return;
+      const sempreAtiva = await conversaSempreAtiva(conversation.id);
+      if (!sempreAtiva) {
+        if (mediaNotification) await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification}`);
+        return;
+      }
+      console.log(`[Ana] Global OFF, mas conversa ${conversation.id} é de campanha sempre-ativa — respondendo.`);
     }
 
     // Para imagens/documentos/vídeos: por padrão a Ana só acusa o recebimento e
