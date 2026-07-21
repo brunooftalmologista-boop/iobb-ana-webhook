@@ -735,6 +735,86 @@ async function listarAgendamentos({ de, ate, unidade }) {
   return (data || []).filter(a => a.status === "confirmado" || !a.hold_expira_em || new Date(a.hold_expira_em).getTime() > now);
 }
 
+// ===== Sincronização iClinic → agenda do painel =============================
+// O iClinic espelha cada unidade num Google Calendar privado (integração nativa,
+// COM nomes). Lemos o "Endereço secreto no formato iCal" de cada um (env) e
+// refletimos os agendamentos na tabela appointments (origem 'iclinic'), para a Ana
+// NUNCA oferecer um horário já ocupado no iClinic. Roda no boot e a cada 15 min.
+// Configurar no Render: ICAL_ICLINIC_CN (Conjunto) e ICAL_ICLINIC_TG (Taguatinga).
+const ICAL_SYNC = [
+  { url: readEnv("ICAL_ICLINIC_CN"), unidade: "Conjunto Nacional" },
+  { url: readEnv("ICAL_ICLINIC_TG"), unidade: "Taguatinga" },
+].filter(c => c.url);
+
+// Desdobra linhas "folded" do iCal (continuação começa com espaço/tab).
+function desdobrarICS(txt) {
+  return String(txt).replace(/\r\n/g, "\n").replace(/\n[ \t]/g, "");
+}
+// Extrai eventos {start, end, summary} de um iCal (com nomes). Reusa parseICSDate.
+function parseEventosICS(txt) {
+  const eventos = [];
+  const blocos = desdobrarICS(txt).split("BEGIN:VEVENT");
+  for (let i = 1; i < blocos.length; i++) {
+    const b = blocos[i];
+    if (/STATUS:CANCELLED/i.test(b)) continue;
+    const ds = b.match(/DTSTART[^:\n]*:(\d{8}T\d{6}Z?)/)?.[1];
+    const de = b.match(/DTEND[^:\n]*:(\d{8}T\d{6}Z?)/)?.[1];
+    if (!ds || !de) continue;
+    const summary = (b.match(/\nSUMMARY:(.*)/)?.[1] || "").trim();
+    eventos.push({ start: parseICSDate(ds), end: parseICSDate(de), summary });
+  }
+  return eventos;
+}
+
+// Reflete UM calendário iClinic na tabela appointments (origem 'iclinic'). Estratégia
+// de reconciliação: remove os 'iclinic' futuros atuais dessa unidade e reinsere o
+// snapshot fresco (assim, cancelamentos no iClinic liberam o slot). Pula slots já
+// ocupados por Ana/secretária (não sobrescreve). Dedup por instante (Taguatinga tem
+// paralelos → 1 bloqueio por horário). NUNCA lança para o chamador tratar.
+async function syncCalendarioIClinic(url, unidade) {
+  const res = await axios.get(url, { timeout: 12000, responseType: "text", headers: { "User-Agent": "IOBB-Ana/1.0 (+https://iobb.com.br)" } });
+  const eventos = parseEventosICS(res.data);
+  const corte = new Date(Date.now() - 6 * 3600 * 1000);   // reflete de ~6h atrás em diante
+  const porInicio = new Map();
+  for (const ev of eventos) {
+    if (!(ev.start instanceof Date) || isNaN(ev.start) || ev.start < corte) continue;
+    const k = ev.start.toISOString();
+    if (!porInicio.has(k)) porInicio.set(k, ev);            // 1º evento do slot
+  }
+  const desejados = [...porInicio.values()];
+  const { data: outros } = await supabase.from("appointments")
+    .select("inicio").eq("unidade", unidade).neq("origem", "iclinic").neq("status", "cancelado")
+    .gte("inicio", corte.toISOString());
+  const ocupadosOutros = new Set((outros || []).map(r => new Date(r.inicio).toISOString()));
+  await supabase.from("appointments").delete()
+    .eq("unidade", unidade).eq("origem", "iclinic").gte("inicio", corte.toISOString());
+  const rows = desejados
+    .filter(ev => !ocupadosOutros.has(ev.start.toISOString()))
+    .map(ev => ({
+      unidade, inicio: ev.start.toISOString(), fim: ev.end.toISOString(), status: "confirmado",
+      paciente_nome: /horario bloqueado|horário bloqueado/i.test(ev.summary) ? "Bloqueado (iClinic)" : (ev.summary || "Ocupado (iClinic)"),
+      origem: "iclinic", criado_por: "sync-iclinic",
+    }));
+  if (rows.length) {
+    const { error } = await supabase.from("appointments").insert(rows);
+    if (error) { console.error(`[Sync iClinic ${unidade}] insert falhou:`, error.message); return; }
+  }
+  console.log(`[Sync iClinic ${unidade}] ${rows.length} refletidos (${eventos.length} eventos no iCal, ${ocupadosOutros.size} slots de Ana/secretária preservados).`);
+}
+
+async function syncIClinicTodas() {
+  for (const c of ICAL_SYNC) {
+    try { await syncCalendarioIClinic(c.url, c.unidade); }
+    catch (e) { console.error(`[Sync iClinic ${c.unidade}] falhou:`, e?.response?.status || "", e.message); }
+  }
+}
+function startSyncIClinic() {
+  if (!ICAL_SYNC.length) { console.log("[Sync iClinic] DESLIGADO — configure ICAL_ICLINIC_CN e ICAL_ICLINIC_TG no Render (endereço secreto iCal dos calendários 'Agenda iClinic')."); return; }
+  syncIClinicTodas();
+  setInterval(syncIClinicTodas, 15 * 60 * 1000);
+  console.log(`[Sync iClinic] ATIVO (${ICAL_SYNC.map(c => c.unidade).join(", ")}) — a cada 15 min.`);
+}
+
 // ===== FASE 2: a Ana marca sozinha ==========================================
 // Formata as vagas REAIS para injetar no prompt, cada uma com um token técnico
 // [inicio:...] que a Ana copia no bloco [AGENDAR] ao confirmar. Limita a
@@ -3308,5 +3388,6 @@ app.get("/painel", (req, res) => res.sendFile(__dirname + "/painel.html"));
 // Agendador do relatório semanal do Google Ads (segunda 08h, Brasília)
 googleAds.startScheduler({ supabase, sendWhatsApp });
 startResumoDiarioScheduler();
+startSyncIClinic();   // reflete o iClinic (Google Calendars) na agenda do painel
 
 app.listen(process.env.PORT || 3000, () => console.log("Ana online!"));
