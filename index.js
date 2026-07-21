@@ -740,11 +740,24 @@ async function listarAgendamentos({ de, ate, unidade }) {
 // COM nomes). Lemos o "Endereço secreto no formato iCal" de cada um (env) e
 // refletimos os agendamentos na tabela appointments (origem 'iclinic'), para a Ana
 // NUNCA oferecer um horário já ocupado no iClinic. Roda no boot e a cada 15 min.
-// Configurar no Render: ICAL_ICLINIC_CN (Conjunto) e ICAL_ICLINIC_TG (Taguatinga).
-const ICAL_SYNC = [
-  { url: readEnv("ICAL_ICLINIC_CN"), unidade: "Conjunto Nacional" },
-  { url: readEnv("ICAL_ICLINIC_TG"), unidade: "Taguatinga" },
-].filter(c => c.url);
+// As URLs vêm da tabela `settings` (chaves ical_iclinic_cn / ical_iclinic_tg) OU
+// de env (ICAL_ICLINIC_CN / ICAL_ICLINIC_TG). Via settings, dá para ativar sem
+// mexer no Render nem redeployar. Lê a cada ciclo (config pode ser adicionada depois).
+async function getIcalSyncConfig() {
+  let cn = readEnv("ICAL_ICLINIC_CN") || null;
+  let tg = readEnv("ICAL_ICLINIC_TG") || null;
+  try {
+    const { data } = await supabase.from("settings").select("key, value").in("key", ["ical_iclinic_cn", "ical_iclinic_tg"]);
+    for (const r of (data || [])) {
+      if (r.key === "ical_iclinic_cn" && r.value) cn = r.value;
+      if (r.key === "ical_iclinic_tg" && r.value) tg = r.value;
+    }
+  } catch (_) {}
+  const cfg = [];
+  if (cn) cfg.push({ url: cn, unidade: "Conjunto Nacional" });
+  if (tg) cfg.push({ url: tg, unidade: "Taguatinga" });
+  return cfg;
+}
 
 // Desdobra linhas "folded" do iCal (continuação começa com espaço/tab).
 function desdobrarICS(txt) {
@@ -803,16 +816,19 @@ async function syncCalendarioIClinic(url, unidade) {
 }
 
 async function syncIClinicTodas() {
-  for (const c of ICAL_SYNC) {
+  const cfg = await getIcalSyncConfig();
+  if (!cfg.length) return;   // sem URLs ainda — nada a fazer
+  for (const c of cfg) {
     try { await syncCalendarioIClinic(c.url, c.unidade); }
     catch (e) { console.error(`[Sync iClinic ${c.unidade}] falhou:`, e?.response?.status || "", e.message); }
   }
 }
 function startSyncIClinic() {
-  if (!ICAL_SYNC.length) { console.log("[Sync iClinic] DESLIGADO — configure ICAL_ICLINIC_CN e ICAL_ICLINIC_TG no Render (endereço secreto iCal dos calendários 'Agenda iClinic')."); return; }
+  // Sempre agenda o ciclo — as URLs podem ser adicionadas depois (via settings),
+  // e o próximo ciclo já as pega, sem redeploy.
   syncIClinicTodas();
   setInterval(syncIClinicTodas, 15 * 60 * 1000);
-  console.log(`[Sync iClinic] ATIVO (${ICAL_SYNC.map(c => c.unidade).join(", ")}) — a cada 15 min.`);
+  console.log("[Sync iClinic] Agendador ativo (a cada 15 min). Roda quando ical_iclinic_cn/tg estiverem configurados.");
 }
 
 // ===== FASE 2: a Ana marca sozinha ==========================================
