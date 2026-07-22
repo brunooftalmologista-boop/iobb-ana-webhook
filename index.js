@@ -46,10 +46,10 @@ const ANTHROPIC_KEY = readEnv("ANTHROPIC_KEY");
 const SUPABASE_URL = readEnv("SUPABASE_URL");
 const SUPABASE_KEY = readEnv("SUPABASE_KEY");
 const OPENAI_KEY = readEnv("OPENAI_KEY");
-// Senha de administrador para o controle global da Ana (ligar/desligar) no
-// painel. Configurável por env no Render (ADMIN_PASSWORD); default para
-// funcionar de imediato. Validada SEMPRE no backend, nunca só no navegador.
-const ADMIN_PASSWORD = readEnv("ADMIN_PASSWORD") || "iobb1980";
+// Senha de admin legada — sem default hardcoded (o controle da Ana hoje é pelo
+// #ANA no WhatsApp e o login do painel é via Supabase Auth). Se algum dia voltar
+// a ser usada, configure ADMIN_PASSWORD por env no Render; nunca embutir no código.
+const ADMIN_PASSWORD = readEnv("ADMIN_PASSWORD") || "";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -378,17 +378,42 @@ let anaAtiva = true;
 // Mensagem amigável enviada ao paciente quando algo falha (nunca deixar no silêncio).
 const FRIENDLY_FALLBACK = "Tive uma instabilidade rápida por aqui. Poderia me enviar sua mensagem novamente, por favor? Se preferir, fale com a nossa equipe pelo (61) 3033-6605 (seg a sex, das 8h às 18h).";
 
-// Dedup de mensagens já processadas: o WhatsApp pode reenviar o mesmo evento,
-// o que faria a Ana responder duas vezes. Guardamos os IDs recentes em memória.
-const processedMessages = new Set();
-function alreadyProcessed(id) {
+// Mascara telefone nos logs (LGPD): mantém só início e fim.
+function maskFone(p) { const s = String(p || ""); return s.length < 7 ? "***" : s.slice(0, 4) + "****" + s.slice(-2); }
+
+// Log de erros PERSISTIDO (antes só havia console, que some no Render free — foi por
+// isso que não deu pra ver a causa das falhas). Best-effort: nunca derruba o fluxo.
+async function registrarErro(etapa, detalhe, { conversationId = null, telefone = null } = {}) {
+  try {
+    await supabase.from("error_log").insert({
+      etapa, detalhe: String(detalhe || "").slice(0, 2000),
+      conversation_id: conversationId || null, telefone: telefone ? maskFone(telefone) : null,
+    });
+  } catch (_) { /* nunca deixa o log derrubar o processamento */ }
+}
+
+// Rede de segurança de PROCESSO: uma promessa rejeitada sem catch (scheduler, boot,
+// comando) derrubaria o serviço inteiro. Aqui logamos e seguimos vivos.
+process.on("unhandledRejection", (e) => { console.error("[unhandledRejection]", e); registrarErro("unhandledRejection", e?.stack || e?.message || String(e)); });
+process.on("uncaughtException", (e) => { console.error("[uncaughtException]", e); registrarErro("uncaughtException", e?.stack || e?.message || String(e)); });
+
+// Dedup DURÁVEL de eventos do WhatsApp: a Meta reenvia o mesmo evento (timeout,
+// restart), o que faria a Ana responder 2×. Persistido em processed_events →
+// sobrevive a redeploy/hibernação do Render (o Set em memória zerava no boot).
+// A trava real é o PK (insert com 23505 = já processado); o cache em memória só
+// evita ida ao banco em reentregas na mesma sessão.
+const processedMem = new Set();
+async function jaProcessado(id) {
   if (!id) return false;
-  if (processedMessages.has(id)) return true;
-  processedMessages.add(id);
-  if (processedMessages.size > 2000) {
-    // poda simples dos mais antigos (o Set mantém a ordem de inserção)
-    for (const old of processedMessages) { processedMessages.delete(old); if (processedMessages.size <= 1500) break; }
+  if (processedMem.has(id)) return true;
+  const { error } = await supabase.from("processed_events").insert({ id });
+  if (error) {
+    if (error.code === "23505") { processedMem.add(id); return true; }   // já processado (durável)
+    console.error("[Dedupe] Falha ao registrar evento (segue processando):", error.message);
+    return false;   // erro de infra → melhor processar do que perder a mensagem do paciente
   }
+  processedMem.add(id);
+  if (processedMem.size > 3000) { for (const o of processedMem) { processedMem.delete(o); if (processedMem.size <= 2000) break; } }
   return false;
 }
 
@@ -1996,7 +2021,7 @@ app.post("/webhook", async (req, res) => {
     if (!msg) return;
 
     // Ignora reentregas do mesmo evento (evita resposta duplicada)
-    if (alreadyProcessed(msg.id)) { console.log("[Ana] Mensagem duplicada ignorada:", msg.id); return; }
+    if (await jaProcessado(msg.id)) { console.log("[Ana] Mensagem duplicada ignorada:", msg.id); return; }
 
     const from = msg.from;
     // Click-to-WhatsApp: quando o paciente vem de um ANÚNCIO (Instagram/Facebook),
@@ -2022,7 +2047,7 @@ app.post("/webhook", async (req, res) => {
         const transcricao = await transcribeAudio(dl.buffer, dl.mimeType);
         if (transcricao) {
           text = `[Áudio transcrito]: ${transcricao}`;
-          console.log("Transcrição:", transcricao);
+          console.log(`Transcrição recebida (${transcricao.length} chars).`);
         } else {
           text = "[Áudio recebido - não foi possível transcrever]";
         }
@@ -2047,7 +2072,7 @@ app.post("/webhook", async (req, res) => {
       return; // Ignorar outros tipos
     }
 
-    console.log("Mensagem de:", from, "| Tipo:", msg.type, "| Texto:", text);
+    console.log("Mensagem de:", maskFone(from), "| Tipo:", msg.type);
 
     // Sem texto utilizável (ex.: áudio não baixado/transcrito) → orienta o paciente
     if (!text || !text.trim()) {
@@ -2416,7 +2441,9 @@ app.post("/webhook", async (req, res) => {
       reply = response.data?.content?.[0]?.text;
       if (!reply || !reply.trim()) throw new Error("Resposta vazia da IA");
     } catch (err) {
-      console.error("[Ana] Falha na API Anthropic:", err?.response?.status || "", err?.response?.data ? JSON.stringify(err.response.data) : err.message);
+      const detalhe = `${err?.response?.status || ""} ${err?.response?.data ? JSON.stringify(err.response.data) : err.message}`.trim();
+      console.error("[Ana] Falha na API Anthropic:", detalhe);
+      await registrarErro("anthropic_fallback", detalhe, { conversationId: conversation.id, telefone: from });
       await sendWhatsApp(from, FRIENDLY_FALLBACK).catch(e => console.error("[Ana] Falha ao enviar fallback:", e.message));
       await saveMessage(conversation.id, "assistant", FRIENDLY_FALLBACK).catch(e => console.error("[Ana] Falha ao salvar fallback:", e.message));
       return;
@@ -3018,6 +3045,18 @@ async function purgeOldAttachments() {
 }
 purgeOldAttachments();
 setInterval(purgeOldAttachments, 24 * 60 * 60 * 1000);
+
+// Expurgo das tabelas de apoio (dedupe e log de erros) para não crescerem sem limite.
+async function purgeTabelasApoio() {
+  try {
+    const dedupeCorte = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();   // 7 dias
+    const errCorte = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();      // 30 dias
+    await supabase.from("processed_events").delete().lt("created_at", dedupeCorte);
+    await supabase.from("error_log").delete().lt("created_at", errCorte);
+  } catch (e) { console.error("Expurgo tabelas de apoio:", e.message); }
+}
+purgeTabelasApoio();
+setInterval(purgeTabelasApoio, 24 * 60 * 60 * 1000);
 
 // Upload de anexo do painel para o Supabase Storage → devolve URL ASSINADA (1h)
 // O navegador envia o arquivo como corpo binário (application/octet-stream)
