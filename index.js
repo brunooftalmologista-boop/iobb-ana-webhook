@@ -584,10 +584,22 @@ function detectSchedulingIntent(messages) {
 }
 
 function detectUnidade(messages) {
-  const recent = messages.slice(-6).map(m => (m.content || "").toLowerCase()).join(" ")
-    .normalize("NFD").replace(/[̀-ͯ]/g, "");
-  if (recent.includes("taguatinga") || recent.includes("aguas claras")) return "taguatinga";
-  if (recent.includes("conjunto") || recent.includes("asa norte")) return "conjunto";
+  // Só considera o que o PACIENTE disse (role "user"). As mensagens da Ana citam
+  // AS DUAS unidades ("Conjunto Nacional (Asa Norte) ou Taguatinga Shopping (Águas
+  // Claras)?") ao perguntar a preferência — se olhássemos elas, detectaríamos a
+  // unidade errada (Taguatinga vencia sempre por ser checada 1º), e a Ana passava
+  // a oferecer só Taguatinga / dizer que o Conjunto não tinha vaga. Varre do mais
+  // recente ao mais antigo e devolve a ÚLTIMA unidade que o paciente citou.
+  // Mensagens que citam as DUAS (menu) são ignoradas — não expressam preferência.
+  const usuarios = messages.filter(m => m.role === "user").slice(-8).reverse();
+  for (const m of usuarios) {
+    const t = (m.content || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const tag  = t.includes("taguatinga") || t.includes("aguas claras");
+    const conj = t.includes("conjunto") || t.includes("asa norte");
+    if (tag && conj) continue;                 // menu com as duas → não é preferência
+    if (tag) return "taguatinga";
+    if (conj) return "conjunto";
+  }
   return null;
 }
 
