@@ -270,10 +270,11 @@
           <div class="s" id="c-status"></div>
         </div>
         <div class="chat-header-actions">
-          <button class="icon-btn" id="btn-booked" title="Marcar agendamento (conversão)">📅</button>
-          <button class="icon-btn" id="btn-read" title="Marcar como lido">✓</button>
-          <button class="icon-btn" id="btn-close-conv" title="Encerrar conversa">🏁</button>
-          <button class="icon-btn" id="btn-reopen-conv" title="Reabrir conversa" style="display:none">↩️</button>
+          <button class="icon-btn" id="btn-devolver-ana" title="Devolver à Ana (voltar ao atendimento automático)" aria-label="Devolver à Ana" style="display:none">🤖↩︎</button>
+          <button class="icon-btn" id="btn-booked" title="Marcar agendamento (conversão)" aria-label="Marcar agendamento">📅</button>
+          <button class="icon-btn" id="btn-read" title="Marcar como lido" aria-label="Marcar como lido">✓</button>
+          <button class="icon-btn" id="btn-close-conv" title="Encerrar conversa" aria-label="Encerrar conversa">🏁</button>
+          <button class="icon-btn" id="btn-reopen-conv" title="Reabrir conversa" aria-label="Reabrir conversa" style="display:none">↩️</button>
         </div>
       </div>
 
@@ -831,16 +832,19 @@ function updateChatHeader(){
   if(lastUser && (Date.now()-parseTS(lastUser.timestamp).getTime())<120000){ statusTxt='online'; online=true; }
   else if(lastUser) statusTxt='visto por último '+fmtTime(lastUser.timestamp);
   else statusTxt = phoneOf(activeConv);
-  const modo = activeConv.status==='human' ? ' · atendimento humano'
+  const human = activeConv.status==='human';
+  const modo = human ? ' · 👤 Você está atendendo (Ana pausada)'
              : activeConv.status==='closed' ? ' · encerrada' : ' · 🤖 Ana ativa';
   const anuncio = activeConv.ad_source ? (activeConv.ad_booked ? ' · 🎯 veio de anúncio (agendado ✅)' : ' · 🎯 veio de anúncio') : '';
   el.cStatus.textContent = statusTxt + modo + anuncio;
   el.cStatus.className = 's'+(online?' online':'');
   // botões encerrar/reabrir conforme o status da conversa
   const closed = activeConv.status==='closed';
-  const btnClose=$('#btn-close-conv'), btnReopen=$('#btn-reopen-conv');
+  const btnClose=$('#btn-close-conv'), btnReopen=$('#btn-reopen-conv'), btnDev=$('#btn-devolver-ana');
   if(btnClose) btnClose.style.display = closed ? 'none' : 'flex';
   if(btnReopen) btnReopen.style.display = closed ? 'flex' : 'none';
+  // "Devolver à Ana" só aparece quando um humano assumiu (status human)
+  if(btnDev) btnDev.style.display = human ? 'flex' : 'none';
   updateTyping();
 }
 
@@ -971,6 +975,9 @@ async function sendMessage(){
       toast(r.foraDaJanela ? '⚠️ NÃO enviada: fora da janela de 24h — o paciente precisa escrever primeiro.' : ('NÃO enviada: '+(r.error||'falha')));
       return;
     }
+    // Ao enviar, o humano ASSUME a conversa (backend seta status "human" → Ana pausa).
+    // Reflete na hora: cabeçalho passa a "Você está atendendo" e surge "Devolver à Ana".
+    if(activeConv && activeConv.status!=='human'){ activeConv.status='human'; updateChatHeader(); }
     readState[activeId]=new Date().toISOString(); saveRead();
     setTimeout(()=>loadMessages(true),600);
   }catch(e){ marcarFalha('Falha de conexão ao enviar.'); toast('Falha ao enviar. Verifique a conexão.'); }
@@ -1038,6 +1045,16 @@ async function closeConversation(){
     applyFilter();
     toast('Conversa encerrada.');
   }catch(e){ toast('Não foi possível encerrar a conversa.'); }
+}
+async function devolverAna(){
+  if(!activeConv || activeConv.status!=='human') return;
+  if(!confirm('Devolver esta conversa à Ana? Ela volta a responder automaticamente a partir da próxima mensagem do paciente.')) return;
+  try{
+    await api(`/api/conversations/${activeId}/release`,{ method:'POST', body:JSON.stringify({}) });
+    activeConv.status='bot';
+    updateChatHeader();
+    toast('Conversa devolvida à Ana.');
+  }catch(e){ toast('Não foi possível devolver à Ana.'); }
 }
 async function reopenConversation(){
   if(!activeConv || activeConv.status!=='closed') return;
@@ -1590,6 +1607,7 @@ $('#file-input').onchange=uploadFile;
 $('#btn-read').onclick=markRead;
 $('#btn-close-conv').onclick=closeConversation;
 $('#btn-reopen-conv').onclick=reopenConversation;
+$('#btn-devolver-ana').onclick=devolverAna;
 $('#tab-active').onclick=()=>switchTab('active');
 $('#tab-closed').onclick=()=>switchTab('closed');
 $('#btn-emoji').onclick=()=>el.emojiPanel.classList.toggle('show');

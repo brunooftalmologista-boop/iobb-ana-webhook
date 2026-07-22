@@ -28,7 +28,8 @@ const crypto = require("crypto");
 const fs = require("fs");
 const googleAds = require("./googleAds");
 const app = express();
-app.use(express.json());
+// Captura o corpo CRU (rawBody) para validar a assinatura X-Hub-Signature-256 da Meta.
+app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
@@ -147,7 +148,7 @@ Regras do bloco:
 - Nunca indique cirurgia sem dizer que depende de avaliação
 - Nunca prometa resultados
 - Nunca pressione o paciente a agendar
-- Nunca faça triagem clínica — não pergunte sobre sintomas, duração, olho afetado, histórico médico. Quando o paciente relatar sintoma visual, acolha e encaminhe para agendamento.
+- Nunca faça triagem clínica — não pergunte sobre sintomas, duração, olho afetado, histórico médico. Quando o paciente relatar sintoma visual, acolha e encaminhe para agendamento. EXCEÇÃO: se a mensagem JÁ trouxer um SINAL DE ALERTA AGUDO (ver "Urgência e emergência"), siga a orientação de urgência (contato/pronto-socorro), NÃO o agendamento de rotina — sem fazer perguntas de triagem.
 
 ### Convênios
 Ao comparar o convênio citado com a lista, ignore diferenças de maiúsculas/minúsculas, acentos, hífens e espaços — "pro social", "Pró-Social" e "PROSOCIAL" são o mesmo convênio; "notredame" = "NOTRE DAME". Na dúvida entre nomes muito parecidos, confirme que a equipe valida no agendamento.
@@ -161,7 +162,8 @@ LISTA DE CONVÊNIOS ATENDIDOS:
 AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBRAPA, CAEME-GO, CAMED, CAESAN, CASEC, CENTRAL NACIONAL UNIMED, CTI, CONAB, ELETRONORTE, EMBRATEL, E-VIDA, FACEB, FAPES (BNDES), FASCAL, FIOSAÚDE (FIOPREV), FURNAS, GAMA SAÚDE, INSTITUTO DE ASSISTÊNCIA À SAÚDE DOS SERVIDORES DO DISTRITO FEDERAL, INFRAERO, IRB, IRMÃOS GRAVIA, LIFE EMPRESARIAL, MAPFRE SAÚDE, MPDFT, MPF, MPM, MPT, NOTRE DAME, PAME, PLAN-ASSISTE, PROASA, PRO-SOCIAL, PROSOCIAL, PRÓ-SOCIAL, PRÓSOCIAL, SAÚDE CAIXA, SERPRO, SIS SENADO, STF-MED, STJ, STM, TJDFT, TST SAÚDE, T.R.E., TRF, TRT, UNAFISCO, UNIBANCO - TEMPO SAUDE, UNIMED CENTRAL NACIONAL, UNIMED PLANALTO, UNIMED INTERCÂMBIO, UNIVERSAL ASSISTENCE.
 
 ### Quando encaminhar para humano
-- Dor ocular intensa, perda súbita de visão, trauma ou sintoma agudo
+- Dor ocular intensa, perda súbita ou piora rápida da visão, trauma ou sintoma agudo
+- SINAIS DE ALERTA de urgência retiniana: sensação de CORTINA ou SOMBRA cobrindo parte da visão; FLASHES/clarões de luz; surgimento SÚBITO de muitas moscas volantes / pontos pretos; visão dupla súbita
 - Angústia emocional intensa
 - Pergunta técnica demais
 - Paciente pedir para falar com o médico ou secretária humana
@@ -321,7 +323,7 @@ Não informe tempo de recuperação, cuidados pós-operatórios, técnica cirúr
 Consultas e exames particulares: PIX, débito ou cartão de crédito. Cirurgias: até 5x no cartão. Testes de lente: priorizar PIX e débito. Não prometa parcelamentos além dos indicados aqui.
 
 ### Urgência e emergência
-A clínica não é pronto-socorro. Para sintomas agudos (dor forte, perda súbita de visão, trauma, vermelhidão intensa) no horário comercial, oriente ligar (61) 3033-6605. Fora do horário ou no fim de semana, oriente com cuidado a procurar um pronto-socorro oftalmológico. Nunca minimize um sintoma agudo.
+A clínica não é pronto-socorro. Para sintomas agudos — dor forte, perda súbita ou piora rápida da visão, trauma, vermelhidão intensa, sensação de CORTINA/SOMBRA na visão, FLASHES de luz, surgimento SÚBITO de muitas moscas volantes/pontos, ou visão dupla súbita (possível emergência de retina) — no horário comercial, oriente ligar (61) 3033-6605. Fora do horário ou no fim de semana, oriente com cuidado a procurar um pronto-socorro oftalmológico. Nunca minimize um sintoma agudo.
 Ao receber um relato de sintoma agudo, NÃO faça perguntas de triagem (não pergunte há quanto tempo, qual olho, nem histórico). Vá direto ao acolhimento e à orientação de contato/pronto-socorro.
 
 ### Remarcar, cancelar ou confirmar agendamento
@@ -802,7 +804,15 @@ function parseEventosICS(txt) {
 // paralelos → 1 bloqueio por horário). NUNCA lança para o chamador tratar.
 async function syncCalendarioIClinic(url, unidade) {
   const res = await axios.get(url, { timeout: 12000, responseType: "text", headers: { "User-Agent": "IOBB-Ana/1.0 (+https://iobb.com.br)" } });
-  const eventos = parseEventosICS(res.data);
+  // GUARDA: se o corpo não for um iCal de verdade (ex.: URL secreta expirada/rotacionada
+  // → o Google devolve HTML 200 de login/erro), NÃO apague os bloqueios existentes —
+  // senão a agenda zera e a Ana passa a oferecer horário ocupado (overbooking silencioso).
+  const body = String(res.data || "");
+  if (!body.includes("BEGIN:VCALENDAR") && !body.includes("BEGIN:VEVENT")) {
+    console.error(`[Sync iClinic ${unidade}] iCal INVÁLIDO (sem VCALENDAR/VEVENT — provável URL expirada/HTML). Mantendo o último snapshot; nada apagado.`);
+    return;
+  }
+  const eventos = parseEventosICS(body);
   const corte = new Date(Date.now() - 6 * 3600 * 1000);   // reflete de ~6h atrás em diante
   const porInicio = new Map();
   for (const ev of eventos) {
@@ -1946,6 +1956,21 @@ app.get("/webhook", (req, res) => {
 app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
   try {
+    // SEGURANÇA: valida a assinatura HMAC da Meta (X-Hub-Signature-256 = App Secret).
+    // Sem isto, qualquer POST forjado injeta mensagens/dispara comandos admin (a
+    // autorização é só pelo `from`, falsificável). Só ENFORCE quando META_APP_SECRET
+    // estiver configurado no Render — assim o deploy não quebra nada; ao setar a env,
+    // a proteção liga. O 200 já foi enviado à Meta; aqui só decidimos PROCESSAR ou não.
+    const APP_SECRET = readEnv("META_APP_SECRET");
+    if (APP_SECRET) {
+      const recebida = String(req.get("X-Hub-Signature-256") || "");
+      const esperada = "sha256=" + crypto.createHmac("sha256", APP_SECRET)
+        .update(req.rawBody || Buffer.from("")).digest("hex");
+      const ok = recebida.length === esperada.length &&
+        crypto.timingSafeEqual(Buffer.from(recebida), Buffer.from(esperada));
+      if (!ok) { console.warn("[Webhook] Assinatura X-Hub-Signature-256 inválida — evento IGNORADO."); return; }
+    }
+
     // STATUS de entrega da Meta (sent/delivered/read/FAILED). Antes eram ignorados
     // (só líamos value.messages) — então uma mensagem ACEITA pela API mas NÃO
     // ENTREGUE sumia sem rastro ("parece enviada mas não chega"). Agora logamos a
@@ -2708,11 +2733,15 @@ app.post("/api/send", async (req, res) => {
       waId = await sendWhatsApp(to, message);
       await saveMessage(conversationId, "human", message, waId);
     }
-    // Registra quem respondeu (nome do login) para o painel rotular corretamente.
-    if (agent && conversationId) {
-      await supabase.from("conversations").update({ assigned_to: agent }).eq("id", conversationId);
+    // Quando um HUMANO responde, ASSUME a conversa: status "human" faz a Ana parar
+    // de responder por cima (o gate do webhook checa status === "human"). Sem isto,
+    // a conversa seguia "bot" e a Ana atropelava a secretária. Devolver à Ana é pelo
+    // botão do painel (/api/conversations/:id/release → status "bot").
+    if (conversationId) {
+      const patch = agent ? { status: "human", assigned_to: agent } : { status: "human" };
+      await supabase.from("conversations").update(patch).eq("id", conversationId);
     }
-    res.json({ ok: true });
+    res.json({ ok: true, assumida: true });
   } catch (e) {
     // A Meta RECUSOU o envio (ou houve erro de rede). Antes, sem este try/catch, a
     // rota estourava 500 mas o painel já tinha pintado a bolha otimista → a
