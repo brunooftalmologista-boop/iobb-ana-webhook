@@ -43,6 +43,8 @@ const VERIFY_TOKEN = readEnv("VERIFY_TOKEN");
 const WHATSAPP_TOKEN = readEnv("WHATSAPP_TOKEN");
 const PHONE_NUMBER_ID = readEnv("PHONE_NUMBER_ID");
 const ANTHROPIC_KEY = readEnv("ANTHROPIC_KEY");
+// Modelo da Ana — configurável por env (troca de modelo sem editar código).
+const ANA_MODEL = readEnv("ANA_MODEL") || "claude-sonnet-4-6";
 const SUPABASE_URL = readEnv("SUPABASE_URL");
 const SUPABASE_KEY = readEnv("SUPABASE_KEY");
 const OPENAI_KEY = readEnv("OPENAI_KEY");
@@ -1231,11 +1233,12 @@ async function downloadMedia(mediaId) {
   try {
     const { data: mediaInfo } = await axios.get(
       `https://graph.facebook.com/v19.0/${mediaId}`,
-      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } }
+      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` }, timeout: 15000 }
     );
     const response = await axios.get(mediaInfo.url, {
       headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
-      responseType: "arraybuffer"
+      responseType: "arraybuffer",
+      timeout: 20000, maxContentLength: 25 * 1024 * 1024, maxBodyLength: 25 * 1024 * 1024,
     });
     return { buffer: Buffer.from(response.data), mimeType: mediaInfo.mime_type };
   } catch(e) {
@@ -1304,7 +1307,7 @@ async function sendWhatsAppDocument(to, url, filename, caption = "") {
   const res = await axios.post(
     `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
     { messaging_product: "whatsapp", to, type: "document", document: { link: url, filename, caption } },
-    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" }, timeout: 15000 }
   );
   return res?.data?.messages?.[0]?.id || null;
 }
@@ -1314,7 +1317,7 @@ async function sendWhatsAppImage(to, url, caption = "") {
   const res = await axios.post(
     `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
     { messaging_product: "whatsapp", to, type: "image", image: { link: url, caption } },
-    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" }, timeout: 15000 }
   );
   return res?.data?.messages?.[0]?.id || null;
 }
@@ -1354,7 +1357,7 @@ async function sendWhatsAppTemplate(to, templateName, languageCode = "pt_BR", bo
       messaging_product: "whatsapp", to, type: "template",
       template: { name: templateName, language: { code: languageCode }, components },
     },
-    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" }, timeout: 15000 }
   );
 }
 
@@ -1866,7 +1869,7 @@ Regras rígidas:
 
 Intenção da equipe: ${intent}`;
   try {
-    const r = await anthropicMessages({ model: "claude-sonnet-4-6", max_tokens: 500, system: sys, messages: [{ role: "user", content: "Escreva agora a mensagem para o paciente." }] });
+    const r = await anthropicMessages({ model: ANA_MODEL, max_tokens: 500, system: sys, messages: [{ role: "user", content: "Escreva agora a mensagem para o paciente." }] });
     const t = r.data?.content?.[0]?.text?.trim();
     return t || null;
   } catch (e) {
@@ -1952,7 +1955,7 @@ async function sendWhatsAppRaw(to, body) {
   const res = await axios.post(
     `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
     { messaging_product: "whatsapp", to, type: "text", text: { body } },
-    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" }, timeout: 15000 }
   );
   return res?.data?.messages?.[0]?.id || null;   // wa_message_id, p/ casar com o status de entrega
 }
@@ -2411,20 +2414,23 @@ app.post("/webhook", async (req, res) => {
     // dia da semana e erra "hoje/amanhã".
     const dt = brasiliaAgora();
     console.log(`[Data] Agora (Brasília): ${dt.agora} | hoje = ${dt.hojeDow}, ${dt.hoje} | amanhã = ${dt.amanhaDow}, ${dt.amanha}`);
-    let systemPrompt = SYSTEM_PROMPT + `\n\n### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje}.\n- AMANHÃ é ${dt.amanha}.\nSempre calcule "hoje", "amanhã", datas e dia da semana a partir daqui (America/Sao_Paulo). Nunca use outra referência de data.`;
+    // O prompt FIXO (SYSTEM_PROMPT) vai como bloco cacheado (cache_control) e o
+    // conteúdo variável (data/hora, anúncio, agenda) como bloco separado — leituras
+    // de cache custam ~0,1× do input, cortando o maior gasto por mensagem.
+    let dynamicPrompt = `### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje}.\n- AMANHÃ é ${dt.amanha}.\nSempre calcule "hoje", "amanhã", datas e dia da semana a partir daqui (America/Sao_Paulo). Nunca use outra referência de data.`;
 
     // Anúncio (Click-to-WhatsApp): injeta o contexto do anúncio para a Ana abrir
     // DIRETO no tema, mesmo com mensagem genérica. A Meta só envia o referral na
     // 1ª mensagem da conversa (início vindo do anúncio).
     if (referral && (referral.headline || referral.body || referral.source_url)) {
-      systemPrompt += `\n\n### Esta conversa começou por um ANÚNCIO (Click-to-WhatsApp — provavelmente Instagram/Facebook)\nA primeira mensagem do paciente pode ser genérica ("posso ter mais informações sobre isso?"). Use o contexto do anúncio abaixo para descobrir o TEMA e abrir DIRETO nele — não cite estes campos ao paciente e NÃO pergunte "o que você busca" se der para inferir o tema.\n- Título do anúncio: ${referral.headline || "—"}\n- Descrição do anúncio: ${referral.body || "—"}\nAbra de forma cordial já falando do assunto do anúncio (ex.: se for cirurgia refrativa / TransPRK / "laser nos olhos" / "largar os óculos", fale disso já com os valores; se for ceratocone, catarata etc., idem). Só se realmente não der para inferir o tema é que você faz a pergunta de acolhimento.`;
+      dynamicPrompt += `\n\n### Esta conversa começou por um ANÚNCIO (Click-to-WhatsApp — provavelmente Instagram/Facebook)\nA primeira mensagem do paciente pode ser genérica ("posso ter mais informações sobre isso?"). Use o contexto do anúncio abaixo para descobrir o TEMA e abrir DIRETO nele — não cite estes campos ao paciente e NÃO pergunte "o que você busca" se der para inferir o tema.\n- Título do anúncio: ${referral.headline || "—"}\n- Descrição do anúncio: ${referral.body || "—"}\nAbra de forma cordial já falando do assunto do anúncio (ex.: se for cirurgia refrativa / TransPRK / "laser nos olhos" / "largar os óculos", fale disso já com os valores; se for ceratocone, catarata etc., idem). Só se realmente não der para inferir o tema é que você faz a pergunta de acolhimento.`;
     }
 
     // O paciente respondeu ao pedido de carteirinha com uma FOTO. A Ana não vê o
     // conteúdo, mas a equipe já recebeu — então ela deve considerar entregue e
     // seguir, em vez de dead-endar como faria com uma imagem qualquer.
     if (fotoDeCarteirinha) {
-      systemPrompt += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nVocê havia pedido a carteirinha e ele respondeu com uma imagem. Você NÃO vê o conteúdo, mas a NOSSA EQUIPE já recebeu a foto. Considere a carteirinha ENTREGUE: agradeça, e CONTINUE/CONCLUA o pré-agendamento normalmente (registre no bloco como "carteirinha por foto"). NÃO peça a carteirinha de novo e NÃO diga apenas que "vai encaminhar" — conclua o pré-agendamento, explicando que a equipe confirma a cobertura da Unimed junto com o horário.`;
+      dynamicPrompt += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nVocê havia pedido a carteirinha e ele respondeu com uma imagem. Você NÃO vê o conteúdo, mas a NOSSA EQUIPE já recebeu a foto. Considere a carteirinha ENTREGUE: agradeça, e CONTINUE/CONCLUA o pré-agendamento normalmente (registre no bloco como "carteirinha por foto"). NÃO peça a carteirinha de novo e NÃO diga apenas que "vai encaminhar" — conclua o pré-agendamento, explicando que a equipe confirma a cobertura da Unimed junto com o horário.`;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2441,11 +2447,11 @@ app.post("/webhook", async (req, res) => {
       const minTs = Date.now() + ANA_ANTECEDENCIA_HORAS * 3600 * 1000;
       const slotsOferta = Array.isArray(slots) ? slots.filter(s => s.start.getTime() >= minTs) : slots;
       if (slotsOferta === null) {
-        systemPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
+        dynamicPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       } else if (slotsOferta.length > 0) {
-        systemPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta)}\n\nOfereça UM por vez (em linguagem humana) e, ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.`;
+        dynamicPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta)}\n\nOfereça UM por vez (em linguagem humana) e, ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.`;
       } else {
-        systemPrompt += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias para a unidade pedida. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
+        dynamicPrompt += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias para a unidade pedida. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
@@ -2469,7 +2475,14 @@ app.post("/webhook", async (req, res) => {
     if (apiMessages.length === 0) apiMessages.push({ role: "user", content: text });
     let reply;
     try {
-      const response = await anthropicMessages({ model: "claude-sonnet-4-6", max_tokens: 1000, system: systemPrompt, messages: apiMessages });
+      const response = await anthropicMessages({
+        model: ANA_MODEL, max_tokens: 1000,
+        system: [
+          { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+          { type: "text", text: dynamicPrompt },
+        ],
+        messages: apiMessages,
+      });
       reply = response.data?.content?.[0]?.text;
       if (!reply || !reply.trim()) throw new Error("Resposta vazia da IA");
     } catch (err) {
@@ -3342,7 +3355,7 @@ app.get("/api/diag/agenda", async (req, res) => {
 app.get("/api/diag/ana", async (req, res) => {
   const info = {
     ok: false,
-    modelo: "claude-sonnet-4-6",
+    modelo: ANA_MODEL,
     anthropicKeyPresente: !!ANTHROPIC_KEY,
     anthropicKeyLen: ANTHROPIC_KEY ? ANTHROPIC_KEY.length : 0,
     anthropicKeyPrefixo: ANTHROPIC_KEY ? ANTHROPIC_KEY.slice(0, 7) : null, // "sk-ant-" esperado
@@ -3351,7 +3364,7 @@ app.get("/api/diag/ana", async (req, res) => {
   try {
     const r = await axios.post(
       "https://api.anthropic.com/v1/messages",
-      { model: "claude-sonnet-4-6", max_tokens: 16, messages: [{ role: "user", content: "diga apenas: ok" }] },
+      { model: ANA_MODEL, max_tokens: 16, messages: [{ role: "user", content: "diga apenas: ok" }] },
       { headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, timeout: 20000 }
     );
     res.json({ ...info, ok: true, respostaModelo: r.data?.content?.[0]?.text || null, usage: r.data?.usage || null });
