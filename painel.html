@@ -850,7 +850,17 @@ async function loadMessages(force){
   try{
     const data = await api(`/api/conversations/${activeId}/messages`);
     const arr = Array.isArray(data)? data : [];
-    const sig = arr.map(m=>m.id||m.timestamp).join('|');
+    // Falha de ENTREGA reportada pela Meta (webhook statuses) fica gravada em
+    // message.event = "delivery_failed:<code>:<motivo>" → marca a bolha em vermelho.
+    for(const m of arr){
+      if(typeof m.event==='string' && m.event.startsWith('delivery_failed:')){
+        const rest=m.event.slice('delivery_failed:'.length);
+        const i=rest.indexOf(':'); const code=i>=0?rest.slice(0,i):''; const motivo=i>=0?rest.slice(i+1):rest;
+        m.failed=true;
+        m.failReason=(code==='131047'||code==='131051') ? 'Fora da janela de 24h — o paciente precisa escrever primeiro.' : (motivo||'Não entregue.');
+      }
+    }
+    const sig = arr.map(m=>(m.id||m.timestamp)+(m.failed?'!':'')).join('|');
     if(sig===msgSignature && !force) return;
     // detectar chegada de mensagem nova do paciente -> "digitando" rápido
     const grew = arr.length>messages.length;

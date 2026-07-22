@@ -1239,20 +1239,22 @@ async function transcribeAudio(buffer, mimeType) {
 
 // Enviar documento pelo WhatsApp
 async function sendWhatsAppDocument(to, url, filename, caption = "") {
-  await axios.post(
+  const res = await axios.post(
     `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
     { messaging_product: "whatsapp", to, type: "document", document: { link: url, filename, caption } },
     { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
   );
+  return res?.data?.messages?.[0]?.id || null;
 }
 
 // Enviar imagem pelo WhatsApp
 async function sendWhatsAppImage(to, url, caption = "") {
-  await axios.post(
+  const res = await axios.post(
     `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
     { messaging_product: "whatsapp", to, type: "image", image: { link: url, caption } },
     { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
   );
+  return res?.data?.messages?.[0]?.id || null;
 }
 
 // ============================================================================
@@ -1880,11 +1882,12 @@ const WA_TEXT_LIMIT = 3900;
 
 // Envio bruto de um único texto (sem divisão).
 async function sendWhatsAppRaw(to, body) {
-  await axios.post(
+  const res = await axios.post(
     `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
     { messaging_product: "whatsapp", to, type: "text", text: { body } },
     { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
   );
+  return res?.data?.messages?.[0]?.id || null;   // wa_message_id, p/ casar com o status de entrega
 }
 
 // Enviar mensagem WhatsApp — divide automaticamente textos longos em partes,
@@ -1892,8 +1895,8 @@ async function sendWhatsAppRaw(to, body) {
 // causaria falha silenciosa em respostas grandes).
 async function sendWhatsApp(to, body) {
   const text = String(body ?? "").trim();
-  if (!text) return;
-  if (text.length <= WA_TEXT_LIMIT) { await sendWhatsAppRaw(to, text); return; }
+  if (!text) return null;
+  if (text.length <= WA_TEXT_LIMIT) { return await sendWhatsAppRaw(to, text); }
   const chunks = [];
   let buf = "";
   for (let line of text.split("\n")) {
@@ -1902,7 +1905,9 @@ async function sendWhatsApp(to, body) {
     else buf = buf ? buf + "\n" + line : line;
   }
   if (buf) chunks.push(buf);
-  for (const c of chunks) await sendWhatsAppRaw(to, c);
+  let firstId = null;
+  for (const c of chunks) { const id = await sendWhatsAppRaw(to, c); if (!firstId) firstId = id; }
+  return firstId;
 }
 
 // Health check PÚBLICO (sem auth — fora de /api de propósito) para KEEPALIVE.
@@ -1941,6 +1946,27 @@ app.get("/webhook", (req, res) => {
 app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
   try {
+    // STATUS de entrega da Meta (sent/delivered/read/FAILED). Antes eram ignorados
+    // (só líamos value.messages) — então uma mensagem ACEITA pela API mas NÃO
+    // ENTREGUE sumia sem rastro ("parece enviada mas não chega"). Agora logamos a
+    // falha com o motivo exato da Meta e MARCAMOS a mensagem (via wa_message_id)
+    // para o painel exibi-la em vermelho.
+    const statuses = req.body?.entry?.[0]?.changes?.[0]?.value?.statuses;
+    if (Array.isArray(statuses) && statuses.length) {
+      for (const st of statuses) {
+        if (st.status !== "failed") continue;
+        const err = (st.errors && st.errors[0]) || {};
+        const motivo = (err.error_data && err.error_data.details) || err.title || err.message || `code ${err.code}`;
+        console.error(`[Entrega] ❌ Falha ao entregar msg ${st.id} para ${st.recipient_id}: code=${err.code} — ${motivo}`);
+        if (st.id) {
+          await supabase.from("messages")
+            .update({ event: `delivery_failed:${err.code || "?"}:${String(motivo).slice(0, 180)}` })
+            .eq("wa_message_id", st.id);
+        }
+      }
+      return;
+    }
+
     const msg = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!msg) return;
 
@@ -2671,15 +2697,16 @@ app.post("/api/conversations/:id/booked", async (req, res) => {
 app.post("/api/send", async (req, res) => {
   const { to, message, conversationId, agent, documentUrl, documentName, imageUrl } = req.body;
   try {
+    let waId = null;
     if (imageUrl) {
-      await sendWhatsAppImage(to, imageUrl, message || "");
-      await saveMessage(conversationId, "human", `[Imagem enviada]${message ? `: ${message}` : ""}`);
+      waId = await sendWhatsAppImage(to, imageUrl, message || "");
+      await saveMessage(conversationId, "human", `[Imagem enviada]${message ? `: ${message}` : ""}`, waId);
     } else if (documentUrl) {
-      await sendWhatsAppDocument(to, documentUrl, documentName || "documento");
-      await saveMessage(conversationId, "human", `[Documento enviado: ${documentName || "documento"}]`);
+      waId = await sendWhatsAppDocument(to, documentUrl, documentName || "documento");
+      await saveMessage(conversationId, "human", `[Documento enviado: ${documentName || "documento"}]`, waId);
     } else {
-      await sendWhatsApp(to, message);
-      await saveMessage(conversationId, "human", message);
+      waId = await sendWhatsApp(to, message);
+      await saveMessage(conversationId, "human", message, waId);
     }
     // Registra quem respondeu (nome do login) para o painel rotular corretamente.
     if (agent && conversationId) {
