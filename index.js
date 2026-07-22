@@ -2475,14 +2475,30 @@ app.post("/webhook", async (req, res) => {
     if (apiMessages.length === 0) apiMessages.push({ role: "user", content: text });
     let reply;
     try {
-      const response = await anthropicMessages({
-        model: ANA_MODEL, max_tokens: 1000,
-        system: [
-          { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-          { type: "text", text: dynamicPrompt },
-        ],
-        messages: apiMessages,
-      });
+      let response;
+      try {
+        // Caminho normal: prompt fixo cacheado (system em blocos).
+        response = await anthropicMessages({
+          model: ANA_MODEL, max_tokens: 1000,
+          system: [
+            { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+            { type: "text", text: dynamicPrompt },
+          ],
+          messages: apiMessages,
+        });
+      } catch (e1) {
+        // BLINDAGEM: se o caching (system em blocos) for recusado (400), refaz com o
+        // system como TEXTO simples — o paciente não fica sem resposta por causa disso.
+        if (e1?.response?.status === 400) {
+          console.warn("[Ana] Chamada com cache_control recusada (400) — refazendo sem caching.");
+          await registrarErro("cache_control_400", e1?.response?.data ? JSON.stringify(e1.response.data) : e1.message, { conversationId: conversation.id });
+          response = await anthropicMessages({
+            model: ANA_MODEL, max_tokens: 1000,
+            system: SYSTEM_PROMPT + "\n\n" + dynamicPrompt,
+            messages: apiMessages,
+          });
+        } else throw e1;
+      }
       reply = response.data?.content?.[0]?.text;
       if (!reply || !reply.trim()) throw new Error("Resposta vazia da IA");
     } catch (err) {
