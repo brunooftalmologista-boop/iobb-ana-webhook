@@ -1556,10 +1556,15 @@ async function persistirPreAgendamentos(registros, patient, from, conversationId
 async function marcarConversaoAgendada(conversationId, value = 200) {
   if (!conversationId) return { attributed: false };
   try {
-    const { data } = await supabase.from("ad_clicks").select("id, booked")
+    const { data: cliques } = await supabase.from("ad_clicks").select("id, booked, gclid, wbraid, gbraid")
       .eq("conversation_id", String(conversationId))
-      .order("clicked_at", { ascending: false }).limit(1).single();
-    if (!data) return { attributed: false };                 // conversa não veio de anúncio
+      .order("clicked_at", { ascending: false });
+    if (!cliques || !cliques.length) return { attributed: false };   // conversa não veio de anúncio
+    // PREFERE o clique com identificador do Google (gclid/wbraid/gbraid) — é o único
+    // que pode ser enviado ao Google Ads. Antes marcava só o MAIS RECENTE, então um
+    // lead meta/IG-FB posterior "roubava" a conversão e o clique do Google (pago)
+    // nunca subia. Sem identificador Google, marca o mais recente (atribuição interna).
+    const data = cliques.find(c => c.gclid || c.wbraid || c.gbraid) || cliques[0];
     if (data.booked) return { attributed: true, alreadyBooked: true };
     await supabase.from("ad_clicks").update({ booked: true, booked_at: new Date(), conversion_value: value }).eq("id", data.id);
     // Fire-and-forget: não atrasa o atendimento; erros só vão ao log. A rede de

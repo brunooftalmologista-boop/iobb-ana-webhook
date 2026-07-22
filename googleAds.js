@@ -614,11 +614,15 @@ async function uploadClickConversions(deps) {
   // 1) Buscar pendentes.
   let pend;
   try {
+    // Inclui cliques com QUALQUER identificador do Google (gclid OU wbraid OU gbraid).
+    // Antes só gclid → cliques de iOS/privacidade (que chegam só com wbraid/gbraid)
+    // nunca eram enviados e a conversão paga se perdia.
     const { data, error } = await supabase.from("ad_clicks")
-      .select("id, gclid, booked_at, clicked_at, conversion_value")
-      .eq("booked", true).eq("reported", false).not("gclid", "is", null);
+      .select("id, gclid, wbraid, gbraid, booked_at, clicked_at, conversion_value")
+      .eq("booked", true).eq("reported", false)
+      .or("gclid.not.is.null,wbraid.not.is.null,gbraid.not.is.null");
     if (error) throw new Error(error.message);
-    pend = (data || []).filter(r => r.gclid);
+    pend = (data || []).filter(r => r.gclid || r.wbraid || r.gbraid);
   } catch (e) {
     result.error = "falha ao ler ad_clicks: " + e.message;
     console.error("[AdsConv] ❌ " + result.error);
@@ -644,13 +648,19 @@ async function uploadClickConversions(deps) {
   result.conversionAction = actionRN;
 
   // 3) Montar as conversões (índice alinhado com `pend`).
-  const conversions = pend.map(r => ({
-    gclid: r.gclid,
-    conversion_action: actionRN,
-    conversion_date_time: formatConversionDateTime(new Date(r.booked_at || r.clicked_at)),
-    conversion_value: Number(r.conversion_value ?? CONVERSION_DEFAULT_VALUE),
-    currency_code: "BRL",
-  }));
+  // Cada ClickConversion leva UM identificador: gclid, senão wbraid, senão gbraid.
+  const conversions = pend.map(r => {
+    const c = {
+      conversion_action: actionRN,
+      conversion_date_time: formatConversionDateTime(new Date(r.booked_at || r.clicked_at)),
+      conversion_value: Number(r.conversion_value ?? CONVERSION_DEFAULT_VALUE),
+      currency_code: "BRL",
+    };
+    if (r.gclid) c.gclid = r.gclid;
+    else if (r.wbraid) c.wbraid = r.wbraid;
+    else if (r.gbraid) c.gbraid = r.gbraid;
+    return c;
+  });
 
   // 4) Enviar (partial_failure: sucessos passam mesmo se algumas linhas falharem).
   let response;
@@ -681,16 +691,17 @@ async function uploadClickConversions(deps) {
   const allSucceeded = !pfErr;
   pend.forEach((r, i) => {
     const res = results[i] || {};
-    const success = allSucceeded || !!(res.gclid || res.conversion_date_time || res.conversionDateTime || res.conversion_action || res.conversionAction);
-    const gshort = (r.gclid || "").slice(0, 14) + "…";
+    const success = allSucceeded || !!(res.gclid || res.wbraid || res.gbraid || res.conversion_date_time || res.conversionDateTime || res.conversion_action || res.conversionAction);
+    const ident = r.gclid || r.wbraid || r.gbraid || "";
+    const gshort = ident.slice(0, 14) + "…";
     if (success) {
       result.uploaded++;
       okIds.push(r.id);
-      result.details.push({ ok: true, gclid: r.gclid, msg: "enviada" });
+      result.details.push({ ok: true, ident, msg: "enviada" });
       console.log(`[AdsConv] ✅ ${gshort} enviada (${conversions[i].conversion_date_time}, ${conversions[i].conversion_value} BRL).`);
     } else {
       result.failed++;
-      result.details.push({ ok: false, gclid: r.gclid, msg: pfMsg || "recusada pela API" });
+      result.details.push({ ok: false, ident, msg: pfMsg || "recusada pela API" });
       console.error(`[AdsConv] ❌ ${gshort} recusada${pfMsg ? ": " + pfMsg : ""}.`);
     }
   });
