@@ -2670,21 +2670,39 @@ app.post("/api/conversations/:id/booked", async (req, res) => {
 
 app.post("/api/send", async (req, res) => {
   const { to, message, conversationId, agent, documentUrl, documentName, imageUrl } = req.body;
-  if (imageUrl) {
-    await sendWhatsAppImage(to, imageUrl, message || "");
-    await saveMessage(conversationId, "human", `[Imagem enviada]${message ? `: ${message}` : ""}`);
-  } else if (documentUrl) {
-    await sendWhatsAppDocument(to, documentUrl, documentName || "documento");
-    await saveMessage(conversationId, "human", `[Documento enviado: ${documentName || "documento"}]`);
-  } else {
-    await sendWhatsApp(to, message);
-    await saveMessage(conversationId, "human", message);
+  try {
+    if (imageUrl) {
+      await sendWhatsAppImage(to, imageUrl, message || "");
+      await saveMessage(conversationId, "human", `[Imagem enviada]${message ? `: ${message}` : ""}`);
+    } else if (documentUrl) {
+      await sendWhatsAppDocument(to, documentUrl, documentName || "documento");
+      await saveMessage(conversationId, "human", `[Documento enviado: ${documentName || "documento"}]`);
+    } else {
+      await sendWhatsApp(to, message);
+      await saveMessage(conversationId, "human", message);
+    }
+    // Registra quem respondeu (nome do login) para o painel rotular corretamente.
+    if (agent && conversationId) {
+      await supabase.from("conversations").update({ assigned_to: agent }).eq("id", conversationId);
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    // A Meta RECUSOU o envio (ou houve erro de rede). Antes, sem este try/catch, a
+    // rota estourava 500 mas o painel já tinha pintado a bolha otimista → a
+    // secretária achava que a mensagem foi ("parece enviada, mas não chega"). Agora
+    // NÃO salvamos a mensagem (não foi entregue) e devolvemos o motivo para o painel
+    // marcá-la como "não enviada". code 131047/131051 = FORA da janela de 24h da Meta
+    // (só dá pra mandar texto livre até 24h após a última mensagem DO PACIENTE).
+    const meta = (e && e.response && e.response.data && e.response.data.error) || {};
+    const code = meta.code || null;
+    const foraDaJanela = code === 131047 || code === 131051 ||
+      /24\s*hours|re-?engage|outside the allowed window|customer care|customer service window/i.test(meta.message || "");
+    const motivo = foraDaJanela
+      ? "Fora da janela de 24h do WhatsApp — o paciente precisa enviar uma mensagem primeiro para você responder por texto livre."
+      : (meta.message || e.message || "Falha ao enviar pelo WhatsApp.");
+    console.error(`[Send] Falha ao enviar para ${to}: code=${code || "?"} — ${meta.message || e.message}`);
+    res.json({ ok: false, code, foraDaJanela, error: motivo });
   }
-  // Registra quem respondeu (nome do login) para o painel rotular corretamente.
-  if (agent && conversationId) {
-    await supabase.from("conversations").update({ assigned_to: agent }).eq("id", conversationId);
-  }
-  res.json({ ok: true });
 });
 
 app.get("/api/settings", async (req, res) => {

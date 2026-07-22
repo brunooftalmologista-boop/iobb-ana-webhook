@@ -94,6 +94,8 @@
   .bubble.in{align-self:flex-start;background:var(--in);border-top-left-radius:0;}
   .bubble.out{align-self:flex-end;background:var(--out);border-top-right-radius:0;}
   .bubble.out.human{background:var(--out-human);}
+  .bubble.out.failed{background:#fdecea;box-shadow:inset 0 0 0 1px #e0503a;}
+  .bubble .fail-note{color:#c0392b;font-size:12px;font-weight:600;margin-top:3px;}
   .bubble .who{font-size:12px;font-weight:600;margin-bottom:2px;}
   .bubble.out .who{color:#027a5b;} .bubble.out.human .who{color:#025a94;}
   .bubble .meta{float:right;font-size:11px;color:var(--muted);margin:6px 0 -4px 10px;user-select:none;}
@@ -882,16 +884,19 @@ function renderMessages(){
       frag.appendChild(sep);
     }
     const incoming = m.role==='user';
+    const failed = !incoming && m.failed;
     const b=document.createElement('div');
-    b.className='bubble '+(incoming?'in':'out')+(m.role==='human'?' human':'');
+    b.className='bubble '+(incoming?'in':'out')+(m.role==='human'?' human':'')+(failed?' failed':'');
     let who='';
     if(!incoming) who=`<div class="who">${m.role==='human'?esc(m.agent||'Secretária'):'Ana 🤖'}</div>`;
     const mediaHtml = m.media_path ? mediaMarkup(m) : '';
     // Para imagem/vídeo sem legenda, o texto "[Imagem recebida]" é redundante
     const hideText = m.media_path && /^\[(Imagem recebida|Vídeo recebido)\]$/.test(m.content||'');
     const textHtml = hideText ? '' : esc(m.content);
-    b.innerHTML = who + mediaHtml + textHtml +
-      `<span class="meta">${parseTS(m.timestamp).toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'})}${incoming?'':' ✓✓'}</span>`;
+    const failNote = failed ? `<div class="fail-note">⚠️ ${esc(m.failReason||'Não enviada')}</div>` : '';
+    const mark = incoming ? '' : (failed ? ' ⚠️ não enviada' : ' ✓✓');
+    b.innerHTML = who + mediaHtml + textHtml + failNote +
+      `<span class="meta">${parseTS(m.timestamp).toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'})}${mark}</span>`;
     frag.appendChild(b);
   });
   // manter o indicador de digitação ao final
@@ -945,13 +950,20 @@ async function sendMessage(){
   if(!to){ toast('Conversa sem número de telefone.'); return; }
   el.input.value=''; autoGrow();
   // otimista
-  messages.push({ role:'human', content:text, agent:AGENT, timestamp:new Date().toISOString(), id:'tmp'+Date.now() });
+  const tmpId='tmp'+Date.now();
+  messages.push({ role:'human', content:text, agent:AGENT, timestamp:new Date().toISOString(), id:tmpId });
   renderMessages();
+  const marcarFalha=(motivo)=>{ const m=messages.find(x=>x.id===tmpId); if(m){ m.failed=true; m.failReason=motivo; } renderMessages(); };
   try{
-    await api('/api/send',{ method:'POST', body:JSON.stringify({ to, message:text, conversationId:activeId, agent:AGENT }) });
+    const r = await api('/api/send',{ method:'POST', body:JSON.stringify({ to, message:text, conversationId:activeId, agent:AGENT }) });
+    if(r && r.ok===false){
+      marcarFalha(r.error||'Não enviada.');
+      toast(r.foraDaJanela ? '⚠️ NÃO enviada: fora da janela de 24h — o paciente precisa escrever primeiro.' : ('NÃO enviada: '+(r.error||'falha')));
+      return;
+    }
     readState[activeId]=new Date().toISOString(); saveRead();
     setTimeout(()=>loadMessages(true),600);
-  }catch(e){ toast('Falha ao enviar. Verifique a conexão.'); }
+  }catch(e){ marcarFalha('Falha de conexão ao enviar.'); toast('Falha ao enviar. Verifique a conexão.'); }
 }
 // Upload real de arquivo → Supabase Storage (via backend) → envia link ao paciente
 async function uploadFile(e){
@@ -983,7 +995,12 @@ async function uploadFile(e){
     const body = isImage
       ? { to, imageUrl:url, message:'', conversationId:activeId, agent:AGENT }
       : { to, documentUrl:url, documentName:file.name, conversationId:activeId, agent:AGENT };
-    await api('/api/send',{ method:'POST', body:JSON.stringify(body) });
+    const r = await api('/api/send',{ method:'POST', body:JSON.stringify(body) });
+    if(r && r.ok===false){
+      const m=messages.find(x=>x.id===tmpId); if(m){ m.failed=true; m.failReason=r.error||'Não enviado.'; } renderMessages();
+      toast(r.foraDaJanela ? '⚠️ NÃO enviado: fora da janela de 24h.' : ('NÃO enviado: '+(r.error||'falha')));
+      return;
+    }
     toast('Arquivo enviado!');
     setTimeout(()=>loadMessages(true),700);
   }catch(err){
