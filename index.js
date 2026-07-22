@@ -886,6 +886,28 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId }
     const motivo = limpo(registro.motivo) || "Consulta";
     const nascimento = limpo(registro.nascimento);
     const observacoes = nascimento ? `Nascimento: ${nascimento}` : null;
+
+    // Idempotência por CONVERSA: se a Ana já marcou um horário nesta conversa, NÃO
+    // cria um segundo. O modelo às vezes RE-EMITE o bloco [AGENDAR] em turnos
+    // seguintes (ex.: numa pergunta sobre receita) — sem esta guarda, isso gerava
+    // marcação dupla (dois horários seguidos para o mesmo paciente). Reagendamento
+    // dentro da mesma conversa é raro e fica a cargo da equipe (ver SYSTEM_PROMPT).
+    try {
+      const { data: existentes } = await supabase.from("appointments")
+        .select("id, inicio")
+        .eq("conversation_id", String(conversationId))
+        .eq("origem", "ana")
+        .in("status", ["reservado", "confirmado"])
+        .limit(1);
+      if (existentes && existentes.length) {
+        const jaIni = new Date(existentes[0].inicio).getTime();
+        console.log(jaIni === ini.getTime()
+          ? `[Agendar] Ignorado re-emit idêntico (${unidade} ${ini.toISOString()}) — já marcado nesta conversa.`
+          : `[Agendar] Ignorado 2º [AGENDAR] (${ini.toISOString()}) — conversa já tem agendamento ativo em ${new Date(existentes[0].inicio).toISOString()}. Evita duplicidade.`);
+        return { ok: true, already: true };
+      }
+    } catch (e) { console.error("[Agendar] Falha na checagem de idempotência (segue e tenta marcar):", e.message); }
+
     const r = await criarAgendamento({ unidade, inicio: ini, fim, status: "confirmado", nome, telefone, convenio, motivo, observacoes, origem: "ana", conversationId });
     if (r.taken) {
       // Corrida: a vaga foi ocupada durante a conversa. Oferece a próxima livre.
