@@ -924,7 +924,15 @@ function extrairAgendar(reply) {
 async function processarAgendarDaAna({ registro, patient, from, conversationId }) {
   try {
     const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
-    const unidade = limpo(registro.unidade);
+    let unidade = limpo(registro.unidade);
+    // Normaliza a unidade para o enum canônico. A Ana às vezes escreve "Taguatinga
+    // Shopping" / "Águas Claras"; gravar fora de "Conjunto Nacional"/"Taguatinga"
+    // deixa o agendamento órfão do sync e do filtro do painel.
+    if (unidade) {
+      const un = unidade.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      if (un.includes("taguatinga") || un.includes("aguas claras")) unidade = "Taguatinga";
+      else if (un.includes("conjunto") || un.includes("asa norte")) unidade = "Conjunto Nacional";
+    }
     const inicioRaw = limpo(registro.inicio);
     if (!unidade || !inicioRaw) { console.error("[Agendar] Bloco sem unidade/inicio:", JSON.stringify(registro)); return { ok: false }; }
     const ini = new Date(inicioRaw);
@@ -957,6 +965,25 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId }
         return { ok: true, already: true };
       }
     } catch (e) { console.error("[Agendar] Falha na checagem de idempotência (segue e tenta marcar):", e.message); }
+
+    // VALIDAÇÃO do horário: só grava um `inicio` que esteja REALMENTE na lista de
+    // vagas vigente (mesma unidade/dia/grade e ≥ buffer de antecedência). Sem isto,
+    // um token reaproveitado/alucinado gravaria em dia/hora inválido (ex.: terça no
+    // Conjunto, no almoço, ou <24h). Se a leitura falhar (null), NÃO bloqueia — o
+    // índice único ainda protege contra overbooking do slot exato.
+    const minTs = Date.now() + ANA_ANTECEDENCIA_HORAS * 3600 * 1000;
+    const vagasAtuais = await fetchSlotsDB(unidade);
+    if (Array.isArray(vagasAtuais)) {
+      const existe = vagasAtuais.some(s => s.start.getTime() === ini.getTime() && s.start.getTime() >= minTs);
+      if (!existe) {
+        const prox = vagasAtuais.find(s => s.start.getTime() >= minTs);
+        const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve para você?` : `Vou verificar outra opção e já te retorno.`;
+        await trySendWhatsApp(from, `Esse horário não está mais disponível. ${alt}`);
+        console.warn(`[Agendar] inicio ${ini.toISOString()} (${unidade}) FORA da lista vigente — não gravei; ofereci alternativa.`);
+        await registrarErro("agendar_inicio_invalido", `unidade=${unidade} inicio=${ini.toISOString()}`, { conversationId, telefone });
+        return { ok: false, invalido: true };
+      }
+    }
 
     const r = await criarAgendamento({ unidade, inicio: ini, fim, status: "confirmado", nome, telefone, convenio, motivo, observacoes, origem: "ana", conversationId });
     if (r.taken) {
