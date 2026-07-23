@@ -594,6 +594,63 @@ async function resolveConversionActionResourceName(customer) {
   return cachedConversionActionRN;
 }
 
+// ===== Data Manager API — novo caminho de upload de conversões ==============
+// O Google restringiu ConversionUploadService.UploadClickConversions (Ads API) a
+// usuários antigos; integrações novas usam a Data Manager API. Ver:
+// https://developers.google.com/data-manager/api/devguides/events/google-ads/offline
+// Pré-requisitos no Google Cloud (feitos pelo usuário): habilitar a "Data Manager
+// API" no projeto e adicionar o escopo datamanager ao consentimento OAuth; depois
+// regenerar o refresh token (npm run auth:google) — ver generate-refresh-token.js.
+const DATA_MANAGER_ENDPOINT = "https://datamanager.googleapis.com/v1/events:ingest";
+
+// Troca o refresh_token por um access_token (reaproveita as credenciais OAuth do
+// Google Ads). O refresh_token PRECISA ter o escopo datamanager — senão avisa cedo.
+async function getGoogleAccessToken() {
+  const client_id = process.env.GOOGLE_ADS_CLIENT_ID;
+  const client_secret = process.env.GOOGLE_ADS_CLIENT_SECRET;
+  const refresh_token = process.env.GOOGLE_ADS_REFRESH_TOKEN;
+  if (!client_id || !client_secret || !refresh_token) {
+    throw new Error("credenciais OAuth ausentes (GOOGLE_ADS_CLIENT_ID/SECRET/REFRESH_TOKEN)");
+  }
+  const resp = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id, client_secret, refresh_token, grant_type: "refresh_token" }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(`OAuth token (${resp.status}): ${data.error || ""} ${data.error_description || ""}`.trim());
+  }
+  if (data.scope && !data.scope.includes("datamanager")) {
+    throw new Error("o refresh token NÃO tem o escopo datamanager. Habilite a Data Manager API no Google Cloud, adicione o escopo no consentimento OAuth e regenere o token com `npm run auth:google`.");
+  }
+  return data.access_token;
+}
+
+// Envia os eventos de conversão via Data Manager API (events:ingest). Valida o
+// lote inteiro (validateOnly = dry-run nativo). Retorna { ok, status, error, requestId }.
+async function ingestEventsViaDataManager(accessToken, events, actionId, dryRun) {
+  const cid = String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g, "");
+  const loginId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID
+    ? String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID).replace(/-/g, "") : null;
+  const destination = {
+    operatingAccount: { accountType: "GOOGLE_ADS", accountId: cid },
+    productDestinationId: String(actionId),
+  };
+  if (loginId) destination.loginAccount = { accountType: "GOOGLE_ADS", accountId: loginId };
+  const payload = { destinations: [destination], events, validateOnly: !!dryRun };
+  const resp = await fetch(DATA_MANAGER_ENDPOINT, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const raw = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    return { ok: false, status: resp.status, error: raw?.error?.message || `HTTP ${resp.status}`, requestId: raw?.requestId || null };
+  }
+  return { ok: true, status: resp.status, error: null, requestId: raw?.requestId || null };
+}
+
 // Envia ao Google Ads todas as conversões pendentes (booked=true, reported=false,
 // gclid != null) e marca as enviadas com sucesso como reported=true.
 // deps = { supabase, dryRun? }. Retorna um resumo estruturado.
@@ -635,78 +692,76 @@ async function uploadClickConversions(deps) {
     return result;
   }
 
-  // 2) Cliente + resource name da ação de conversão.
-  let customer, actionRN;
+  // 2) ID (numérico) da ação de conversão. Prefere a env GOOGLE_ADS_CONVERSION_ACTION_ID;
+  // senão resolve pelo NOME via Ads API (token precisa também do escopo adwords).
+  let actionId = process.env.GOOGLE_ADS_CONVERSION_ACTION_ID
+    ? String(process.env.GOOGLE_ADS_CONVERSION_ACTION_ID).replace(/[^0-9]/g, "") : null;
+  if (!actionId) {
+    try {
+      const actionRN = await resolveConversionActionResourceName();
+      actionId = actionRN.split("/").pop();
+    } catch (e) {
+      result.error = "não consegui resolver a ação de conversão: " + e.message;
+      console.error("[AdsConv] ❌ " + result.error);
+      return result;
+    }
+  }
+  result.conversionAction = actionId;
+
+  // 3) Access token (escopo datamanager) + montar os eventos (índice = pend).
+  let accessToken;
   try {
-    customer = buildCustomer();
-    actionRN = await resolveConversionActionResourceName(customer);
+    accessToken = await getGoogleAccessToken();
   } catch (e) {
     result.error = e.message;
     console.error("[AdsConv] ❌ " + result.error);
     return result;
   }
-  result.conversionAction = actionRN;
-
-  // 3) Montar as conversões (índice alinhado com `pend`).
-  // Cada ClickConversion leva UM identificador: gclid, senão wbraid, senão gbraid.
-  const conversions = pend.map(r => {
-    const c = {
-      conversion_action: actionRN,
-      conversion_date_time: formatConversionDateTime(new Date(r.booked_at || r.clicked_at)),
-      conversion_value: Number(r.conversion_value ?? CONVERSION_DEFAULT_VALUE),
-      currency_code: "BRL",
+  const events = pend.map(r => {
+    const adIdentifiers = {};
+    if (r.gclid) adIdentifiers.gclid = r.gclid;
+    else if (r.wbraid) adIdentifiers.wbraid = r.wbraid;
+    else if (r.gbraid) adIdentifiers.gbraid = r.gbraid;
+    return {
+      adIdentifiers,
+      conversionValue: Number(r.conversion_value ?? CONVERSION_DEFAULT_VALUE),
+      currency: "BRL",
+      eventTimestamp: new Date(r.booked_at || r.clicked_at).toISOString(),
+      transactionId: String(r.id), // dedup: mesma linha nunca conta duas vezes
+      eventSource: "WEB",
     };
-    if (r.gclid) c.gclid = r.gclid;
-    else if (r.wbraid) c.wbraid = r.wbraid;
-    else if (r.gbraid) c.gbraid = r.gbraid;
-    return c;
   });
 
-  // 4) Enviar (partial_failure: sucessos passam mesmo se algumas linhas falharem).
-  let response;
+  // 4) Enviar via Data Manager API (validateOnly = dry-run nativo).
+  let out;
   try {
-    response = await customer.conversionUploads.uploadClickConversions({
-      customer_id: String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g, ""),
-      conversions,
-      partial_failure: true,
-      validate_only: !!dryRun,
-    });
+    out = await ingestEventsViaDataManager(accessToken, events, actionId, dryRun);
   } catch (e) {
-    const d = describeAdsError(e);
-    result.error = d.text + (d.requestId ? ` (request_id=${d.requestId})` : "");
-    console.error("[AdsConv] ❌ Falha total no upload: " + result.error);
+    result.error = "falha de rede no Data Manager: " + e.message;
+    console.error("[AdsConv] ❌ " + result.error);
     return result;
   }
 
-  // 5) Determinar sucesso por índice. Com partial_failure, os results das linhas
-  // que falharam voltam vazios (sem gclid); as bem-sucedidas ecoam o gclid.
-  // Tolerante a snake_case/camelCase (depende do parser da lib/gRPC).
-  const results = response?.results || [];
-  const pfErr = response?.partial_failure_error || response?.partialFailureError;
-  const pfMsg = pfErr?.message || "";
+  // 5) A API valida o LOTE inteiro: 2xx = todas aceitas; erro = todas recusadas
+  // (com a mensagem real). Não há status por-evento no 2xx.
   const okIds = [];
-  // Sem partial_failure_error, o contrato da API garante que TODAS passaram.
-  // Com erro parcial, distinguimos vencedoras (result ecoa os campos) das que
-  // falharam (result vazio).
-  const allSucceeded = !pfErr;
-  pend.forEach((r, i) => {
-    const res = results[i] || {};
-    const success = allSucceeded || !!(res.gclid || res.wbraid || res.gbraid || res.conversion_date_time || res.conversionDateTime || res.conversion_action || res.conversionAction);
-    const ident = r.gclid || r.wbraid || r.gbraid || "";
-    const gshort = ident.slice(0, 14) + "…";
-    if (success) {
+  if (out.ok) {
+    pend.forEach(r => {
       result.uploaded++;
       okIds.push(r.id);
-      result.details.push({ ok: true, ident, msg: "enviada" });
-      console.log(`[AdsConv] ✅ ${gshort} enviada (${conversions[i].conversion_date_time}, ${conversions[i].conversion_value} BRL).`);
-    } else {
+      result.details.push({ ok: true, ident: r.gclid || r.wbraid || r.gbraid || "", msg: "enviada" });
+    });
+    console.log(`[AdsConv] ✅ ${result.uploaded} evento(s) aceito(s) pela Data Manager${out.requestId ? ` (request ${out.requestId})` : ""}${dryRun ? " [DRY-RUN]" : ""}.`);
+  } else {
+    result.error = out.error + (out.requestId ? ` (request ${out.requestId})` : "");
+    pend.forEach(r => {
       result.failed++;
-      result.details.push({ ok: false, ident, msg: pfMsg || "recusada pela API" });
-      console.error(`[AdsConv] ❌ ${gshort} recusada${pfMsg ? ": " + pfMsg : ""}.`);
-    }
-  });
+      result.details.push({ ok: false, ident: r.gclid || r.wbraid || r.gbraid || "", msg: out.error });
+    });
+    console.error(`[AdsConv] ❌ Data Manager recusou o lote: ${out.error}`);
+  }
 
-  // 6) Marcar as enviadas como reported (a não ser em dry-run/validate_only).
+  // 6) Marcar as enviadas como reported (nunca em dry-run/validate_only).
   if (okIds.length && !dryRun) {
     try {
       await supabase.from("ad_clicks").update({ reported: true, reported_at: new Date() }).in("id", okIds);
@@ -716,7 +771,7 @@ async function uploadClickConversions(deps) {
     }
   }
 
-  result.ok = result.failed === 0;
+  result.ok = result.failed === 0 && !result.error;
   console.log(`[AdsConv] Concluído: ${result.uploaded} enviada(s), ${result.failed} falha(s) de ${result.pending} pendente(s)${dryRun ? " [DRY-RUN]" : ""}.`);
   return result;
 }

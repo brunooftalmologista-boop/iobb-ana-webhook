@@ -5,7 +5,11 @@
 // Pré-requisitos:
 //   - OAuth Client do tipo "App para computador (Desktop app)" criado no
 //     Google Cloud Console (Client ID + Client Secret).
-//   - Escopo autorizado na tela de consentimento: .../auth/adwords
+//   - Escopos autorizados na tela de consentimento: .../auth/adwords E
+//     .../auth/datamanager (este último exige a "Data Manager API" HABILITADA
+//     no projeto do Google Cloud — Ativar APIs e serviços → Data Manager API).
+//   - O refresh token gerado cobre OS DOIS escopos: relatórios/campanhas (Ads
+//     API) e upload de conversões (Data Manager API).
 //
 // Uso:
 //   GOOGLE_ADS_CLIENT_ID=xxx GOOGLE_ADS_CLIENT_SECRET=yyy node generate-refresh-token.js
@@ -22,7 +26,9 @@ const axios = require("axios");
 
 const PORT = 53682;
 const REDIRECT_URI = `http://localhost:${PORT}`;
-const SCOPE = "https://www.googleapis.com/auth/adwords";
+// Dois escopos: adwords (relatórios/campanhas) + datamanager (upload de
+// conversões via Data Manager API). Separados por espaço.
+const SCOPE = "https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/datamanager";
 
 function ask(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
