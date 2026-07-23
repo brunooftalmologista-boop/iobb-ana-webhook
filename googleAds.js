@@ -732,6 +732,11 @@ function buildConversionUploadSummary(r) {
   L.push(`✅ Enviadas: ${r.uploaded}`);
   if (r.failed) L.push(`❌ Falhas: ${r.failed}`);
   if (r.conversionAction) L.push(`🎯 Ação: ${r.conversionAction}`);
+  // Motivo das recusas: o partial_failure_error da API fica em details[].msg.
+  // Sem isto, o diagnóstico só aparece nos logs do Render. Mostra o 1º motivo
+  // real (dedup) para o comando #ADSCONV ser autoexplicativo.
+  const motivos = [...new Set((r.details || []).filter(d => !d.ok && d.msg && d.msg !== "recusada pela API").map(d => d.msg))];
+  if (motivos.length) L.push(`📄 Motivo: ${motivos.join(" | ").slice(0, 500)}`);
   if (r.error) L.push(`⚠️ ${r.error}`);
   return L.join("\n");
 }
