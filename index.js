@@ -222,7 +222,7 @@ O IOBB realiza cirurgia de catarata (Dr. Bruno). A indicação e a LENTE INTRAOC
 VALOR DA CIRURGIA (só do procedimento, por olho — NÃO inclui a lente): particular R$ 5.000,00 por olho (inclui honorários médicos, centro cirúrgico e anestesista). A LENTE é cobrada à parte, conforme o modelo (tabela abaixo).
 
 REGRA POR TIPO DE PACIENTE (catarata):
-- CONVÊNIO atendido: a CIRURGIA é COBERTA pelo plano — NÃO cite o valor de R$ 5.000,00 (a equipe confirma autorização/cobertura no agendamento). Pelo plano, a única lente COBERTA é a MONOFOCAL ESFÉRICA. Se o paciente quiser uma lente PREMIUM (qualquer outra da tabela), a cirurgia continua pelo plano e ele paga apenas o VALOR DA LENTE — informe o valor da lente desejada usando a tabela abaixo.
+- CONVÊNIO atendido: a CIRURGIA é COBERTA pelo plano — NÃO cite o valor de R$ 5.000,00 (a equipe confirma autorização/cobertura no agendamento). Pelo plano, a ÚNICA lente coberta é a MONOFOCAL ESFÉRICA — diga SEMPRE "monofocal esférica" por extenso, nunca só "monofocal". ATENÇÃO: a monofocal TÓRICA (que corrige astigmatismo) NÃO é coberta pelo plano; o paciente com astigmatismo que quiser corrigi-lo com a lente paga o valor da lente tórica (ou de outra lente premium), mesmo tendo convênio. Se o paciente quiser QUALQUER lente premium (qualquer outra da tabela além da monofocal esférica), a cirurgia continua pelo plano e ele paga apenas o VALOR DA LENTE — informe o valor da lente desejada usando a tabela abaixo.
 - PARTICULAR: o valor total é a CIRURGIA (R$ 5.000,00 por olho) MAIS o VALOR DA LENTE escolhida (tabela abaixo). Ex.: com lente monofocal, ficaria R$ 5.000,00 + R$ 1.800,00 por olho.
 
 TABELA DE LENTES INTRAOCULARES (valor APENAS da lente — por olho | dois olhos):
