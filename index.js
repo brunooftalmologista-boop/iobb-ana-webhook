@@ -355,7 +355,7 @@ A clínica não é pronto-socorro. Para sintomas agudos — dor forte, perda sú
 Ao receber um relato de sintoma agudo, NÃO faça perguntas de triagem (não pergunte há quanto tempo, qual olho, nem histórico). Vá direto ao acolhimento e à orientação de contato/pronto-socorro.
 
 ### Remarcar, cancelar ou confirmar agendamento
-Alterações de um agendamento já existente são feitas pela equipe. Oriente a pessoa a falar com as secretárias pelo (61) 3033-6605 (seg-sex 8h-18h) ou deixe um recado para a equipe retornar no próximo dia útil.
+Se a seção "### Agendamentos que ESTE paciente já tem" estiver no seu contexto, você PODE informar ao paciente os agendamentos que ele já tem (data, hora, unidade) — nunca diga que "não tem acesso aos agendamentos". Já as ALTERAÇÕES (remarcar/cancelar) de um agendamento existente são feitas pela equipe: oriente a pessoa a falar com as secretárias pelo (61) 3033-6605 (seg-sex 8h-18h) ou deixe um recado para a equipe retornar no próximo dia útil.
 
 ### Documentos e contatos
 Atestados, laudos e relatórios são avaliados e emitidos pelo médico na consulta, conforme o caso. Se pedirem site ou redes sociais que você não conhece, não invente — ofereça o telefone (61) 3033-6605 e o retorno da equipe.
@@ -531,6 +531,15 @@ function brasiliaAgora() {
     hojeDow: now.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long" }),
     amanhaDow: amanha.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long" }),
   };
+}
+
+// Unidade que atende num dado dia (regra fixa). Calculado em CÓDIGO para a Ana não
+// ter que deduzir o dia da semana (ela errava). seg/qua/sex = Conjunto; ter/qui = Tagua.
+function unidadeDoDia(date) {
+  const d = date.toLocaleDateString("en-US", { timeZone: TZ_BR, weekday: "long" }).toLowerCase();
+  if (d === "monday" || d === "wednesday" || d === "friday") return "Conjunto Nacional";
+  if (d === "tuesday" || d === "thursday") return "Taguatinga";
+  return null;   // fim de semana / sem atendimento
 }
 
 // Calcula os horários REALMENTE livres nos próximos 14 dias, cruzando a grade de
@@ -792,6 +801,23 @@ async function cancelarAgendamento(id) {
 }
 
 // Lista agendamentos ativos numa janela [de, ate] para a grade do painel.
+// Agendamentos ATIVOS futuros deste paciente (por telefone) — para a Ana poder
+// INFORMAR "você tem uma consulta em X". Alterações continuam com a equipe. Casa o
+// telefone com o `from` do WhatsApp (pega os que a própria Ana marcou; iClinic/
+// secretária podem ter outro formato de telefone e não aparecem aqui).
+async function agendamentosDoPaciente(telefone) {
+  if (!telefone) return [];
+  try {
+    const { data } = await supabase.from("appointments")
+      .select("unidade, inicio, status, motivo")
+      .eq("paciente_telefone", telefone)
+      .neq("status", "cancelado")
+      .gte("inicio", new Date(Date.now() - 2 * 3600 * 1000).toISOString())
+      .order("inicio", { ascending: true }).limit(5);
+    return data || [];
+  } catch (e) { console.error("[Agenda DB] agendamentosDoPaciente falhou:", e.message); return []; }
+}
+
 async function listarAgendamentos({ de, ate, unidade }) {
   let q = supabase.from("appointments")
     .select("id, unidade, inicio, fim, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, origem, hold_expira_em")
@@ -2443,7 +2469,18 @@ app.post("/webhook", async (req, res) => {
     // O prompt FIXO (SYSTEM_PROMPT) vai como bloco cacheado (cache_control) e o
     // conteúdo variável (data/hora, anúncio, agenda) como bloco separado — leituras
     // de cache custam ~0,1× do input, cortando o maior gasto por mensagem.
-    let dynamicPrompt = `### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje}.\n- AMANHÃ é ${dt.amanha}.\nSempre calcule "hoje", "amanhã", datas e dia da semana a partir daqui (America/Sao_Paulo). Nunca use outra referência de data.`;
+    const uniHoje = unidadeDoDia(dt.now);
+    const uniAmanha = unidadeDoDia(new Date(dt.now.getTime() + 24 * 3600 * 1000));
+    let dynamicPrompt = `### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje} — ${uniHoje ? `dia de atendimento na unidade ${uniHoje}` : "SEM atendimento (fim de semana/feriado)"}.\n- AMANHÃ é ${dt.amanha} — ${uniAmanha ? `atendimento na unidade ${uniAmanha}` : "sem atendimento"}.\nAo dizer qual unidade atende numa data, use ESTA informação já calculada — NÃO deduza o dia da semana sozinha. Lembrete da regra fixa: seg/qua/sex = Conjunto Nacional; ter/qui = Taguatinga. Nunca use outra referência de data.`;
+
+    // Agenda do paciente: injeta os agendamentos que ELE já tem, para a Ana informar.
+    try {
+      const meusAg = await agendamentosDoPaciente(from);
+      if (meusAg.length) {
+        const linhas = meusAg.map(a => `- ${fmtDataHoraBR(a.inicio)} em ${a.unidade}${a.motivo ? ` (${a.motivo})` : ""}`).join("\n");
+        dynamicPrompt += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar sobre a(s) consulta(s) dele — não diga que "não tem acesso". Para REMARCAR ou CANCELAR, oriente a equipe pelo (61) 3033-6605 (você não altera). Se o paciente só quer confirmar/saber do que já tem, NÃO ofereça um novo horário.`;
+      }
+    } catch (_) {}
 
     // Anúncio (Click-to-WhatsApp): injeta o contexto do anúncio para a Ana abrir
     // DIRETO no tema, mesmo com mensagem genérica. A Meta só envia o referral na
