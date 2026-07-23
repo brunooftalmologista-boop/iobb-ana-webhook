@@ -676,6 +676,17 @@ function detectUnidade(messages) {
   return null;
 }
 
+// Detecta se o paciente é PARTICULAR (libera agendamento no MESMO dia). Só true
+// quando ele afirma "particular" e NÃO menciona convênio/plano — convênio mantém a
+// janela de antecedência (24h). Na dúvida, retorna false (trata como convênio).
+function detectAtendimentoParticular(messages) {
+  const txt = messages.filter(m => m.role === "user").map(m => (m.content || "").toLowerCase())
+    .join(" ").normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (!/particular/.test(txt)) return false;
+  if (/convenio|plano de saude|\bplano\b|unimed/.test(txt)) return false;
+  return true;
+}
+
 // Busca o iCal. Servidor-para-servidor NÃO tem CORS, então baixamos direto do
 // Google (confiável). O proxy allorigins.win, usado antes, estava fora do ar e
 // derrubava a agenda inteira — deixando a Ana sem dados e "inventando" vagas.
@@ -1031,7 +1042,8 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId }
     // um token reaproveitado/alucinado gravaria em dia/hora inválido (ex.: terça no
     // Conjunto, no almoço, ou <24h). Se a leitura falhar (null), NÃO bloqueia — o
     // índice único ainda protege contra overbooking do slot exato.
-    const minTs = Date.now() + ANA_ANTECEDENCIA_HORAS * 3600 * 1000;
+    const bufferH = /particular/i.test(String(convenio || "")) ? 0 : ANA_ANTECEDENCIA_HORAS;  // particular pode no mesmo dia
+    const minTs = Date.now() + bufferH * 3600 * 1000;
     const vagasAtuais = await fetchSlotsDB(unidade);
     if (Array.isArray(vagasAtuais)) {
       const existe = vagasAtuais.some(s => s.start.getTime() === ini.getTime() && s.start.getTime() >= minTs);
@@ -1049,7 +1061,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId }
     if (r.taken) {
       // Corrida: a vaga foi ocupada durante a conversa. Oferece a próxima livre.
       const slots = await fetchSlotsDB(unidade);
-      const minTs = Date.now() + ANA_ANTECEDENCIA_HORAS * 3600 * 1000;   // mesma antecedência
+      const minTs = Date.now() + (/particular/i.test(String(convenio || "")) ? 0 : ANA_ANTECEDENCIA_HORAS) * 3600 * 1000;   // mesma antecedência (particular = mesmo dia)
       const prox = (slots || []).find(s => s.start.getTime() >= minTs);
       const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve para você?` : `Vou verificar outra opção e já te retorno.`;
       await trySendWhatsApp(from, `Peço desculpas — o horário de ${fmtDataHoraBR(ini.toISOString())} acabou de ser preenchido. ${alt}`);
@@ -2513,7 +2525,8 @@ app.post("/webhook", async (req, res) => {
       // Rede de segurança: a Ana só oferece horários com pelo menos
       // ANA_ANTECEDENCIA_HORAS de antecedência (padrão 24h). O painel não filtra.
       // Se slots===null (falha ao carregar), mantém null para o ramo "indisponível".
-      const minTs = Date.now() + ANA_ANTECEDENCIA_HORAS * 3600 * 1000;
+      const bufferH = detectAtendimentoParticular(messages) ? 0 : ANA_ANTECEDENCIA_HORAS;  // particular: mesmo dia; convênio: 24h
+      const minTs = Date.now() + bufferH * 3600 * 1000;
       const slotsOferta = Array.isArray(slots) ? slots.filter(s => s.start.getTime() >= minTs) : slots;
       if (slotsOferta === null) {
         dynamicPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
