@@ -760,7 +760,10 @@ function buildConversionUploadSummary(r) {
 // servido) — sem ele o clique não captura o gclid e o ciclo de conversão quebra.
 function buildRefrativaSpec() {
   const base = (process.env.GOOGLE_ADS_LP_BASE_URL || "").replace(/\/+$/, "");
-  const finalUrl = base ? `${base}/lp/refrativa` : null;
+  // Path LIMPO (/refrativa), não /lp/refrativa: no domínio iobb.com.br o Cloudflare
+  // só encaminha os paths limpos; /lp/* cai na home institucional (sem rastreio).
+  // O app serve ambas as rotas, então /<tema> funciona também no onrender.
+  const finalUrl = base ? `${base}/refrativa` : null;
   // Descrições reaproveitadas entre os grupos (todas ≤90 caracteres).
   const descComuns = [
     "Avaliação para cirurgia refrativa em Brasília. Agende pelo WhatsApp, sem burocracia.",
@@ -877,11 +880,13 @@ function buildRefrativaSpec() {
 
 // Spec da campanha de Lentes Esclerais (nicho de alto valor: adaptação com
 // contactóloga p/ ceratocone e córneas irregulares). Mesmo formato da refrativa.
-// Destino /lp/escleral (tema adicionado em LP_TEMAS). Negativas focadas em cortar
+// Destino /escleral (path limpo; tema em LP_TEMAS). Negativas focadas em cortar
 // lente cosmética/colorida/descartável (o grande ruído do termo "lente de contato").
 function buildEscleralSpec() {
   const base = (process.env.GOOGLE_ADS_LP_BASE_URL || "").replace(/\/+$/, "");
-  const finalUrl = base ? `${base}/lp/escleral` : null;
+  // Path LIMPO (/escleral) — ver nota em buildRefrativaSpec. /lp/escleral morre no
+  // Cloudflare; foi a causa da escleral queimar verba na home desde a migração.
+  const finalUrl = base ? `${base}/escleral` : null;
   const geoTargets = (process.env.GOOGLE_ADS_ESCLERAL_GEO || "Distrito Federal")
     .split(",").map(s => s.trim()).filter(Boolean);
   const desc = [
@@ -976,7 +981,8 @@ function buildEscleralSpec() {
 // benefício/legal (aposentadoria/INSS/CID/CNH) que é grande no ceratocone.
 function buildCeratoconeCirurgicoSpec() {
   const base = (process.env.GOOGLE_ADS_LP_BASE_URL || "").replace(/\/+$/, "");
-  const finalUrl = base ? `${base}/lp/ceratocone` : null;
+  // Path LIMPO (/ceratocone) — ver nota em buildRefrativaSpec.
+  const finalUrl = base ? `${base}/ceratocone` : null;
   const geoTargets = (process.env.GOOGLE_ADS_CERATOCONE_GEO || "Distrito Federal")
     .split(",").map(s => s.trim()).filter(Boolean);
   const desc = [
