@@ -570,6 +570,7 @@ function getAvailableSlots(events, unidadePref) {
     for (let h = regra.inicio; h < regra.fim; h++) {
       if (h === 13) continue; // almoço 13h–14h
       for (let m = 0; m < 60; m += SLOT_MIN) {
+        if (h === 12 && m === 40) continue; // 12:40 bloqueado em todas as unidades (pausa fixa)
         // Instante absoluto do slot, ancorado em Brasília (-03:00).
         const slotStart = new Date(`${dateStr}T${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:00-03:00`);
         const slotEnd = new Date(slotStart.getTime() + SLOT_MIN * 60000);
@@ -609,6 +610,7 @@ function agendaPorDia(events, dias = 7) {
     for (let h = regra.inicio; h < regra.fim; h++) {
       if (h === 13) continue;
       for (let m = 0; m < 60; m += SLOT_MIN) {
+        if (h === 12 && m === 40) continue; // 12:40 bloqueado em todas as unidades (pausa fixa)
         const s = new Date(`${dateStr}T${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:00-03:00`);
         const e = new Date(s.getTime() + SLOT_MIN * 60000);
         if (s <= now) continue;
