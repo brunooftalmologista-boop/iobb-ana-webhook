@@ -3627,6 +3627,7 @@ const LP_HTML = {};
 for (const [tema, arquivo] of Object.entries({
   consulta: "landings/consulta.html",
   ceratocone: "landings/ceratocone.html",
+  escleral: "landings/escleral.html",
   refrativa: "landings/refrativa.html",
   taguatinga: "landings/taguatinga.html",
   "aguas-claras": "landings/aguas-claras.html",
