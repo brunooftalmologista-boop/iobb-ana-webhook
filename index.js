@@ -990,10 +990,25 @@ function startSyncIClinic() {
 // [inicio:...] que a Ana copia no bloco [AGENDAR] ao confirmar. Limita a
 // `maxSlots` para não estourar o prompt (a Ana oferece UMA por vez, então um
 // punhado basta). O paciente vê só a parte humana ("terça 22/07 às 10:00").
-function formatSlotsParaAgendar(slots, maxSlots = 12) {
-  return slots.slice(0, maxSlots)
-    .map(s => `- ${s.dia} às ${s.hora} (${s.unidade}) [inicio:${s.start.toISOString()}]`)
-    .join("\n");
+// Formata as vagas para a Ana. Agrupa por DIA e mostra TODOS os horários de cada
+// dia (até `maxDias` dias). Antes havia um teto GLOBAL de 12 slots — como os slots
+// vêm em ordem cronológica, os horários da TARDE dos dias mais à frente ficavam de
+// fora, e a Ana dizia "só tem de manhã" mesmo com a tarde toda livre. Cada slot
+// mantém o token [inicio:] para a marcação.
+function formatSlotsParaAgendar(slots, maxDias = 8) {
+  const byDia = new Map();
+  for (const s of slots) {
+    const key = `${s.dia}|${s.unidade}`;
+    if (!byDia.has(key)) byDia.set(key, []);
+    byDia.get(key).push(s);
+  }
+  const linhas = [];
+  let dias = 0;
+  for (const [, arr] of byDia) {
+    if (++dias > maxDias) break;
+    for (const s of arr) linhas.push(`- ${s.dia} às ${s.hora} (${s.unidade}) [inicio:${s.start.toISOString()}]`);
+  }
+  return linhas.join("\n");
 }
 
 // Extrai o bloco técnico [AGENDAR]...[/AGENDAR] que a Ana anexa quando o paciente
