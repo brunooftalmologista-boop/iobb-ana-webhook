@@ -2151,7 +2151,13 @@ app.post("/webhook", async (req, res) => {
     // mesmo que a mensagem dele seja genérica ("posso ter mais informações sobre
     // isso?"). É assim que a Ana descobre o tema do anúncio (ela NÃO vê a imagem/vídeo).
     const referral = msg.referral || null;
-    if (referral) console.log("[Ana][Anúncio] Click-to-WhatsApp:", JSON.stringify({ source_type: referral.source_type, source_id: referral.source_id, headline: referral.headline, body: referral.body }));
+    if (referral) {
+      console.log("[Ana][Anúncio] Click-to-WhatsApp:", JSON.stringify({ source_type: referral.source_type, source_id: referral.source_id, headline: referral.headline, body: referral.body }));
+      // Registro DURÁVEL de que a Meta ENVIOU o referral (independe do insert do
+      // ad_click) — assim dá para confirmar no banco se o rastreio de IG/FB está
+      // chegando quando as campanhas voltarem, sem depender dos logs do Render.
+      await registrarErro("referral_recebido", JSON.stringify(referral).slice(0, 1500), { telefone: from });
+    }
     let text = "";
     let mediaNotification = "";
     let media = null; // { path, type, name } do anexo salvo no Storage, se houver
