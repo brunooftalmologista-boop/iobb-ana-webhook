@@ -345,6 +345,17 @@ Regras do bloco:
 - motivo: use "Consulta" por padrão. NUNCA pergunte "qual exame?" nem ofereça/recite a lista de exames ao paciente. Registre "Retorno" se o paciente disser que é retorno. Registre "Avaliação de cirurgia" quando o atendimento seguiu o fluxo de cirurgia refrativa (ou de ceratocone com interesse cirúrgico), MESMO que o paciente não use essa palavra exata.
 - NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
 
+### Registro de cancelamento [CANCELAR] (INVISÍVEL ao paciente)
+Use [CANCELAR] para DESMARCAR um agendamento que esteja na seção "### Agendamentos que ESTE paciente já tem" marcado como "você PODE cancelar/remarcar este". Só faça isso DEPOIS de o paciente confirmar que quer cancelar. Anexe ao FINAL da mensagem, exatamente:
+[CANCELAR]
+inicio: <copie o [inicio:...] EXATO daquele agendamento> | unidade: <Conjunto Nacional ou Taguatinga>
+[/CANCELAR]
+Regras do bloco:
+- O "inicio" TEM que ser o token [inicio:...] exato do agendamento a cancelar — é o que garante cancelar o horário certo. Nunca reescreva à mão.
+- REMARCAÇÃO = desmarcar + marcar: na MESMA mensagem, coloque o [CANCELAR] do horário ANTIGO e o [AGENDAR] do NOVO horário (que o paciente acabou de confirmar). O sistema marca o novo e só então cancela o antigo.
+- Só cancele agendamentos marcados como "você PODE cancelar/remarcar este". Nunca emita [CANCELAR] para um agendamento "alteração só pela equipe" (nesses casos, oriente o telefone (61) 3033-6605).
+- NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
+
 ### Ceratocone
 Somos referência em ceratocone. Tratamentos que oferecemos, conforme cada caso: crosslinking, anel de Ferrara e lentes de contato especiais (rígidas/esclerais). A cirurgia refrativa a laser geralmente não é indicada no ceratocone — a definição é sempre do médico na avaliação.
 Você pode perguntar UMA vez, de forma leve (nunca como triagem clínica), apenas se o diagnóstico de ceratocone já foi confirmado por um médico — só para direcionar a unidade/avaliação. NÃO pergunte sobre progressão, piora, sintomas, tempo nem histórico; se o paciente relatar isso, acolha e conduza à avaliação, sem comentar o quadro. Se ela não souber, não há problema; siga para a consulta de avaliação.
@@ -379,7 +390,8 @@ A clínica não é pronto-socorro. Para sintomas agudos — dor forte, perda sú
 Ao receber um relato de sintoma agudo, NÃO faça perguntas de triagem (não pergunte há quanto tempo, qual olho, nem histórico). Vá direto ao acolhimento e à orientação de contato/pronto-socorro.
 
 ### Remarcar, cancelar ou confirmar agendamento
-Se a seção "### Agendamentos que ESTE paciente já tem" estiver no seu contexto, você PODE informar ao paciente os agendamentos que ele já tem (data, hora, unidade) — nunca diga que "não tem acesso aos agendamentos". Já as ALTERAÇÕES (remarcar/cancelar) de um agendamento existente são feitas pela equipe: oriente a pessoa a falar com as secretárias pelo (61) 3033-6605 (seg-sex 8h-18h) ou deixe um recado para a equipe retornar no próximo dia útil.
+Se a seção "### Agendamentos que ESTE paciente já tem" estiver no seu contexto, você PODE informar ao paciente os agendamentos que ele já tem (data, hora, unidade) — nunca diga que "não tem acesso aos agendamentos".
+DESMARCAR e REMARCAR: você PODE desmarcar/remarcar SOMENTE os agendamentos daquela seção marcados com "você PODE cancelar/remarcar este" (são os que a própria agenda automática controla). Antes de desmarcar, CONFIRME com o paciente ("Confirma que deseja cancelar a consulta de [dia] às [hora]?"). Ao confirmar o cancelamento, emita o bloco [CANCELAR] (ver abaixo). Para REMARCAR, ofereça um novo horário disponível; ao o paciente confirmar, emita [CANCELAR] do antigo E [AGENDAR] do novo na MESMA mensagem (o sistema marca o novo e cancela o antigo, nessa ordem segura). Para agendamentos marcados "alteração só pela equipe" (ou que você não vê na seção), NÃO tente alterar: oriente a pessoa a falar com as secretárias pelo (61) 3033-6605 (seg-sex 8h-18h) ou deixe um recado.
 
 ### Documentos e contatos
 Atestados, laudos e relatórios são avaliados e emitidos pelo médico na consulta, conforme o caso. Se pedirem site ou redes sociais que você não conhece, não invente — ofereça o telefone (61) 3033-6605 e o retorno da equipe.
@@ -846,7 +858,7 @@ async function agendamentosDoPaciente(telefone) {
   if (!telefone) return [];
   try {
     const { data } = await supabase.from("appointments")
-      .select("unidade, inicio, status, motivo")
+      .select("id, unidade, inicio, status, motivo, origem")
       .eq("paciente_telefone", telefone)
       .neq("status", "cancelado")
       .gte("inicio", new Date(Date.now() - 2 * 3600 * 1000).toISOString())
@@ -1104,6 +1116,75 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId }
     console.log(`[Agendar] ✅ Agendado via Ana: ${unidade} ${fmtDataHoraBR(ini.toISOString())} (${nome || "—"}).`);
     return { ok: true, appointment: r.appointment };
   } catch (e) { console.error("[Agendar] Exceção:", e.message); return { ok: false, error: e.message }; }
+}
+
+// Extrai o bloco [CANCELAR] inicio: <ISO> | unidade: <...>. Mesma mecânica do extrairAgendar.
+function extrairCancelar(reply) {
+  const re = /\[CANCELAR\]([\s\S]*?)\[\/CANCELAR\]/i;
+  let inner, limpo;
+  const m = reply.match(re);
+  if (m) { inner = m[1]; limpo = reply.replace(re, "").replace(/\n{3,}/g, "\n\n").trim(); }
+  else {
+    const mo = reply.match(/\[CANCELAR\]([\s\S]*)$/i);
+    if (!mo) return { limpo: reply, registro: null };
+    inner = mo[1]; limpo = reply.slice(0, mo.index).replace(/\n{3,}/g, "\n\n").trim();
+  }
+  const campos = {};
+  for (const par of inner.replace(/\n/g, " ").split("|")) {
+    const idx = par.indexOf(":");
+    if (idx === -1) continue;
+    const chave = par.slice(0, idx).trim().toLowerCase().replace(/^-+\s*/, "");
+    const valor = par.slice(idx + 1).trim();
+    if (chave) campos[chave] = valor;
+  }
+  return { limpo, registro: Object.keys(campos).length ? campos : null };
+}
+
+// Cancela um agendamento que a Ana confirma com o paciente. SEGURANÇA: só cancela
+// se for da AGENDA DO PAINEL feita pela própria Ana (origem 'ana') E do telefone do
+// paciente. Agendamentos do iClinic/secretária NÃO são tocados (cancelar o reflexo
+// não cancela no iClinic e o sync recria) — esses vão para a equipe. NUNCA lança.
+async function processarCancelarDaAna({ registro, from, conversationId }) {
+  try {
+    const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
+    const inicioRaw = limpo(registro.inicio);
+    if (!inicioRaw) { console.error("[Cancelar] Bloco sem inicio."); return { ok: false }; }
+    const ini = new Date(inicioRaw);
+    if (isNaN(ini.getTime())) { console.error("[Cancelar] inicio inválido:", inicioRaw); return { ok: false }; }
+    let unidade = limpo(registro.unidade);
+    if (unidade) {
+      const un = unidade.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      if (un.includes("taguatinga") || un.includes("aguas claras")) unidade = "Taguatinga";
+      else if (un.includes("conjunto") || un.includes("asa norte")) unidade = "Conjunto Nacional";
+    }
+    const { data: achados } = await supabase.from("appointments")
+      .select("id, unidade, origem, paciente_nome")
+      .eq("paciente_telefone", from).eq("inicio", ini.toISOString())
+      .in("status", ["reservado", "confirmado"]);
+    const alvo = (achados || []).find(a => a.origem === "ana" && (!unidade || a.unidade === unidade))
+              || (achados || []).find(a => a.origem === "ana");
+    if (!alvo) {
+      const outroAtivo = (achados || []).find(a => a.origem !== "ana");   // iClinic/secretária ativo
+      if (outroAtivo) {
+        // Existe um agendamento de OUTRA origem (iClinic/secretária) nesse horário —
+        // a Ana não mexe (não divergir); encaminha à equipe.
+        console.warn(`[Cancelar] Horário ${ini.toISOString()} é de outra origem (${outroAtivo.origem}) — encaminho à equipe.`);
+        await espelharParaSecretaria("[Cancelamento — verificar]",
+          `⚠️ *PEDIDO DE CANCELAMENTO/REMARCAÇÃO (verificar)*\n📱 ${from}\n🕐 ${fmtDataHoraBR(ini.toISOString())}\nEsse horário não está na agenda automática da Ana (${outroAtivo.origem}). Por favor, verifiquem e ajustem.`);
+        await marcarPendenciaEquipe(conversationId, "action");
+        return { ok: false, encaminhado: true };
+      }
+      // Nada ATIVO nesse horário — provavelmente já cancelado (ex.: a remarcação via
+      // [AGENDAR] já cancelou o antigo). Não alarma a equipe.
+      console.log(`[Cancelar] Nada ativo em ${ini.toISOString()} p/ ${maskFone(from)} — provavelmente já tratado.`);
+      return { ok: false };
+    }
+    await cancelarAgendamento(alvo.id);
+    await espelharParaSecretaria("[Cancelado pela Ana]",
+      `❌ *CANCELAMENTO (via Ana)*\n👤 ${alvo.paciente_nome || from}\n📱 ${from}\n📍 ${alvo.unidade}\n🕐 ${fmtDataHoraBR(ini.toISOString())}`);
+    console.log(`[Cancelar] ✅ Cancelado via Ana: ${alvo.unidade} ${fmtDataHoraBR(ini.toISOString())}.`);
+    return { ok: true };
+  } catch (e) { console.error("[Cancelar] Exceção:", e.message); return { ok: false, error: e.message }; }
 }
 
 // Chamada à API de mensagens da Anthropic com retry curto SOMENTE em erros
@@ -2548,8 +2629,11 @@ app.post("/webhook", async (req, res) => {
     try {
       const meusAg = await agendamentosDoPaciente(from);
       if (meusAg.length) {
-        const linhas = meusAg.map(a => `- ${fmtDataHoraBR(a.inicio)} em ${a.unidade}${a.motivo ? ` (${a.motivo})` : ""}`).join("\n");
-        dynamicPrompt += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar sobre a(s) consulta(s) dele — não diga que "não tem acesso". Para REMARCAR ou CANCELAR, oriente a equipe pelo (61) 3033-6605 (você não altera). Se o paciente só quer confirmar/saber do que já tem, NÃO ofereça um novo horário.`;
+        const linhas = meusAg.map(a => {
+          const podeMexer = a.origem === "ana";
+          return `- ${fmtDataHoraBR(a.inicio)} em ${a.unidade}${a.motivo ? ` (${a.motivo})` : ""} ${podeMexer ? `[inicio:${new Date(a.inicio).toISOString()}] — você PODE cancelar/remarcar este` : "— alteração só pela equipe"}`;
+        }).join("\n");
+        dynamicPrompt += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar. Se o paciente só quer confirmar/saber, NÃO ofereça novo horário.\nPara os marcados "você PODE cancelar/remarcar este": se o paciente pedir para DESMARCAR, confirme com ele e emita o bloco [CANCELAR] copiando o token [inicio:...] exato. Para REMARCAR, ofereça um novo horário (da lista de disponíveis), e ao confirmar emita [CANCELAR] do antigo + [AGENDAR] do novo (o sistema marca o novo e cancela o antigo). Para os agendamentos "alteração só pela equipe", oriente o (61) 3033-6605 — NÃO tente cancelar você mesma.`;
       }
     } catch (_) {}
 
@@ -2647,7 +2731,8 @@ app.post("/webhook", async (req, res) => {
 
     // Separar os blocos técnicos (invisíveis ao paciente) do texto que será
     // realmente enviado. `reply` nunca conterá nenhum dos blocos.
-    const ag = extrairAgendar(reply);              // [AGENDAR] primeiro (agendamento REAL)
+    const canc = extrairCancelar(reply);           // [CANCELAR] (desmarcar / parte da remarcação)
+    const ag = extrairAgendar(canc.limpo);         // [AGENDAR] (agendamento REAL)
     const pre = extrairPreAgendamento(ag.limpo);   // depois [PREAGENDAMENTO] (fallback)
     const rec = extrairRecado(pre.limpo);          // por fim [RECADO], no texto já limpo
     const registros = pre.registros;
@@ -2669,10 +2754,12 @@ app.post("/webhook", async (req, res) => {
 
     // Prioridade: [AGENDAR] (marca de verdade) > [PREAGENDAMENTO] (fallback) > [RECADO].
     // A Ana nunca deve emitir mais de um, mas se emitir, o agendamento real vence.
+    let agendouOk = false;
     if (ag.registro) {
       // Grava o horário confirmado. Já fecha a conversão de Ads e espelha à
       // secretária lá dentro; em corrida (vaga tomada) manda a correção ao paciente.
-      await processarAgendarDaAna({ registro: ag.registro, patient, from, conversationId: conversation.id });
+      const rAg = await processarAgendarDaAna({ registro: ag.registro, patient, from, conversationId: conversation.id });
+      agendouOk = !!(rAg && rAg.ok);
     }
     else if (registros.length) {
       await notificarSecretaria(registros, patient, from, conversation.id);
@@ -2686,6 +2773,17 @@ app.post("/webhook", async (req, res) => {
     else if (rec.recado) {
       await notificarRecadoEquipe(rec.recado, patient, from);
       await marcarPendenciaEquipe(conversation.id, rec.recado.prioritario ? "urgent" : "action");
+    }
+
+    // CANCELAR (desmarcar / segunda etapa da remarcação) — INDEPENDENTE da cadeia acima.
+    // Se veio junto de um [AGENDAR] (remarcação), só cancela o antigo se o novo foi
+    // gravado com sucesso — assim o paciente NUNCA fica sem nenhum horário.
+    if (canc.registro) {
+      if (ag.registro && !agendouOk) {
+        console.warn("[Cancelar] Remarcação: novo horário não gravou — mantenho o antigo, NÃO cancelo.");
+      } else {
+        await processarCancelarDaAna({ registro: canc.registro, from, conversationId: conversation.id });
+      }
     }
 
     // Espelhar para clínica (isolado: notificarClinica nunca lança)
