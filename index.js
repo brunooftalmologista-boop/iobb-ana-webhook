@@ -3707,9 +3707,48 @@ for (const slug of LP_SLUGS) {
 // Servir o painel web das secretárias
 app.get("/painel", (req, res) => res.sendFile(__dirname + "/painel.html"));
 
+// ── Follow-up de leads frios (recuperação de conversão) ──────────────────────
+// Uma ÚNICA mensagem gentil para LEAD PAGO (ad_click) que engajou e NÃO agendou,
+// ficou quieto há algumas horas (ainda dentro da janela de 24h) e a Ana falou por
+// último. A seleção (janela de tempo, sem recusa, sem agendamento) é feita na
+// função SQL leads_frios_followup(). Só ENVIA de verdade se o setting
+// followup_leads_enabled='true' — assim o deploy fica INERTE até o Bruno ativar.
+async function followUpAtivo() {
+  try {
+    const { data } = await supabase.from("settings").select("value").eq("key", "followup_leads_enabled").maybeSingle();
+    return data?.value === "true";
+  } catch (_) { return false; }
+}
+async function rodarFollowUpLeads() {
+  if (!(await followUpAtivo())) return;
+  try {
+    const { data: leads, error } = await supabase.rpc("leads_frios_followup");
+    if (error) { console.error("[FollowUp] RPC falhou:", error.message); return; }
+    if (!leads || !leads.length) return;
+    for (const lead of leads) {
+      const nome = (lead.name || "").trim().split(/\s+/)[0] || "";
+      const msg = `Olá${nome ? ", " + nome : ""}. Passando para saber se posso dar sequência ao seu atendimento. Se desejar, verifico um horário para a sua avaliação — fico à disposição.`;
+      try {
+        const waId = await sendWhatsApp(lead.phone, msg);
+        await supabase.from("messages").insert({ conversation_id: lead.conversation_id, role: "assistant", content: msg, wa_message_id: waId, event: "followup" });
+        await supabase.from("conversations").update({ last_message: msg, updated_at: new Date().toISOString() }).eq("id", lead.conversation_id);
+        console.log(`[FollowUp] enviado para ${maskFone(lead.phone)} (conv ${lead.conversation_id}).`);
+      } catch (e) {
+        console.error(`[FollowUp] envio falhou (${maskFone(lead.phone)}):`, e?.response?.data ? JSON.stringify(e.response.data) : e.message);
+      }
+    }
+    console.log(`[FollowUp] ciclo: ${leads.length} lead(s) processado(s).`);
+  } catch (e) { console.error("[FollowUp] exceção:", e.message); }
+}
+function startFollowUp() {
+  setInterval(() => rodarFollowUpLeads().catch(e => console.error("[FollowUp] scheduler:", e.message)), 30 * 60 * 1000);
+  console.log("[FollowUp] scheduler ativo (30 min). Envio real só com settings.followup_leads_enabled='true'.");
+}
+
 // Agendador do relatório semanal do Google Ads (segunda 08h, Brasília)
 googleAds.startScheduler({ supabase, sendWhatsApp });
 startResumoDiarioScheduler();
 startSyncIClinic();   // reflete o iClinic (Google Calendars) na agenda do painel
+startFollowUp();      // recuperação de leads frios (inerte até ativar no settings)
 
 app.listen(process.env.PORT || 3000, () => console.log("Ana online!"));
