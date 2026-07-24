@@ -340,7 +340,7 @@ inicio: <copie o valor EXATO do [inicio:...] daquele horário na lista> | unidad
 [/AGENDAR]
 Regras do bloco:
 - O campo "inicio" TEM que ser copiado ao pé da letra do token [inicio:...] do horário escolhido — é o que garante que você marque o horário certo. Nunca reescreva a data/hora à mão.
-- Emita [AGENDAR] UMA única vez, só quando o paciente confirmar de fato o horário. Não emita [AGENDAR] e [PREAGENDAMENTO] na mesma mensagem — use [AGENDAR] quando marcou um horário real; use [PREAGENDAMENTO] quando NÃO havia agenda/horário.
+- Emita [AGENDAR] SOMENTE no exato momento em que o paciente ACABOU de confirmar um horário que você ofereceu. NÃO reemita o bloco em mensagens seguintes (ex.: ao responder "não uso lente", uma dúvida, um agradecimento) — se você já confirmou o horário antes, a marcação já foi feita; apenas converse, SEM anexar [AGENDAR] de novo. Só emita [AGENDAR] outra vez se o paciente pedir para MUDAR o horário e confirmar um NOVO (aí sim, com o novo [inicio:]). Não emita [AGENDAR] e [PREAGENDAMENTO] na mesma mensagem — use [AGENDAR] quando marcou um horário real; use [PREAGENDAMENTO] quando NÃO havia agenda/horário.
 - motivo: use "Consulta" por padrão. NUNCA pergunte "qual exame?" nem ofereça/recite a lista de exames ao paciente. Registre "Retorno" se o paciente disser que é retorno. Registre "Avaliação de cirurgia" quando o atendimento seguiu o fluxo de cirurgia refrativa (ou de ceratocone com interesse cirúrgico), MESMO que o paciente não use essa palavra exata.
 - NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
 
@@ -1035,24 +1035,28 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId }
     const nascimento = limpo(registro.nascimento);
     const observacoes = nascimento ? `Nascimento: ${nascimento}` : null;
 
-    // Idempotência por CONVERSA: se a Ana já marcou um horário nesta conversa, NÃO
-    // cria um segundo. O modelo às vezes RE-EMITE o bloco [AGENDAR] em turnos
-    // seguintes (ex.: numa pergunta sobre receita) — sem esta guarda, isso gerava
-    // marcação dupla (dois horários seguidos para o mesmo paciente). Reagendamento
-    // dentro da mesma conversa é raro e fica a cargo da equipe (ver SYSTEM_PROMPT).
+    // Idempotência / REAGENDAMENTO por conversa. O modelo às vezes RE-EMITE o bloco
+    // [AGENDAR]: se for o MESMO horário → é re-emit, ignora (não duplica). Se for
+    // um horário DIFERENTE → o paciente REMARCOU nesta conversa: cria o novo e
+    // cancela o antigo (senão a Ana confirma um horário que NÃO fica salvo, deixando
+    // o slot "livre" p/ outro paciente = overbooking).
+    let idParaCancelar = null;
     try {
       const { data: existentes } = await supabase.from("appointments")
         .select("id, inicio")
         .eq("conversation_id", String(conversationId))
         .eq("origem", "ana")
         .in("status", ["reservado", "confirmado"])
+        .order("inicio", { ascending: false })
         .limit(1);
       if (existentes && existentes.length) {
         const jaIni = new Date(existentes[0].inicio).getTime();
-        console.log(jaIni === ini.getTime()
-          ? `[Agendar] Ignorado re-emit idêntico (${unidade} ${ini.toISOString()}) — já marcado nesta conversa.`
-          : `[Agendar] Ignorado 2º [AGENDAR] (${ini.toISOString()}) — conversa já tem agendamento ativo em ${new Date(existentes[0].inicio).toISOString()}. Evita duplicidade.`);
-        return { ok: true, already: true };
+        if (jaIni === ini.getTime()) {
+          console.log(`[Agendar] Re-emit idêntico ignorado (${unidade} ${ini.toISOString()}) — já marcado.`);
+          return { ok: true, already: true };
+        }
+        idParaCancelar = existentes[0].id;   // remarcação: cancela o antigo SÓ se o novo gravar
+        console.log(`[Agendar] Reagendamento na conversa: novo ${ini.toISOString()}, antigo ${new Date(jaIni).toISOString()} (id ${idParaCancelar}).`);
       }
     } catch (e) { console.error("[Agendar] Falha na checagem de idempotência (segue e tenta marcar):", e.message); }
 
@@ -1088,6 +1092,11 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId }
       return { ok: false, taken: true };
     }
     if (!r.ok) { console.error("[Agendar] Falha ao gravar:", r.error); return { ok: false, error: r.error }; }
+    // Remarcação: o novo horário foi gravado → cancela o antigo (libera o slot).
+    if (idParaCancelar) {
+      await cancelarAgendamento(idParaCancelar).catch(e => console.error("[Agendar] Falha ao cancelar antigo no reagendamento:", e.message));
+      console.log(`[Agendar] Reagendamento concluído: antigo ${idParaCancelar} cancelado; novo ${fmtDataHoraBR(ini.toISOString())} gravado.`);
+    }
     await marcarConversaoAgendada(conversationId);   // fecha atribuição de Ads (idempotente)
     await espelharParaSecretaria("[Agendado pela Ana]",
       `✅ *AGENDAMENTO (via Ana)*\n👤 Nome: ${nome || "—"}\n📱 Telefone: ${telefone || "—"}\n🎂 Nascimento: ${nascimento || "—"}\n🏥 Convênio: ${convenio || "—"}\n📍 Unidade: ${unidade}\n🕐 Horário: ${fmtDataHoraBR(ini.toISOString())}\n📝 Motivo: ${motivo || "—"}`);
