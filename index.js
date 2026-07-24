@@ -1935,6 +1935,16 @@ async function notificarRecadoEquipe(recado, patient, from) {
   await espelharParaSecretaria(`[Recado ${recado.tipo}${recado.prioritario ? "/PRIORITÁRIO" : ""}]`, texto);
 }
 
+// Marca a conversa como "precisa da equipe" para o painel destacar a caixa
+// (amarelo = 'action'; vermelho = 'urgent'). Limpa ao abrir a conversa no painel.
+// Best-effort: nunca derruba o fluxo.
+async function marcarPendenciaEquipe(conversationId, nivel = "action") {
+  if (!conversationId) return;
+  try {
+    await supabase.from("conversations").update({ team_flag: nivel }).eq("id", conversationId);
+  } catch (e) { console.error("[Painel] Falha ao marcar pendência da equipe:", e.message); }
+}
+
 // ===== Comando admin de envio: "#ENVIAR <numero>: <intenção>" (ou "#MSG ...") =====
 // Rótulo do autor gravado no histórico do painel para mensagens disparadas por um
 // número ADMIN (o médico/equipe pelo WhatsApp), distinto das secretárias.
@@ -2493,6 +2503,7 @@ app.post("/webhook", async (req, res) => {
       // Provável carteirinha: notifica a equipe (que recebe a imagem) e NÃO retorna
       // — cai no fluxo normal, com uma orientação extra no prompt (ver adiante).
       await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification} (provável carteirinha — a Ana segue o pré-agendamento)`);
+      await marcarPendenciaEquipe(conversation.id, "action");   // equipe verifica a carteirinha
     }
 
     // Buscar histórico do banco
@@ -2650,8 +2661,13 @@ app.post("/webhook", async (req, res) => {
       // ad_click/gclid vinculado), o pré-agendamento concluído VIRA conversão
       // offline no Google Ads, sem depender do clique manual no painel.
       await marcarConversaoAgendada(conversation.id);
+      // Sinaliza no painel que a conversa precisa da equipe (pré-agendamento/encaixe).
+      await marcarPendenciaEquipe(conversation.id, "action");
     }
-    else if (rec.recado) await notificarRecadoEquipe(rec.recado, patient, from);
+    else if (rec.recado) {
+      await notificarRecadoEquipe(rec.recado, patient, from);
+      await marcarPendenciaEquipe(conversation.id, rec.recado.prioritario ? "urgent" : "action");
+    }
 
     // Espelhar para clínica (isolado: notificarClinica nunca lança)
     await notificarClinica(`👤 *${patient.name || from}:*\n${text}\n\n🤖 *Ana:*\n${reply}`);
@@ -2811,6 +2827,9 @@ app.get("/api/conversations", async (req, res) => {
 app.get("/api/conversations/:id/messages", async (req, res) => {
   const { data } = await supabase.from("messages").select("*").eq("conversation_id", req.params.id).order("timestamp");
   const msgs = data || [];
+  // Abrir a conversa = a equipe viu o alerta → limpa a marca de "precisa da equipe".
+  supabase.from("conversations").update({ team_flag: null }).eq("id", req.params.id)
+    .then(() => {}, e => console.error("[Painel] Falha ao limpar team_flag:", e?.message || e));
   // O nome da secretária que atende fica em conversations.assigned_to (não é
   // gravado por mensagem). Rotula as mensagens humanas com esse nome para o
   // painel exibir quem respondeu, em vez do genérico "Secretária".

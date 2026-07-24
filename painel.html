@@ -644,7 +644,7 @@ function renderList(){
     const name = displayName(c);
     const unread = isUnread(c);
     const count = unreadCount[c.id]||0;
-    const attn = attention[c.id];  // 'urgent' | 'action' | undefined
+    const attn = c.team_flag || attention[c.id];  // backend (persistente) tem prioridade; heurística é reforço
     const attnCls = attn ? (attn==='urgent' ? 'needs-action needs-urgent' : 'needs-action') : '';
     const attnDot = attn ? `<span class="attn-dot ${attn==='urgent'?'urgent':''}" title="Precisa de ação da equipe"></span>` : '';
     const statusTag = c.status==='human' ? '<span class="tag human">humano</span>'
@@ -806,6 +806,7 @@ async function openConversation(id){
   if(!activeConv) return;
   unreadCount[id]=0;
   delete attention[id];   // abriu → limpa destaque de "precisa de ação"
+  if(activeConv) activeConv.team_flag=null;   // some o destaque na hora (backend limpa via GET /messages)
   unlockAudio();          // é um gesto do usuário → garante áudio destravado
   readState[id]=activeConv.updated_at; saveRead();
 
