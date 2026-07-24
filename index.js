@@ -156,6 +156,7 @@ Regras do bloco:
 Ao comparar o convênio citado com a lista, ignore diferenças de maiúsculas/minúsculas, acentos, hífens e espaços — "pro social", "Pró-Social" e "PROSOCIAL" são o mesmo convênio; "notredame" = "NOTRE DAME". Na dúvida entre nomes muito parecidos, confirme que a equipe valida no agendamento.
 Se o convênio estiver na lista → confirme que atendemos.
 Se não estiver → diga que não atendemos e ofereça atendimento particular.
+REGRA (não repita perguntas): assim que o paciente indicar um CONVÊNIO — citou o nome do plano, disse que tem convênio, OU ENVIOU a carteirinha / foto do cartão do plano — considere que é CONVÊNIO e NUNCA mais pergunte "é particular ou convênio?". Perguntar isso de novo depois de o paciente já ter dito o convênio ou mandado a carteirinha é um ERRO. Se ele enviou a foto da carteirinha (mesmo sem você ver o conteúdo), a equipe já recebeu: agradeça e SIGA o agendamento, sem voltar a perguntar convênio/particular nem pedir a carteirinha de novo.
 Qualquer menção a Unimed → solicite o número da carteirinha ou uma foto dela. IMPORTANTE: isso NÃO interrompe o agendamento — trate a Unimed como qualquer outro convênio atendido: continue coletando a preferência (unidade, período) e os dados, e CONCLUA o agendamento normalmente (marque o horário com [AGENDAR] se houver agenda; senão registre [PREAGENDAMENTO]). Registre o convênio como "Unimed – pendente verificação" e inclua o número da carteirinha se o paciente informou (ou "carteirinha por foto" se ele mandou a imagem). O "pendente" é só a validação da carteirinha/sub-plano — atendemos Unimed normalmente. Ao encerrar, explique que a equipe confirma a COBERTURA da Unimed (o horário você já deixa marcado ou encaminhado). Se o paciente ainda não tiver a carteirinha em mãos, conclua o agendamento mesmo assim e diga que a equipe verifica no contato. Nunca deixe o paciente Unimed sem agendamento só porque falta a carteirinha.
 Consulta por convênio: quando o convênio é atendido, a consulta é pelo plano — o paciente não paga o valor particular. Se houver dúvida sobre cobertura de um procedimento específico, diga que a equipe confirma na hora do agendamento. Nunca cite valor de consulta particular para quem tem convênio atendido.
 Sobre pedido/guia médica, autorização prévia ou carência do convênio: NÃO afirme que precisa nem que não precisa — diga que a equipe confirma esses detalhes no agendamento.
@@ -2488,8 +2489,15 @@ app.post("/webhook", async (req, res) => {
       if (msg.type === "image") {
         try {
           const recent = await getConversationMessages(conversation.id);
-          const ultimaAna = recent.filter(m => m.role === "assistant").slice(-1).map(m => (m.content || "").toLowerCase()).join(" ");
-          fotoDeCarteirinha = /carteirinha|carteira do conv|unimed/.test(ultimaAna);
+          const anasRecentes = recent.filter(m => m.role === "assistant").slice(-3).map(m => (m.content || "").toLowerCase()).join(" ");
+          const tudo = recent.map(m => (m.content || "").toLowerCase()).join(" ");
+          // (a) a Ana pediu recentemente a carteirinha / cartão / foto do plano; OU
+          // (b) a conversa já tem contexto de convênio (nome do plano / Unimed / "convênio").
+          // Assim, uma foto numa conversa de convênio NÃO dead-enda — segue como carteirinha.
+          const anaPediuCartao = /(carteirinha|carteira|cart[aã]o|conv[eê]nio|plano|unimed)/.test(anasRecentes)
+            && /(foto|envi|mand|anex|carteir|cart[aã]o)/.test(anasRecentes);
+          const contextoConvenio = /(conv[eê]nio|unimed|carteirinha|plano de sa[uú]de)/.test(tudo);
+          fotoDeCarteirinha = anaPediuCartao || contextoConvenio;
         } catch (_) {}
       }
       if (!fotoDeCarteirinha) {
