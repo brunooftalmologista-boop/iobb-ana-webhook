@@ -1402,7 +1402,7 @@ async function registrarLeadMeta(referral, phone, conversationId) {
 const WIX_LP_TOKENS = {
   "02DDAA7D": "consulta", "87C5362F": "catarata", "EC147898": "ceratocone",
   "9D8AB2E8": "refrativa", "0097C32A": "taguatinga", "EC39491D": "aguas-claras",
-  "1D5C2C5B": "asa-norte",
+  "1D5C2C5B": "asa-norte", "E5C1E4A0": "escleral",
 };
 
 // Grava um clique POR-LEAD quando o gclid/wbraid/gbraid chegou na mensagem (landing
