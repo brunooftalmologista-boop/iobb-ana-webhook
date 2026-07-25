@@ -2350,6 +2350,10 @@ app.post("/webhook", async (req, res) => {
     let text = "";
     let mediaNotification = "";
     let media = null; // { path, type, name } do anexo salvo no Storage, se houver
+    // Binário da imagem recebida ({ buffer, mimeType }), mantido em memória só
+    // durante este turno para poder ser ENVIADO À ANA quando for carteirinha
+    // (ver "Leitura da carteirinha" adiante). Nunca é anexado em outros casos.
+    let imagemRecebida = null;
 
     // Processar tipo de mensagem
     if (msg.type === "text") {
@@ -2372,6 +2376,7 @@ app.post("/webhook", async (req, res) => {
     } else if (msg.type === "image") {
       const dl = await downloadMedia(msg.image.id);
       if (dl) media = await storeInboundMedia(dl.buffer, dl.mimeType, `imagem.${extFromMime(dl.mimeType)}`);
+      imagemRecebida = dl; // guardado p/ eventual leitura da carteirinha pela Ana
       text = msg.image?.caption ? `[Imagem recebida]: ${msg.image.caption}` : "[Imagem recebida]";
       mediaNotification = "📷 Paciente enviou uma imagem";
     } else if (msg.type === "document") {
@@ -2773,7 +2778,7 @@ app.post("/webhook", async (req, res) => {
     // conteúdo, mas a equipe já recebeu — então ela deve considerar entregue e
     // seguir, em vez de dead-endar como faria com uma imagem qualquer.
     if (fotoDeCarteirinha) {
-      dynamicPrompt += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nVocê havia pedido a carteirinha e ele respondeu com uma imagem. Você NÃO vê o conteúdo, mas a NOSSA EQUIPE já recebeu a foto. Considere a carteirinha ENTREGUE: agradeça, e CONTINUE/CONCLUA o pré-agendamento normalmente (registre no bloco como "carteirinha por foto"). NÃO peça a carteirinha de novo e NÃO diga apenas que "vai encaminhar" — conclua o pré-agendamento, explicando que a equipe confirma a cobertura da Unimed junto com o horário.`;
+      dynamicPrompt += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nA imagem vai anexada nesta conversa quando disponível — ou seja, você PODE vê-la. A NOSSA EQUIPE também já recebeu a foto.\nO que fazer:\n- Se a imagem for MESMO uma carteirinha/cartão de convênio: leia o NOME DO CONVÊNIO e, se estiver legível, o NÚMERO da carteirinha, e use esses dados no pré-agendamento (no bloco, registre o convênio lido e o número; se o número não estiver legível, use "carteirinha por foto"). Confirme ao paciente, em linguagem natural, qual convênio você identificou. Se estiver ilegível, peça gentilmente uma foto mais nítida — sem travar o pré-agendamento.\n- Se a imagem NÃO for uma carteirinha: NÃO descreva o que vê e NÃO comente o conteúdo. Apenas acolha e diga que vai encaminhar à equipe.\nLIMITE ABSOLUTO (inegociável): você só lê DOCUMENTO ADMINISTRATIVO (carteirinha/cartão do plano). Se a imagem for clínica — foto de olho, exame, laudo, receita, resultado, OCT, retinografia etc. — NUNCA descreva, interprete, opine, sugira diagnóstico ou diga se está normal/alterado. Nesses casos: acolha, diga que quem avalia é o médico na consulta, e siga para o agendamento. Continuam valendo todas as regras absolutas (nunca diagnosticar, nunca interpretar exames).\nConcluído isso, CONTINUE/CONCLUA o pré-agendamento normalmente. NÃO peça a carteirinha de novo e NÃO diga apenas que "vai encaminhar" — conclua, explicando que a equipe confirma a cobertura junto com o horário.`;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2817,6 +2822,29 @@ app.post("/webhook", async (req, res) => {
     while (apiMessages.length && apiMessages[0].role === "assistant") apiMessages.shift();
     // Salvaguarda: se nada sobrar, usar ao menos a mensagem atual do usuário.
     if (apiMessages.length === 0) apiMessages.push({ role: "user", content: text });
+
+    // Leitura da carteirinha (visão): anexa a IMAGEM à última mensagem do usuário
+    // para a Ana poder ler o convênio/número. Só acontece quando a foto foi
+    // classificada como carteirinha — nunca para imagem clínica ou qualquer outra
+    // (essas nem chegam aqui: o branch de mídia já as encaminha à equipe). Limites
+    // da API: formatos suportados e ~5MB em base64 (guardamos 3,5MB de binário).
+    if (fotoDeCarteirinha && imagemRecebida?.buffer) {
+      const MIMES_VISAO = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+      const mt = String(imagemRecebida.mimeType || "").toLowerCase().split(";")[0].trim();
+      const cabe = imagemRecebida.buffer.length <= 3.5 * 1024 * 1024;
+      if (MIMES_VISAO.includes(mt) && cabe) {
+        const ultima = apiMessages[apiMessages.length - 1];
+        const textoAtual = typeof ultima.content === "string" ? ultima.content : text;
+        ultima.content = [
+          { type: "image", source: { type: "base64", media_type: mt, data: imagemRecebida.buffer.toString("base64") } },
+          { type: "text", text: textoAtual || "[Imagem recebida]" },
+        ];
+        console.log(`[Visão] Carteirinha anexada para leitura (${mt}, ${Math.round(imagemRecebida.buffer.length / 1024)}KB).`);
+      } else {
+        // Sem visão: a Ana segue o fluxo tratando a carteirinha como entregue.
+        console.log(`[Visão] Imagem NÃO anexada (mime=${mt || "?"}, ${Math.round((imagemRecebida.buffer.length || 0) / 1024)}KB) — fora do formato/tamanho suportado.`);
+      }
+    }
     let reply;
     try {
       let response;
