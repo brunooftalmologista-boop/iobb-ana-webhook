@@ -1040,7 +1040,7 @@ function extrairAgendar(reply) {
 // confirmar (decisão v1): se a vaga foi tomada no meio (trava do banco → taken),
 // a Ana manda uma correção oferecendo a próxima vaga — nunca marca duplicado.
 // NUNCA lança. Em sucesso: fecha a conversão de Ads e espelha à secretária.
-async function processarAgendarDaAna({ registro, patient, from, conversationId }) {
+async function processarAgendarDaAna({ registro, patient, from, conversationId, replyTexto }) {
   try {
     const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
     let unidade = limpo(registro.unidade);
@@ -1054,15 +1054,52 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId }
     }
     const inicioRaw = limpo(registro.inicio);
     if (!unidade || !inicioRaw) { console.error("[Agendar] Bloco sem unidade/inicio:", JSON.stringify(registro)); return { ok: false }; }
-    const ini = new Date(inicioRaw);
+    let ini = new Date(inicioRaw);
     if (isNaN(ini.getTime())) { console.error("[Agendar] inicio inválido:", inicioRaw); return { ok: false }; }
-    const fim = new Date(ini.getTime() + SLOT_MIN * 60000);
+    let fim = new Date(ini.getTime() + SLOT_MIN * 60000);
     const nome = limpo(registro.nome) || patient?.name || null;
     const telefone = limpo(registro.telefone) || patient?.phone || from || null;
     const convenio = limpo(registro.convenio);
     const motivo = limpo(registro.motivo) || "Consulta";
     const nascimento = limpo(registro.nascimento);
     const observacoes = nascimento ? `Nascimento: ${nascimento}` : null;
+
+    // ── TRAVA ANTI-HORÁRIO-ERRADO ──────────────────────────────────────────
+    // Bug recorrente: a Ana escreve um horário na mensagem (ex.: "14h40") mas
+    // copia o token [inicio:] de OUTRA linha da lista (ex.: 15:40) → gravava o
+    // horário ERRADO (o paciente aparece na hora que a Ana DISSE, não a salva).
+    // Regra: se a PROSA enviada ao paciente cita UM único horário e ele diverge
+    // do token, confiamos na PROSA (o que o paciente combinou), desde que seja
+    // uma vaga válida no MESMO dia/unidade. Também neutraliza a "churn" de
+    // re-emits (todos convergem pro mesmo horário → viram idempotentes).
+    try {
+      const brtTime = (d) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+      const brtDate = (d) => new Date(d).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+      const horas = [...String(replyTexto || "").matchAll(/(\d{1,2})\s*[h:]\s*(\d{2})\b/g)]
+        .map(m => `${m[1].padStart(2, "0")}:${m[2]}`)
+        .filter(t => { const [h, mm] = t.split(":").map(Number); return h < 24 && mm < 60; });
+      const distintos = [...new Set(horas)];
+      const tokenTime = brtTime(ini);
+      if (distintos.length === 1 && distintos[0] !== tokenTime) {
+        const bufferH = /particular/i.test(String(convenio || "")) ? 0 : ANA_ANTECEDENCIA_HORAS;
+        const minTs = Date.now() + bufferH * 3600 * 1000;
+        const vagas = await fetchSlotsDB(unidade);
+        const alvo = Array.isArray(vagas)
+          ? vagas.find(s => brtTime(s.start) === distintos[0] && brtDate(s.start) === brtDate(ini) && s.start.getTime() >= minTs)
+          : null;
+        if (alvo) {
+          console.warn(`[Agendar] HORA DIVERGENTE: prosa=${distintos[0]} token=${tokenTime} → gravando a PROSA (${alvo.start.toISOString()}).`);
+          await registrarErro("agendar_hora_corrigida", `prosa=${distintos[0]} token=${tokenTime} unidade=${unidade} -> ${alvo.start.toISOString()}`, { conversationId, telefone });
+          ini = alvo.start;
+          fim = new Date(ini.getTime() + SLOT_MIN * 60000);
+        } else {
+          console.warn(`[Agendar] HORA DIVERGENTE sem vaga p/ a prosa: prosa=${distintos[0]} token=${tokenTime} — mantido o token, equipe sinalizada.`);
+          await registrarErro("agendar_hora_divergente", `prosa=${distintos[0]} token=${tokenTime} unidade=${unidade} — prosa sem vaga`, { conversationId, telefone });
+          await marcarPendenciaEquipe(conversationId, "action").catch(() => {});
+        }
+      }
+    } catch (e) { console.error("[Agendar] Falha na trava de hora divergente (segue com o token):", e.message); }
+    // ───────────────────────────────────────────────────────────────────────
 
     // Idempotência / REAGENDAMENTO por conversa. O modelo às vezes RE-EMITE o bloco
     // [AGENDAR]: se for o MESMO horário → é re-emit, ignora (não duplica). Se for
@@ -2830,7 +2867,7 @@ app.post("/webhook", async (req, res) => {
     if (ag.registro) {
       // Grava o horário confirmado. Já fecha a conversão de Ads e espelha à
       // secretária lá dentro; em corrida (vaga tomada) manda a correção ao paciente.
-      const rAg = await processarAgendarDaAna({ registro: ag.registro, patient, from, conversationId: conversation.id });
+      const rAg = await processarAgendarDaAna({ registro: ag.registro, patient, from, conversationId: conversation.id, replyTexto: reply });
       agendouOk = !!(rAg && rAg.ok);
     }
     else if (registros.length) {
