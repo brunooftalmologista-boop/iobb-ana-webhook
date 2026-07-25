@@ -1395,6 +1395,39 @@ async function registrarLeadMeta(referral, phone, conversationId) {
   }
 }
 
+// Tokens FIXOS das landing pages ESTÁTICAS do Wix (iobb.com.br/<slug>). O Wix não
+// roda registrarClique nem captura o gclid na origem — então o gclid chega DENTRO
+// da mensagem do WhatsApp (via [g:...|wb:...|gb:...], injetado por um script no Wix)
+// e o TEMA vem deste mapa do token fixo de cada página.
+const WIX_LP_TOKENS = {
+  "02DDAA7D": "consulta", "87C5362F": "catarata", "EC147898": "ceratocone",
+  "9D8AB2E8": "refrativa", "0097C32A": "taguatinga", "EC39491D": "aguas-claras",
+  "1D5C2C5B": "asa-norte",
+};
+
+// Grava um clique POR-LEAD quando o gclid/wbraid/gbraid chegou na mensagem (landing
+// Wix). O tema vem do token fixo (WIX_LP_TOKENS); sem token conhecido, cai em
+// "google/site". NUNCA lança. Não duplica se a conversa já tem clique.
+async function registrarCliqueDaMensagem({ token, gclid, wbraid, gbraid, phone, conversationId }) {
+  try {
+    if (!gclid && !wbraid && !gbraid) return false;
+    const { data: existe } = await supabase.from("ad_clicks").select("id")
+      .eq("conversation_id", String(conversationId)).limit(1);
+    if (existe && existe.length) return false; // já vinculado — não duplica
+    const tema = WIX_LP_TOKENS[String(token || "").toUpperCase()] || "site";
+    await supabase.from("ad_clicks").insert({
+      token: novoToken(), source: `google/${tema}`,
+      gclid: gclid || null, wbraid: wbraid || null, gbraid: gbraid || null,
+      phone: phone || null, conversation_id: String(conversationId),
+    });
+    console.log(`[Ads] Clique da mensagem (Wix) registrado: google/${tema} gclid=${gclid ? "sim" : "não"} conv=${conversationId}`);
+    return true;
+  } catch (e) {
+    console.error("[Ads] Falha ao registrar clique da mensagem:", e.message);
+    return false;
+  }
+}
+
 // Campanhas cujos pacientes SEMPRE recebem a Ana, mesmo com o liga/desliga global
 // desligado (#ANA OFF). Casa por SUBSTRING no ad_clicks.source. Assim você pode
 // desligar a Ana para o atendimento geral em certos momentos, mas certos leads
@@ -2336,6 +2369,19 @@ app.post("/webhook", async (req, res) => {
       if (!text) text = "Olá!";
     }
 
+    // Landing Wix (estática) injeta o gclid/wbraid/gbraid DENTRO da mensagem, no
+    // formato [g:...|wb:...|gb:...] — captura aqui e remove do texto antes de tudo.
+    let msgGclid = null, msgWbraid = null, msgGbraid = null;
+    const idsMatch = text.match(/\[(?:g|wb|gb):[^\]]+\]/i);
+    if (idsMatch) {
+      const blob = idsMatch[0];
+      const mg = blob.match(/(?:^|\[|\|)g:([^|\]]+)/i);  if (mg) msgGclid = mg[1].trim();
+      const mw = blob.match(/wb:([^|\]]+)/i);            if (mw) msgWbraid = mw[1].trim();
+      const mb = blob.match(/gb:([^|\]]+)/i);            if (mb) msgGbraid = mb[1].trim();
+      text = text.replace(blob, " ").replace(/\s+/g, " ").trim();
+      if (!text) text = "Olá!";
+    }
+
     // Comandos admin
     if (NUMEROS_ADMIN.includes(from)) {
       if (text === "#ANA OFF") {
@@ -2564,8 +2610,18 @@ app.post("/webhook", async (req, res) => {
     }
     await saveMessage(conversation.id, "user", text, msg.id, media);
 
-    // Vincula o clique de anúncio (se veio da landing) ao paciente/conversa
-    if (refToken) await vincularClique(refToken, from, conversation.id);
+    // Vincula o clique de anúncio (se veio da landing) ao paciente/conversa.
+    // Landing Wix: o gclid veio DENTRO da mensagem → grava um clique por-lead com
+    // o tema do token fixo. Caso contrário (landing do app, que já registrou o
+    // clique na origem), apenas vincula o token existente.
+    let cliqueDaMsg = false;
+    if (msgGclid || msgWbraid || msgGbraid) {
+      cliqueDaMsg = await registrarCliqueDaMensagem({
+        token: refToken, gclid: msgGclid, wbraid: msgWbraid, gbraid: msgGbraid,
+        phone: from, conversationId: conversation.id,
+      });
+    }
+    if (refToken && !cliqueDaMsg) await vincularClique(refToken, from, conversation.id);
     if (referral) await registrarLeadMeta(referral, from, conversation.id);   // lead do IG/FB → rastreio + sempre-ativa
 
     // Verificar se conversa está com humano
