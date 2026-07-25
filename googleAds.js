@@ -1034,6 +1034,98 @@ function buildEscleralSpec() {
   };
 }
 
+// Spec da campanha de CATARATA — maior ticket da clínica, sem campanha até
+// 2026-07. Destino: página estática iobb.com.br/catarata (Cloudflare Pages),
+// que já captura o gclid via script injetado (mensagem chega com [g:...] e o
+// webhook grava a conversão — pipeline verificado ao vivo em 25/07). NÃO usa
+// GOOGLE_ADS_LP_BASE_URL (onrender): domínio bonito no anúncio importa aqui.
+function buildCatarataSpec() {
+  const finalUrl = process.env.GOOGLE_ADS_CATARATA_URL || "https://iobb.com.br/catarata";
+  const geoTargets = (process.env.GOOGLE_ADS_CATARATA_GEO || "Distrito Federal")
+    .split(",").map(s => s.trim()).filter(Boolean);
+  const desc = [
+    "Cirurgia de catarata com avaliação detalhada. Coberta pela maioria dos convênios.",
+    "Lente monofocal coberta; premium opcional. A ideal é definida na avaliação.",
+    "Instituto de Olhos Bruno Borges - Asa Norte e Taguatinga. Marque sua consulta.",
+    "Atendimento humano no WhatsApp. Tire dúvidas e agende sua avaliação hoje.",
+  ];
+  const heads = [
+    "Cirurgia de Catarata em BSB", "Catarata pelo seu Convênio", "Inst. de Olhos Bruno Borges",
+    "Avaliação com Pentacam", "Lentes Premium Disponíveis", "Especialista em Catarata",
+    "Agende sua Avaliação", "Recupere sua Visão",
+  ];
+  return {
+    name: process.env.GOOGLE_ADS_CATARATA_NAME || "IOBB | Catarata",
+    dailyBudget: Number(process.env.GOOGLE_ADS_CATARATA_BUDGET || 30), // R$/dia
+    finalUrl,
+    geoTargets,
+    languages: ["Portuguese"],
+    adGroups: [
+      {
+        name: "Cirurgia de Catarata",
+        maxCpc: 6,
+        keywords: [
+          { text: "cirurgia de catarata brasília", match: "EXACT", cpc: 6 },
+          { text: "cirurgia de catarata df", match: "EXACT", cpc: 6 },
+          { text: "cirurgia de catarata", match: "PHRASE", cpc: 5 },
+          { text: "cirurgia de catarata preço", match: "PHRASE", cpc: 6 },
+          { text: "cirurgia de catarata valor", match: "PHRASE", cpc: 6 },
+          { text: "facoemulsificação brasília", match: "PHRASE", cpc: 5 },
+        ],
+        headlines: heads,
+        descriptions: desc,
+      },
+      {
+        name: "Convênio e Particular",
+        maxCpc: 6,
+        keywords: [
+          { text: "cirurgia de catarata convênio", match: "PHRASE", cpc: 6 },
+          { text: "cirurgia de catarata particular", match: "PHRASE", cpc: 6 },
+          { text: "lente intraocular catarata", match: "PHRASE", cpc: 5 },
+          { text: "catarata cirurgia preço", match: "PHRASE", cpc: 6 },
+        ],
+        headlines: heads,
+        descriptions: desc,
+      },
+      {
+        name: "Oftalmo Catarata",
+        maxCpc: 5,
+        keywords: [
+          { text: "oftalmologista catarata brasília", match: "PHRASE", cpc: 5 },
+          { text: "especialista em catarata brasília", match: "PHRASE", cpc: 5 },
+        ],
+        headlines: heads,
+        descriptions: desc,
+      },
+    ],
+    // Ruído típico de catarata: informacional, veterinário (cachorro/gato é
+    // busca comum!), benefício/legal e caça-gratuidade.
+    negatives: [
+      { text: "cachorro", match: "BROAD" },
+      { text: "gato", match: "BROAD" },
+      { text: "cão", match: "BROAD" },
+      { text: "veterinário", match: "BROAD" },
+      { text: "o que é", match: "PHRASE" },
+      { text: "sintomas", match: "BROAD" },
+      { text: "causas", match: "BROAD" },
+      { text: "colírio", match: "BROAD" },
+      { text: "tratamento caseiro", match: "PHRASE" },
+      { text: "pós operatório", match: "PHRASE" },
+      { text: "recuperação", match: "BROAD" },
+      { text: "riscos", match: "BROAD" },
+      { text: "cid", match: "BROAD" },
+      { text: "aposentadoria", match: "BROAD" },
+      { text: "inss", match: "BROAD" },
+      { text: "auxílio", match: "BROAD" },
+      { text: "sus", match: "BROAD" },
+      { text: "grátis", match: "BROAD" },
+      { text: "gratuita", match: "BROAD" },
+      { text: "mutirão", match: "BROAD" },
+      { text: "vídeo", match: "BROAD" },
+    ],
+  };
+}
+
 // Spec da campanha de Ceratocone — CORREÇÃO CIRÚRGICA (crosslinking + anel
 // intraestromal) e termos gerais de ceratocone (diagnóstico → tratamento).
 // A parte de LENTES fica na campanha "IOBB | Lentes Esclerais" (separada).
@@ -1812,6 +1904,7 @@ module.exports = {
   uploadClickConversions, buildConversionUploadSummary, listConversionActions,
   resolveConversionActionResourceName,
   createSearchCampaign, buildCampaignCreateSummary, buildRefrativaSpec, buildEscleralSpec,
+  buildCatarataSpec,
   buildCeratoconeCirurgicoSpec, buildCeratoconeEscleralSpec, setCampaignStatusByName, buildStatusSummary,
   resolveGeoTargetConstants,
   applyHistoricalInsights, buildHistoricoSummary,

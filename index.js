@@ -2566,6 +2566,22 @@ app.post("/webhook", async (req, res) => {
           .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
         return;
       }
+      // Cria a campanha de CATARATA (nasce PAUSADA). "TESTE" = dry-run,
+      // "CONFIRMAR" cria. Destino: iobb.com.br/catarata (captura gclid).
+      const catCmd = text.match(/^#CRIARCATARATA\b([\s\S]*)$/i);
+      if (catCmd) {
+        const arg = catCmd[1].trim().toUpperCase();
+        if (arg !== "TESTE" && arg !== "CONFIRMAR") {
+          await sendWhatsApp(from, "Uso: *#CRIARCATARATA TESTE* (valida sem criar) ou *#CRIARCATARATA CONFIRMAR* (cria PAUSADA).");
+          return;
+        }
+        const dry = arg === "TESTE";
+        await sendWhatsApp(from, `🟤 ${dry ? "Validando" : "Criando"} campanha de Catarata${dry ? " (DRY-RUN)" : " (nasce PAUSADA)"}...`);
+        googleAds.createSearchCampaign({ supabase, dryRun: dry, spec: googleAds.buildCatarataSpec() })
+          .then(r => sendWhatsApp(from, googleAds.buildCampaignCreateSummary(r)))
+          .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
+        return;
+      }
       // Cria a campanha COMBINADA Ceratocone + Esclerais (nasce PAUSADA). Reúne as
       // duas que estavam separadas. "TESTE" = dry-run; "CONFIRMAR" cria.
       const combCmd = text.match(/^#CRIARCOMBINADA\b([\s\S]*)$/i);
@@ -3321,6 +3337,20 @@ app.get("/api/ads/create-escleral", async (req, res) => {
     res.status(result.ok ? 200 : 502).json(result);
   } catch (e) {
     console.error("[Ads] Endpoint create-escleral:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Cria a campanha de CATARATA via API (mutate atômico). Nasce PAUSADA.
+//   GET /api/ads/create-catarata            → valida, NÃO cria (validate_only)
+//   GET /api/ads/create-catarata?confirm=1  → cria de verdade (pausada)
+app.get("/api/ads/create-catarata", async (req, res) => {
+  try {
+    const dryRun = req.query.confirm !== "1";
+    const result = await googleAds.createSearchCampaign({ supabase, dryRun, spec: googleAds.buildCatarataSpec() });
+    res.status(result.ok ? 200 : 502).json(result);
+  } catch (e) {
+    console.error("[Ads] Endpoint create-catarata:", e.message);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
