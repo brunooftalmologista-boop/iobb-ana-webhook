@@ -1452,6 +1452,21 @@ async function registrarCliqueDaMensagem({ token, gclid, wbraid, gbraid, phone, 
     const { data: existe } = await supabase.from("ad_clicks").select("id")
       .eq("conversation_id", String(conversationId)).limit(1);
     if (existe && existe.length) return false; // já vinculado — não duplica
+    // Se o clique já foi registrado pelo sinalizador da página (/lp/hit), reaproveita
+    // a MESMA linha (clique→conversa vira um registro só, como no fluxo antigo).
+    try {
+      let q = supabase.from("ad_clicks").select("id").is("phone", null)
+        .order("clicked_at", { ascending: false }).limit(1);
+      if (gclid) q = q.eq("gclid", gclid);
+      else if (wbraid) q = q.eq("wbraid", wbraid);
+      else q = q.eq("gbraid", gbraid);
+      const { data: beacon } = await q;
+      if (beacon && beacon.length) {
+        await supabase.from("ad_clicks").update({ phone: phone || null, conversation_id: String(conversationId) }).eq("id", beacon[0].id);
+        console.log(`[Ads] Clique do sinalizador vinculado à conversa ${conversationId} (id ${beacon[0].id}).`);
+        return true;
+      }
+    } catch (e) { console.error("[Ads] Falha ao casar clique do sinalizador (segue com insert):", e.message); }
     const tema = WIX_LP_TOKENS[String(token || "").toUpperCase()] || "site";
     await supabase.from("ad_clicks").insert({
       token: novoToken(), source: `google/${tema}`,
@@ -4007,6 +4022,23 @@ async function serveLanding(tema, req, res) {
   const waLink = `https://wa.me/${WA_LP_NUMBER}?text=${encodeURIComponent(`${cfg.msg} [ref:${token}]`)}`;
   res.send(renderLanding(cfg, waLink)); // template genérico (ceratocone/refrativa/catarata)
 }
+
+// Sinalizador de clique das landings ESTÁTICAS (iobb.com.br/Cloudflare). Essas
+// páginas não passam pelo app, então o script injetado nelas dispara um ping de
+// imagem com o gclid — restaura o rastreio clique a clique (antes só quem mandava
+// mensagem era registrado). Só grava quando há identificador de anúncio na URL.
+// PRECISA vir antes de app.get("/lp/:tema"), senão "hit" vira tema.
+app.get("/lp/hit", (req, res) => {
+  res.status(204).end();   // responde imediato; o registro segue em background
+  try {
+    const clean = v => (typeof v === "string" && v.length > 0 && v.length <= 200) ? v : null;
+    const g = clean(req.query.g), wb = clean(req.query.wb), gb = clean(req.query.gb);
+    if (!g && !wb && !gb) return;   // sem id de anúncio = visita orgânica, não é clique de ads
+    const tema = String(req.query.tema || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30) || "site";
+    registrarClique({ gclid: g, wbraid: wb, gbraid: gb, source: `google/${tema}` })
+      .catch(e => console.error("[Ads] /lp/hit registrar:", e.message));
+  } catch (e) { console.error("[Ads] /lp/hit:", e.message); }
+});
 
 app.get("/lp/:tema", (req, res) => serveLanding(req.params.tema, req, res));
 
