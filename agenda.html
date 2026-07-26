@@ -28,6 +28,7 @@
   .nome{font-weight:700;font-size:16px;cursor:pointer}
   .badge{font-size:11px;font-weight:700;border-radius:12px;padding:3px 9px}
   .b-ana{background:#e7f7f1;color:#0a6b52}
+  .b-secr{background:#e8f2fb;color:#155e97}
   .b-iclinic{background:#eef0f3;color:#5a6b7c}
   .b-un{background:#fdf1e2;color:#8a5a13}
   .linha2{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:8px;font-size:14px;color:#3d5163}
@@ -47,6 +48,22 @@
   .login input{width:100%;padding:10px;margin-bottom:10px;border-radius:8px;border:1px solid #c6d2dd;background:#fff;color:#122a3f;font-size:14px}
   .login .btn{width:100%;padding:11px}
   .erro{color:#c0392b;font-size:13px;margin-bottom:8px;min-height:17px}
+  /* modal de novo agendamento */
+  .overlay{position:fixed;inset:0;background:rgba(10,25,40,.55);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:28px 12px;overflow:auto}
+  .overlay.show{display:flex}
+  .modal{background:#fff;border-radius:16px;max-width:660px;width:100%;padding:22px;box-shadow:0 12px 40px rgba(5,20,40,.3)}
+  .modal h2{font-size:17px;margin-bottom:12px}
+  .modal select,.modal input{padding:9px 11px;border-radius:8px;border:1px solid #c6d2dd;background:#fff;color:#122a3f;font-size:14px}
+  .modal input{width:100%;margin-bottom:9px}
+  .mrow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .slots{max-height:270px;overflow:auto;border:1px solid #e2e8ef;border-radius:10px;padding:10px 12px;margin:8px 0 14px;background:#fafcfe}
+  .sday{font-weight:700;margin:10px 0 6px;color:#0e2a43;font-size:13.5px;text-transform:capitalize}
+  .sday:first-child{margin-top:0}
+  .slot{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border:1px solid #c6d2dd;border-radius:8px;cursor:pointer;font-size:13.5px;background:#fff;user-select:none}
+  .slot:hover{border-color:#25d366}
+  .slot.sel{background:#25d366;border-color:#25d366;color:#08301c;font-weight:700}
+  .m-sel{font-size:14px;font-weight:700;color:#0a6b52;margin-bottom:10px;min-height:20px}
+  .m-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
   @media(max-width:640px){ .acoes{margin-left:0;width:100%} .top h1{font-size:14px} }
 </style>
 </head>
@@ -57,10 +74,11 @@
   <input type="date" id="f-data">
   <select id="f-dias"><option value="1">Só o dia</option><option value="7" selected>7 dias</option><option value="30">30 dias</option></select>
   <select id="f-unidade"><option value="">Todas as unidades</option><option>Conjunto Nacional</option><option>Taguatinga</option></select>
-  <span class="chip on" id="f-origem" title="Só os agendamentos criados pela Ana (os do iClinic já estão no prontuário)">Só da Ana</span>
+  <span class="chip on" id="f-origem" title="Só os agendamentos feitos aqui (Ana + secretária), que ainda precisam ser transferidos — os do iClinic já estão no prontuário">Só p/ transferir</span>
   <input type="search" id="f-busca" placeholder="Buscar nome…">
   <button class="btn ghost" id="btn-reload" title="Atualizar">⟳</button>
-  <span class="sub">Clique em qualquer campo para copiá-lo · “copiar ficha” copia o bloco completo · marque ✓ quando passar pro prontuário</span>
+  <button class="btn" id="btn-novo">➕ Agendar</button>
+  <span class="sub">Clique em qualquer campo para copiá-lo · “copiar ficha” copia o bloco completo · marque ✓ quando passar pro prontuário · ➕ marca um horário livre na hora</span>
 </div>
 
 <div class="wrap" id="app" style="display:none"></div>
@@ -71,6 +89,30 @@
   <input id="l-agent" placeholder="Nome (o mesmo do painel)" autocomplete="username">
   <input id="l-pass" type="password" placeholder="Senha" autocomplete="current-password">
   <button class="btn" id="l-btn">Entrar</button>
+</div>
+
+<!-- Modal: novo agendamento (vagas reais + trava anti-overbooking no servidor) -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2>➕ Novo agendamento</h2>
+    <div class="mrow">
+      <select id="m-unidade"><option>Conjunto Nacional</option><option>Taguatinga</option></select>
+      <button class="mini" id="m-reload">⟳ vagas</button>
+      <span style="font-size:12.5px;color:#64788c;">Conjunto: seg/qua/sex · Taguatinga: ter/qui</span>
+    </div>
+    <div class="slots" id="m-slots">Carregando vagas…</div>
+    <div class="m-sel" id="m-sel"></div>
+    <input id="m-nome" placeholder="Nome completo do paciente *">
+    <input id="m-nasc" placeholder="Nascimento (DD/MM/AAAA)">
+    <input id="m-tel" placeholder="Telefone / WhatsApp (com DDD)">
+    <input id="m-conv" placeholder="Convênio (vazio = Particular)">
+    <input id="m-motivo" placeholder="Motivo (vazio = Consulta)">
+    <div class="erro" id="m-erro"></div>
+    <div class="m-actions">
+      <button class="mini" id="m-fechar">Fechar</button>
+      <button class="btn" id="m-salvar">Confirmar agendamento</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast">Copiado!</div>
@@ -93,9 +135,12 @@ async function tryRefresh(){
     const d = await r.json(); setTokens(d.access_token, d.refresh_token); return true;
   }catch(e){ return false; }
 }
-async function api(path, _retried){
-  const r = await fetch(API_BASE+path,{headers:{Authorization:'Bearer '+AUTH}});
-  if(r.status===401 && !_retried && await tryRefresh()) return api(path, true);
+async function api(path, opts, _retried){
+  const o = opts || {};
+  const headers = { Authorization: 'Bearer '+AUTH };
+  if (o.body) headers['Content-Type'] = 'application/json';
+  const r = await fetch(API_BASE+path, { method: o.method||'GET', headers, body: o.body ? JSON.stringify(o.body) : undefined });
+  if(r.status===401 && !_retried && await tryRefresh()) return api(path, opts, true);
   if(r.status===401){ mostrarLogin(); throw new Error('401'); }
   return r.json();
 }
@@ -116,6 +161,7 @@ $('#l-btn').onclick = async () => {
 $('#l-pass').addEventListener('keydown', e => { if(e.key==='Enter') $('#l-btn').click(); });
 
 // ----- estado ----------------------------------------------------------------
+// "Só p/ transferir" = origem != iclinic (Ana E secretária ainda não estão no prontuário)
 let soAna = true;
 let transferidos = JSON.parse(localStorage.getItem('iobb_transf')||'{}');
 function salvarTransf(){ localStorage.setItem('iobb_transf', JSON.stringify(transferidos)); }
@@ -155,7 +201,7 @@ function blocoFicha(a){
     'Convênio: '+(a.convenio||'Particular'),
     'Motivo: '+(a.motivo||'Consulta'),
     'Horário: '+dataBR(a.inicio)+' '+horaBR(a.inicio)+' — '+a.unidade,
-    'Origem: '+(a.origem==='ana' ? 'Ana (WhatsApp)' : a.origem),
+    'Origem: '+(a.origem==='ana' ? 'Ana (WhatsApp)' : a.origem==='secretaria' ? 'Secretária (agenda)' : a.origem),
   ].filter(Boolean).join('\n');
 }
 
@@ -178,10 +224,10 @@ async function carregar(){
 function desenhar(){
   const busca = ($('#f-busca').value||'').toLowerCase();
   let lista = LISTA.filter(a => a.status==='confirmado' || a.status==='reservado');
-  if(soAna) lista = lista.filter(a => a.origem==='ana');
+  if(soAna) lista = lista.filter(a => a.origem!=='iclinic');
   if(busca) lista = lista.filter(a => String(a.paciente_nome||'').toLowerCase().includes(busca));
 
-  if(!lista.length){ $('#app').innerHTML = '<div class="vazio">Nenhum agendamento '+(soAna?'da Ana ':'')+'no período. 🎉</div>'; return; }
+  if(!lista.length){ $('#app').innerHTML = '<div class="vazio">Nenhum agendamento '+(soAna?'para transferir ':'')+'no período. 🎉</div>'; return; }
 
   const porDia = {};
   for(const a of lista){ const k = chaveDia(a.inicio); (porDia[k] = porDia[k]||[]).push(a); }
@@ -201,13 +247,14 @@ function desenhar(){
         <div class="linha1">
           <span class="hora">${esc(horaBR(a.inicio))}</span>
           <span class="nome campo" data-copy="${esc(a.paciente_nome||'')}" title="Clique para copiar o nome">${esc(a.paciente_nome||'—')}</span>
-          <span class="badge ${a.origem==='ana'?'b-ana':'b-iclinic'}">${a.origem==='ana'?'ANA':'ICLINIC'}</span>
+          <span class="badge ${a.origem==='ana'?'b-ana':a.origem==='secretaria'?'b-secr':'b-iclinic'}">${a.origem==='ana'?'ANA':a.origem==='secretaria'?'SECRETÁRIA':'ICLINIC'}</span>
           <span class="badge b-un">${esc(a.unidade)}</span>
           <span class="acoes">
             <button class="mini btn-ficha">📋 copiar ficha</button>
             <label class="mini" style="display:flex;gap:5px;align-items:center;">
               <input type="checkbox" class="chk-transf" ${done?'checked':''}> transferido
             </label>
+            ${a.origem!=='iclinic' ? '<button class="mini btn-cancelar" title="Desmarcar este agendamento">✕</button>' : ''}
           </span>
         </div>
         <div class="linha2">
@@ -234,10 +281,101 @@ function desenhar(){
     salvarTransf(); card.classList.toggle('done', ev.target.checked);
     desenhar();
   });
+  document.querySelectorAll('.btn-cancelar').forEach(el => el.onclick = async (ev) => {
+    const card = ev.target.closest('.card');
+    const a = LISTA.find(x => String(x.id) === card.dataset.id);
+    if(!a) return;
+    if(!confirm('Desmarcar '+(a.paciente_nome||'paciente')+' — '+dataBR(a.inicio)+' '+horaBR(a.inicio)+' ('+a.unidade+')?\nO horário volta a ficar livre.')) return;
+    try{
+      const d = await api('/api/agenda/'+a.id+'/cancel', {method:'POST'});
+      if(d.ok){ copiarToast('Agendamento desmarcado.'); carregar(); }
+      else alert('Falha ao desmarcar: '+(d.error||''));
+    }catch(e){ if(String(e.message)!=='401') alert('Falha ao desmarcar.'); }
+  });
 }
 
+function copiarToast(msg){
+  const t = $('#toast'); t.textContent = msg;
+  t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 1600);
+}
+
+// ----- novo agendamento (modal) ------------------------------------------------
+let SLOTS = [], slotSel = null;
+
+function abrirModal(){
+  slotSel = null; $('#m-sel').textContent=''; $('#m-erro').textContent='';
+  $('#overlay').classList.add('show');
+  const un = $('#f-unidade').value;
+  if(un) $('#m-unidade').value = un;   // herda o filtro da tela, se houver
+  carregarSlots();
+}
+function fecharModal(){ $('#overlay').classList.remove('show'); }
+
+async function carregarSlots(){
+  $('#m-slots').textContent = 'Carregando vagas…';
+  try{
+    const d = await api('/api/agenda/slots?unidade='+encodeURIComponent($('#m-unidade').value));
+    SLOTS = d.slots || [];
+    if(!SLOTS.length){ $('#m-slots').textContent = 'Nenhuma vaga livre nesta unidade no momento.'; return; }
+    const porDia = {};
+    for(const s of SLOTS){ (porDia[s.dia] = porDia[s.dia]||[]).push(s); }
+    let html = '';
+    for(const dia of Object.keys(porDia)){
+      html += '<div class="sday">'+esc(dia)+'</div>';
+      for(const s of porDia[dia]) html += '<span class="slot" data-inicio="'+esc(s.inicio)+'">'+esc(s.hora)+'</span>';
+    }
+    $('#m-slots').innerHTML = html;
+    document.querySelectorAll('#m-slots .slot').forEach(el => el.onclick = () => {
+      document.querySelectorAll('#m-slots .slot.sel').forEach(x=>x.classList.remove('sel'));
+      el.classList.add('sel');
+      slotSel = SLOTS.find(s => s.inicio === el.dataset.inicio);
+      $('#m-sel').textContent = slotSel ? ('Selecionado: '+slotSel.dia+' às '+slotSel.hora+' — '+slotSel.unidade) : '';
+    });
+  }catch(e){ if(String(e.message)!=='401') $('#m-slots').textContent = '⚠️ Falha ao carregar as vagas.'; }
+}
+
+async function salvarAgendamento(){
+  $('#m-erro').textContent='';
+  const nome = $('#m-nome').value.trim();
+  if(!slotSel){ $('#m-erro').textContent='Escolha um horário na lista de vagas.'; return; }
+  if(!nome){ $('#m-erro').textContent='Informe o nome completo do paciente.'; return; }
+  const nasc = $('#m-nasc').value.trim();
+  const body = {
+    unidade: slotSel.unidade,
+    inicio: slotSel.inicio,
+    nome,
+    telefone: $('#m-tel').value.trim() || null,
+    convenio: $('#m-conv').value.trim() || 'Particular',
+    motivo: $('#m-motivo').value.trim() || 'Consulta',
+    observacoes: nasc ? 'Nascimento: '+nasc : null,
+  };
+  $('#m-salvar').disabled = true;
+  try{
+    const d = await api('/api/agenda/book', {method:'POST', body});
+    if(d.ok){
+      fecharModal();
+      ['m-nome','m-nasc','m-tel','m-conv','m-motivo'].forEach(id=>{ $('#'+id).value=''; });
+      copiarToast('✅ Agendado: '+nome+' — '+slotSel.dia+' às '+slotSel.hora);
+      carregar();
+    } else if(d.taken){
+      $('#m-erro').textContent = 'Esse horário acabou de ser ocupado — escolha outro.';
+      slotSel = null; $('#m-sel').textContent=''; carregarSlots();
+    } else {
+      $('#m-erro').textContent = 'Falha ao marcar: '+(d.error||'tente novamente');
+    }
+  }catch(e){ if(String(e.message)!=='401') $('#m-erro').textContent = 'Falha na conexão — tente novamente.'; }
+  finally{ $('#m-salvar').disabled = false; }
+}
+
+$('#btn-novo').onclick = abrirModal;
+$('#m-fechar').onclick = fecharModal;
+$('#m-reload').onclick = carregarSlots;
+$('#m-unidade').onchange = () => { slotSel=null; $('#m-sel').textContent=''; carregarSlots(); };
+$('#m-salvar').onclick = salvarAgendamento;
+$('#overlay').addEventListener('click', ev => { if(ev.target === $('#overlay')) fecharModal(); });
+
 // ----- filtros ----------------------------------------------------------------
-$('#f-origem').onclick = () => { soAna = !soAna; $('#f-origem').classList.toggle('on', soAna); $('#f-origem').textContent = soAna ? 'Só da Ana' : 'Todas as origens'; desenhar(); };
+$('#f-origem').onclick = () => { soAna = !soAna; $('#f-origem').classList.toggle('on', soAna); $('#f-origem').textContent = soAna ? 'Só p/ transferir' : 'Todas (com iClinic)'; desenhar(); };
 $('#f-busca').oninput = () => desenhar();
 $('#f-data').onchange = carregar;
 $('#f-dias').onchange = carregar;
