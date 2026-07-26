@@ -4023,6 +4023,9 @@ for (const slug of LP_SLUGS) {
 
 // Servir o painel web das secretárias
 app.get("/painel", (req, res) => res.sendFile(__dirname + "/painel.html"));
+// Agenda em página única p/ transferência ao prontuário (copiar/colar rápido).
+// Mesma sessão do painel (localStorage compartilhado) — login lá vale aqui.
+app.get("/agenda", (req, res) => res.sendFile(__dirname + "/agenda.html"));
 
 // ── Follow-up de leads frios (recuperação de conversão) ──────────────────────
 // Uma ÚNICA mensagem gentil para LEAD PAGO (ad_click) que engajou e NÃO agendou,

@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Agenda IOBB — transferência para o prontuário</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f2f5f8;color:#122a3f;line-height:1.5}
+  .top{position:sticky;top:0;z-index:10;background:#0e2a43;color:#fff;padding:12px 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .top h1{font-size:16px;font-weight:700;margin-right:auto}
+  .top .sub{font-size:12px;opacity:.75;width:100%}
+  .chip{background:#173d5e;border:1px solid #2a557d;color:#dbe9f5;border-radius:20px;padding:6px 14px;font-size:13px;cursor:pointer;user-select:none}
+  .chip.on{background:#25d366;border-color:#25d366;color:#08301c;font-weight:700}
+  select,input[type=date],input[type=search]{padding:7px 10px;border-radius:8px;border:1px solid #2a557d;background:#173d5e;color:#fff;font-size:13px}
+  input[type=search]{min-width:180px}
+  .btn{padding:7px 14px;border-radius:8px;border:none;background:#25d366;color:#08301c;font-weight:700;font-size:13px;cursor:pointer}
+  .btn.ghost{background:#173d5e;color:#dbe9f5;border:1px solid #2a557d}
+  .wrap{max-width:1080px;margin:0 auto;padding:18px}
+  .dia{margin:22px 0 10px;font-size:15px;font-weight:800;color:#0e2a43;text-transform:capitalize}
+  .dia small{font-weight:500;color:#64788c}
+  .card{background:#fff;border:1px solid #e2e8ef;border-radius:14px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 3px rgba(10,40,70,.05)}
+  .card.done{opacity:.45}
+  .card.done .nome{text-decoration:line-through}
+  .linha1{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+  .hora{font-weight:800;font-size:16px;color:#0e2a43;background:#e8f2fb;border-radius:8px;padding:4px 10px}
+  .nome{font-weight:700;font-size:16px;cursor:pointer}
+  .badge{font-size:11px;font-weight:700;border-radius:12px;padding:3px 9px}
+  .b-ana{background:#e7f7f1;color:#0a6b52}
+  .b-iclinic{background:#eef0f3;color:#5a6b7c}
+  .b-un{background:#fdf1e2;color:#8a5a13}
+  .linha2{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:8px;font-size:14px;color:#3d5163}
+  .campo{cursor:pointer;border-bottom:1px dashed #c6d2dd;padding-bottom:1px}
+  .campo:hover{color:#0a6b52;border-color:#0a6b52}
+  .campo b{color:#64788c;font-weight:600;font-size:12px;margin-right:4px}
+  .acoes{display:flex;gap:8px;margin-left:auto;align-items:center}
+  .mini{font-size:12px;padding:6px 10px;border-radius:8px;border:1px solid #d5dee6;background:#f7fafc;cursor:pointer;color:#2c4964;font-weight:600}
+  .mini:hover{background:#e7f7f1;border-color:#25d366}
+  .vazio{color:#64788c;text-align:center;padding:50px 0;font-size:15px}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0e2a43;color:#fff;padding:10px 22px;border-radius:24px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:99}
+  .toast.show{opacity:1}
+  .contador{font-size:12.5px;color:#64788c;margin:6px 0 0}
+  /* login */
+  .login{max-width:340px;margin:80px auto;background:#fff;border-radius:14px;padding:26px;border:1px solid #e2e8ef}
+  .login h2{font-size:17px;margin-bottom:14px}
+  .login input{width:100%;padding:10px;margin-bottom:10px;border-radius:8px;border:1px solid #c6d2dd;background:#fff;color:#122a3f;font-size:14px}
+  .login .btn{width:100%;padding:11px}
+  .erro{color:#c0392b;font-size:13px;margin-bottom:8px;min-height:17px}
+  @media(max-width:640px){ .acoes{margin-left:0;width:100%} .top h1{font-size:14px} }
+</style>
+</head>
+<body>
+
+<div class="top" id="topbar" style="display:none">
+  <h1>📋 Agenda → Prontuário</h1>
+  <input type="date" id="f-data">
+  <select id="f-dias"><option value="1">Só o dia</option><option value="7" selected>7 dias</option><option value="30">30 dias</option></select>
+  <select id="f-unidade"><option value="">Todas as unidades</option><option>Conjunto Nacional</option><option>Taguatinga</option></select>
+  <span class="chip on" id="f-origem" title="Só os agendamentos criados pela Ana (os do iClinic já estão no prontuário)">Só da Ana</span>
+  <input type="search" id="f-busca" placeholder="Buscar nome…">
+  <button class="btn ghost" id="btn-reload" title="Atualizar">⟳</button>
+  <span class="sub">Clique em qualquer campo para copiá-lo · “copiar ficha” copia o bloco completo · marque ✓ quando passar pro prontuário</span>
+</div>
+
+<div class="wrap" id="app" style="display:none"></div>
+
+<div class="login" id="login" style="display:none">
+  <h2>Agenda IOBB — entrar</h2>
+  <div class="erro" id="login-erro"></div>
+  <input id="l-agent" placeholder="Nome (o mesmo do painel)" autocomplete="username">
+  <input id="l-pass" type="password" placeholder="Senha" autocomplete="current-password">
+  <button class="btn" id="l-btn">Entrar</button>
+</div>
+
+<div class="toast" id="toast">Copiado!</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const API_BASE = location.origin;
+
+// ----- sessão (mesmas chaves do painel: login lá vale aqui) -----------------
+let AUTH    = localStorage.getItem('iobb_at') || '';
+let REFRESH = localStorage.getItem('iobb_rt') || '';
+function setTokens(at, rt){ AUTH=at||''; if(rt) REFRESH=rt; localStorage.setItem('iobb_at',AUTH); if(rt) localStorage.setItem('iobb_rt',REFRESH); }
+function clearTokens(){ AUTH=''; REFRESH=''; localStorage.removeItem('iobb_at'); localStorage.removeItem('iobb_rt'); }
+
+async function tryRefresh(){
+  if(!REFRESH) return false;
+  try{
+    const r = await fetch(API_BASE+'/api/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:REFRESH})});
+    if(!r.ok) return false;
+    const d = await r.json(); setTokens(d.access_token, d.refresh_token); return true;
+  }catch(e){ return false; }
+}
+async function api(path, _retried){
+  const r = await fetch(API_BASE+path,{headers:{Authorization:'Bearer '+AUTH}});
+  if(r.status===401 && !_retried && await tryRefresh()) return api(path, true);
+  if(r.status===401){ mostrarLogin(); throw new Error('401'); }
+  return r.json();
+}
+
+function mostrarLogin(){ $('#login').style.display='block'; $('#topbar').style.display='none'; $('#app').style.display='none'; }
+function mostrarApp(){ $('#login').style.display='none'; $('#topbar').style.display='flex'; $('#app').style.display='block'; }
+
+$('#l-btn').onclick = async () => {
+  $('#login-erro').textContent='';
+  try{
+    const r = await fetch(API_BASE+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({agent:$('#l-agent').value.trim(), password:$('#l-pass').value})});
+    if(!r.ok){ const d=await r.json().catch(()=>({})); $('#login-erro').textContent=d.error||'Usuário ou senha inválidos'; return; }
+    const d = await r.json(); setTokens(d.access_token, d.refresh_token);
+    mostrarApp(); carregar();
+  }catch(e){ $('#login-erro').textContent='Falha na conexão'; }
+};
+$('#l-pass').addEventListener('keydown', e => { if(e.key==='Enter') $('#l-btn').click(); });
+
+// ----- estado ----------------------------------------------------------------
+let soAna = true;
+let transferidos = JSON.parse(localStorage.getItem('iobb_transf')||'{}');
+function salvarTransf(){ localStorage.setItem('iobb_transf', JSON.stringify(transferidos)); }
+
+// ----- utilidades ------------------------------------------------------------
+const TZ = 'America/Sao_Paulo';
+function diaBR(iso){ return new Date(iso).toLocaleDateString('pt-BR',{timeZone:TZ,weekday:'long',day:'2-digit',month:'2-digit'}); }
+function dataBR(iso){ return new Date(iso).toLocaleDateString('pt-BR',{timeZone:TZ}); }
+function horaBR(iso){ return new Date(iso).toLocaleTimeString('pt-BR',{timeZone:TZ,hour:'2-digit',minute:'2-digit'}); }
+function chaveDia(iso){ return new Date(iso).toLocaleDateString('sv-SE',{timeZone:TZ}); } // YYYY-MM-DD
+function fone(t){
+  if(!t) return '';
+  let d = String(t).replace(/\D/g,'');
+  if(d.startsWith('55')) d = d.slice(2);
+  if(d.length>=10) return '('+d.slice(0,2)+') '+d.slice(2);
+  return d;
+}
+function nascimentoDe(obs){
+  const m = String(obs||'').match(/nascimento:\s*([0-9/.\-]+)/i);
+  return m ? m[1] : '';
+}
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function copiar(texto, msg){
+  navigator.clipboard.writeText(texto).then(()=>{
+    const t = $('#toast'); t.textContent = msg || ('Copiado: '+(texto.length>40?texto.slice(0,40)+'…':texto));
+    t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 1400);
+  });
+}
+
+function blocoFicha(a){
+  const nasc = nascimentoDe(a.observacoes);
+  return [
+    'Nome: '+(a.paciente_nome||'—'),
+    nasc ? 'Nascimento: '+nasc : null,
+    'Telefone: '+(fone(a.paciente_telefone)||'—'),
+    'Convênio: '+(a.convenio||'Particular'),
+    'Motivo: '+(a.motivo||'Consulta'),
+    'Horário: '+dataBR(a.inicio)+' '+horaBR(a.inicio)+' — '+a.unidade,
+    'Origem: '+(a.origem==='ana' ? 'Ana (WhatsApp)' : a.origem),
+  ].filter(Boolean).join('\n');
+}
+
+// ----- carregar e desenhar ----------------------------------------------------
+let LISTA = [];
+async function carregar(){
+  const base = $('#f-data').value ? new Date($('#f-data').value+'T00:00:00-03:00') : new Date(new Date().toLocaleDateString('sv-SE',{timeZone:TZ})+'T00:00:00-03:00');
+  const dias = Number($('#f-dias').value||7);
+  const ate = new Date(base.getTime() + dias*24*3600*1000);
+  const un = $('#f-unidade').value;
+  const qs = '?from='+encodeURIComponent(base.toISOString())+'&to='+encodeURIComponent(ate.toISOString())+(un?'&unidade='+encodeURIComponent(un):'');
+  $('#app').innerHTML = '<div class="vazio">Carregando…</div>';
+  try{
+    const d = await api('/api/agenda/appointments'+qs);
+    LISTA = d.appointments || [];
+    desenhar();
+  }catch(e){ if(String(e.message)!=='401') $('#app').innerHTML = '<div class="vazio">⚠️ Falha ao carregar. Tente ⟳</div>'; }
+}
+
+function desenhar(){
+  const busca = ($('#f-busca').value||'').toLowerCase();
+  let lista = LISTA.filter(a => a.status==='confirmado' || a.status==='reservado');
+  if(soAna) lista = lista.filter(a => a.origem==='ana');
+  if(busca) lista = lista.filter(a => String(a.paciente_nome||'').toLowerCase().includes(busca));
+
+  if(!lista.length){ $('#app').innerHTML = '<div class="vazio">Nenhum agendamento '+(soAna?'da Ana ':'')+'no período. 🎉</div>'; return; }
+
+  const porDia = {};
+  for(const a of lista){ const k = chaveDia(a.inicio); (porDia[k] = porDia[k]||[]).push(a); }
+
+  let html = '';
+  const feitos = lista.filter(a=>transferidos[a.id]).length;
+  html += '<div class="contador">'+lista.length+' agendamento(s) · '+feitos+' já transferido(s)</div>';
+
+  for(const k of Object.keys(porDia).sort()){
+    const arr = porDia[k];
+    html += '<div class="dia">'+esc(diaBR(arr[0].inicio))+' <small>· '+arr.length+' paciente(s)</small></div>';
+    for(const a of arr){
+      const nasc = nascimentoDe(a.observacoes);
+      const done = !!transferidos[a.id];
+      html += `
+      <div class="card ${done?'done':''}" data-id="${esc(a.id)}">
+        <div class="linha1">
+          <span class="hora">${esc(horaBR(a.inicio))}</span>
+          <span class="nome campo" data-copy="${esc(a.paciente_nome||'')}" title="Clique para copiar o nome">${esc(a.paciente_nome||'—')}</span>
+          <span class="badge ${a.origem==='ana'?'b-ana':'b-iclinic'}">${a.origem==='ana'?'ANA':'ICLINIC'}</span>
+          <span class="badge b-un">${esc(a.unidade)}</span>
+          <span class="acoes">
+            <button class="mini btn-ficha">📋 copiar ficha</button>
+            <label class="mini" style="display:flex;gap:5px;align-items:center;">
+              <input type="checkbox" class="chk-transf" ${done?'checked':''}> transferido
+            </label>
+          </span>
+        </div>
+        <div class="linha2">
+          ${nasc?`<span class="campo" data-copy="${esc(nasc)}"><b>NASC</b>${esc(nasc)}</span>`:''}
+          ${a.paciente_telefone?`<span class="campo" data-copy="${esc(fone(a.paciente_telefone))}"><b>TEL</b>${esc(fone(a.paciente_telefone))}</span>`:''}
+          <span class="campo" data-copy="${esc(a.convenio||'Particular')}"><b>CONVÊNIO</b>${esc(a.convenio||'Particular')}</span>
+          <span class="campo" data-copy="${esc(a.motivo||'Consulta')}"><b>MOTIVO</b>${esc(a.motivo||'Consulta')}</span>
+        </div>
+      </div>`;
+    }
+  }
+  $('#app').innerHTML = html;
+
+  // eventos
+  document.querySelectorAll('.campo').forEach(el => el.onclick = () => copiar(el.dataset.copy));
+  document.querySelectorAll('.btn-ficha').forEach(el => el.onclick = (ev) => {
+    const card = ev.target.closest('.card');
+    const a = LISTA.find(x => String(x.id) === card.dataset.id);
+    if(a) copiar(blocoFicha(a), 'Ficha completa copiada!');
+  });
+  document.querySelectorAll('.chk-transf').forEach(el => el.onchange = (ev) => {
+    const card = ev.target.closest('.card');
+    if(ev.target.checked) transferidos[card.dataset.id] = true; else delete transferidos[card.dataset.id];
+    salvarTransf(); card.classList.toggle('done', ev.target.checked);
+    desenhar();
+  });
+}
+
+// ----- filtros ----------------------------------------------------------------
+$('#f-origem').onclick = () => { soAna = !soAna; $('#f-origem').classList.toggle('on', soAna); $('#f-origem').textContent = soAna ? 'Só da Ana' : 'Todas as origens'; desenhar(); };
+$('#f-busca').oninput = () => desenhar();
+$('#f-data').onchange = carregar;
+$('#f-dias').onchange = carregar;
+$('#f-unidade').onchange = carregar;
+$('#btn-reload').onclick = carregar;
+setInterval(carregar, 5*60*1000); // atualiza a cada 5 min
+
+// ----- boot -------------------------------------------------------------------
+(async () => {
+  if(!AUTH && !REFRESH){ mostrarLogin(); return; }
+  mostrarApp();
+  carregar();
+})();
+</script>
+</body>
+</html>
