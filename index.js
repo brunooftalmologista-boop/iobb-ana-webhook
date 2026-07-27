@@ -2556,6 +2556,27 @@ app.post("/webhook", async (req, res) => {
 
     // Comandos admin
     if (NUMEROS_ADMIN.includes(from)) {
+      // TRAVA DE PIN: a autorização de admin é só pelo `from`, que um POST forjado
+      // falsifica (o webhook só valida assinatura se META_APP_SECRET estiver setado).
+      // Com ANA_ADMIN_PIN configurado no Render, TODO comando "#..." exige o PIN no
+      // FINAL (ex.: "#ANA OFF 4721"); o PIN é removido antes de casar o comando.
+      // Sem a env, nada muda (inerte) — assim o deploy não quebra o uso atual.
+      if (text.startsWith("#")) {
+        const PIN = readEnv("ANA_ADMIN_PIN");
+        if (PIN) {
+          const m = text.match(/\s+(\S+)\s*$/);
+          const informado = m ? m[1] : null;
+          const confere = informado != null && informado.length === String(PIN).length &&
+            crypto.timingSafeEqual(Buffer.from(informado), Buffer.from(String(PIN)));
+          if (!confere) {
+            console.warn("[Admin] Comando com PIN ausente/incorreto — IGNORADO:", text.split(/\s+/)[0]);
+            await registrarErro("admin_pin_invalido", `cmd=${text.split(/\s+/)[0]} de=${maskFone(from)}`, { telefone: from });
+            await sendWhatsApp(from, "🔒 PIN inválido ou ausente. Envie o comando com o PIN no final (ex.: *#ANA STATUS 0000*).\n\n⚠️ Se você NÃO enviou este comando, alguém tentou usar o sistema em seu nome — me avise.").catch(() => {});
+            return;
+          }
+          text = text.slice(0, m.index).trim();   // remove o PIN antes de casar o comando
+        }
+      }
       if (text === "#ANA OFF") {
         anaAtiva = false;
         await supabase.from("settings").upsert({ key: "ai_enabled", value: "false" });
