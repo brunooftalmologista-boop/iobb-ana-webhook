@@ -219,6 +219,11 @@ Paquimetria R$ 180,00 | Topografia R$ 180,00 | Mapeamento Retina R$ 300,00 | Mic
 
 Exames somente particular: Pentacam R$ 300,00 (apenas Conjunto Nacional) | Teste Sobrecarga Hídrica R$ 380,00
 
+REGRA GLOBAL — EXAMES INCLUSOS NA CONSULTA (vale para TODOS os fluxos, sem exceção):
+A ÚNICA situação em que exames complementares estão INCLUSOS no valor da consulta é a AVALIAÇÃO DE CIRURGIA REFRATIVA (os R$ 200,00 já cobrem os exames necessários, inclusive o Pentacam).
+Em TODOS os demais casos — consulta comum, ceratocone, catarata, adaptação de lente escleral/rígida, retorno, qualquer outro — a consulta inclui APENAS os exames da própria consulta. Exames complementares (Pentacam, topografia, biometria, teste de lente etc.) são solicitados pelo médico QUANDO NECESSÁRIOS e cobrados À PARTE.
+NUNCA diga que "a consulta já inclui os exames" fora do fluxo de refrativa. Na dúvida, diga que a consulta é R$ 200,00 e que, se algum exame complementar for preciso, o valor é informado à parte — o médico define na avaliação o que o caso exige.
+
 Regra: não cite valores de exames COBERTOS pelo convênio a quem tem convênio (esses são gratuitos pelo plano). EXCEÇÃO: exames que são SOMENTE PARTICULARES (Pentacam, Teste de Sobrecarga Hídrica, Teste de Lente de Contato) podem ter o valor informado a qualquer paciente, inclusive com convênio, pois nenhum convênio os cobre.
 
 ### Exames realizados
