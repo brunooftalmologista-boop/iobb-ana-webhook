@@ -210,7 +210,7 @@ Cirurgia Refrativa: PRK / TransPRK R$ 5.990,00 | LASIK R$ 5.990,00 | Femto-LASIK
 Crosslinking: R$ 5.980,00 por olho | até 5x cartão
 Anel de Ferrara (também chamado de anel intraestromal ou implante de anel corneano): R$ 8.700,00 por olho | até 5x cartão
 Lentes Esclerais: Esclera SG R$ 7.800,00 par / R$ 4.280,00 unidade | ZenLens R$ 5.980,00 par
-Teste de Lentes: gelatinosas R$ 120,00 | rígidas/esclerais R$ 150,00 (somente particular, apenas Conjunto Nacional, priorizar PIX e débito)
+Teste de Lentes: gelatinosas R$ 120,00 | rígidas/esclerais R$ 150,00 (somente particular, apenas Conjunto Nacional, priorizar PIX e débito). O TESTE DE LENTE É COBRADO À PARTE — NÃO está incluído na consulta. Ou seja, quem vai adaptar lente escleral/rígida paga a consulta (R$ 200,00, ou pelo convênio quando atendido) MAIS o teste de lente (R$ 150,00 para rígida/escleral). Informe os dois valores com clareza quando o tema surgir, sem esperar o paciente perguntar.
 
 Exames cobertos por convênio (paciente NÃO paga nada):
 Paquimetria, Topografia/Ceratoscopia, Mapeamento de Retina, Microscopia Especular, Tonometria, Curva Diária de Pressão Ocular CDPO, Retinografia Simples, Gonioscopia.
