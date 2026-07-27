@@ -343,7 +343,16 @@ Regras do bloco:
 - Emita [AGENDAR] SOMENTE no exato momento em que o paciente ACABOU de confirmar um horário que você ofereceu. NÃO reemita o bloco em mensagens seguintes (ex.: ao responder "não uso lente", uma dúvida, um agradecimento) — se você já confirmou o horário antes, a marcação já foi feita; apenas converse, SEM anexar [AGENDAR] de novo. Só emita [AGENDAR] outra vez se o paciente pedir para MUDAR o horário e confirmar um NOVO (aí sim, com o novo [inicio:]). Não emita [AGENDAR] e [PREAGENDAMENTO] na mesma mensagem — use [AGENDAR] quando marcou um horário real; use [PREAGENDAMENTO] quando NÃO havia agenda/horário.
 - DEPOIS de confirmar um horário, NÃO repita a data/hora do agendamento nas mensagens seguintes — você pode ERRAR o horário ao repetir (dizer 11h40 quando marcou 11h20). Se precisar se referir ao agendamento, diga apenas "seu agendamento já está confirmado", SEM repetir data/hora. Em especial: se o paciente enviar a carteirinha DEPOIS de você já ter confirmado o horário, apenas agradeça e diga que está tudo certo com o agendamento — NÃO repita a data/hora nem reemita [AGENDAR].
 - motivo: use "Consulta" por padrão. NUNCA pergunte "qual exame?" nem ofereça/recite a lista de exames ao paciente. Registre "Retorno" se o paciente disser que é retorno. Registre "Avaliação de cirurgia" quando o atendimento seguiu o fluxo de cirurgia refrativa (ou de ceratocone com interesse cirúrgico), MESMO que o paciente não use essa palavra exata.
+- MAIS DE UM PACIENTE na mesma conversa (ex.: mãe e filho, casal): anexe UM bloco [AGENDAR] POR PACIENTE, todos na MESMA mensagem — cada bloco com o [inicio:...] do horário DAQUELE paciente e o nome/nascimento DAQUELE paciente. NUNCA use o mesmo [inicio:] em dois blocos (cada paciente tem seu horário). O telefone pode repetir (é o contato de quem está falando).
 - NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
+
+### Agendamento para MAIS DE UM paciente (mesma conversa)
+É comum uma pessoa marcar para si E para familiares. Fluxo:
+1. Descubra QUANTOS são e colete nome completo + data de nascimento DE CADA UM (e convênio/particular de cada um, se puder variar).
+2. Ofereça exatamente UM horário POR PACIENTE — o total de horários oferecidos deve ser igual ao número de pacientes. PREFIRA horários EM SEQUÊNCIA no mesmo dia e unidade (ex.: 14h20 e 14h40 — a lista tem a grade de 20 em 20 minutos); se não houver sequência, ofereça os mais próximos entre si (mesmo dia; em último caso, dias diferentes).
+3. Deixe claro qual horário é de quem (ex.: "14h20 para a Maria e 14h40 para o João — pode ser?").
+4. Ao confirmarem, emita os blocos [AGENDAR] de TODOS os pacientes na mesma mensagem (um por paciente, cada um com seu [inicio:] e seu nome).
+5. Remarcação/cancelamento de UM deles depois: trate individualmente pelo nome — o [CANCELAR]/[AGENDAR] vale para o paciente daquele horário; os dos demais permanecem.
 
 ### Registro de cancelamento [CANCELAR] (INVISÍVEL ao paciente)
 Use [CANCELAR] para DESMARCAR um agendamento que esteja na seção "### Agendamentos que ESTE paciente já tem" marcado como "você PODE cancelar/remarcar este". Só faça isso DEPOIS de o paciente confirmar que quer cancelar. Anexe ao FINAL da mensagem, exatamente:
@@ -1028,28 +1037,35 @@ function formatSlotsParaAgendar(slots, maxDias = 8, tagParticularAteTs = 0) {
   return linhas.join("\n");
 }
 
-// Extrai o bloco técnico [AGENDAR]...[/AGENDAR] que a Ana anexa quando o paciente
-// CONFIRMA um horário. Mesma robustez do extrairPreAgendamento (trata bloco sem
-// fechamento). Devolve { limpo, registro } — registro é null se não houver bloco.
+// Extrai TODOS os blocos técnicos [AGENDAR]...[/AGENDAR] da resposta — um por
+// paciente (agendamento múltiplo: mãe + filho etc.). Mantém a robustez do bloco
+// final sem fechamento. Devolve { limpo, registros: [...] } (vazio se não houver).
 function extrairAgendar(reply) {
-  const re = /\[AGENDAR\]([\s\S]*?)\[\/AGENDAR\]/i;
-  let inner, limpo;
-  const m = reply.match(re);
-  if (m) { inner = m[1]; limpo = reply.replace(re, "").replace(/\n{3,}/g, "\n\n").trim(); }
-  else {
-    const mo = reply.match(/\[AGENDAR\]([\s\S]*)$/i);
-    if (!mo) return { limpo: reply, registro: null };
-    inner = mo[1]; limpo = reply.slice(0, mo.index).replace(/\n{3,}/g, "\n\n").trim();
+  const registros = [];
+  const parse = (inner) => {
+    const campos = {};
+    for (const par of inner.replace(/\n/g, " ").split("|")) {
+      const idx = par.indexOf(":");                   // 1º ":" — preserva o ISO do inicio (que tem ":")
+      if (idx === -1) continue;
+      const chave = par.slice(0, idx).trim().toLowerCase().replace(/^-+\s*/, "");
+      const valor = par.slice(idx + 1).trim();
+      if (chave) campos[chave] = valor;
+    }
+    return Object.keys(campos).length ? campos : null;
+  };
+  let limpo = reply.replace(/\[AGENDAR\]([\s\S]*?)\[\/AGENDAR\]/gi, (m, inner) => {
+    const r = parse(inner);
+    if (r) registros.push(r);
+    return "";
+  });
+  const mo = limpo.match(/\[AGENDAR\]([\s\S]*)$/i);   // último bloco sem fechamento
+  if (mo) {
+    const r = parse(mo[1]);
+    if (r) registros.push(r);
+    limpo = limpo.slice(0, mo.index);
   }
-  const campos = {};
-  for (const par of inner.replace(/\n/g, " ").split("|")) {
-    const idx = par.indexOf(":");                     // 1º ":" — preserva o ISO do inicio (que tem ":")
-    if (idx === -1) continue;
-    const chave = par.slice(0, idx).trim().toLowerCase().replace(/^-+\s*/, "");
-    const valor = par.slice(idx + 1).trim();
-    if (chave) campos[chave] = valor;
-  }
-  return { limpo, registro: Object.keys(campos).length ? campos : null };
+  limpo = limpo.replace(/\n{3,}/g, "\n\n").trim();
+  return { limpo, registros };
 }
 
 // Grava DE VERDADE o horário que a Ana confirmou com o paciente. Marca só ao
@@ -1125,20 +1141,31 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     let idParaCancelar = null;
     try {
       const { data: existentes } = await supabase.from("appointments")
-        .select("id, inicio")
+        .select("id, inicio, paciente_nome")
         .eq("conversation_id", String(conversationId))
         .eq("origem", "ana")
         .in("status", ["reservado", "confirmado"])
         .order("inicio", { ascending: false })
-        .limit(1);
+        .limit(5);
       if (existentes && existentes.length) {
-        const jaIni = new Date(existentes[0].inicio).getTime();
-        if (jaIni === ini.getTime()) {
-          console.log(`[Agendar] Re-emit idêntico ignorado (${unidade} ${ini.toISOString()}) — já marcado.`);
+        // MULTI-PACIENTE: a mesma conversa pode ter agendamentos de pessoas
+        // diferentes (mãe + filho). Re-emit/remarcação só valem para o MESMO
+        // paciente (comparação por nome normalizado). Sem nome (de um dos lados),
+        // mantém o comportamento antigo (casa com qualquer um) — conversas de 1
+        // paciente seguem idênticas.
+        const norm = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        const doMesmoPaciente = existentes.filter(a => !nome || !a.paciente_nome || norm(a.paciente_nome) === norm(nome));
+        const igual = doMesmoPaciente.find(a => new Date(a.inicio).getTime() === ini.getTime());
+        if (igual) {
+          console.log(`[Agendar] Re-emit idêntico ignorado (${unidade} ${ini.toISOString()}, ${nome || "sem nome"}) — já marcado.`);
           return { ok: true, already: true };
         }
-        idParaCancelar = existentes[0].id;   // remarcação: cancela o antigo SÓ se o novo gravar
-        console.log(`[Agendar] Reagendamento na conversa: novo ${ini.toISOString()}, antigo ${new Date(jaIni).toISOString()} (id ${idParaCancelar}).`);
+        if (doMesmoPaciente.length) {
+          idParaCancelar = doMesmoPaciente[0].id;   // remarcação DESTE paciente: cancela o antigo SÓ se o novo gravar
+          console.log(`[Agendar] Reagendamento (${nome || "sem nome"}): novo ${ini.toISOString()}, antigo ${new Date(doMesmoPaciente[0].inicio).toISOString()} (id ${idParaCancelar}).`);
+        } else {
+          console.log(`[Agendar] Paciente ADICIONAL na conversa (${nome}) — marca sem cancelar os demais.`);
+        }
       }
     } catch (e) { console.error("[Agendar] Falha na checagem de idempotência (segue e tenta marcar):", e.message); }
 
@@ -2911,7 +2938,7 @@ app.post("/webhook", async (req, res) => {
       if (slotsOferta === null) {
         dynamicPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       } else if (slotsOferta.length > 0) {
-        dynamicPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, 8, tagAte)}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.${tagAte ? `\nREGRA DOS HORÁRIOS MARCADOS [SÓ PARTICULAR]: são horários próximos (ex.: hoje) que valem APENAS para atendimento PARTICULAR. Você ainda NÃO sabe se este paciente é particular. Portanto: (1) se o paciente pedir "hoje" ou um horário próximo, NUNCA diga que não há — PERGUNTE primeiro "Seria particular ou pelo convênio?"; (2) se ele confirmar PARTICULAR, pode oferecer e marcar um horário [SÓ PARTICULAR] normalmente; (3) se for CONVÊNIO, não ofereça os marcados — explique com gentileza que agendamento pelo convênio precisa de um pouco mais de antecedência, ofereça o primeiro horário SEM marca e, se o paciente insistir em hoje, registre [PREAGENDAMENTO] para a equipe tentar o encaixe.` : ""}`;
+        dynamicPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, 8, tagAte)}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido. ÚNICA EXCEÇÃO à regra do horário único: agendamento para MAIS DE UM paciente — ofereça exatamente UM horário POR paciente (N pacientes = N horários), preferindo horários em sequência no mesmo dia/unidade e dizendo qual é de quem (ver a seção "Agendamento para MAIS DE UM paciente").${tagAte ? `\nREGRA DOS HORÁRIOS MARCADOS [SÓ PARTICULAR]: são horários próximos (ex.: hoje) que valem APENAS para atendimento PARTICULAR. Você ainda NÃO sabe se este paciente é particular. Portanto: (1) se o paciente pedir "hoje" ou um horário próximo, NUNCA diga que não há — PERGUNTE primeiro "Seria particular ou pelo convênio?"; (2) se ele confirmar PARTICULAR, pode oferecer e marcar um horário [SÓ PARTICULAR] normalmente; (3) se for CONVÊNIO, não ofereça os marcados — explique com gentileza que agendamento pelo convênio precisa de um pouco mais de antecedência, ofereça o primeiro horário SEM marca e, se o paciente insistir em hoje, registre [PREAGENDAMENTO] para a equipe tentar o encaixe.` : ""}`;
       } else {
         dynamicPrompt += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias para a unidade pedida. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       }
@@ -3007,7 +3034,7 @@ app.post("/webhook", async (req, res) => {
     // Log de detecção por mensagem: revela se a Ana emitiu (ou não) um bloco de
     // espelhamento. Se a Ana disse "vou encaminhar" mas isto marca "recado=nenhum",
     // o problema está no prompt/modelo, não no envio.
-    console.log(`[Espelho] Detecção na resposta da Ana: agendar=${ag.registro ? "sim" : "não"}, pré-agendamento=${registros.length}, recado=${rec.recado ? rec.recado.tipo + (rec.recado.prioritario ? "/PRIORITÁRIO" : "") : "nenhum"}.`);
+    console.log(`[Espelho] Detecção na resposta da Ana: agendar=${ag.registros.length}, pré-agendamento=${registros.length}, recado=${rec.recado ? rec.recado.tipo + (rec.recado.prioritario ? "/PRIORITÁRIO" : "") : "nenhum"}.`);
 
     // Salvar resposta (já sem o bloco técnico)
     await saveMessage(conversation.id, "assistant", reply);
@@ -3022,11 +3049,17 @@ app.post("/webhook", async (req, res) => {
     // Prioridade: [AGENDAR] (marca de verdade) > [PREAGENDAMENTO] (fallback) > [RECADO].
     // A Ana nunca deve emitir mais de um, mas se emitir, o agendamento real vence.
     let agendouOk = false;
-    if (ag.registro) {
-      // Grava o horário confirmado. Já fecha a conversão de Ads e espelha à
-      // secretária lá dentro; em corrida (vaga tomada) manda a correção ao paciente.
-      const rAg = await processarAgendarDaAna({ registro: ag.registro, patient, from, conversationId: conversation.id, replyTexto: reply });
-      agendouOk = !!(rAg && rAg.ok);
+    if (ag.registros.length) {
+      // Grava os horários confirmados — UM registro POR PACIENTE (agendamento
+      // múltiplo emite vários blocos na mesma mensagem). Cada gravação já fecha
+      // a conversão de Ads e espelha à secretária; em corrida (vaga tomada)
+      // manda a correção ao paciente. agendouOk = TODOS gravaram (protege a
+      // remarcação: só cancela o antigo se o novo entrou).
+      agendouOk = true;
+      for (const registro of ag.registros) {
+        const rAg = await processarAgendarDaAna({ registro, patient, from, conversationId: conversation.id, replyTexto: reply });
+        if (!(rAg && rAg.ok)) agendouOk = false;
+      }
     }
     else if (registros.length) {
       await notificarSecretaria(registros, patient, from, conversation.id);
@@ -3046,7 +3079,7 @@ app.post("/webhook", async (req, res) => {
     // Se veio junto de um [AGENDAR] (remarcação), só cancela o antigo se o novo foi
     // gravado com sucesso — assim o paciente NUNCA fica sem nenhum horário.
     if (canc.registro) {
-      if (ag.registro && !agendouOk) {
+      if (ag.registros.length && !agendouOk) {
         console.warn("[Cancelar] Remarcação: novo horário não gravou — mantenho o antigo, NÃO cancelo.");
       } else {
         await processarCancelarDaAna({ registro: canc.registro, from, conversationId: conversation.id });
