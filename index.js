@@ -2850,7 +2850,15 @@ app.post("/webhook", async (req, res) => {
     // de cache custam ~0,1× do input, cortando o maior gasto por mensagem.
     const uniHoje = unidadeDoDia(dt.now);
     const uniAmanha = unidadeDoDia(new Date(dt.now.getTime() + 24 * 3600 * 1000));
-    let dynamicPrompt = `### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje} — ${uniHoje ? `dia de atendimento na unidade ${uniHoje}` : "SEM atendimento (fim de semana/feriado)"}.\n- AMANHÃ é ${dt.amanha} — ${uniAmanha ? `atendimento na unidade ${uniAmanha}` : "sem atendimento"}.\nAo dizer qual unidade atende numa data, use ESTA informação já calculada — NÃO deduza o dia da semana sozinha. Lembrete da regra fixa: seg/qua/sex = Conjunto Nacional; ter/qui = Taguatinga. Nunca use outra referência de data.`;
+    // Fronteiras da semana (calculadas em código): a Ana ecoava "semana que vem"
+    // do paciente oferecendo data DESTA semana (caso 27/07: ofereceu qua 29/07
+    // como "semana que vem") — paciente pode aparecer na semana errada.
+    const dowHoje = new Date(Date.UTC(dt.ymd.ano, dt.ymd.mes - 1, dt.ymd.dia)).getUTCDay(); // 0=domingo
+    const diasAteProxSeg = ((8 - dowHoje) % 7) || 7;
+    const proxSeg = new Date(dt.now.getTime() + diasAteProxSeg * 24 * 3600 * 1000);
+    const domingoDestaSemana = new Date(proxSeg.getTime() - 24 * 3600 * 1000);
+    const fmtDia = (x) => x.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit" });
+    let dynamicPrompt = `### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje} — ${uniHoje ? `dia de atendimento na unidade ${uniHoje}` : "SEM atendimento (fim de semana/feriado)"}.\n- AMANHÃ é ${dt.amanha} — ${uniAmanha ? `atendimento na unidade ${uniAmanha}` : "sem atendimento"}.\n- ESTA SEMANA vai até ${fmtDia(domingoDestaSemana)}. "SEMANA QUE VEM" começa na ${fmtDia(proxSeg)}.\nAo dizer qual unidade atende numa data, use ESTA informação já calculada — NÃO deduza o dia da semana sozinha. Lembrete da regra fixa: seg/qua/sex = Conjunto Nacional; ter/qui = Taguatinga. Nunca use outra referência de data.\nREGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data ANTERIOR a ${fmtDia(proxSeg)} — datas até domingo são "esta semana" (diga "amanhã", "nesta quarta" etc.). Se o paciente pedir "semana que vem", ofereça um horário a partir de ${fmtDia(proxSeg)}; se houver vaga antes disso, você PODE oferecê-la como opção adicional deixando EXPLÍCITO que é ainda nesta semana (ex.: "tenho já nesta quarta, 29/07, e também na semana que vem"). Nunca ecoe a expressão do paciente se ela não corresponder à data oferecida.`;
 
     // Agenda do paciente: injeta os agendamentos que ELE já tem, para a Ana informar.
     try {
