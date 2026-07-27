@@ -1007,7 +1007,7 @@ function startSyncIClinic() {
 // vêm em ordem cronológica, os horários da TARDE dos dias mais à frente ficavam de
 // fora, e a Ana dizia "só tem de manhã" mesmo com a tarde toda livre. Cada slot
 // mantém o token [inicio:] para a marcação.
-function formatSlotsParaAgendar(slots, maxDias = 8) {
+function formatSlotsParaAgendar(slots, maxDias = 8, tagParticularAteTs = 0) {
   const byDia = new Map();
   for (const s of slots) {
     const key = `${s.dia}|${s.unidade}`;
@@ -1018,7 +1018,12 @@ function formatSlotsParaAgendar(slots, maxDias = 8) {
   let dias = 0;
   for (const [, arr] of byDia) {
     if (++dias > maxDias) break;
-    for (const s of arr) linhas.push(`- ${s.dia} às ${s.hora} (${s.unidade}) [inicio:${s.start.toISOString()}]`);
+    for (const s of arr) {
+      // Slots dentro da janela de antecedência do convênio (ex.: hoje) entram
+      // MARCADOS: a Ana só pode oferecê-los a paciente PARTICULAR confirmado.
+      const marca = (tagParticularAteTs && s.start.getTime() < tagParticularAteTs) ? " [SÓ PARTICULAR]" : "";
+      linhas.push(`- ${s.dia} às ${s.hora} (${s.unidade}) [inicio:${s.start.toISOString()}]${marca}`);
+    }
   }
   return linhas.join("\n");
 }
@@ -2884,13 +2889,21 @@ app.post("/webhook", async (req, res) => {
       // Rede de segurança: a Ana só oferece horários com pelo menos
       // ANA_ANTECEDENCIA_HORAS de antecedência (padrão 24h). O painel não filtra.
       // Se slots===null (falha ao carregar), mantém null para o ramo "indisponível".
-      const bufferH = detectAtendimentoParticular(messages) ? 0 : ANA_ANTECEDENCIA_HORAS;  // particular: mesmo dia; convênio: 24h
-      const minTs = Date.now() + bufferH * 3600 * 1000;
-      const slotsOferta = Array.isArray(slots) ? slots.filter(s => s.start.getTime() >= minTs) : slots;
+      // Antes: quem ainda não tinha dito "particular" recebia a lista SEM os slots
+      // de hoje (buffer de convênio) e a Ana negava "hoje não tem" para pacientes
+      // que ERAM particulares (caso Sebastião, 27/07: 15:40 livre e negado).
+      // Agora: os slots da janela restrita ENTRAM marcados [SÓ PARTICULAR]; a Ana
+      // pergunta o tipo antes de oferecer/negar. A validação da gravação continua
+      // barrando convênio dentro da janela (processarAgendarDaAna).
+      const ehParticular = detectAtendimentoParticular(messages);
+      const agora = Date.now();
+      const limiteConvenio = agora + ANA_ANTECEDENCIA_HORAS * 3600 * 1000;
+      const slotsOferta = Array.isArray(slots) ? slots.filter(s => s.start.getTime() >= agora) : slots;
+      const tagAte = ehParticular ? 0 : limiteConvenio;
       if (slotsOferta === null) {
         dynamicPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       } else if (slotsOferta.length > 0) {
-        dynamicPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta)}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.`;
+        dynamicPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, 8, tagAte)}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.${tagAte ? `\nREGRA DOS HORÁRIOS MARCADOS [SÓ PARTICULAR]: são horários próximos (ex.: hoje) que valem APENAS para atendimento PARTICULAR. Você ainda NÃO sabe se este paciente é particular. Portanto: (1) se o paciente pedir "hoje" ou um horário próximo, NUNCA diga que não há — PERGUNTE primeiro "Seria particular ou pelo convênio?"; (2) se ele confirmar PARTICULAR, pode oferecer e marcar um horário [SÓ PARTICULAR] normalmente; (3) se for CONVÊNIO, não ofereça os marcados — explique com gentileza que agendamento pelo convênio precisa de um pouco mais de antecedência, ofereça o primeiro horário SEM marca e, se o paciente insistir em hoje, registre [PREAGENDAMENTO] para a equipe tentar o encaixe.` : ""}`;
       } else {
         dynamicPrompt += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias para a unidade pedida. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       }
