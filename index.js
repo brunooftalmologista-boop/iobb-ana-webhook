@@ -356,6 +356,17 @@ Regras do bloco:
 - Só cancele agendamentos marcados como "você PODE cancelar/remarcar este". Nunca emita [CANCELAR] para um agendamento "alteração só pela equipe" (nesses casos, oriente o telefone (61) 3033-6605).
 - NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
 
+### Registro da carteirinha [CARTEIRINHA] (INVISÍVEL ao paciente)
+Quando você tiver os dados da carteirinha de um paciente de CONVÊNIO — porque LEU a foto do cartão OU porque o paciente DIGITOU o número — anexe ao FINAL da mensagem, exatamente:
+[CARTEIRINHA]
+convenio: <nome do convênio como está no cartão> | numero: <número da carteirinha; se ilegível/não informado, "por foto">
+[/CARTEIRINHA]
+Regras do bloco:
+- Emita SEMPRE que obtiver o número ou ler a carteirinha numa conversa em que o agendamento foi feito (ou está sendo feito na mesma mensagem, junto do [AGENDAR]) — o sistema ANEXA esses dados à ficha do agendamento para a equipe transferir ao prontuário.
+- Emita UMA única vez por carteirinha; não reemita nas mensagens seguintes.
+- Também vale quando o paciente manda o número por texto, sem foto.
+- NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
+
 ### Ceratocone
 Somos referência em ceratocone. Tratamentos que oferecemos, conforme cada caso: crosslinking, anel de Ferrara e lentes de contato especiais (rígidas/esclerais). A cirurgia refrativa a laser geralmente não é indicada no ceratocone — a definição é sempre do médico na avaliação.
 Você pode perguntar UMA vez, de forma leve (nunca como triagem clínica), apenas se o diagnóstico de ceratocone já foi confirmado por um médico — só para direcionar a unidade/avaliação. NÃO pergunte sobre progressão, piora, sintomas, tempo nem histórico; se o paciente relatar isso, acolha e conduza à avaliação, sem comentar o quadro. Se ela não souber, não há problema; siga para a consulta de avaliação.
@@ -1197,6 +1208,72 @@ function extrairCancelar(reply) {
 // se for da AGENDA DO PAINEL feita pela própria Ana (origem 'ana') E do telefone do
 // paciente. Agendamentos do iClinic/secretária NÃO são tocados (cancelar o reflexo
 // não cancela no iClinic e o sync recria) — esses vão para a equipe. NUNCA lança.
+// Extrai o bloco [CARTEIRINHA] convenio: <...> | numero: <...>. Mesma mecânica
+// do extrairCancelar. A Ana o emite ao LER a foto da carteirinha (visão restrita)
+// ou quando o paciente digita o número — os dados vão para a ficha do agendamento.
+function extrairCarteirinha(reply) {
+  const re = /\[CARTEIRINHA\]([\s\S]*?)\[\/CARTEIRINHA\]/i;
+  let inner, limpo;
+  const m = reply.match(re);
+  if (m) { inner = m[1]; limpo = reply.replace(re, "").replace(/\n{3,}/g, "\n\n").trim(); }
+  else {
+    const mo = reply.match(/\[CARTEIRINHA\]([\s\S]*)$/i);
+    if (!mo) return { limpo: reply, registro: null };
+    inner = mo[1]; limpo = reply.slice(0, mo.index).replace(/\n{3,}/g, "\n\n").trim();
+  }
+  const campos = {};
+  for (const par of inner.replace(/\n/g, " ").split("|")) {
+    const idx = par.indexOf(":");
+    if (idx === -1) continue;
+    const chave = par.slice(0, idx).trim().toLowerCase().replace(/^-+\s*/, "");
+    const valor = par.slice(idx + 1).trim();
+    if (chave) campos[chave] = valor;
+  }
+  return { limpo, registro: Object.keys(campos).length ? campos : null };
+}
+
+// Anexa os dados da carteirinha ao agendamento ATIVO do paciente (ana/secretaria):
+// atualiza `convenio` (se veio) e acrescenta "Carteirinha: <número>" às observações.
+// Busca primeiro pelo agendamento desta conversa; senão, pelo telefone. NUNCA lança.
+async function processarCarteirinhaDaAna({ registro, from, conversationId }) {
+  try {
+    const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
+    const convenio = limpo(registro.convenio);
+    const numero = limpo(registro.numero);
+    if (!convenio && !numero) return;
+
+    const buscar = async (filtro) => {
+      let q = supabase.from("appointments")
+        .select("id, convenio, observacoes, paciente_nome, inicio, unidade")
+        .in("status", ["reservado", "confirmado"])
+        .in("origem", ["ana", "secretaria"])
+        .order("created_at", { ascending: false })
+        .limit(1);
+      q = filtro(q);
+      const { data } = await q;
+      return data && data.length ? data[0] : null;
+    };
+    let ap = await buscar(q => q.eq("conversation_id", String(conversationId)));
+    if (!ap && from) ap = await buscar(q => q.eq("paciente_telefone", from));
+    if (!ap) { console.log("[Carteirinha] Sem agendamento ativo p/ anexar (conversa", conversationId + ") — provável pré-agendamento; equipe já tem a foto."); return; }
+
+    const nota = `Carteirinha: ${numero || "por foto"}${convenio ? ` (${convenio})` : ""}`;
+    const obs = String(ap.observacoes || "");
+    const updates = {};
+    if (!/carteirinha:/i.test(obs)) updates.observacoes = obs ? `${obs} | ${nota}` : nota;
+    if (convenio) updates.convenio = convenio;   // substitui genéricos tipo "convênio a confirmar"
+    if (!Object.keys(updates).length) { console.log("[Carteirinha] Ficha já tinha carteirinha — nada a fazer."); return; }
+
+    const { error } = await supabase.from("appointments").update(updates).eq("id", ap.id);
+    if (error) { console.error("[Carteirinha] Falha ao anexar:", error.message); return; }
+    console.log(`[Carteirinha] ✅ Anexada ao agendamento ${ap.id}: ${nota}`);
+    await espelharParaSecretaria("[Carteirinha anexada]",
+      `📎 *CARTEIRINHA ANEXADA ao agendamento*\n👤 ${ap.paciente_nome || from || "—"}\n🏥 ${convenio || "—"}\n🔢 Nº: ${numero || "por foto (verificar imagem)"}\n🕐 ${fmtDataHoraBR(ap.inicio)} — ${ap.unidade}`).catch(() => {});
+  } catch (e) {
+    console.error("[Carteirinha] Falha (não fatal):", e.message);
+  }
+}
+
 async function processarCancelarDaAna({ registro, from, conversationId }) {
   try {
     const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
@@ -2793,7 +2870,7 @@ app.post("/webhook", async (req, res) => {
     // conteúdo, mas a equipe já recebeu — então ela deve considerar entregue e
     // seguir, em vez de dead-endar como faria com uma imagem qualquer.
     if (fotoDeCarteirinha) {
-      dynamicPrompt += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nA imagem vai anexada nesta conversa quando disponível — ou seja, você PODE vê-la. A NOSSA EQUIPE também já recebeu a foto.\nO que fazer:\n- Se a imagem for MESMO uma carteirinha/cartão de convênio: leia o NOME DO CONVÊNIO e, se estiver legível, o NÚMERO da carteirinha, e use esses dados no pré-agendamento (no bloco, registre o convênio lido e o número; se o número não estiver legível, use "carteirinha por foto"). Confirme ao paciente, em linguagem natural, qual convênio você identificou. Se estiver ilegível, peça gentilmente uma foto mais nítida — sem travar o pré-agendamento.\n- Se a imagem NÃO for uma carteirinha: NÃO descreva o que vê e NÃO comente o conteúdo. Apenas acolha e diga que vai encaminhar à equipe.\nLIMITE ABSOLUTO (inegociável): você só lê DOCUMENTO ADMINISTRATIVO (carteirinha/cartão do plano). Se a imagem for clínica — foto de olho, exame, laudo, receita, resultado, OCT, retinografia etc. — NUNCA descreva, interprete, opine, sugira diagnóstico ou diga se está normal/alterado. Nesses casos: acolha, diga que quem avalia é o médico na consulta, e siga para o agendamento. Continuam valendo todas as regras absolutas (nunca diagnosticar, nunca interpretar exames).\nConcluído isso, CONTINUE/CONCLUA o pré-agendamento normalmente. NÃO peça a carteirinha de novo e NÃO diga apenas que "vai encaminhar" — conclua, explicando que a equipe confirma a cobertura junto com o horário.`;
+      dynamicPrompt += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nA imagem vai anexada nesta conversa quando disponível — ou seja, você PODE vê-la. A NOSSA EQUIPE também já recebeu a foto.\nO que fazer:\n- Se a imagem for MESMO uma carteirinha/cartão de convênio: leia o NOME DO CONVÊNIO e, se estiver legível, o NÚMERO da carteirinha, e REGISTRE emitindo o bloco [CARTEIRINHA] (convenio + numero) ao final da mensagem — o sistema anexa à ficha do agendamento. Se o fluxo for de pré-agendamento, registre TAMBÉM no bloco de pré-agendamento (convênio lido e número; se o número não estiver legível, use "carteirinha por foto"). Confirme ao paciente, em linguagem natural, qual convênio você identificou. Se estiver ilegível, peça gentilmente uma foto mais nítida — sem travar o pré-agendamento.\n- Se a imagem NÃO for uma carteirinha: NÃO descreva o que vê e NÃO comente o conteúdo. Apenas acolha e diga que vai encaminhar à equipe.\nLIMITE ABSOLUTO (inegociável): você só lê DOCUMENTO ADMINISTRATIVO (carteirinha/cartão do plano). Se a imagem for clínica — foto de olho, exame, laudo, receita, resultado, OCT, retinografia etc. — NUNCA descreva, interprete, opine, sugira diagnóstico ou diga se está normal/alterado. Nesses casos: acolha, diga que quem avalia é o médico na consulta, e siga para o agendamento. Continuam valendo todas as regras absolutas (nunca diagnosticar, nunca interpretar exames).\nConcluído isso, CONTINUE/CONCLUA o pré-agendamento normalmente. NÃO peça a carteirinha de novo e NÃO diga apenas que "vai encaminhar" — conclua, explicando que a equipe confirma a cobertura junto com o horário.`;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2899,7 +2976,8 @@ app.post("/webhook", async (req, res) => {
 
     // Separar os blocos técnicos (invisíveis ao paciente) do texto que será
     // realmente enviado. `reply` nunca conterá nenhum dos blocos.
-    const canc = extrairCancelar(reply);           // [CANCELAR] (desmarcar / parte da remarcação)
+    const cart = extrairCarteirinha(reply);        // [CARTEIRINHA] (dados do cartão → ficha)
+    const canc = extrairCancelar(cart.limpo);      // [CANCELAR] (desmarcar / parte da remarcação)
     const ag = extrairAgendar(canc.limpo);         // [AGENDAR] (agendamento REAL)
     const pre = extrairPreAgendamento(ag.limpo);   // depois [PREAGENDAMENTO] (fallback)
     const rec = extrairRecado(pre.limpo);          // por fim [RECADO], no texto já limpo
@@ -2952,6 +3030,12 @@ app.post("/webhook", async (req, res) => {
       } else {
         await processarCancelarDaAna({ registro: canc.registro, from, conversationId: conversation.id });
       }
+    }
+
+    // CARTEIRINHA lida/informada → anexa à ficha do agendamento (depois do [AGENDAR],
+    // para o agendamento da MESMA mensagem já existir). Nunca lança.
+    if (cart.registro) {
+      await processarCarteirinhaDaAna({ registro: cart.registro, from, conversationId: conversation.id });
     }
 
     // Espelhar para clínica (isolado: notificarClinica nunca lança)

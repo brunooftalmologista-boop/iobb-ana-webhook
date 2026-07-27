@@ -183,6 +183,10 @@ function nascimentoDe(obs){
   const m = String(obs||'').match(/nascimento:\s*([0-9/.\-]+)/i);
   return m ? m[1] : '';
 }
+function carteirinhaDe(obs){
+  const m = String(obs||'').match(/carteirinha:\s*([^|]+)/i);
+  return m ? m[1].trim() : '';
+}
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function copiar(texto, msg){
@@ -194,11 +198,13 @@ function copiar(texto, msg){
 
 function blocoFicha(a){
   const nasc = nascimentoDe(a.observacoes);
+  const cart = carteirinhaDe(a.observacoes);
   return [
     'Nome: '+(a.paciente_nome||'—'),
     nasc ? 'Nascimento: '+nasc : null,
     'Telefone: '+(fone(a.paciente_telefone)||'—'),
     'Convênio: '+(a.convenio||'Particular'),
+    cart ? 'Carteirinha: '+cart : null,
     'Motivo: '+(a.motivo||'Consulta'),
     'Horário: '+dataBR(a.inicio)+' '+horaBR(a.inicio)+' — '+a.unidade,
     'Origem: '+(a.origem==='ana' ? 'Ana (WhatsApp)' : a.origem==='secretaria' ? 'Secretária (agenda)' : a.origem),
@@ -241,6 +247,7 @@ function desenhar(){
     html += '<div class="dia">'+esc(diaBR(arr[0].inicio))+' <small>· '+arr.length+' paciente(s)</small></div>';
     for(const a of arr){
       const nasc = nascimentoDe(a.observacoes);
+      const cart = carteirinhaDe(a.observacoes);
       const done = !!transferidos[a.id];
       html += `
       <div class="card ${done?'done':''}" data-id="${esc(a.id)}">
@@ -261,6 +268,7 @@ function desenhar(){
           ${nasc?`<span class="campo" data-copy="${esc(nasc)}"><b>NASC</b>${esc(nasc)}</span>`:''}
           ${a.paciente_telefone?`<span class="campo" data-copy="${esc(fone(a.paciente_telefone))}"><b>TEL</b>${esc(fone(a.paciente_telefone))}</span>`:''}
           <span class="campo" data-copy="${esc(a.convenio||'Particular')}"><b>CONVÊNIO</b>${esc(a.convenio||'Particular')}</span>
+          ${cart?`<span class="campo" data-copy="${esc(cart)}"><b>CARTEIRINHA</b>${esc(cart)}</span>`:''}
           <span class="campo" data-copy="${esc(a.motivo||'Consulta')}"><b>MOTIVO</b>${esc(a.motivo||'Consulta')}</span>
         </div>
       </div>`;
