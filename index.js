@@ -172,7 +172,8 @@ REGRA (não repita perguntas): assim que o paciente indicar um CONVÊNIO — cit
 Qualquer menção a Unimed → solicite o número da carteirinha ou uma foto dela. IMPORTANTE: isso NÃO interrompe o agendamento — trate a Unimed como qualquer outro convênio atendido: continue coletando a preferência (unidade, período) e os dados, e CONCLUA o agendamento normalmente (marque o horário com [AGENDAR] se houver agenda; senão registre [PREAGENDAMENTO]). Registre o convênio como "Unimed – pendente verificação" e inclua o número da carteirinha se o paciente informou (ou "carteirinha por foto" se ele mandou a imagem). O "pendente" é só a validação da carteirinha/sub-plano — atendemos Unimed normalmente. Ao encerrar, explique que a equipe confirma a COBERTURA da Unimed (o horário você já deixa marcado ou encaminhado). Se o paciente ainda não tiver a carteirinha em mãos, conclua o agendamento mesmo assim e diga que a equipe verifica no contato. Nunca deixe o paciente Unimed sem agendamento só porque falta a carteirinha.
 Consulta por convênio: quando o convênio é atendido, a consulta é pelo plano — o paciente não paga o valor particular. Se houver dúvida sobre cobertura de um procedimento específico, diga que a equipe confirma na hora do agendamento. Nunca cite valor de consulta particular para quem tem convênio atendido.
 Sobre pedido/guia médica, autorização prévia ou carência do convênio: NÃO afirme que precisa nem que não precisa — diga que a equipe confirma esses detalhes no agendamento.
-POR QUE CONVÊNIO PRECISA DE MAIS ANTECEDÊNCIA QUE PARTICULAR (só explique se o paciente PERGUNTAR): agendamentos pelo convênio precisam de uma antecedência maior porque a equipe faz a PRÉ-CHECAGEM DA COBERTURA junto à operadora antes da consulta — é essa verificação prévia (elegibilidade/liberação do plano) que garante que o atendimento seja autorizado no dia. No particular não há essa etapa, por isso conseguimos encaixar no mesmo dia. Explique assim, com naturalidade, e ofereça a alternativa (o horário mais próximo disponível pelo convênio, ou, se o paciente preferir e fizer questão do mesmo dia, o atendimento particular). NUNCA levante esse assunto por conta própria — só responda se ele perguntar; e nunca dê a entender que o convênio "vale menos" ou que estamos priorizando o particular.
+AGENDAMENTO NO MESMO DIA — REGRA ATUAL: agendamos no MESMO DIA tanto no particular quanto em TODOS os convênios credenciados. As ÚNICAS exceções, que precisam de cerca de 24h de antecedência, são: **Unimed (e todas as variações), Casec, Codevasc, Care Plus e Life Empresarial** — nesses planos a liberação/checagem junto à operadora não sai em cima da hora. Para qualquer outro convênio da lista, trate exatamente como particular quanto à disponibilidade: se há vaga hoje, pode oferecer e marcar. NUNCA diga a um paciente de convênio que "só atendemos hoje no particular".
+Se o paciente de um dos 5 planos acima PERGUNTAR por que precisa de antecedência (só explique se ele perguntar): diga que esse plano específico exige a verificação prévia de cobertura junto à operadora antes da consulta, e ofereça o horário mais próximo disponível. Nunca dê a entender que o convênio "vale menos" ou que estamos priorizando o particular.
 Cirurgias cobertas por convênio: nunca cite o valor particular de uma cirurgia COBERTA pelo convênio (ex.: catarata) para quem tem convênio atendido — a cobertura e a autorização são confirmadas pela equipe. (A cirurgia refrativa é eletiva e SEMPRE particular; seus valores podem ser informados normalmente — ver a seção de refrativa.)
 
 LISTA DE CONVÊNIOS ATENDIDOS:
@@ -794,6 +795,31 @@ function detectAtendimentoParticular(messages) {
   return true;
 }
 
+// REGRA (Dr. Bruno, 2026-07-28): agendamento no MESMO DIA vale para particular E
+// para TODOS os convênios credenciados — EXCETO os planos abaixo, que exigem
+// ANA_ANTECEDENCIA_HORAS (24h) porque a liberação/checagem junto à operadora não
+// sai em cima da hora. Antes a regra era o inverso (todo convênio exigia 24h).
+const CONVENIOS_COM_ANTECEDENCIA = [
+  "unimed",            // e todas as variações (Central Nacional, Planalto, Intercâmbio…)
+  "casec",
+  "codevasc",
+  "care plus", "careplus",
+  "life empresarial",
+];
+// Recebe um texto livre (nome do convênio informado OU a conversa inteira) e diz
+// se ele cai num dos planos que exigem antecedência. Acento/caixa/hífen ignorados.
+function exigeAntecedencia(texto) {
+  const t = String(texto || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/-/g, " ");
+  if (!t.trim()) return false;
+  return CONVENIOS_COM_ANTECEDENCIA.some(c => t.includes(c));
+}
+// Versão para a OFERTA: varre só o que o PACIENTE escreveu. Se ele ainda não
+// citou nenhum desses planos, o padrão é LIBERADO (mesmo dia), como o particular.
+function conversaExigeAntecedencia(messages) {
+  const txt = (messages || []).filter(m => m.role === "user").map(m => m.content || "").join(" ");
+  return exigeAntecedencia(txt);
+}
+
 // Busca o iCal. Servidor-para-servidor NÃO tem CORS, então baixamos direto do
 // Google (confiável). O proxy allorigins.win, usado antes, estava fora do ar e
 // derrubava a agenda inteira — deixando a Ana sem dados e "inventando" vagas.
@@ -1167,7 +1193,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
       const distintos = [...new Set(horas)];
       const tokenTime = brtTime(ini);
       if (distintos.length === 1 && distintos[0] !== tokenTime) {
-        const bufferH = /particular/i.test(String(convenio || "")) ? 0 : ANA_ANTECEDENCIA_HORAS;
+        const bufferH = exigeAntecedencia(convenio) ? ANA_ANTECEDENCIA_HORAS : 0;
         const minTs = Date.now() + bufferH * 3600 * 1000;
         const vagas = await fetchSlotsDB(unidade);
         const alvo = Array.isArray(vagas)
@@ -1228,7 +1254,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     // um token reaproveitado/alucinado gravaria em dia/hora inválido (ex.: terça no
     // Conjunto, no almoço, ou <24h). Se a leitura falhar (null), NÃO bloqueia — o
     // índice único ainda protege contra overbooking do slot exato.
-    const bufferH = /particular/i.test(String(convenio || "")) ? 0 : ANA_ANTECEDENCIA_HORAS;  // particular pode no mesmo dia
+    const bufferH = exigeAntecedencia(convenio) ? ANA_ANTECEDENCIA_HORAS : 0;  // particular pode no mesmo dia
     const minTs = Date.now() + bufferH * 3600 * 1000;
     const vagasAtuais = await fetchSlotsDB(unidade);
     if (Array.isArray(vagasAtuais)) {
@@ -1247,7 +1273,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     if (r.taken) {
       // Corrida: a vaga foi ocupada durante a conversa. Oferece a próxima livre.
       const slots = await fetchSlotsDB(unidade);
-      const minTs = Date.now() + (/particular/i.test(String(convenio || "")) ? 0 : ANA_ANTECEDENCIA_HORAS) * 3600 * 1000;   // mesma antecedência (particular = mesmo dia)
+      const minTs = Date.now() + (exigeAntecedencia(convenio) ? ANA_ANTECEDENCIA_HORAS : 0) * 3600 * 1000;   // mesma antecedência (particular = mesmo dia)
       const prox = (slots || []).find(s => s.start.getTime() >= minTs);
       const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve para você?` : `Vou verificar outra opção e já te retorno.`;
       await trySendWhatsApp(from, `Peço desculpas — o horário de ${fmtDataHoraBR(ini.toISOString())} acabou de ser preenchido. ${alt}`);
@@ -2996,19 +3022,16 @@ app.post("/webhook", async (req, res) => {
     if (ANA_MARCA_SOZINHA && (detectSchedulingIntent(messages) || detectUnidade(messages))) {
       const unidade = detectUnidade(messages);
       const slots = await fetchSlotsDB(unidade);
-      // Rede de segurança: a Ana só oferece horários com pelo menos
-      // ANA_ANTECEDENCIA_HORAS de antecedência (padrão 24h). O painel não filtra.
+      // ANTECEDÊNCIA (regra do Dr. Bruno, 2026-07-28): mesmo dia liberado para
+      // particular E para todos os convênios credenciados. Só os planos de
+      // CONVENIOS_COM_ANTECEDENCIA (Unimed e variações, Casec, Codevasc, Care Plus,
+      // Life Empresarial) exigem ANA_ANTECEDENCIA_HORAS. Enquanto o paciente não
+      // citar um desses, o padrão é LIBERADO — nada de esconder as vagas de hoje.
       // Se slots===null (falha ao carregar), mantém null para o ramo "indisponível".
-      // Antes: quem ainda não tinha dito "particular" recebia a lista SEM os slots
-      // de hoje (buffer de convênio) e a Ana negava "hoje não tem" para pacientes
-      // que ERAM particulares (caso Sebastião, 27/07: 15:40 livre e negado).
-      // Agora: os slots da janela restrita ENTRAM marcados [SÓ PARTICULAR]; a Ana
-      // pergunta o tipo antes de oferecer/negar. A validação da gravação continua
-      // barrando convênio dentro da janela (processarAgendarDaAna).
-      const ehParticular = detectAtendimentoParticular(messages);
       const agora = Date.now();
-      const limiteConvenio = agora + ANA_ANTECEDENCIA_HORAS * 3600 * 1000;
-      let slotsOferta = Array.isArray(slots) ? slots.filter(s => s.start.getTime() >= agora) : slots;
+      const precisaAntecedencia = conversaExigeAntecedencia(messages);
+      const minOferta = agora + (precisaAntecedencia ? ANA_ANTECEDENCIA_HORAS * 3600 * 1000 : 0);
+      let slotsOferta = Array.isArray(slots) ? slots.filter(s => s.start.getTime() >= minOferta) : slots;
       // EQUILÍBRIO DE AGENDA: quando o paciente ainda não escolheu unidade, a lista
       // vai com a unidade preferida PRIMEIRO (a Ana escolhe "um horário da lista",
       // então a ordem decide na prática — bem mais confiável que pedir no texto).
@@ -3021,13 +3044,11 @@ app.post("/webhook", async (req, res) => {
           return pa - pb;
         });
       }
-      const tagAte = ehParticular ? 0 : limiteConvenio;
+      const tagAte = 0;   // marcação [SÓ PARTICULAR] aposentada: hoje vale p/ quase todos os convênios
       if (slotsOferta === null) {
         dynamicPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       } else if (slotsOferta.length > 0) {
-        dynamicPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, 8, tagAte)}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido. ÚNICA EXCEÇÃO à regra do horário único: agendamento para MAIS DE UM paciente — ofereça exatamente UM horário POR paciente (N pacientes = N horários), preferindo horários em sequência no mesmo dia/unidade e dizendo qual é de quem (ver a seção "Agendamento para MAIS DE UM paciente").${(!unidade && ANA_UNIDADE_PREFERIDA) ? `\nPREFERÊNCIA DE UNIDADE (este paciente ainda NÃO disse onde quer ser atendido): hoje temos MAIS DISPONIBILIDADE na unidade **${ANA_UNIDADE_PREFERIDA}**. Use isso de duas formas: (a) AO PERGUNTAR a preferência, acrescente essa informação verdadeira e útil — ex.: "prefere Conjunto Nacional ou Taguatinga Shopping (em Águas Claras)? No Conjunto Nacional tenho mais horários disponíveis esta semana"; (b) se VOCÊ tiver que escolher (paciente sem preferência, com pressa, ou pedindo "o horário mais próximo"), ofereça um horário do **${ANA_UNIDADE_PREFERIDA}**. LIMITES: se o paciente disser que prefere a outra unidade, ou citar bairro/região mais perto dela, ATENDA IMEDIATAMENTE, sem insistir e sem justificar a troca. NUNCA diga que a outra unidade está cheia nem invente motivo — a única coisa que você pode afirmar é que há mais horários disponíveis nesta. EXCEÇÃO IMPORTANTE: se o paciente pedir explicitamente o horário MAIS PRÓXIMO/mais cedo possível (pressa, urgência de agenda), ofereça o horário genuinamente mais próximo da lista, mesmo que seja da outra unidade — nunca empurre uma data mais distante só para preencher a unidade preferida.` : ""}${tagAte ? `\nHORÁRIOS MARCADOS [SÓ PARTICULAR] — MARCAÇÃO INTERNA, NUNCA VERBALIZE: são horários muito próximos (ex.: hoje) que ainda não têm tempo hábil para a pré-checagem de cobertura do convênio. A marcação é PARA VOCÊ, não para o paciente.
-❌ PROIBIDO dizer qualquer coisa como "os horários de hoje são somente para particular", "hoje só atendo particular", "esse horário é só para quem paga particular". Isso soa como se a clínica preferisse quem paga do próprio bolso e ofende quem tem convênio. NUNCA classifique horários por forma de pagamento na frente do paciente.
-✅ COMO AGIR: (1) se o paciente pedir "hoje"/horário próximo e você ainda não souber a forma de atendimento, NUNCA diga que não há — pergunte com naturalidade, como parte normal do agendamento: "Claro! Seu atendimento seria pelo convênio ou particular?"; (2) se for PARTICULAR, ofereça o horário próximo normalmente, sem comentar nada sobre a marcação; (3) se for CONVÊNIO, NÃO diga que aquele horário "é de particular" — diga que para atendimento pelo convênio você precisa de um pouco mais de antecedência, porque a equipe faz a verificação de cobertura junto ao plano antes da consulta, e ofereça o primeiro horário disponível (o mais próximo SEM marca) como algo positivo: "Pelo seu convênio, o quanto antes que consigo é [dia] às [hora] — reservo para você?". Se o paciente insistir em hoje, acolha e registre [PREAGENDAMENTO] para a equipe tentar o encaixe, sem prometer.` : ""}`;
+        dynamicPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, 8, tagAte)}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido. ÚNICA EXCEÇÃO à regra do horário único: agendamento para MAIS DE UM paciente — ofereça exatamente UM horário POR paciente (N pacientes = N horários), preferindo horários em sequência no mesmo dia/unidade e dizendo qual é de quem (ver a seção "Agendamento para MAIS DE UM paciente").${(!unidade && ANA_UNIDADE_PREFERIDA) ? `\nPREFERÊNCIA DE UNIDADE (este paciente ainda NÃO disse onde quer ser atendido): hoje temos MAIS DISPONIBILIDADE na unidade **${ANA_UNIDADE_PREFERIDA}**. Use isso de duas formas: (a) AO PERGUNTAR a preferência, acrescente essa informação verdadeira e útil — ex.: "prefere Conjunto Nacional ou Taguatinga Shopping (em Águas Claras)? No Conjunto Nacional tenho mais horários disponíveis esta semana"; (b) se VOCÊ tiver que escolher (paciente sem preferência, com pressa, ou pedindo "o horário mais próximo"), ofereça um horário do **${ANA_UNIDADE_PREFERIDA}**. LIMITES: se o paciente disser que prefere a outra unidade, ou citar bairro/região mais perto dela, ATENDA IMEDIATAMENTE, sem insistir e sem justificar a troca. NUNCA diga que a outra unidade está cheia nem invente motivo — a única coisa que você pode afirmar é que há mais horários disponíveis nesta. EXCEÇÃO IMPORTANTE: se o paciente pedir explicitamente o horário MAIS PRÓXIMO/mais cedo possível (pressa, urgência de agenda), ofereça o horário genuinamente mais próximo da lista, mesmo que seja da outra unidade — nunca empurre uma data mais distante só para preencher a unidade preferida.` : ""}${precisaAntecedencia ? `\nANTECEDÊNCIA DESTE CONVÊNIO: o plano citado por este paciente (Unimed e variações, Casec, Codevasc, Care Plus ou Life Empresarial) é um dos poucos que precisam de um pouco mais de antecedência, porque a liberação junto à operadora não sai em cima da hora. Os horários muito próximos JÁ FORAM RETIRADOS da sua lista — ofereça normalmente o PRIMEIRO horário que aparece nela, de forma positiva (ex.: "Pelo seu convênio, o quanto antes que consigo é [dia] às [hora] — reservo para você?"). Se o paciente insistir em ser atendido hoje, acolha, explique em UMA frase que esse plano específico exige a verificação prévia de cobertura junto à operadora e registre [PREAGENDAMENTO] para a equipe tentar o encaixe — sem prometer. NUNCA diga que a agenda está cheia (não é o caso) nem classifique horários por forma de pagamento.` : ""}`;
       } else {
         dynamicPrompt += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias para a unidade pedida. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       }
