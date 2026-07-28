@@ -661,6 +661,24 @@ function unidadeDoDia(date) {
 // Calcula os horários REALMENTE livres nos próximos 14 dias, cruzando a grade de
 // atendimento com os eventos "ocupado" da agenda. Devolve objetos estruturados.
 // TODAS as datas são resolvidas no fuso de Brasília (America/Sao_Paulo).
+// HORÁRIOS EXTRAS POR DATA (exceções à grade fixa). Guardados na tabela
+// `settings`, chave `agenda_horarios_extras`, no formato:
+//   [{ "data": "2026-07-30", "unidade": "Taguatinga", "horas": ["09:00","09:20"] }]
+// Servem para abrir pontualmente horários fora da grade (ex.: atender mais cedo
+// num dia específico) sem alterar AGENDA_REGRAS, que vale para todas as semanas.
+// Cache em memória, recarregado junto com a agenda. NUNCA lança.
+let HORARIOS_EXTRAS = [];
+async function carregarHorariosExtras() {
+  try {
+    const { data } = await supabase.from("settings").select("value").eq("key", "agenda_horarios_extras").single();
+    const arr = data?.value ? JSON.parse(data.value) : [];
+    HORARIOS_EXTRAS = Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    HORARIOS_EXTRAS = [];   // sem extras configurados (ou JSON inválido) → grade normal
+  }
+  return HORARIOS_EXTRAS;
+}
+
 function getAvailableSlots(events, unidadePref) {
   const now = new Date();
   const { ano, mes, dia } = brasiliaAgora().ymd; // hoje em Brasília (Y-M-D)
@@ -679,10 +697,31 @@ function getAvailableSlots(events, unidadePref) {
       if (p.includes("taguatinga") && regra.nome !== "Taguatinga") continue;
     }
     const dateStr = `${y}-${String(mo).padStart(2,"0")}-${String(da).padStart(2,"0")}`;
+    // Horários do dia = grade fixa + extras cadastrados para ESTA data/unidade.
+    const horariosDoDia = [];
     for (let h = regra.inicio; h < regra.fim; h++) {
-      if (h === 13) continue; // almoço 13h–14h
+      if (h === 13) continue;                                   // almoço 13h–14h
       for (let m = 0; m < 60; m += SLOT_MIN) {
-        if ((h === 12 || h === 17) && m === 40) continue; // 12:40 e 17:40 bloqueados em todas as unidades (pausa fixa)
+        if ((h === 12 || h === 17) && m === 40) continue;        // 12:40 e 17:40 bloqueados (pausa fixa)
+        horariosDoDia.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);
+      }
+    }
+    for (const ex of HORARIOS_EXTRAS) {
+      if (!ex || ex.data !== dateStr) continue;
+      // Segurança: só aceita extra da unidade que REALMENTE atende nesse dia —
+      // senão abriria vaga numa unidade onde o médico não está.
+      const uex = String(ex.unidade || "").toLowerCase();
+      const casaUnidade = (uex.includes("conjunto") && regra.nome === "Conjunto Nacional")
+                       || ((uex.includes("taguatinga") || uex.includes("aguas") || uex.includes("águas")) && regra.nome === "Taguatinga");
+      if (!casaUnidade) { console.warn(`[Agenda] Extra ignorado (${ex.data} ${ex.unidade}): nesse dia quem atende é ${regra.nome}.`); continue; }
+      for (const hhmm of (ex.horas || [])) {
+        if (/^\d{2}:\d{2}$/.test(hhmm) && !horariosDoDia.includes(hhmm)) horariosDoDia.push(hhmm);
+      }
+    }
+    horariosDoDia.sort();
+    {
+      for (const hhmm of horariosDoDia) {
+        const [h, m] = hhmm.split(":").map(Number);
         // Instante absoluto do slot, ancorado em Brasília (-03:00).
         const slotStart = new Date(`${dateStr}T${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:00-03:00`);
         const slotEnd = new Date(slotStart.getTime() + SLOT_MIN * 60000);
@@ -891,6 +930,7 @@ async function fetchBusyFromDB() {
 async function fetchSlotsDB(unidadePref) {
   const events = await fetchBusyFromDB();
   if (events === null) return null;
+  await carregarHorariosExtras();   // exceções por data (ex.: abrir 9h numa quinta)
   const slots = getAvailableSlots(events, unidadePref);
   console.log(`[Agenda DB] ${events.length} ocupado(s) → ${slots.length} vaga(s) nos próximos 14 dias.`);
   return slots;
