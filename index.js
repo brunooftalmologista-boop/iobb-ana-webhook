@@ -490,7 +490,10 @@ const WA_LP_NUMBER = process.env.WA_LP_NUMBER || NUMERO_CLINICA;
 // Número (E.164, sem "+") da secretária que recebe o resumo de cada
 // pré-agendamento concluído pela Ana. Configurável por env; default = número
 // informado pela clínica. Atenção à janela de 24h da Meta (ver notificarSecretaria).
-const WA_SECRETARIA_NUMBER = process.env.WA_SECRETARIA_NUMBER || "5561992997639";
+// DESATIVADO a pedido do Dr. Bruno (2026-07-28): o antigo default 5561992997639
+// não recebe mais espelhamento. Para religar (ou apontar para outro número),
+// basta definir WA_SECRETARIA_NUMBER no Render — vazio/ausente = desativado.
+const WA_SECRETARIA_NUMBER = (process.env.WA_SECRETARIA_NUMBER || "").trim();
 // A secretária também é um número admin: reconhece comandos e consultas de
 // pré-agendamento pelo WhatsApp. (Só adiciona se ainda não estiver na lista.)
 if (WA_SECRETARIA_NUMBER && !NUMEROS_ADMIN.includes(WA_SECRETARIA_NUMBER)) NUMEROS_ADMIN.push(WA_SECRETARIA_NUMBER);
@@ -1867,6 +1870,13 @@ async function trySendWhatsApp(to, texto) {
 // clínica. Loga CLARAMENTE cada tentativa: destino, sucesso/falha, motivo e código
 // da Meta. NUNCA lança. `label` identifica a origem no log (ex.: "[Recado urgência]").
 async function espelharParaSecretaria(label, texto) {
+  // Espelhamento para a secretária DESATIVADO (WA_SECRETARIA_NUMBER vazio): não
+  // envia nada e não tenta a salvaguarda. A informação continua no painel e no
+  // espelho geral da clínica (notificarClinica).
+  if (!WA_SECRETARIA_NUMBER) {
+    console.log(`[Espelho]${label} — desativado (WA_SECRETARIA_NUMBER vazio); nada enviado.`);
+    return { entregue: false, canal: "desativado" };
+  }
   const r1 = await trySendWhatsApp(WA_SECRETARIA_NUMBER, texto);
   if (r1.ok) {
     console.log(`[Espelho]${label} ✅ ENVIADO à secretária ${WA_SECRETARIA_NUMBER}.`);
@@ -2268,7 +2278,7 @@ function startResumoDiarioScheduler() {
   };
   setInterval(check, 30 * 60 * 1000);
   check(); // checa uma vez no startup (recupera o envio se o servidor reiniciou)
-  console.log(`[ResumoDiário] Agendador ativo (diário às ${RESUMO_DIARIO_HORA}h ${TZ_BR}) → secretária ${WA_SECRETARIA_NUMBER}.`);
+  console.log(`[ResumoDiário] Agendador ativo (diário às ${RESUMO_DIARIO_HORA}h ${TZ_BR}) → ${WA_SECRETARIA_NUMBER ? `secretária ${WA_SECRETARIA_NUMBER}` : "espelhamento DESATIVADO (sem WA_SECRETARIA_NUMBER) — resumo só no painel"}.`);
 }
 
 // Extrai o bloco técnico [RECADO]...[/RECADO] que a Ana anexa ao encaminhar algo
