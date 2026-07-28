@@ -161,6 +161,7 @@ NUNCA ofereça "atender pelo convênio assim mesmo", desconto, nem diga que a eq
 NOMES COMPOSTOS E EQUIVALÊNCIAS (o mesmo plano tem mais de um nome)
 Um convênio pode ser citado pelo nome do plano, pela sigla do órgão, ou pelos dois juntos. Isso NÃO são planos diferentes:
 - PLAN-ASSISTE e MPF são o MESMO plano (variações: "Plan Assiste", "PlanAssiste", "Plan-Assiste MPF", "Plan-Assiste/MPF", "MPF Plan-Assiste").
+- CASEC e CODEVASF são o MESMO plano: a CASEC é o plano de saúde dos funcionários da CODEVASF. Quem disser "Codevasf", "Codevasc" ou "sou da Codevasf" está falando da CASEC — convênio ATENDIDO. Registre como "CASEC (Codevasf)" quando o paciente citar o órgão.
 - MINISTÉRIO PÚBLICO — PLAN-ASSISTE, MPF, MPDFT, MPM e MPT: o paciente pode citar o plano pela SIGLA do órgão ou pelo nome PLAN-ASSISTE. TODOS são atendidos; nunca negue nenhum deles. Se ele citar as duas formas, registre "Plan-Assiste (SIGLA)".
 - UNIMED — CENTRAL NACIONAL, PLANALTO e INTERCÂMBIO: são Unimed; a ordem das palavras não importa ("Central Nacional Unimed" = "Unimed Central Nacional"). Atendidos, seguindo a regra da Unimed (pedir carteirinha, sem travar o agendamento).
 - PRÓ-SOCIAL: qualquer grafia ("Pro Social", "PROSOCIAL", "Pró-Social") é o mesmo convênio atendido.
@@ -177,7 +178,7 @@ Se o paciente de um dos 5 planos acima PERGUNTAR por que precisa de antecedênci
 Cirurgias cobertas por convênio: nunca cite o valor particular de uma cirurgia COBERTA pelo convênio (ex.: catarata) para quem tem convênio atendido — a cobertura e a autorização são confirmadas pela equipe. (A cirurgia refrativa é eletiva e SEMPRE particular; seus valores podem ser informados normalmente — ver a seção de refrativa.)
 
 LISTA DE CONVÊNIOS ATENDIDOS:
-AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBRAPA, CAEME-GO, CAMED, CAESAN, CASEC, CTI, CONAB, ELETRONORTE, EMBRATEL, E-VIDA, FACEB, FAPES (BNDES), FASCAL, FIOSAÚDE (FIOPREV), FURNAS, GAMA SAÚDE, INFRAERO, IRB, IRMÃOS GRAVIA, LIFE EMPRESARIAL, MAPFRE SAÚDE, MPDFT, MPF, MPM, MPT, NOTRE DAME, PAME, PLAN-ASSISTE, PROASA, PRÓ-SOCIAL, SAÚDE CAIXA, SERPRO, SIS SENADO, STF-MED, STJ, STM, TJDFT, TST SAÚDE, T.R.E., TRF, TRT, UNAFISCO, UNIBANCO - TEMPO SAUDE, UNIMED CENTRAL NACIONAL, UNIMED PLANALTO, UNIMED INTERCÂMBIO, UNIVERSAL ASSISTENCE.
+AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBRAPA, CAEME-GO, CAMED, CAESAN, CASEC (CODEVASF), CTI, CONAB, ELETRONORTE, EMBRATEL, E-VIDA, FACEB, FAPES (BNDES), FASCAL, FIOSAÚDE (FIOPREV), FURNAS, GAMA SAÚDE, INFRAERO, IRB, IRMÃOS GRAVIA, LIFE EMPRESARIAL, MAPFRE SAÚDE, MPDFT, MPF, MPM, MPT, NOTRE DAME, PAME, PLAN-ASSISTE, PROASA, PRÓ-SOCIAL, SAÚDE CAIXA, SERPRO, SIS SENADO, STF-MED, STJ, STM, TJDFT, TST SAÚDE, T.R.E., TRF, TRT, UNAFISCO, UNIBANCO - TEMPO SAUDE, UNIMED CENTRAL NACIONAL, UNIMED PLANALTO, UNIMED INTERCÂMBIO, UNIVERSAL ASSISTENCE.
 
 ### Quando encaminhar para humano
 - Dor ocular intensa, perda súbita ou piora rápida da visão, trauma ou sintoma agudo
@@ -800,9 +801,8 @@ function detectAtendimentoParticular(messages) {
 // ANA_ANTECEDENCIA_HORAS (24h) porque a liberação/checagem junto à operadora não
 // sai em cima da hora. Antes a regra era o inverso (todo convênio exigia 24h).
 const CONVENIOS_COM_ANTECEDENCIA = [
-  "unimed",            // e todas as variações (Central Nacional, Planalto, Intercâmbio…)
-  "casec",
-  "codevasc",
+  "unimed",                          // e todas as variações (Central Nacional, Planalto, Intercâmbio…)
+  "casec", "codevasf", "codevasc",   // CASEC é o plano dos funcionários da CODEVASF — mesmo convênio
   "care plus", "careplus",
   "life empresarial",
 ];
