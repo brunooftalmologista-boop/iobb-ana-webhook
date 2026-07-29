@@ -967,6 +967,24 @@ async function fetchSlotsDB(unidadePref) {
   return slots;
 }
 
+// Quando o horário combinado não pode ser gravado (sumiu da lista ou foi ocupado
+// na corrida), esta é a vaga que oferecemos no lugar. Prioriza o MESMO DIA que o
+// paciente pediu — antes disso pegávamos a primeira vaga da lista inteira, o que
+// mandava quem queria quinta-feira para a semana seguinte sem motivo, já que
+// costuma haver outra vaga no mesmo dia. Empate: a mais próxima da hora pedida.
+function alternativaMaisProxima(slots, iniPedido, minTs) {
+  const validos = (slots || []).filter(s => s.start.getTime() >= minTs);
+  if (!validos.length) return null;
+  const diaDe = (d) => d.toLocaleDateString("en-CA", { timeZone: TZ_BR });
+  const diaPedido = diaDe(iniPedido);
+  const alvo = iniPedido.getTime();
+  const perto = (arr) => arr.reduce((a, b) =>
+    Math.abs(b.start.getTime() - alvo) < Math.abs(a.start.getTime() - alvo) ? b : a);
+  const mesmoDia = validos.filter(s => diaDe(s.start) === diaPedido);
+  if (mesmoDia.length) return perto(mesmoDia);
+  return perto(validos);   // sem vaga no dia pedido: a mais próxima no tempo
+}
+
 // Cria (ou SEGURA, via hold) um horário na agenda. A trava de duplicidade é do
 // BANCO: se o slot já tiver agendamento ativo, o índice único devolve 23505 e
 // retornamos { ok:false, taken:true } SEM lançar. Antes de inserir, cancela um
@@ -1346,7 +1364,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     if (Array.isArray(vagasAtuais)) {
       const existe = vagasAtuais.some(s => s.start.getTime() === ini.getTime() && s.start.getTime() >= minTs);
       if (!existe) {
-        const prox = vagasAtuais.find(s => s.start.getTime() >= minTs);
+        const prox = alternativaMaisProxima(vagasAtuais, ini, minTs);
         const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve para você?` : `Vou verificar outra opção e já te retorno.`;
         await avisarFalhaDeAgendamento(conversationId, from, `Peço desculpas — preciso corrigir: esse horário não está disponível, então ele NÃO ficou reservado. ${alt}`);
         console.warn(`[Agendar] inicio ${ini.toISOString()} (${unidade}) FORA da lista vigente — não gravei; ofereci alternativa.`);
@@ -1360,7 +1378,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
       // Corrida: a vaga foi ocupada durante a conversa. Oferece a próxima livre.
       const slots = await fetchSlotsDB(unidade);
       const minTs = Date.now() + (exigeAntecedencia(convenio) ? ANA_ANTECEDENCIA_HORAS : 0) * 3600 * 1000;   // mesma antecedência (particular = mesmo dia)
-      const prox = (slots || []).find(s => s.start.getTime() >= minTs);
+      const prox = alternativaMaisProxima(slots || [], ini, minTs);
       const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve para você?` : `Vou verificar outra opção e já te retorno.`;
       await avisarFalhaDeAgendamento(conversationId, from, `Peço desculpas — preciso corrigir: o horário de ${fmtDataHoraBR(ini.toISOString())} acabou de ser preenchido, então ele NÃO ficou reservado. ${alt}`);
       console.log(`[Agendar] Corrida: ${unidade} ${inicioRaw} já ocupado — ofereci alternativa.`);
