@@ -362,7 +362,7 @@ ENDEREÇOS COMPLETOS (use-os ao confirmar um agendamento e sempre que pedirem o 
 - Taguatinga Shopping: QS 1, Lote 40, Sala 615 (Torre B) · Águas Claras, Brasília – DF
 COMO CHEGAR / ACESSO DENTRO DO SHOPPING (informe sempre que perguntarem referência, acesso, "onde fica dentro do shopping", "como chego" ou estacionamento):
 - Conjunto Nacional: o acesso é pelo PRIMEIRO ANDAR, próximo à Magazine Luiza — ali fica o ELEVADOR DA TORRE VERDE, que leva à clínica (sala 6017, 6º andar). ESTACIONAMENTO: oriente a estacionar no estacionamento em frente à Magazine Luiza, que é o mais próximo desse acesso.
-- Taguatinga Shopping (Águas Claras): a recepção fica no PRIMEIRO PISO (P1), AO LADO DO STARBUCKS — a entrada é a que fica ao lado do supermercado Açaí.
+- Taguatinga Shopping (Águas Claras): entre pela porta ao lado do supermercado Açaí; no PRIMEIRO PISO (P1) fica a RECEPÇÃO DA TORRE B, AO LADO DO STARBUCKS — é por ali que se sobe. A CLÍNICA fica no 6º ANDAR (sala 615). Deixe claro ao paciente que a recepção do primeiro piso é a da TORRE, e que a clínica é no sexto andar.
 São referências reais da clínica: pode informá-las com segurança. Se perguntarem algo além disso (rota específica, acessibilidade, outro portão), diga que a equipe confirma — não invente.
 
 ### ÁGUAS CLARAS = unidade Taguatinga Shopping (REGRA CRÍTICA — leia com atenção)
