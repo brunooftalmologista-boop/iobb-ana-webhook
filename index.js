@@ -967,6 +967,67 @@ async function fetchSlotsDB(unidadePref) {
   return slots;
 }
 
+// ===== TRAVA: dia da semana × data ==========================================
+// A Ana erra o dia da semana das datas ("11/08 é uma terça-feira" quando é
+// segunda; "sexta-feira, 01/08" quando 01/08 é sábado). Já foi pedido no prompt
+// mais de uma vez e volta — é slip de geração, não de instrução. Aqui a
+// correção é determinística: o calendário é a verdade, aplicada ao texto ANTES
+// de sair. Casa os dois formatos que ela usa: "sexta-feira, 31/07" e
+// "31/07 é uma sexta-feira".
+const DOW_NOMES = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+function dowDeDataBR(dd, mm) {
+  const hoje = brasiliaAgora().ymd;
+  let ano = hoje.ano;
+  // Vira o ano quando a data citada já passou há meses (ex.: "05/01" em dezembro).
+  if (mm < hoje.mes - 6) ano += 1;
+  const d = new Date(`${ano}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}T12:00:00-03:00`);
+  if (isNaN(d.getTime())) return null;
+  return { idx: d.getUTCDay(), data: d };   // 12h BR = 15h UTC no mesmo dia
+}
+// Devolve o texto com todo par dia-da-semana/data coerente. `slots` serve para
+// decidir o lado a corrigir quando a DATA cai em fim de semana (clínica fechada):
+// aí quem manda é o dia da semana que ela prometeu, e trocamos a data.
+function corrigirDiaDaSemana(texto, slots) {
+  if (!texto) return { texto, correcoes: [] };
+  const correcoes = [];
+  const nomeDe = (d) => d.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long" }).replace("-feira", "");
+  const proximaDataDoDow = (alvoIdx) => {
+    const cands = (slots || []).filter(s => s.start.getUTCDay() === alvoIdx);
+    return cands.length ? cands.reduce((a, b) => (a.start < b.start ? a : b)).start : null;
+  };
+  const ajusta = (dowDito, dd, mm, montar) => {
+    const info = dowDeDataBR(Number(dd), Number(mm));
+    if (!info) return null;
+    const real = nomeDe(info.data);
+    const dito = dowDito.toLowerCase().replace("-feira", "");
+    if (real === dito) return null;                       // já está certo
+    const fimDeSemana = info.data.getUTCDay() === 0 || info.data.getUTCDay() === 6;
+    const idxDito = DOW_NOMES.indexOf(dito);
+    if (fimDeSemana && idxDito > 0 && idxDito < 6) {
+      // Ex.: "sexta-feira, 01/08" — 01/08 é sábado e a clínica não atende.
+      // O paciente pediu sexta: mantemos sexta e corrigimos a DATA.
+      const nova = proximaDataDoDow(idxDito);
+      if (nova) {
+        const nd = nova.toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
+        correcoes.push(`${dito} ${dd}/${mm} → ${dito} ${nd}`);
+        return montar(dowDito, ...nd.split("/"));
+      }
+    }
+    correcoes.push(`${dito} ${dd}/${mm} → ${real} ${dd}/${mm}`);
+    return montar(real, dd, mm);
+  };
+  const DOWS = "segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo";
+  // Formato A: "sexta-feira, 31/07" / "sexta, 31/07" / "sexta 31/07"
+  let out = texto.replace(new RegExp(`\\b(${DOWS})(-feira)?,?\\s+(\\d{2})/(\\d{2})\\b`, "gi"),
+    (m, dow, feira, dd, mm) => ajusta(dow, dd, mm, (novoDow, d2, m2) =>
+      `${novoDow}${feira || ""}, ${d2}/${m2}`) || m);
+  // Formato B: "o dia 11/08 é uma terça-feira"
+  out = out.replace(new RegExp(`\\b(\\d{2})/(\\d{2})\\b(\\s+(?:é|e|ser[áa])\\s+(?:um[ae]\\s+)?)(${DOWS})(-feira)?`, "gi"),
+    (m, dd, mm, meio, dow, feira) => ajusta(dow, dd, mm, (novoDow, d2, m2) =>
+      `${d2}/${m2}${meio}${novoDow}${feira || ""}`) || m);
+  return { texto: out, correcoes };
+}
+
 // Quando o horário combinado não pode ser gravado (sumiu da lista ou foi ocupado
 // na corrida), esta é a vaga que oferecemos no lugar. Prioriza o MESMO DIA que o
 // paciente pediu — antes disso pegávamos a primeira vaga da lista inteira, o que
@@ -3161,6 +3222,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // de agendamento. Com a lista presente, a Ana oferece UM horário e marca de
     // verdade via [AGENDAR]. Sem lista (banco fora ou sem vaga), ela cai no fluxo
     // de pré-agendamento (a equipe confirma) — ver "Como lidar com horários".
+    let slotsVigentes = null;   // guardado para a trava de dia-da-semana, lá embaixo
     if (ANA_MARCA_SOZINHA && (detectSchedulingIntent(messages) || detectUnidade(messages))) {
       const unidade = detectUnidade(messages);
       // SEMPRE busca as DUAS unidades. Filtrar por unidade aqui já causou a Ana
@@ -3201,6 +3263,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       // Até onde a lista enxerga. A Ana precisa saber ONDE acaba o que ela sabe:
       // sem isso ela tratava "fora da lista" como "não tem vaga" e NEGAVA datas
       // com a agenda vazia. Fora do horizonte a resposta certa nunca é "não tem".
+      slotsVigentes = Array.isArray(slotsOferta) ? slotsOferta : null;
       const ultimoSlot = (Array.isArray(slotsOferta) && slotsOferta.length)
         ? slotsOferta.reduce((a, b) => (b.start > a.start ? b : a)) : null;
       const horizonteTxt = ultimoSlot
@@ -3306,6 +3369,19 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // espelhamento. Se a Ana disse "vou encaminhar" mas isto marca "recado=nenhum",
     // o problema está no prompt/modelo, não no envio.
     console.log(`[Espelho] Detecção na resposta da Ana: agendar=${ag.registros.length}, pré-agendamento=${registros.length}, recado=${rec.recado ? rec.recado.tipo + (rec.recado.prioritario ? "/PRIORITÁRIO" : "") : "nenhum"}.`);
+
+    // TRAVA: dia da semana × data. O calendário manda — se ela escreveu
+    // "11/08 é uma segunda-feira" (é terça) ou "sexta-feira, 01/08" (é sábado),
+    // corrigimos ANTES de sair, porque o paciente anota o que leu e vem no dia
+    // errado. Nunca lança: se algo der errado aqui, a mensagem segue como veio.
+    try {
+      const rev = corrigirDiaDaSemana(reply, slotsVigentes);
+      if (rev.correcoes.length) {
+        console.warn(`[DataTrava] Corrigido antes de enviar: ${rev.correcoes.join(" | ")}`);
+        await registrarErro("dia_semana_corrigido", rev.correcoes.join(" | "), { conversationId: conversation.id, telefone: from });
+        reply = rev.texto;
+      }
+    } catch (e) { console.error("[DataTrava] falhou (mensagem segue original):", e.message); }
 
     // Salvar resposta (já sem o bloco técnico)
     await saveMessage(conversation.id, "assistant", reply);
