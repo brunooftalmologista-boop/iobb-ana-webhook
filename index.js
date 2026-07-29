@@ -2905,6 +2905,31 @@ app.post("/webhook", async (req, res) => {
           .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
         return;
       }
+      // Lembretes da véspera. "#LEMBRETES" (ou TESTE) lista quem receberia, sem
+      // enviar nada; "#LEMBRETES CONFIRMAR" dispara agora, fora do horário.
+      const lembCmd = text.match(/^#LEMBRETES\b([\s\S]*)$/i);
+      if (lembCmd) {
+        const arg = lembCmd[1].trim().toUpperCase();
+        const amanhaYMD = new Date(Date.now() + 24 * 3600 * 1000).toLocaleDateString("en-CA", { timeZone: TZ_BR });
+        const alvos = await alvosDoLembrete(amanhaYMD);
+        if (alvos === null) { await sendWhatsApp(from, "⚠️ Não consegui ler a agenda agora."); return; }
+        const [aa, mm, dd] = amanhaYMD.split("-");
+        if (arg === "CONFIRMAR") {
+          if (!WA_LEMBRETE_TEMPLATE_NAME) { await sendWhatsApp(from, "⚠️ Lembretes INERTES: falta definir *WA_LEMBRETE_TEMPLATE_NAME* no Render (nome do template aprovado na Meta)."); return; }
+          await sendWhatsApp(from, `🔔 Enviando lembretes de ${dd}/${mm} (${alvos.length} paciente(s))...`);
+          const r = await enviarLembretesDeAmanha();
+          await sendWhatsApp(from, `🔔 Lembretes: *${r.ok}* enviado(s), *${r.falhas}* falha(s).${r.motivo ? ` (${r.motivo})` : ""}`);
+          return;
+        }
+        const linhas = alvos.length
+          ? alvos.map((a, i) => `*${i + 1}.* ${fmtLembreteQuando(a.inicio)} — ${a.paciente_nome || "—"} · ${a.unidade}`).join("\n")
+          : "_ninguém com telefone na agenda de amanhã_";
+        const estado = !WA_LEMBRETE_TEMPLATE_NAME ? "⚠️ INERTE (falta WA_LEMBRETE_TEMPLATE_NAME no Render)"
+          : LEMBRETE_HORA === null ? "⚠️ desligado (LEMBRETE_HORA=off)"
+          : `✅ ativo, dispara às ${LEMBRETE_HORA}h`;
+        await sendWhatsApp(from, `🔔 *Lembretes da véspera* — ${estado}\nConsultas de ${dd}/${mm}/${aa}:\n${linhas}\n\n_Nada foi enviado. Para disparar agora: *#LEMBRETES CONFIRMAR*_`);
+        return;
+      }
       // Cria a campanha COMBINADA Ceratocone + Esclerais (nasce PAUSADA). Reúne as
       // duas que estavam separadas. "TESTE" = dry-run; "CONFIRMAR" cria.
       const combCmd = text.match(/^#CRIARCOMBINADA\b([\s\S]*)$/i);
@@ -4480,10 +4505,130 @@ function startFollowUp() {
   console.log("[FollowUp] scheduler ativo (30 min). Envio real só com settings.followup_leads_enabled='true'.");
 }
 
+// ===== LEMBRETE DE CONSULTA (véspera) =======================================
+// Passadas 24h desde a última mensagem DO PACIENTE, a Meta bloqueia mensagem
+// livre (erro 131047): só passa TEMPLATE aprovado. Lembrete de consulta é
+// exatamente o caso de uso da categoria "Utilidade". Quando o paciente responde
+// (CONFIRMO/REMARCAR), a janela de 24h reabre e a Ana atende normalmente.
+// Config no Render — sem WA_LEMBRETE_TEMPLATE_NAME a rotina fica INERTE:
+//   WA_LEMBRETE_TEMPLATE_NAME  → nome exato do template aprovado na Meta
+//   WA_LEMBRETE_TEMPLATE_LANG  → idioma do template (padrão pt_BR)
+//   LEMBRETE_HORA              → hora do disparo, 0-23 (padrão 18); "off" desliga
+// O template precisa de 3 variáveis, NESTA ordem: {{1}} primeiro nome,
+// {{2}} data/hora, {{3}} unidade.
+const WA_LEMBRETE_TEMPLATE_NAME = (process.env.WA_LEMBRETE_TEMPLATE_NAME || "").trim();
+const WA_LEMBRETE_TEMPLATE_LANG = (process.env.WA_LEMBRETE_TEMPLATE_LANG || "pt_BR").trim();
+const LEMBRETE_HORA = (() => {
+  const v = (process.env.LEMBRETE_HORA || "").trim().toLowerCase();
+  if (v === "off") return null;
+  const n = Number(v);
+  return (v !== "" && Number.isInteger(n) && n >= 0 && n <= 23) ? n : 18;
+})();
+
+// "quinta-feira, 30/07 às 14h20" — mais claro que o fmtDataHoraBR padrão para
+// uma mensagem que o paciente lê fora do contexto da conversa.
+function fmtLembreteQuando(iso) {
+  const d = new Date(iso);
+  const semana = d.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long" });
+  const dia = d.toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
+  const hora = d.toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" }).replace(":", "h");
+  return `${semana}, ${dia} às ${hora}`;
+}
+
+// Agendamentos de AMANHÃ que devem receber lembrete. Ficam de fora: os vindos do
+// iClinic (não trazem telefone), telefones inválidos e os números de teste. O
+// telefone normalizado (DDI 55, só dígitos) vai em `_fone` — a secretária às
+// vezes grava "(61)9xxxx-xxxx", que a Meta não aceita cru.
+async function alvosDoLembrete(amanhaYMD) {
+  const de = new Date(`${amanhaYMD}T00:00:00-03:00`);
+  const ate = new Date(`${amanhaYMD}T23:59:59-03:00`);
+  const lista = await listarAgendamentos({ de, ate, unidade: null });
+  if (lista === null) return null;
+  return lista
+    .filter(a => a.status === "confirmado" || a.status === "reservado")
+    .map(a => ({ ...a, _fone: normalizePhoneBR(a.paciente_telefone) }))
+    .filter(a => a._fone && !a._fone.startsWith("55619900"));
+}
+
+// Envia os lembretes. Idempotente: guarda em settings (chave lembretes_enviados)
+// a data e os ids já avisados, então reinício do Render ou segunda passagem no
+// mesmo dia não duplicam. NUNCA lança.
+async function enviarLembretesDeAmanha() {
+  if (!WA_LEMBRETE_TEMPLATE_NAME) return { ok: 0, falhas: 0, motivo: "template não configurado" };
+  const amanhaYMD = new Date(Date.now() + 24 * 3600 * 1000).toLocaleDateString("en-CA", { timeZone: TZ_BR });
+
+  const todos = await alvosDoLembrete(amanhaYMD);
+  if (todos === null) { console.error("[Lembrete] Não consegui ler a agenda — nada enviado."); return { ok: 0, falhas: 0, motivo: "falha ao ler a agenda" }; }
+
+  let enviados = new Set();
+  try {
+    const { data } = await supabase.from("settings").select("value").eq("key", "lembretes_enviados").single();
+    const st = data?.value ? JSON.parse(data.value) : null;
+    if (st && st.data === amanhaYMD && Array.isArray(st.ids)) enviados = new Set(st.ids);
+  } catch (e) { /* sem registro anterior — primeira execução do dia */ }
+
+  const alvos = todos.filter(a => !enviados.has(a.id));
+  if (!alvos.length) { console.log(`[Lembrete] Nada a enviar para ${amanhaYMD}.`); return { ok: 0, falhas: 0, motivo: "ninguém a avisar" }; }
+
+  console.log(`[Lembrete] ${alvos.length} paciente(s) com consulta em ${amanhaYMD} — template "${WA_LEMBRETE_TEMPLATE_NAME}".`);
+  let ok = 0, falhas = 0;
+  for (const a of alvos) {
+    const quando = fmtLembreteQuando(a.inicio);
+    const primeiroNome = String(a.paciente_nome || "").trim().split(/\s+/)[0] || "tudo bem";
+    try {
+      await sendWhatsAppTemplate(a._fone, WA_LEMBRETE_TEMPLATE_NAME, WA_LEMBRETE_TEMPLATE_LANG,
+        [primeiroNome, quando, a.unidade]);
+      ok++;
+      enviados.add(a.id);
+      // Registra na conversa para a Ana ter contexto quando o paciente responder
+      // (e para a equipe ver no painel que o lembrete saiu).
+      try {
+        const patient = await getOrCreatePatient(a._fone);
+        const conv = patient ? await getOrCreateConversation(patient.id) : null;
+        if (conv) {
+          const registro = `🔔 Lembrete automático da véspera enviado: consulta ${quando} — ${a.unidade}.`;
+          await supabase.from("messages").insert({ conversation_id: conv.id, role: "assistant", content: registro, event: "lembrete" });
+          await supabase.from("conversations").update({ last_message: registro, updated_at: new Date().toISOString() }).eq("id", conv.id);
+        }
+      } catch (e) { /* histórico é acessório — não invalida o lembrete já enviado */ }
+    } catch (e) {
+      falhas++;
+      const d = e?.response?.data;
+      console.error(`[Lembrete] Falha para ${maskFone(a._fone)}:`, d ? JSON.stringify(d) : e.message);
+    }
+  }
+  try {
+    await supabase.from("settings").upsert({ key: "lembretes_enviados", value: JSON.stringify({ data: amanhaYMD, ids: [...enviados] }) });
+  } catch (e) { console.error("[Lembrete] Falha ao registrar quem já foi avisado:", e.message); }
+  console.log(`[Lembrete] Concluído: ${ok} enviado(s), ${falhas} falha(s).`);
+  if (falhas) await registrarErro("lembrete_vespera", `data=${amanhaYMD} enviados=${ok} falhas=${falhas}`).catch(() => {});
+  return { ok, falhas, data: amanhaYMD };
+}
+
+// Verifica a cada 30 min e dispara uma vez por dia, a partir da hora configurada.
+function startLembreteScheduler() {
+  if (LEMBRETE_HORA === null) { console.log("[Lembrete] Desativado (LEMBRETE_HORA=off)."); return; }
+  if (!WA_LEMBRETE_TEMPLATE_NAME) {
+    console.log("[Lembrete] INERTE — defina WA_LEMBRETE_TEMPLATE_NAME no Render (nome do template aprovado na Meta) para ativar.");
+    return;
+  }
+  const check = async () => {
+    try {
+      const nowBr = new Date(new Date().toLocaleString("en-US", { timeZone: TZ_BR }));
+      if (nowBr.getHours() < LEMBRETE_HORA) return;
+      await enviarLembretesDeAmanha();
+    } catch (e) { console.error("[Lembrete] Scheduler:", e.message); }
+  };
+  setInterval(check, 30 * 60 * 1000);
+  check(); // checa uma vez no startup
+  console.log(`[Lembrete] Agendador ativo (diário a partir das ${LEMBRETE_HORA}h) — template "${WA_LEMBRETE_TEMPLATE_NAME}".`);
+}
+
 // Agendador do relatório semanal do Google Ads (segunda 08h, Brasília)
 googleAds.startScheduler({ supabase, sendWhatsApp });
 startResumoDiarioScheduler();
 startSyncIClinic();   // reflete o iClinic (Google Calendars) na agenda do painel
 startFollowUp();      // recuperação de leads frios (inerte até ativar no settings)
+startLembreteScheduler(); // confirmação da véspera (inerte até o template na Meta)
 
 app.listen(process.env.PORT || 3000, () => console.log("Ana online!"));
