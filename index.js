@@ -174,7 +174,7 @@ REGRA (não repita perguntas): assim que o paciente indicar um CONVÊNIO — cit
 Qualquer menção a Unimed → solicite o número da carteirinha ou uma foto dela. IMPORTANTE: isso NÃO interrompe o agendamento — trate a Unimed como qualquer outro convênio atendido: continue coletando a preferência (unidade, período) e os dados, e CONCLUA o agendamento normalmente (marque o horário com [AGENDAR] se houver agenda; senão registre [PREAGENDAMENTO]). Registre o convênio como "Unimed – pendente verificação" e inclua o número da carteirinha se o paciente informou (ou "carteirinha por foto" se ele mandou a imagem). O "pendente" é só a validação da carteirinha/sub-plano — atendemos Unimed normalmente. Ao encerrar, explique que a equipe confirma a COBERTURA da Unimed (o horário você já deixa marcado ou encaminhado). Se o paciente ainda não tiver a carteirinha em mãos, conclua o agendamento mesmo assim e diga que a equipe verifica no contato. Nunca deixe o paciente Unimed sem agendamento só porque falta a carteirinha.
 Consulta por convênio: quando o convênio é atendido, a consulta é pelo plano — o paciente não paga o valor particular. Se houver dúvida sobre cobertura de um procedimento específico, diga que a equipe confirma na hora do agendamento. Nunca cite valor de consulta particular para quem tem convênio atendido.
 Sobre pedido/guia médica, autorização prévia ou carência do convênio: NÃO afirme que precisa nem que não precisa — diga que a equipe confirma esses detalhes no agendamento.
-AGENDAMENTO NO MESMO DIA — REGRA ATUAL: agendamos no MESMO DIA tanto no particular quanto em TODOS os convênios credenciados. As ÚNICAS exceções, que precisam de cerca de 24h de antecedência, são: **Unimed (e todas as variações), Casec, Codevasc, Care Plus e Life Empresarial** — nesses planos a liberação/checagem junto à operadora não sai em cima da hora. Para qualquer outro convênio da lista, trate exatamente como particular quanto à disponibilidade: se há vaga hoje, pode oferecer e marcar. NUNCA diga a um paciente de convênio que "só atendemos hoje no particular".
+AGENDAMENTO NO MESMO DIA — REGRA ATUAL: agendamos no MESMO DIA tanto no particular quanto em TODOS os convênios credenciados. As ÚNICAS exceções são: **Unimed (e todas as variações), Casec, Codevasc, Care Plus e Life Empresarial** — nesses planos a liberação junto à operadora não sai em cima da hora, então NÃO marcamos para HOJE. A regra é simples: **de um dia para o outro pode**. A partir de AMANHÃ vale QUALQUER horário do dia, inclusive logo cedo — não existe contagem de "24 horas". Nunca diga ao paciente que "precisa de 24 horas de antecedência": diga que por esse convênio o mais cedo que consegue é a partir de amanhã. Para qualquer outro convênio da lista, trate exatamente como particular quanto à disponibilidade: se há vaga hoje, pode oferecer e marcar. NUNCA diga a um paciente de convênio que "só atendemos hoje no particular".
 Se o paciente de um dos 5 planos acima PERGUNTAR por que precisa de antecedência (só explique se ele perguntar): diga que esse plano específico exige a verificação prévia de cobertura junto à operadora antes da consulta, e ofereça o horário mais próximo disponível. Nunca dê a entender que o convênio "vale menos" ou que estamos priorizando o particular.
 Cirurgias cobertas por convênio: nunca cite o valor particular de uma cirurgia COBERTA pelo convênio (ex.: catarata) para quem tem convênio atendido — a cobertura e a autorização são confirmadas pela equipe. (A cirurgia refrativa é eletiva e SEMPRE particular; seus valores podem ser informados normalmente — ver a seção de refrativa.)
 
@@ -640,6 +640,18 @@ const ANA_ANTECEDENCIA_HORAS = (() => {
   const v = readEnv("ANA_ANTECEDENCIA_HORAS");
   return (v != null && v !== "" && !isNaN(Number(v))) ? Number(v) : 24;
 })();
+
+// REGRA DO BRUNO (2026-07-30): os convênios de CONVENIOS_COM_ANTECEDENCIA não
+// podem ser marcados para HOJE — mas do DIA SEGUINTE em diante vale qualquer
+// horário, sem contar 24h corridas. Antes usávamos "agora + 24h", que recusava
+// 15h40 de amanhã às 16h25 de hoje sem motivo. Devolve o instante da meia-noite
+// de amanhã em Brasília; para quem não exige antecedência, devolve "agora".
+function minTsAntecedencia(precisa) {
+  if (!precisa) return Date.now();
+  const { ano, mes, dia } = brasiliaAgora().ymd;
+  const meiaNoiteHoje = new Date(`${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}T00:00:00-03:00`);
+  return meiaNoiteHoje.getTime() + 24 * 3600 * 1000;   // 00:00 de amanhã (BR)
+}
 // Unidade que a Ana OFERECE PRIMEIRO quando o paciente NÃO manifestou preferência.
 // Serve para equilibrar as agendas (a Taguatinga enche sozinha; o Conjunto sobra).
 // NUNCA sobrepõe a preferência do paciente — só decide o "empate". Para desligar,
@@ -1364,8 +1376,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
       const distintos = [...new Set(horas)];
       const tokenTime = brtTime(ini);
       if (distintos.length === 1 && distintos[0] !== tokenTime) {
-        const bufferH = exigeAntecedencia(convenio) ? ANA_ANTECEDENCIA_HORAS : 0;
-        const minTs = Date.now() + bufferH * 3600 * 1000;
+        const minTs = minTsAntecedencia(exigeAntecedencia(convenio));
         const vagas = await fetchSlotsDB(unidade);
         const alvo = Array.isArray(vagas)
           ? vagas.find(s => brtTime(s.start) === distintos[0] && brtDate(s.start) === brtDate(ini) && s.start.getTime() >= minTs)
@@ -1425,8 +1436,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     // um token reaproveitado/alucinado gravaria em dia/hora inválido (ex.: terça no
     // Conjunto, no almoço, ou <24h). Se a leitura falhar (null), NÃO bloqueia — o
     // índice único ainda protege contra overbooking do slot exato.
-    const bufferH = exigeAntecedencia(convenio) ? ANA_ANTECEDENCIA_HORAS : 0;  // particular pode no mesmo dia
-    const minTs = Date.now() + bufferH * 3600 * 1000;
+    const minTs = minTsAntecedencia(exigeAntecedencia(convenio));   // particular pode no mesmo dia
     const vagasAtuais = await fetchSlotsDB(unidade);
     if (Array.isArray(vagasAtuais)) {
       const existe = vagasAtuais.some(s => s.start.getTime() === ini.getTime() && s.start.getTime() >= minTs);
@@ -1444,7 +1454,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     if (r.taken) {
       // Corrida: a vaga foi ocupada durante a conversa. Oferece a próxima livre.
       const slots = await fetchSlotsDB(unidade);
-      const minTs = Date.now() + (exigeAntecedencia(convenio) ? ANA_ANTECEDENCIA_HORAS : 0) * 3600 * 1000;   // mesma antecedência (particular = mesmo dia)
+      const minTs = minTsAntecedencia(exigeAntecedencia(convenio));   // mesma antecedência (particular = mesmo dia)
       const prox = alternativaMaisProxima(slots || [], ini, minTs);
       const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve para você?` : `Vou verificar outra opção e já te retorno.`;
       await avisarFalhaDeAgendamento(conversationId, from, `Peço desculpas — preciso corrigir: o horário de ${fmtDataHoraBR(ini.toISOString())} acabou de ser preenchido, então ele NÃO ficou reservado. ${alt}`);
@@ -3244,7 +3254,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       // Se slots===null (falha ao carregar), mantém null para o ramo "indisponível".
       const agora = Date.now();
       const precisaAntecedencia = conversaExigeAntecedencia(messages);
-      const minOferta = agora + (precisaAntecedencia ? ANA_ANTECEDENCIA_HORAS * 3600 * 1000 : 0);
+      const minOferta = minTsAntecedencia(precisaAntecedencia);
       let slotsOferta = Array.isArray(slots) ? slots.filter(s => s.start.getTime() >= minOferta) : slots;
       // EQUILÍBRIO DE AGENDA: quando o paciente ainda não escolheu unidade, a lista
       // vai com a unidade preferida PRIMEIRO (a Ana escolhe "um horário da lista",
