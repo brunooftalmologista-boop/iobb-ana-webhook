@@ -45,10 +45,6 @@ const PHONE_NUMBER_ID = readEnv("PHONE_NUMBER_ID");
 const ANTHROPIC_KEY = readEnv("ANTHROPIC_KEY");
 // Modelo da Ana — configurável por env (troca de modelo sem editar código).
 const ANA_MODEL = readEnv("ANA_MODEL") || "claude-sonnet-4-6";
-// Até quantos dias de agenda entram na lista enviada à Ana. Cada dia extra é
-// input NÃO cacheado em TODA mensagem — 7 dias custa metade de 14 e cobre a
-// quase totalidade dos agendamentos. Ajustável sem deploy pela env do Render.
-const ANA_HORIZONTE_DIAS = Number(readEnv("ANA_HORIZONTE_DIAS")) || 14;
 const SUPABASE_URL = readEnv("SUPABASE_URL");
 const SUPABASE_KEY = readEnv("SUPABASE_KEY");
 const OPENAI_KEY = readEnv("OPENAI_KEY");
@@ -667,25 +663,6 @@ const ANA_UNIDADE_PREFERIDA = (() => {
   if (v != null && v !== "") return v.trim();
   return "Conjunto Nacional";
 })();
-
-// ─────────────────────────────────────────────────────────────────────────────
-// INSTRUÇÕES FIXAS DE AGENDA — texto 100% constante que antes era remontado a
-// cada mensagem dentro do dynamicPrompt e viajava como input a preço cheio.
-// Agora vai junto do SYSTEM_PROMPT no bloco CACHEADO (leitura de cache custa
-// 0,1× do input). Nada aqui pode conter dado do paciente, data, horário ou
-// qualquer coisa que mude entre chamadas — se mudar, o cache é invalidado e o
-// ganho some. O que ATIVA cada seção condicional fica no dynamicPrompt, numa
-// linha curta que aponta para a seção pelo nome.
-// ─────────────────────────────────────────────────────────────────────────────
-const INSTRUCOES_FIXAS = `### Como usar a lista de horários disponíveis
-Esta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.\n🚫 HORÁRIO PROPOSTO PELO PACIENTE (regra crítica): quando o PACIENTE sugerir um horário ("consigo às 16h20", "tem às 15h?", "pode ser mais cedo, tipo 9h?"), PROCURE esse horário exato na LISTA DE HORÁRIOS DISPONÍVEIS (ela vem mais adiante neste prompt). Se ele ESTIVER na lista, confirme normalmente. Se NÃO ESTIVER, é porque está ocupado ou não existe — então NUNCA diga "agendado", "remarcado" ou "confirmado" para ele. Responda que nesse horário não tem vaga e ofereça o mais próximo QUE ESTÁ na lista (ex.: "Às 16h20 não tenho vaga; consigo às 16h40 — pode ser?"). Confirmar um horário que não está na lista faz o paciente vir num horário ocupado por outra pessoa — é o pior erro possível.\n🚫 CORRIGIR UM DADO NÃO É REMARCAR: se você já marcou um horário nesta conversa e depois precisa apenas ajustar convênio, nome, nascimento ou carteirinha, NUNCA re-emita [AGENDAR] com um horário DIFERENTE — repita EXATAMENTE o mesmo [inicio:] de antes (ou apenas emita [CARTEIRINHA]). Trocar o horário por conta própria muda a consulta de lugar sem o paciente pedir, e ele aparece na hora errada. Só mude o horário quando o PACIENTE pedir para mudar.\nVale igual para REMARCAÇÃO: só anuncie a remarcação depois de escolher um horário DA LISTA. Enquanto o novo horário não for um da lista, o agendamento antigo continua valendo — não diga ao paciente que mudou.\nÚNICA EXCEÇÃO à regra do horário único: agendamento para MAIS DE UM paciente — ofereça exatamente UM horário POR paciente (N pacientes = N horários), preferindo horários em sequência no mesmo dia/unidade e dizendo qual é de quem (ver a seção "Agendamento para MAIS DE UM paciente").\nATENÇÃO — A LISTA DE HORÁRIOS TEM AS DUAS UNIDADES: ela vem agrupada em blocos: cada bloco começa com um cabeçalho "## dia — unidade" e, dentro dele, cada horário já traz o dia abreviado e a data ("qua 05/08 15:00"). Use SEMPRE o dia que está na linha do horário. NUNCA diga que "não há horário" numa unidade ou num dia sem antes procurar na lista inteira: pode haver vaga naquele dia em outro bloco, mais abaixo. Lembre que cada dia pertence a UMA unidade (seg/qua/sex = Conjunto Nacional; ter/qui = Taguatinga), então um pedido por um DIA já define a unidade — se o paciente pedir sexta, procure os blocos de sexta (Conjunto Nacional), mesmo que ele tenha citado a outra unidade antes.\nNUNCA escreva o dia da semana de uma data por conta própria: copie o dia da semana exatamente como aparece NA PRÓPRIA LINHA do horário escolhido — cada horário vem no formato "qua 05/08 15:00", com o dia abreviado e a data colados nele (ex.: se a linha diz "qua 05/08", nunca escreva "terça, 05/08"). NÃO deduza o dia da semana e NÃO pegue do cabeçalho de outro bloco. Errar isso faz o paciente vir no dia errado.
-
-### PREFERÊNCIA DE UNIDADE (aplique SOMENTE quando o bloco volátil mandar ativar)
-\nPREFERÊNCIA DE UNIDADE (este paciente ainda NÃO disse onde quer ser atendido): hoje temos MAIS DISPONIBILIDADE na unidade **${ANA_UNIDADE_PREFERIDA}**. Use isso de duas formas: (a) AO PERGUNTAR a preferência, acrescente essa informação verdadeira e útil — ex.: "prefere Conjunto Nacional ou Taguatinga Shopping (em Águas Claras)? No Conjunto Nacional tenho mais horários disponíveis esta semana"; (b) se VOCÊ tiver que escolher (paciente sem preferência, com pressa, ou pedindo "o horário mais próximo"), ofereça um horário do **${ANA_UNIDADE_PREFERIDA}**. LIMITES: se o paciente disser que prefere a outra unidade, ou citar bairro/região mais perto dela, ATENDA IMEDIATAMENTE, sem insistir e sem justificar a troca. NUNCA diga que a outra unidade está cheia nem invente motivo — a única coisa que você pode afirmar é que há mais horários disponíveis nesta. EXCEÇÃO IMPORTANTE: se o paciente pedir explicitamente o horário MAIS PRÓXIMO/mais cedo possível (pressa, urgência de agenda), ofereça o horário genuinamente mais próximo da lista, mesmo que seja da outra unidade — nunca empurre uma data mais distante só para preencher a unidade preferida.
-
-### ANTECEDÊNCIA DESTE CONVÊNIO (aplique SOMENTE quando o bloco volátil mandar ativar)
-\nANTECEDÊNCIA DESTE CONVÊNIO: o plano citado por este paciente (Unimed e variações, Casec, Codevasc, Care Plus ou Life Empresarial) é um dos poucos que precisam de um pouco mais de antecedência, porque a liberação junto à operadora não sai em cima da hora. Os horários muito próximos JÁ FORAM RETIRADOS da sua lista — ofereça normalmente o PRIMEIRO horário que aparece nela, de forma positiva (ex.: "Pelo seu convênio, o quanto antes que consigo é [dia] às [hora] — reservo para você?"). ⚠️ ATENÇÃO — A ANTECEDÊNCIA JÁ ESTÁ RESOLVIDA PELA LISTA: todo horário que aparece nela JÁ respeita esse prazo. Portanto, ao paciente aceitar, MARQUE DE VERDADE com [AGENDAR]. A verificação de cobertura é feita pela equipe DEPOIS, com o horário já reservado — ela NUNCA é motivo para deixar de marcar, para "encerrar e a equipe entra em contato" ou para cair em [PREAGENDAMENTO]. Deixar de marcar um horário que está na lista é ERRO GRAVE: o paciente fica sem consulta e a vaga fica vazia. Se o paciente insistir em ser atendido hoje, acolha, explique em UMA frase que esse plano específico exige a verificação prévia de cobertura junto à operadora e registre [PREAGENDAMENTO] para a equipe tentar o encaixe — sem prometer. NUNCA diga que a agenda está cheia (não é o caso) nem classifique horários por forma de pagamento.`;
-
 // Modo de agendamento da Ana (INTERRUPTOR):
 // - PADRÃO (ON) = MARCAR SOZINHA (Fase 2): a Ana oferece e GRAVA o horário real. O
 //   pré-agendamento continua como FALLBACK AUTOMÁTICO — só entra quando a Ana não
@@ -1159,88 +1136,32 @@ async function agendamentosDoPaciente(telefone) {
   } catch (e) { console.error("[Agenda DB] agendamentosDoPaciente falhou:", e.message); return []; }
 }
 
-// ── CONFIRMAÇÃO DE PRESENÇA PELO PACIENTE ───────────────────────────────────
-// Resposta ao lembrete da véspera. Fica em coluna própria (confirmado_paciente_em)
-// e NÃO reaproveita appointments.status: 'confirmado' ali significa "o horário
-// está reservado", é o que alimenta a trava anti-overbooking. Misturar os dois
-// sentidos quebraria a agenda para economizar uma coluna.
-
-// Reconhece uma confirmação simples. Casa a mensagem INTEIRA (normalizada, sem
-// acento e sem pontuação) contra uma lista fechada — assim "ok, mas preciso
-// remarcar" NÃO casa e segue para a Ana, que é onde deve ir.
-const CONFIRMACOES_SIMPLES = new Set([
-  "confirmo", "confirmado", "confirmada", "confirmar", "confirmando",
-  "confirmo sim", "sim confirmo", "ok confirmo", "confirmo ok",
-  "pode confirmar", "esta confirmado", "ta confirmado", "estou confirmado",
-  "sim", "isso", "ok", "okay", "blz", "beleza", "certo", "tudo certo", "tudo ok",
-  "estarei la", "estarei ai", "vou sim", "confirmadissimo",
-]);
-function ehConfirmacaoDeLembrete(txt) {
-  const t = String(txt || "")
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // tira acento
-    .toLowerCase()
-    .replace(/[^a-z\s]/g, " ")                           // tira pontuação/emoji
-    .replace(/\s+/g, " ").trim();
-  if (!t || t.length > 30) return false;
-  return CONFIRMACOES_SIMPLES.has(t);
-}
-
-// Última mensagem da Ana/equipe na conversa. Usada como GUARDA do atalho: só
-// tratamos "confirmo" como confirmação de lembrete quando a última coisa que
-// saiu daqui foi o próprio lembrete. Sem isso, um "confirmo" no meio de um
-// agendamento (paciente aceitando o horário oferecido) seria engolido pelo
-// atalho e a consulta nunca seria marcada.
-async function ultimaMensagemDaAna(conversationId) {
-  try {
-    const { data } = await supabase.from("messages")
-      .select("role, event")
-      .eq("conversation_id", conversationId)
-      .neq("role", "user")
-      .order("timestamp", { ascending: false })
-      .limit(1);
-    return (data && data[0]) || null;
-  } catch (e) { return null; }
-}
-
-// Grava a confirmação. Falha SOFT: se a coluna ainda não existe (migração
-// sql/confirmacao_paciente.sql não rodada), o paciente continua recebendo a
-// resposta e nós avisamos no log — melhor perder o registro que travar o fluxo.
-async function marcarPresencaConfirmada(agendamentoId) {
-  try {
-    const { error } = await supabase.from("appointments")
-      .update({ confirmado_paciente_em: new Date().toISOString(), updated_at: new Date() })
-      .eq("id", agendamentoId);
-    if (error) {
-      console.error("[Lembrete][Confirmação] Não gravei confirmado_paciente_em (rode sql/confirmacao_paciente.sql):", error.message);
-      return false;
-    }
-    return true;
-  } catch (e) {
-    console.error("[Lembrete][Confirmação] Falha ao gravar:", e.message);
-    return false;
-  }
-}
-
-// Quais destes agendamentos já foram confirmados pelo paciente. Devolve null se
-// a coluna não existir — quem chama simplesmente não mostra a marcação.
-async function idsConfirmadosPeloPaciente(ids) {
-  if (!Array.isArray(ids) || !ids.length) return new Set();
-  try {
-    const { data, error } = await supabase.from("appointments")
-      .select("id, confirmado_paciente_em").in("id", ids);
-    if (error) return null;
-    return new Set((data || []).filter(a => a.confirmado_paciente_em).map(a => a.id));
-  } catch (e) { return null; }
-}
+// Colunas de comparecimento (sql/comparecimento.sql). Ficam num select separado
+// para o painel NÃO quebrar caso a migração ainda não tenha rodado: se o Postgres
+// recusar por coluna inexistente, refazemos a consulta sem elas e a agenda
+// continua funcionando — só sem a marcação de presença.
+const COLS_AGENDA_BASE = "id, unidade, inicio, fim, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, origem, hold_expira_em";
+const COLS_AGENDA_PRESENCA = COLS_AGENDA_BASE + ", compareceu, compareceu_em, compareceu_por";
+let avisouSemComparecimento = false;
 
 async function listarAgendamentos({ de, ate, unidade }) {
-  let q = supabase.from("appointments")
-    .select("id, unidade, inicio, fim, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, origem, hold_expira_em")
-    .neq("status", "cancelado")
-    .gte("inicio", new Date(de).toISOString()).lte("inicio", new Date(ate).toISOString())
-    .order("inicio", { ascending: true });
-  if (unidade) q = q.eq("unidade", unidade);
-  const { data, error } = await q;
+  const monta = (cols) => {
+    let q = supabase.from("appointments")
+      .select(cols)
+      .neq("status", "cancelado")
+      .gte("inicio", new Date(de).toISOString()).lte("inicio", new Date(ate).toISOString())
+      .order("inicio", { ascending: true });
+    if (unidade) q = q.eq("unidade", unidade);
+    return q;
+  };
+  let { data, error } = await monta(COLS_AGENDA_PRESENCA);
+  if (error) {
+    if (!avisouSemComparecimento) {
+      console.warn("[Agenda DB] Sem as colunas de comparecimento (rode sql/comparecimento.sql) — seguindo sem elas:", error.message);
+      avisouSemComparecimento = true;
+    }
+    ({ data, error } = await monta(COLS_AGENDA_BASE));
+  }
   if (error) { console.error("[Agenda DB] Falha ao listar:", error.message); return null; }
   const now = Date.now();
   // Esconde holds vencidos (tratados como livres).
@@ -1373,37 +1294,18 @@ function formatSlotsParaAgendar(slots, maxDias = 14, tagParticularAteTs = 0) {
     if (!byDia.has(key)) byDia.set(key, []);
     byDia.get(key).push(s);
   }
-  // Formato AGRUPADO: um cabeçalho por dia+unidade e os horários em linha.
-  // Antes cada vaga repetia o dia e a unidade inteiros ("- sexta-feira, 31/07
-  // às 09:00 (Conjunto Nacional) [inicio:...]"), o que fazia a lista sozinha
-  // passar de 4 mil tokens de input NÃO CACHEADO em TODA mensagem da Ana.
-  // Agrupando, dia e unidade aparecem uma vez por bloco e sobra "hora + token".
-  // O token [inicio:ISO] é preservado byte a byte — é ele que o [AGENDAR] copia.
-  const blocos = [];
+  const linhas = [];
   let dias = 0;
-  for (const [key, arr] of byDia) {
+  for (const [, arr] of byDia) {
     if (++dias > maxDias) break;
-    const sep = key.lastIndexOf("|");
-    const dia = key.slice(0, sep);
-    const unidade = key.slice(sep + 1);
-    // Cada horário repete dia-da-semana abreviado + data. Parece redundante com o
-    // cabeçalho, mas NÃO é: com o dia só no cabeçalho, a Ana pegou o dia da semana
-    // do bloco vizinho e escreveu "terça 05/08" (05/08 é quarta) — a trava
-    // corrigirDiaDaSemana pegou antes de enviar, mas depender da trava numa coisa
-    // que marca consulta é errado. Os ~700 tokens que isso custa compram a
-    // associação hora↔dia dentro da MESMA linha, sem rede de segurança no meio.
-    const diaCurto = String(dia).split(",")[0].slice(0, 3);          // "quarta-feira" -> "qua"
-    const dataCurta = (String(dia).split(",")[1] || "").trim();      // "05/08"
-    const prefixo = dataCurta ? `${diaCurto} ${dataCurta} ` : `${diaCurto} `;
-    const itens = arr.map(s => {
+    for (const s of arr) {
       // Slots dentro da janela de antecedência do convênio (ex.: hoje) entram
       // MARCADOS: a Ana só pode oferecê-los a paciente PARTICULAR confirmado.
       const marca = (tagParticularAteTs && s.start.getTime() < tagParticularAteTs) ? " [SÓ PARTICULAR]" : "";
-      return `${prefixo}${s.hora} [inicio:${s.start.toISOString()}]${marca}`;
-    });
-    blocos.push(`## ${dia} — ${unidade}\n${itens.join(" · ")}`);
+      linhas.push(`- ${s.dia} às ${s.hora} (${s.unidade}) [inicio:${s.start.toISOString()}]${marca}`);
+    }
   }
-  return blocos.join("\n");
+  return linhas.join("\n");
 }
 
 // Extrai TODOS os blocos técnicos [AGENDAR]...[/AGENDAR] da resposta — um por
@@ -3172,20 +3074,13 @@ app.post("/webhook", async (req, res) => {
           await sendWhatsApp(from, `🔔 Lembretes: *${r.ok}* enviado(s), *${r.falhas}* falha(s).${r.motivo ? ` (${r.motivo})` : ""}${r.erro ? `\n\nMotivo da recusa:\n${String(r.erro).slice(0, 700)}` : ""}`);
           return;
         }
-        // Marca quem já respondeu confirmando: é a lista de "para quem ainda
-        // vale a pena ligar". Se a coluna não existir, a marcação some e o
-        // resto continua igual.
-        const jaConfirmaram = await idsConfirmadosPeloPaciente(alvos.map(a => a.id));
         const linhas = alvos.length
-          ? alvos.map((a, i) => {
-            const marca = jaConfirmaram === null ? "" : (jaConfirmaram.has(a.id) ? " ✅" : " ⏳");
-            return `*${i + 1}.* ${fmtLembreteQuando(a.inicio)} — ${a.paciente_nome || "—"} · ${a.unidade}${marca}`;
-          }).join("\n")
+          ? alvos.map((a, i) => `*${i + 1}.* ${fmtLembreteQuando(a.inicio)} — ${a.paciente_nome || "—"} · ${a.unidade}`).join("\n")
           : "_ninguém com telefone na agenda de amanhã_";
         const estado = !WA_LEMBRETE_TEMPLATE_NAME ? "⚠️ INERTE (falta WA_LEMBRETE_TEMPLATE_NAME no Render)"
           : LEMBRETE_HORA === null ? "⚠️ desligado (LEMBRETE_HORA=off)"
           : `✅ ativo, dispara às ${LEMBRETE_HORA}h`;
-        await sendWhatsApp(from, `🔔 *Lembretes da véspera* — ${estado}\nConsultas de ${dd}/${mm}/${aa}:\n${linhas}\n\n_✅ confirmou · ⏳ ainda não respondeu. Nada foi enviado. Para disparar agora: *#LEMBRETES CONFIRMAR*_`);
+        await sendWhatsApp(from, `🔔 *Lembretes da véspera* — ${estado}\nConsultas de ${dd}/${mm}/${aa}:\n${linhas}\n\n_Nada foi enviado. Para disparar agora: *#LEMBRETES CONFIRMAR*_`);
         return;
       }
       // Cria a campanha COMBINADA Ceratocone + Esclerais (nasce PAUSADA). Reúne as
@@ -3301,36 +3196,6 @@ app.post("/webhook", async (req, res) => {
         return;
       }
       console.log(`[Ana] Global OFF, mas conversa ${conversation.id} é de campanha sempre-ativa — respondendo.`);
-    }
-
-    // ── ATALHO: confirmação do lembrete da véspera, sem passar pela IA ──────
-    // "CONFIRMO" é comparação de string, não precisa de modelo. Sem este atalho
-    // cada confirmação simples custava uma chamada ao Claude (~R$ 0,10) só para
-    // produzir uma frase que já sabemos qual é — e confirmação simples é a
-    // MAIORIA das respostas ao lembrete.
-    // Três guardas, todas necessárias: (a) mensagem de texto, sem mídia;
-    // (b) o texto inteiro é uma confirmação simples; (c) a última mensagem que
-    // saiu daqui foi o próprio lembrete. A guarda (c) é a que impede o pior
-    // caso — engolir um "confirmo" que era a aceitação de um horário oferecido.
-    if (!mediaNotification && text && ehConfirmacaoDeLembrete(text)) {
-      const ultima = await ultimaMensagemDaAna(conversation.id);
-      if (ultima && ultima.event === "lembrete") {
-        const proximos = await agendamentosDoPaciente(from);
-        const agoraTs = Date.now();
-        const alvo = proximos.find(a => {
-          const t = new Date(a.inicio).getTime();
-          return t > agoraTs && t < agoraTs + 48 * 3600 * 1000;   // consulta de amanhã
-        });
-        if (alvo) {
-          await marcarPresencaConfirmada(alvo.id);
-          const resposta = `Perfeito, ${patient?.name ? patient.name.split(" ")[0] + ", " : ""}sua consulta está confirmada para ${fmtDataHoraBR(alvo.inicio)}, na unidade ${alvo.unidade}. Até lá!`;
-          await sendWhatsApp(from, resposta);
-          await saveMessage(conversation.id, "assistant", resposta);
-          console.log(`[Lembrete][Confirmação] ${maskFone(from)} confirmou presença — resposta pronta, sem chamada à IA.`);
-          return;
-        }
-        // Sem consulta nas próximas 48h o "confirmo" é outra coisa: segue para a Ana.
-      }
     }
 
     // Para imagens/documentos/vídeos: por padrão a Ana só acusa o recebimento e
@@ -3479,7 +3344,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       if (slotsOferta === null) {
         dynamicPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       } else if (slotsOferta.length > 0) {
-        dynamicPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, ANA_HORIZONTE_DIAS, tagAte)}${horizonteTxt}${(!unidade && ANA_UNIDADE_PREFERIDA) ? `\n➡️ ATIVE a seção "PREFERÊNCIA DE UNIDADE" das instruções fixas: este paciente ainda NÃO escolheu unidade.` : ""}${precisaAntecedencia ? `\n➡️ ATIVE a seção "ANTECEDÊNCIA DESTE CONVÊNIO" das instruções fixas: o plano citado por este paciente exige antecedência (os horários próximos já foram retirados da lista).` : ""}`;
+        dynamicPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, 14, tagAte)}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.\n🚫 HORÁRIO PROPOSTO PELO PACIENTE (regra crítica): quando o PACIENTE sugerir um horário ("consigo às 16h20", "tem às 15h?", "pode ser mais cedo, tipo 9h?"), PROCURE esse horário exato na lista acima. Se ele ESTIVER na lista, confirme normalmente. Se NÃO ESTIVER, é porque está ocupado ou não existe — então NUNCA diga "agendado", "remarcado" ou "confirmado" para ele. Responda que nesse horário não tem vaga e ofereça o mais próximo QUE ESTÁ na lista (ex.: "Às 16h20 não tenho vaga; consigo às 16h40 — pode ser?"). Confirmar um horário que não está na lista faz o paciente vir num horário ocupado por outra pessoa — é o pior erro possível.\n🚫 CORRIGIR UM DADO NÃO É REMARCAR: se você já marcou um horário nesta conversa e depois precisa apenas ajustar convênio, nome, nascimento ou carteirinha, NUNCA re-emita [AGENDAR] com um horário DIFERENTE — repita EXATAMENTE o mesmo [inicio:] de antes (ou apenas emita [CARTEIRINHA]). Trocar o horário por conta própria muda a consulta de lugar sem o paciente pedir, e ele aparece na hora errada. Só mude o horário quando o PACIENTE pedir para mudar.\nVale igual para REMARCAÇÃO: só anuncie a remarcação depois de escolher um horário DA LISTA. Enquanto o novo horário não for um da lista, o agendamento antigo continua valendo — não diga ao paciente que mudou.\nÚNICA EXCEÇÃO à regra do horário único: agendamento para MAIS DE UM paciente — ofereça exatamente UM horário POR paciente (N pacientes = N horários), preferindo horários em sequência no mesmo dia/unidade e dizendo qual é de quem (ver a seção "Agendamento para MAIS DE UM paciente").\nATENÇÃO — A LISTA ACIMA TEM AS DUAS UNIDADES: cada linha diz a unidade e o dia. NUNCA diga que "não há horário" numa unidade ou num dia sem antes procurar na lista inteira: pode haver vaga naquele dia em outra linha, mais abaixo. Lembre que cada dia pertence a UMA unidade (seg/qua/sex = Conjunto Nacional; ter/qui = Taguatinga), então um pedido por um DIA já define a unidade — se o paciente pedir sexta, procure as linhas de sexta (Conjunto Nacional), mesmo que ele tenha citado a outra unidade antes.\nNUNCA escreva o dia da semana de uma data por conta própria: copie o dia da semana exatamente como aparece na linha da lista (ex.: se a linha diz "sexta-feira, 31/07", nunca escreva "quinta-feira, 31/07"). Errar isso faz o paciente vir no dia errado.${horizonteTxt}${(!unidade && ANA_UNIDADE_PREFERIDA) ? `\nPREFERÊNCIA DE UNIDADE (este paciente ainda NÃO disse onde quer ser atendido): hoje temos MAIS DISPONIBILIDADE na unidade **${ANA_UNIDADE_PREFERIDA}**. Use isso de duas formas: (a) AO PERGUNTAR a preferência, acrescente essa informação verdadeira e útil — ex.: "prefere Conjunto Nacional ou Taguatinga Shopping (em Águas Claras)? No Conjunto Nacional tenho mais horários disponíveis esta semana"; (b) se VOCÊ tiver que escolher (paciente sem preferência, com pressa, ou pedindo "o horário mais próximo"), ofereça um horário do **${ANA_UNIDADE_PREFERIDA}**. LIMITES: se o paciente disser que prefere a outra unidade, ou citar bairro/região mais perto dela, ATENDA IMEDIATAMENTE, sem insistir e sem justificar a troca. NUNCA diga que a outra unidade está cheia nem invente motivo — a única coisa que você pode afirmar é que há mais horários disponíveis nesta. EXCEÇÃO IMPORTANTE: se o paciente pedir explicitamente o horário MAIS PRÓXIMO/mais cedo possível (pressa, urgência de agenda), ofereça o horário genuinamente mais próximo da lista, mesmo que seja da outra unidade — nunca empurre uma data mais distante só para preencher a unidade preferida.` : ""}${precisaAntecedencia ? `\nANTECEDÊNCIA DESTE CONVÊNIO: o plano citado por este paciente (Unimed e variações, Casec, Codevasc, Care Plus ou Life Empresarial) é um dos poucos que precisam de um pouco mais de antecedência, porque a liberação junto à operadora não sai em cima da hora. Os horários muito próximos JÁ FORAM RETIRADOS da sua lista — ofereça normalmente o PRIMEIRO horário que aparece nela, de forma positiva (ex.: "Pelo seu convênio, o quanto antes que consigo é [dia] às [hora] — reservo para você?"). ⚠️ ATENÇÃO — A ANTECEDÊNCIA JÁ ESTÁ RESOLVIDA PELA LISTA: todo horário que aparece nela JÁ respeita esse prazo. Portanto, ao paciente aceitar, MARQUE DE VERDADE com [AGENDAR]. A verificação de cobertura é feita pela equipe DEPOIS, com o horário já reservado — ela NUNCA é motivo para deixar de marcar, para "encerrar e a equipe entra em contato" ou para cair em [PREAGENDAMENTO]. Deixar de marcar um horário que está na lista é ERRO GRAVE: o paciente fica sem consulta e a vaga fica vazia. Se o paciente insistir em ser atendido hoje, acolha, explique em UMA frase que esse plano específico exige a verificação prévia de cobertura junto à operadora e registre [PREAGENDAMENTO] para a equipe tentar o encaixe — sem prometer. NUNCA diga que a agenda está cheia (não é o caso) nem classifique horários por forma de pagamento.` : ""}`;
       } else {
         dynamicPrompt += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias em NENHUMA das duas unidades. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       }
@@ -3534,9 +3399,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         response = await anthropicMessages({
           model: ANA_MODEL, max_tokens: 1000,
           system: [
-            // TTL de 1h: mensagens de WhatsApp chegam espaçadas e o cache padrão
-            // (5 min) expirava entre uma e outra, cobrando gravação toda vez.
-            { type: "text", text: SYSTEM_PROMPT + "\n\n" + INSTRUCOES_FIXAS, cache_control: { type: "ephemeral", ttl: "1h" } },
+            { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
             { type: "text", text: dynamicPrompt },
           ],
           messages: apiMessages,
@@ -3549,7 +3412,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           await registrarErro("cache_control_400", e1?.response?.data ? JSON.stringify(e1.response.data) : e1.message, { conversationId: conversation.id });
           response = await anthropicMessages({
             model: ANA_MODEL, max_tokens: 1000,
-            system: SYSTEM_PROMPT + "\n\n" + INSTRUCOES_FIXAS + "\n\n" + dynamicPrompt,
+            system: SYSTEM_PROMPT + "\n\n" + dynamicPrompt,
             messages: apiMessages,
           });
         } else throw e1;
@@ -4504,6 +4367,77 @@ app.post("/api/agenda/book", async (req, res) => {
 });
 
 // Cancela um agendamento (libera o slot).
+// ── COMPARECIMENTO ──────────────────────────────────────────────────────────
+// Quem marca é a recepção, no painel, quando o paciente chega (ou quando fica
+// claro que não veio). É um campo SEPARADO do status: 'confirmado' ali quer
+// dizer "a vaga está reservada" e alimenta a trava anti-overbooking — presença
+// é outra coisa. compareceu = true | false | null (ainda não marcado).
+app.post("/api/agenda/:id/presenca", async (req, res) => {
+  try {
+    const v = req.body?.compareceu;
+    if (v !== true && v !== false && v !== null) {
+      return res.status(400).json({ ok: false, error: "compareceu deve ser true, false ou null." });
+    }
+    const patch = v === null
+      ? { compareceu: null, compareceu_em: null, compareceu_por: null }
+      : { compareceu: v, compareceu_em: new Date().toISOString(), compareceu_por: req.panelUser?.email || null };
+    const { error } = await supabase.from("appointments").update(patch).eq("id", req.params.id);
+    if (error) {
+      console.error("[Agenda] /presenca falhou:", error.message);
+      const faltaColuna = /column .* does not exist/i.test(error.message || "");
+      return res.status(500).json({ ok: false, error: faltaColuna ? "Falta rodar sql/comparecimento.sql no Supabase." : error.message });
+    }
+    res.json({ ok: true, compareceu: v });
+  } catch (e) {
+    console.error("[Agenda] /presenca falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Métrica do período: quantos compareceram, faltaram e ainda não foram marcados.
+// Serve para responder "o lembrete reduziu a falta?" — por isso quebra também
+// por origem (ana x secretaria), que é a outra comparação que interessa.
+app.get("/api/agenda/comparecimento", async (req, res) => {
+  try {
+    const de = req.query.de ? new Date(String(req.query.de)) : new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    const ate = req.query.ate ? new Date(String(req.query.ate)) : new Date();
+    if (isNaN(de.getTime()) || isNaN(ate.getTime())) return res.status(400).json({ ok: false, error: "Datas inválidas (use de/ate em ISO)." });
+    const { data, error } = await supabase.from("appointments")
+      .select("origem, compareceu")
+      .neq("status", "cancelado")
+      .gte("inicio", de.toISOString()).lte("inicio", ate.toISOString());
+    if (error) {
+      const faltaColuna = /column .* does not exist/i.test(error.message || "");
+      return res.status(500).json({ ok: false, error: faltaColuna ? "Falta rodar sql/comparecimento.sql no Supabase." : error.message });
+    }
+    const zera = () => ({ total: 0, compareceu: 0, faltou: 0, sem_marcacao: 0 });
+    const geral = zera(), porOrigem = {};
+    for (const a of data || []) {
+      const o = a.origem || "—";
+      porOrigem[o] = porOrigem[o] || zera();
+      for (const b of [geral, porOrigem[o]]) {
+        b.total++;
+        if (a.compareceu === true) b.compareceu++;
+        else if (a.compareceu === false) b.faltou++;
+        else b.sem_marcacao++;
+      }
+    }
+    const taxa = (b) => {
+      const marcados = b.compareceu + b.faltou;
+      return marcados ? Math.round((b.faltou / marcados) * 1000) / 10 : null;   // % de falta entre os marcados
+    };
+    res.json({
+      ok: true,
+      periodo: { de: de.toISOString(), ate: ate.toISOString() },
+      geral: { ...geral, taxa_falta_pct: taxa(geral) },
+      por_origem: Object.fromEntries(Object.entries(porOrigem).map(([k, b]) => [k, { ...b, taxa_falta_pct: taxa(b) }])),
+    });
+  } catch (e) {
+    console.error("[Agenda] /comparecimento falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.post("/api/agenda/:id/cancel", async (req, res) => {
   try {
     const r = await cancelarAgendamento(req.params.id);

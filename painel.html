@@ -441,6 +441,15 @@
     <h3>Detalhes do agendamento</h3>
     <p id="agdet-quando"></p>
     <div id="agdet-body"></div>
+    <div id="agdet-presenca" style="margin-top:14px;padding-top:12px;border-top:1px solid #e3e9ef">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Comparecimento</div>
+      <div id="agdet-presenca-estado" style="font-size:13px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="agdet-veio">Compareceu</button>
+        <button class="btn ghost" id="agdet-faltou">Faltou</button>
+        <button class="btn ghost" id="agdet-limpar">Limpar</button>
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn ghost" id="agdet-cancelar">Cancelar agendamento</button>
       <button class="btn primary" id="agdet-fechar">Fechar</button>
@@ -1566,9 +1575,44 @@ function openAgDetails(id){
     linha('Observações', a.observacoes)+
     linha('Registrado por', origem)+
     (a.status==='reservado'?linha('Status','Reserva temporária (aguardando confirmação)'):'');
+  renderPresenca(a);
   $('#agdet-modal').classList.add('show');
 }
+
+// Comparecimento: só faz sentido depois que a consulta aconteceu, então para
+// horário futuro os botões ficam escondidos — evita a recepção marcar presença
+// de quem ainda nem chegou.
+function renderPresenca(a){
+  const passou = new Date(a.inicio).getTime() <= Date.now();
+  const box=$('#agdet-presenca');
+  if(!passou){ box.style.display='none'; return; }
+  box.style.display='block';
+  const est=$('#agdet-presenca-estado');
+  if(a.compareceu===true)       est.innerHTML='<b style="color:#0a7d3c">Compareceu</b>'+(a.compareceu_por?' — marcado por '+esc(a.compareceu_por):'');
+  else if(a.compareceu===false) est.innerHTML='<b style="color:#b3261e">Faltou</b>'+(a.compareceu_por?' — marcado por '+esc(a.compareceu_por):'');
+  else                          est.innerHTML='<span style="color:#6b7b8c">Ainda não marcado</span>';
+}
+
+async function setPresenca(v){
+  if(!agDetId) return;
+  try{
+    const r=await fetch(API_BASE.replace(/\/$/,'')+'/api/agenda/'+agDetId+'/presenca',{
+      method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+AUTH},
+      body:JSON.stringify({compareceu:v}) });
+    if(r.status===401){ logout(); return; }
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){ toast(d.error||('Erro '+r.status)); return; }
+    // Atualiza o cache local para o modal e a lista refletirem sem recarregar.
+    const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
+    if(a){ a.compareceu=v; a.compareceu_por=null; renderPresenca(a); }
+    toast(v===true?'Marcado: compareceu ✓':(v===false?'Marcado: faltou':'Marcação removida'));
+    agRefresh();
+  }catch(e){ toast('Falha de conexão.'); }
+}
 function closeAgDetails(){ $('#agdet-modal').classList.remove('show'); }
+$('#agdet-veio').onclick   = ()=>setPresenca(true);
+$('#agdet-faltou').onclick = ()=>setPresenca(false);
+$('#agdet-limpar').onclick = ()=>setPresenca(null);
 function openAgBook(ini, unidade){
   agBookIni=ini;
   if(unidade) agUnidade=unidade;   // no modo semana, a unidade vem da coluna do dia
