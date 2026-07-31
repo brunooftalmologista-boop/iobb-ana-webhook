@@ -3149,11 +3149,27 @@ app.post("/webhook", async (req, res) => {
         const alvos = await alvosDoLembrete(amanhaYMD);
         if (alvos === null) { await sendWhatsApp(from, "⚠️ Não consegui ler a agenda agora."); return; }
         const [aa, mm, dd] = amanhaYMD.split("-");
+        // #LEMBRETES TESTAR — manda o template para o SEU próprio número e devolve
+        // a resposta crua da Meta. É o jeito de descobrir por que o envio falha
+        // (nome do template errado, idioma, número de variáveis) sem ler o log do
+        // Render. Não toca em paciente nenhum.
+        if (arg === "TESTAR") {
+          if (!WA_LEMBRETE_TEMPLATE_NAME) { await sendWhatsApp(from, "⚠️ Falta definir *WA_LEMBRETE_TEMPLATE_NAME* no Render."); return; }
+          try {
+            await sendWhatsAppTemplate(from, WA_LEMBRETE_TEMPLATE_NAME, WA_LEMBRETE_TEMPLATE_LANG,
+              ["Teste", "quinta-feira, 30/07 às 14h20", "Conjunto Nacional"]);
+            await sendWhatsApp(from, `✅ Template *${WA_LEMBRETE_TEMPLATE_NAME}* (${WA_LEMBRETE_TEMPLATE_LANG}) enviado com sucesso para este número. Se a mensagem chegou, o lembrete está pronto.`);
+          } catch (e) {
+            const d = e?.response?.data;
+            await sendWhatsApp(from, `❌ A Meta recusou o template *${WA_LEMBRETE_TEMPLATE_NAME}* (${WA_LEMBRETE_TEMPLATE_LANG}).\n\nResposta:\n${(d ? JSON.stringify(d) : e.message).slice(0, 900)}`);
+          }
+          return;
+        }
         if (arg === "CONFIRMAR") {
           if (!WA_LEMBRETE_TEMPLATE_NAME) { await sendWhatsApp(from, "⚠️ Lembretes INERTES: falta definir *WA_LEMBRETE_TEMPLATE_NAME* no Render (nome do template aprovado na Meta)."); return; }
           await sendWhatsApp(from, `🔔 Enviando lembretes de ${dd}/${mm} (${alvos.length} paciente(s))...`);
           const r = await enviarLembretesDeAmanha();
-          await sendWhatsApp(from, `🔔 Lembretes: *${r.ok}* enviado(s), *${r.falhas}* falha(s).${r.motivo ? ` (${r.motivo})` : ""}`);
+          await sendWhatsApp(from, `🔔 Lembretes: *${r.ok}* enviado(s), *${r.falhas}* falha(s).${r.motivo ? ` (${r.motivo})` : ""}${r.erro ? `\n\nMotivo da recusa:\n${String(r.erro).slice(0, 700)}` : ""}`);
           return;
         }
         // Marca quem já respondeu confirmando: é a lista de "para quem ainda
@@ -4913,7 +4929,7 @@ async function enviarLembretesDeAmanha() {
   if (!alvos.length) { console.log(`[Lembrete] Nada a enviar para ${amanhaYMD}.`); return { ok: 0, falhas: 0, motivo: "ninguém a avisar" }; }
 
   console.log(`[Lembrete] ${alvos.length} paciente(s) com consulta em ${amanhaYMD} — template "${WA_LEMBRETE_TEMPLATE_NAME}".`);
-  let ok = 0, falhas = 0;
+  let ok = 0, falhas = 0, primeiroErro = null;   // guarda o motivo da 1ª recusa da Meta
   for (const a of alvos) {
     const quando = fmtLembreteQuando(a.inicio);
     const primeiroNome = String(a.paciente_nome || "").trim().split(/\s+/)[0] || "tudo bem";
@@ -4936,6 +4952,7 @@ async function enviarLembretesDeAmanha() {
     } catch (e) {
       falhas++;
       const d = e?.response?.data;
+      if (!primeiroErro) primeiroErro = (d ? JSON.stringify(d) : e.message).slice(0, 600);
       console.error(`[Lembrete] Falha para ${maskFone(a._fone)}:`, d ? JSON.stringify(d) : e.message);
     }
   }
@@ -4943,8 +4960,10 @@ async function enviarLembretesDeAmanha() {
     await supabase.from("settings").upsert({ key: "lembretes_enviados", value: JSON.stringify({ data: amanhaYMD, ids: [...enviados] }) });
   } catch (e) { console.error("[Lembrete] Falha ao registrar quem já foi avisado:", e.message); }
   console.log(`[Lembrete] Concluído: ${ok} enviado(s), ${falhas} falha(s).`);
-  if (falhas) await registrarErro("lembrete_vespera", `data=${amanhaYMD} enviados=${ok} falhas=${falhas}`).catch(() => {});
-  return { ok, falhas, data: amanhaYMD };
+  // O motivo da recusa da Meta vai JUNTO: sem ele o log dizia só "falhas=7" e a
+  // causa (nome do template, idioma, nº de variáveis) ficava só no Render.
+  if (falhas) await registrarErro("lembrete_vespera", `data=${amanhaYMD} enviados=${ok} falhas=${falhas} template="${WA_LEMBRETE_TEMPLATE_NAME}" lang="${WA_LEMBRETE_TEMPLATE_LANG}" erro=${primeiroErro || "?"}`).catch(() => {});
+  return { ok, falhas, data: amanhaYMD, erro: primeiroErro };
 }
 
 // Verifica a cada 30 min e dispara uma vez por dia, a partir da hora configurada.
