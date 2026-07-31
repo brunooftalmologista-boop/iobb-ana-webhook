@@ -104,7 +104,7 @@
     <div class="m-sel" id="m-sel"></div>
     <input id="m-nome" placeholder="Nome completo do paciente *">
     <input id="m-nasc" placeholder="Nascimento (DD/MM/AAAA)">
-    <input id="m-tel" placeholder="Telefone / WhatsApp (com DDD)">
+    <input id="m-tel" placeholder="Telefone / WhatsApp com DDD * — sem ele não há confirmação da véspera">
     <input id="m-conv" placeholder="Convênio (vazio = Particular)">
     <input id="m-motivo" placeholder="Motivo (vazio = Consulta)">
     <div class="erro" id="m-erro"></div>
@@ -381,7 +381,8 @@ async function salvarAgendamento(){
     if(d.ok){
       fecharModal();
       ['m-nome','m-nasc','m-tel','m-conv','m-motivo'].forEach(id=>{ $('#'+id).value=''; });
-      copiarToast('✅ Agendado: '+nome+' — '+slotSel.dia+' às '+slotSel.hora);
+      copiarToast(d.aviso ? '⚠️ Agendado SEM telefone: '+nome+' — não receberá a confirmação da véspera'
+                          : '✅ Agendado: '+nome+' — '+slotSel.dia+' às '+slotSel.hora);
       carregar();
     } else if(d.taken){
       $('#m-erro').textContent = 'Esse horário acabou de ser ocupado — escolha outro.';

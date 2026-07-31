@@ -4477,14 +4477,26 @@ app.post("/api/agenda/book", async (req, res) => {
     if (isNaN(ini.getTime())) return res.status(400).json({ ok: false, error: "Horário (inicio) inválido." });
     if (ini.getTime() <= Date.now()) return res.status(400).json({ ok: false, error: "Não é possível marcar em horário passado." });
     const fim = new Date(ini.getTime() + SLOT_MIN * 60000);
+    // Telefone normalizado (55 + DDD + número). Sem isso o paciente não recebe a
+    // confirmação da véspera — 13 dos 31 agendamentos da secretária em julho
+    // ficaram sem telefone utilizável. Não BLOQUEIA a marcação (paciente de
+    // balcão pode não ter o número na hora); só recusa número claramente errado
+    // e devolve um aviso para a tela mostrar.
+    let foneNorm = null, aviso = null;
+    if (telefone && String(telefone).trim()) {
+      foneNorm = normalizePhoneBR(telefone);
+      if (!foneNorm) return res.status(400).json({ ok: false, error: "Telefone inválido. Use DDD + número (ex.: 61 98406-0001)." });
+    } else {
+      aviso = "Agendado SEM telefone — este paciente não vai receber a confirmação automática da véspera.";
+    }
     const r = await criarAgendamento({
       unidade, inicio: ini, fim, status: "confirmado",
-      nome, telefone, convenio, motivo, observacoes,
+      nome, telefone: foneNorm, convenio, motivo, observacoes,
       origem: "secretaria", criadoPor: req.panelUser?.email || null,
     });
     if (r.taken) return res.status(409).json({ ok: false, taken: true, error: "Esse horário acabou de ser ocupado. Atualize a agenda e escolha outro." });
     if (!r.ok) return res.status(500).json({ ok: false, error: r.error || "Falha ao marcar." });
-    res.json({ ok: true, appointment: r.appointment });
+    res.json({ ok: true, appointment: r.appointment, aviso });
   } catch (e) {
     console.error("[Agenda] /book falhou:", e.message);
     res.status(500).json({ ok: false, error: e.message });
