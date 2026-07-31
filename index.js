@@ -4379,6 +4379,78 @@ app.get("/api/agenda/appointments", async (req, res) => {
   }
 });
 
+// ===== EVOLUÇÃO CLÍNICA (camada de apoio ao prontuário) =====================
+// NÃO substitui o iClinic: é o rascunho que o médico digita na consulta e depois
+// copia/cola lá. Vale porque a ficha já nasce com o que a Ana coletou, em vez de
+// ser redigitada. Migração: sql/evolucoes.sql (rodar à mão no Supabase).
+// Auth: já coberta pelo requirePanelAuth em app.use("/api", ...).
+
+// Devolve a evolução de um agendamento (ou vazio, se ainda não existir) junto
+// com a ficha do paciente — é o que preenche o cabeçalho sem digitação.
+app.get("/api/evolucao/:appointmentId", async (req, res) => {
+  try {
+    const id = String(req.params.appointmentId);
+    const { data: ap, error: eAp } = await supabase.from("appointments")
+      .select("id, unidade, inicio, paciente_nome, paciente_telefone, convenio, motivo, observacoes, origem")
+      .eq("id", id).single();
+    if (eAp || !ap) return res.status(404).json({ ok: false, error: "Agendamento não encontrado." });
+    const { data: ev } = await supabase.from("evolucoes")
+      .select("id, dados, texto, updated_at").eq("appointment_id", id).maybeSingle();
+    res.json({ ok: true, agendamento: ap, evolucao: ev || null });
+  } catch (e) {
+    console.error("[Evolução] GET falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Salva (cria ou atualiza). Chamado pelo auto-save da página.
+app.put("/api/evolucao/:appointmentId", async (req, res) => {
+  try {
+    const id = String(req.params.appointmentId);
+    const { dados, texto } = req.body || {};
+    const { data: ap } = await supabase.from("appointments")
+      .select("paciente_nome, paciente_telefone").eq("id", id).single();
+    if (!ap) return res.status(404).json({ ok: false, error: "Agendamento não encontrado." });
+    const row = {
+      appointment_id: id,
+      paciente_nome: ap.paciente_nome || null,
+      paciente_telefone: ap.paciente_telefone || null,
+      dados: dados && typeof dados === "object" ? dados : {},
+      texto: typeof texto === "string" ? texto : null,
+    };
+    const { data, error } = await supabase.from("evolucoes")
+      .upsert(row, { onConflict: "appointment_id" }).select("id, updated_at").single();
+    if (error) {
+      console.error("[Evolução] Falha ao salvar:", error.message);
+      // 42P01 = tabela não existe → a migração ainda não foi rodada.
+      if (error.code === "42P01") return res.status(503).json({ ok: false, error: "Tabela 'evolucoes' não existe — rode sql/evolucoes.sql no Supabase." });
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+    res.json({ ok: true, id: data.id, updated_at: data.updated_at });
+  } catch (e) {
+    console.error("[Evolução] PUT falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Última evolução ANTERIOR do mesmo paciente — alimenta o "copiar da última
+// consulta", que é onde mais se ganha tempo no retorno.
+app.get("/api/evolucao-anterior/:appointmentId", async (req, res) => {
+  try {
+    const id = String(req.params.appointmentId);
+    const { data: ap } = await supabase.from("appointments")
+      .select("paciente_telefone").eq("id", id).single();
+    if (!ap?.paciente_telefone) return res.json({ ok: true, evolucao: null });
+    const { data } = await supabase.from("evolucoes")
+      .select("dados, texto, created_at").eq("paciente_telefone", ap.paciente_telefone)
+      .neq("appointment_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    res.json({ ok: true, evolucao: data || null });
+  } catch (e) {
+    console.error("[Evolução] anterior falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Marca um horário direto pela secretária (status confirmado). O `inicio` deve ser
 // exatamente o de um slot livre devolvido por /api/agenda/slots.
 app.post("/api/agenda/book", async (req, res) => {
