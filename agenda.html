@@ -4,13 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Agenda IOBB — transferência para o prontuário</title>
+<title>Agenda IOBB</title>
 <style>
+  :root{
+    --green:#00a884; --header:#f0f2f5; --out:#d9fdd3;
+    --text:#111b21; --muted:#667781; --border:#e9edef;
+  }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f2f5f8;color:#122a3f;line-height:1.5}
   .top{position:sticky;top:0;z-index:10;background:#0e2a43;color:#fff;padding:12px 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-  .top h1{font-size:16px;font-weight:700;margin-right:auto}
+  .top h1{font-size:16px;font-weight:700}
   .top .sub{font-size:12px;opacity:.75;width:100%}
+  .grow{margin-left:auto}
   .chip{background:#173d5e;border:1px solid #2a557d;color:#dbe9f5;border-radius:20px;padding:6px 14px;font-size:13px;cursor:pointer;user-select:none}
   .chip.on{background:#25d366;border-color:#25d366;color:#08301c;font-weight:700}
   select,input[type=date],input[type=search]{padding:7px 10px;border-radius:8px;border:1px solid #2a557d;background:#173d5e;color:#fff;font-size:13px}
@@ -18,6 +23,11 @@
   .btn{padding:7px 14px;border-radius:8px;border:none;background:#25d366;color:#08301c;font-weight:700;font-size:13px;cursor:pointer}
   .btn.ghost{background:#173d5e;color:#dbe9f5;border:1px solid #2a557d}
   .wrap{max-width:1080px;margin:0 auto;padding:18px}
+  .wrap.larga{max-width:1320px}
+  /* separador de views: cada bloco de controles só aparece na sua view */
+  .ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+
+  /* ===== view "transferir" (a lista original) ===== */
   .dia{margin:22px 0 10px;font-size:15px;font-weight:800;color:#0e2a43;text-transform:capitalize}
   .dia small{font-weight:500;color:#64788c}
   .card{background:#fff;border:1px solid #e2e8ef;border-radius:14px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 3px rgba(10,40,70,.05)}
@@ -48,7 +58,7 @@
   .login input{width:100%;padding:10px;margin-bottom:10px;border-radius:8px;border:1px solid #c6d2dd;background:#fff;color:#122a3f;font-size:14px}
   .login .btn{width:100%;padding:11px}
   .erro{color:#c0392b;font-size:13px;margin-bottom:8px;min-height:17px}
-  /* modal de novo agendamento */
+  /* modal de novo agendamento (view transferir) */
   .overlay{position:fixed;inset:0;background:rgba(10,25,40,.55);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:28px 12px;overflow:auto}
   .overlay.show{display:flex}
   .modal{background:#fff;border-radius:16px;max-width:660px;width:100%;padding:22px;box-shadow:0 12px 40px rgba(5,20,40,.3)}
@@ -64,23 +74,122 @@
   .slot.sel{background:#25d366;border-color:#25d366;color:#08301c;font-weight:700}
   .m-sel{font-size:14px;font-weight:700;color:#0a6b52;margin-bottom:10px;min-height:20px}
   .m-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
-  @media(max-width:640px){ .acoes{margin-left:0;width:100%} .top h1{font-size:14px} }
+
+  /* ===== view "grade" — mesma agenda do painel, em página inteira ===== */
+  .ag-nav{display:flex;align-items:center;gap:6px}
+  #ag-date-label{min-width:180px;text-align:center;font-weight:700;font-size:13.5px}
+  .ag-viewtoggle{display:flex;border:1px solid #2a557d;border-radius:8px;overflow:hidden}
+  .ag-vbtn{padding:7px 14px;font-size:13px;font-weight:700;color:#dbe9f5;background:#173d5e;border:none;cursor:pointer;font-family:inherit}
+  .ag-vbtn.active{background:#25d366;color:#08301c}
+  .ag-card{background:#fff;border:1px solid #e2e8ef;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(10,40,70,.05)}
+  .ag-body{display:flex;flex-direction:column;gap:6px;min-height:220px}
+  .ag-empty{color:var(--muted);text-align:center;padding:34px 12px;font-size:14px}
+  .ag-slot{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:8px;font-size:14px;text-align:left;border:none;font-family:inherit;color:inherit}
+  .ag-slot.free{background:var(--out);color:#075e54;font-weight:600;width:100%;cursor:pointer}
+  .ag-slot.free:hover{background:#c9f7c0}
+  .ag-slot.booked{background:var(--header);cursor:pointer}
+  .ag-slot.booked:hover{background:#e6e9ec}
+  .ag-slot.booked small{color:var(--muted)}
+  .ag-hold{background:#ffe0a3;color:#8a5a00;padding:1px 6px;border-radius:6px;font-size:11px;margin-left:4px}
+  .ag-cancel{width:28px;height:28px;border-radius:50%;color:#d33;font-size:14px;flex:0 0 28px;border:none;background:none;cursor:pointer}
+  .ag-cancel:hover{background:rgba(221,51,51,.1)}
+  .ag-week{display:flex;gap:8px;overflow:auto;padding:2px}
+  .ag-day{flex:1 0 168px;min-width:168px;display:flex;flex-direction:column;gap:4px}
+  .ag-day-h{position:sticky;top:0;z-index:1;text-align:center;font-size:12px;font-weight:700;text-transform:capitalize;padding:7px 4px;border-radius:6px;background:var(--header)}
+  .ag-day-h.hoje{background:var(--green);color:#fff}
+  .ag-day-h small{display:block;font-weight:600;font-size:10.5px;opacity:.8;text-transform:none}
+  .ag-wslot{font-size:12px;padding:5px 7px;border-radius:6px;text-align:left;line-height:1.3;border:none;font-family:inherit;color:inherit}
+  .ag-wslot.free{background:var(--out);color:#075e54;font-weight:600;width:100%;cursor:pointer}
+  .ag-wslot.free:hover{background:#c9f7c0}
+  .ag-wslot.booked{background:var(--header);cursor:pointer}
+  .ag-wslot.booked:hover{background:#e6e9ec}
+  .ag-wslot.booked b{font-weight:700}
+  /* Agendamentos feitos pela Ana: destaque em vermelho suave */
+  .ag-slot.booked.ana,.ag-wslot.booked.ana{background:#fdeaea;box-shadow:inset 3px 0 0 #e5534b}
+  .ag-slot.booked.ana:hover,.ag-wslot.booked.ana:hover{background:#fbdada}
+  .ag-anatag{background:#e5534b;color:#fff;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:6px;margin-left:2px;vertical-align:middle}
+  .ag-wslot .ag-hold{font-size:10px}
+  .ag-day-empty{font-size:11px;color:var(--muted);text-align:center;padding:12px 4px}
+  /* faltou/compareceu na grade: a secretária enxerga sem abrir o agendamento */
+  .ag-pres{font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:6px;margin-left:2px;vertical-align:middle}
+  .ag-pres.veio{background:#0a7d3c;color:#fff}
+  .ag-pres.faltou{background:#b3261e;color:#fff}
+
+  /* modais no estilo do painel (detalhes + marcar horário) */
+  .modal-bg{position:fixed;inset:0;background:rgba(11,20,26,.55);display:none;align-items:center;justify-content:center;z-index:100;padding:16px;overflow:auto}
+  .modal-bg.show{display:flex}
+  .pmodal{background:#fff;border-radius:12px;padding:24px;width:min(460px,94vw);max-height:92vh;overflow:auto}
+  .pmodal h3{margin:0 0 4px;font-size:17px}
+  .pmodal p{color:var(--muted);font-size:14px;margin:0 0 16px}
+  .pmodal label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px}
+  .pmodal input,.pmodal select,.pmodal textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px;outline:none;background:#fff;font-family:inherit;resize:vertical;color:#122a3f}
+  .pmodal input:focus,.pmodal select:focus,.pmodal textarea:focus{border-color:var(--green)}
+  .chk-group{border:1px solid var(--border);border-radius:8px;padding:8px 11px;max-height:170px;overflow-y:auto}
+  .chk-group label{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:400;margin:0;padding:3px 0;cursor:pointer}
+  .chk-group input{width:auto;padding:0;margin:0}
+  .chk-sub{font-size:11.5px;font-weight:700;color:var(--muted);margin:8px 0 3px;text-transform:uppercase;letter-spacing:.03em}
+  .pmodal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;flex-wrap:wrap}
+  .pbtn{padding:10px 18px;border-radius:8px;font-weight:600;font-size:14px;border:none;cursor:pointer;font-family:inherit}
+  .pbtn.primary{background:var(--green);color:#fff}
+  .pbtn.ghost{background:var(--header);color:#54656f}
+  .pbtn.danger{background:#b3261e;color:#fff}
+  .det-row{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px}
+  .det-row:last-child{border-bottom:none}
+  .det-k{color:var(--muted);min-width:120px;font-weight:600}
+  .det-v{flex:1;white-space:pre-wrap}
+
+  @media(max-width:640px){ .acoes{margin-left:0;width:100%} .top h1{font-size:14px} .grow{margin-left:0} }
 </style>
 </head>
 <body>
 
 <div class="top" id="topbar" style="display:none">
-  <h1>📋 Agenda → Prontuário</h1>
-  <input type="date" id="f-data">
-  <select id="f-dias"><option value="1">Só o dia</option><option value="7" selected>7 dias</option><option value="30">30 dias</option></select>
-  <select id="f-unidade"><option value="">Todas as unidades</option><option>Conjunto Nacional</option><option>Taguatinga</option></select>
-  <span class="chip on" id="f-origem" title="Só os agendamentos feitos aqui (Ana + secretária), que ainda precisam ser transferidos — os do iClinic já estão no prontuário">Só p/ transferir</span>
-  <input type="search" id="f-busca" placeholder="Buscar nome…">
-  <button class="btn ghost" id="btn-reload" title="Atualizar">⟳</button>
-  <button class="btn" id="btn-novo">➕ Agendar</button>
-  <span class="sub">Clique em qualquer campo para copiá-lo · “copiar ficha” copia o bloco completo · marque ✓ quando passar pro prontuário · ➕ marca um horário livre na hora</span>
+  <h1>🗓️ Agenda IOBB</h1>
+  <span class="chip on" id="v-grade" title="A mesma agenda do painel da Ana">Grade</span>
+  <span class="chip" id="v-transf" title="Lista para copiar e colar no prontuário">Transferir</span>
+
+  <!-- controles da GRADE -->
+  <span class="ctl grow" id="ctl-grade">
+    <span class="ag-viewtoggle">
+      <button class="ag-vbtn" id="ag-view-dia">Dia</button>
+      <button class="ag-vbtn active" id="ag-view-sem">Semana</button>
+    </span>
+    <select id="ag-unidade" style="display:none">
+      <option value="Conjunto Nacional">Conjunto Nacional</option>
+      <option value="Taguatinga">Taguatinga</option>
+    </select>
+    <span class="ag-nav">
+      <button class="btn ghost" id="ag-prev" title="Anterior">‹</button>
+      <span id="ag-date-label"></span>
+      <button class="btn ghost" id="ag-next" title="Próximo">›</button>
+    </span>
+    <button class="btn ghost" id="ag-today">Hoje</button>
+    <button class="btn ghost" id="ag-reload" title="Atualizar">⟳</button>
+  </span>
+
+  <!-- controles da TRANSFERÊNCIA -->
+  <span class="ctl grow" id="ctl-transf" style="display:none">
+    <input type="date" id="f-data">
+    <select id="f-dias"><option value="1">Só o dia</option><option value="7" selected>7 dias</option><option value="30">30 dias</option></select>
+    <select id="f-unidade"><option value="">Todas as unidades</option><option>Conjunto Nacional</option><option>Taguatinga</option></select>
+    <span class="chip on" id="f-origem" title="Só os agendamentos feitos aqui (Ana + secretária), que ainda precisam ser transferidos — os do iClinic já estão no prontuário">Só p/ transferir</span>
+    <input type="search" id="f-busca" placeholder="Buscar nome…">
+    <button class="btn ghost" id="btn-reload" title="Atualizar">⟳</button>
+    <button class="btn" id="btn-novo">➕ Agendar</button>
+  </span>
+
+  <span class="sub" id="sub-txt"></span>
 </div>
 
+<!-- view GRADE -->
+<div class="wrap larga" id="grade" style="display:none">
+  <div class="ag-card">
+    <div id="ag-body" class="ag-body" style="display:none"></div>
+    <div id="ag-week" class="ag-week"></div>
+  </div>
+</div>
+
+<!-- view TRANSFERIR -->
 <div class="wrap" id="app" style="display:none"></div>
 
 <div class="login" id="login" style="display:none">
@@ -91,7 +200,7 @@
   <button class="btn" id="l-btn">Entrar</button>
 </div>
 
-<!-- Modal: novo agendamento (vagas reais + trava anti-overbooking no servidor) -->
+<!-- Modal: novo agendamento pela lista de transferência (vagas reais + trava anti-overbooking no servidor) -->
 <div class="overlay" id="overlay">
   <div class="modal">
     <h2>➕ Novo agendamento</h2>
@@ -111,6 +220,52 @@
     <div class="m-actions">
       <button class="mini" id="m-fechar">Fechar</button>
       <button class="btn" id="m-salvar">Confirmar agendamento</button>
+    </div>
+  </div>
+</div>
+
+<!-- Marcar horário a partir de uma vaga livre da grade -->
+<div class="modal-bg" id="agbook-modal">
+  <div class="pmodal">
+    <h3>Marcar horário</h3>
+    <p id="agbook-slot"></p>
+    <label>Nome do paciente</label>
+    <input id="agbook-nome" placeholder="Nome completo" autocomplete="off">
+    <label>Telefone</label>
+    <input id="agbook-tel" placeholder="Ex.: 61 98406-0001" inputmode="tel" autocomplete="off">
+    <label>Convênio</label>
+    <select id="agbook-conv"></select>
+    <label>Motivo (pode marcar mais de um)</label>
+    <div id="agbook-motivo" class="chk-group"></div>
+    <label>Observações (opcional)</label>
+    <textarea id="agbook-obs" rows="2" placeholder="Alguma observação para a equipe" autocomplete="off"></textarea>
+    <div id="agbook-error" style="color:#d33;font-size:13px;margin-top:8px;display:none"></div>
+    <div class="pmodal-actions">
+      <button class="pbtn ghost" id="agbook-cancel">Cancelar</button>
+      <button class="pbtn primary" id="agbook-save">Marcar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detalhes do agendamento (inclui comparecimento) -->
+<div class="modal-bg" id="agdet-modal">
+  <div class="pmodal">
+    <h3>Detalhes do agendamento</h3>
+    <p id="agdet-quando"></p>
+    <div id="agdet-body"></div>
+    <div id="agdet-presenca" style="margin-top:14px;padding-top:12px;border-top:1px solid #e3e9ef">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Comparecimento</div>
+      <div id="agdet-presenca-estado" style="font-size:13px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="pbtn ghost" id="agdet-veio">Compareceu</button>
+        <button class="pbtn ghost" id="agdet-faltou">Faltou</button>
+        <button class="pbtn ghost" id="agdet-limpar">Limpar</button>
+      </div>
+    </div>
+    <div class="pmodal-actions">
+      <button class="pbtn ghost" id="agdet-ficha">📋 Copiar ficha</button>
+      <button class="pbtn ghost" id="agdet-cancelar">Cancelar agendamento</button>
+      <button class="pbtn primary" id="agdet-fechar">Fechar</button>
     </div>
   </div>
 </div>
@@ -152,6 +307,8 @@ async function tryRefresh(){
     const d = await r.json(); setTokens(d.access_token, d.refresh_token); return true;
   }catch(e){ return false; }
 }
+// Devolve o corpo JSON mesmo em erro (o backend sempre responde {ok:false,error}),
+// e só lança em 401 — quem chama trata o resto olhando d.ok/d.error.
 async function api(path, opts, _retried){
   syncTokensFromStorage();   // usa sempre o token mais novo (outra aba pode ter renovado)
   const o = opts || {};
@@ -163,8 +320,8 @@ async function api(path, opts, _retried){
   return r.json();
 }
 
-function mostrarLogin(){ $('#login').style.display='block'; $('#topbar').style.display='none'; $('#app').style.display='none'; }
-function mostrarApp(){ $('#login').style.display='none'; $('#topbar').style.display='flex'; $('#app').style.display='block'; }
+function mostrarLogin(){ $('#login').style.display='block'; $('#topbar').style.display='none'; $('#app').style.display='none'; $('#grade').style.display='none'; }
+function mostrarApp(){ $('#login').style.display='none'; $('#topbar').style.display='flex'; aplicarView(); }
 
 $('#l-btn').onclick = async () => {
   $('#login-erro').textContent='';
@@ -173,19 +330,14 @@ $('#l-btn').onclick = async () => {
       body:JSON.stringify({agent:$('#l-agent').value.trim(), password:$('#l-pass').value})});
     if(!r.ok){ const d=await r.json().catch(()=>({})); $('#login-erro').textContent=d.error||'Usuário ou senha inválidos'; return; }
     const d = await r.json(); setTokens(d.access_token, d.refresh_token);
-    mostrarApp(); carregar();
+    mostrarApp(); recarregarView();
   }catch(e){ $('#login-erro').textContent='Falha na conexão'; }
 };
 $('#l-pass').addEventListener('keydown', e => { if(e.key==='Enter') $('#l-btn').click(); });
 
-// ----- estado ----------------------------------------------------------------
-// "Só p/ transferir" = origem != iclinic (Ana E secretária ainda não estão no prontuário)
-let soAna = true;
-let transferidos = JSON.parse(localStorage.getItem('iobb_transf')||'{}');
-function salvarTransf(){ localStorage.setItem('iobb_transf', JSON.stringify(transferidos)); }
-
 // ----- utilidades ------------------------------------------------------------
 const TZ = 'America/Sao_Paulo';
+const TZ_BR = TZ;
 function diaBR(iso){ return new Date(iso).toLocaleDateString('pt-BR',{timeZone:TZ,weekday:'long',day:'2-digit',month:'2-digit'}); }
 function dataBR(iso){ return new Date(iso).toLocaleDateString('pt-BR',{timeZone:TZ}); }
 function horaBR(iso){ return new Date(iso).toLocaleTimeString('pt-BR',{timeZone:TZ,hour:'2-digit',minute:'2-digit'}); }
@@ -207,10 +359,14 @@ function carteirinhaDe(obs){
 }
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg;
+  t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 1600);
+}
+const copiarToast = toast;
 function copiar(texto, msg){
   navigator.clipboard.writeText(texto).then(()=>{
-    const t = $('#toast'); t.textContent = msg || ('Copiado: '+(texto.length>40?texto.slice(0,40)+'…':texto));
-    t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 1400);
+    toast(msg || ('Copiado: '+(texto.length>40?texto.slice(0,40)+'…':texto)));
   });
 }
 
@@ -229,7 +385,304 @@ function blocoFicha(a){
   ].filter(Boolean).join('\n');
 }
 
-// ----- carregar e desenhar ----------------------------------------------------
+// ============================================================================
+// SELETOR DE VIEW
+// A página abre na GRADE (a mesma agenda do painel, em tela cheia) porque é o
+// que a recepção usa o dia inteiro. A lista de transferência para o prontuário
+// continua aqui, atrás do segundo chip — ela resolve um problema diferente
+// (copiar e colar ficha no iClinic) e ninguém perde o fluxo que já conhece.
+// ============================================================================
+let VIEW = localStorage.getItem('iobb_agenda_view') || 'grade';
+const SUB = {
+  grade: 'Verde = vaga livre (clique para marcar) · vermelho = marcado pela Ana · clique num paciente para ver a ficha e registrar comparecimento',
+  transf: 'Clique em qualquer campo para copiá-lo · “copiar ficha” copia o bloco completo · marque ✓ quando passar pro prontuário · ➕ marca um horário livre na hora',
+};
+function aplicarView(){
+  const grade = VIEW==='grade';
+  $('#v-grade').classList.toggle('on', grade);
+  $('#v-transf').classList.toggle('on', !grade);
+  $('#ctl-grade').style.display  = grade ? 'flex' : 'none';
+  $('#ctl-transf').style.display = grade ? 'none' : 'flex';
+  $('#grade').style.display = grade ? 'block' : 'none';
+  $('#app').style.display   = grade ? 'none' : 'block';
+  $('#sub-txt').textContent = grade ? SUB.grade : SUB.transf;
+}
+function setView(v){
+  VIEW = v; localStorage.setItem('iobb_agenda_view', v);
+  aplicarView(); recarregarView();
+}
+function recarregarView(){ VIEW==='grade' ? agRefresh() : carregar(); }
+$('#v-grade').onclick  = ()=>setView('grade');
+$('#v-transf').onclick = ()=>setView('transf');
+
+// ============================================================================
+// VIEW GRADE — portada do painel (mesmos endpoints, mesma marcação)
+// ============================================================================
+let agUnidade='Conjunto Nacional', agDate=new Date(), agFree=[], agBooked=[], agBookIni=null;
+let agView = localStorage.getItem('iobb_agenda_gview') || 'semana';
+// Convênios atendidos (fonte: LISTA DE CONVÊNIOS ATENDIDOS no index.js).
+const CONVENIOS=["Particular","AMHPDF","AFEB BRASAL","AFFEGO","ASETE","ASFUB","BACEN","BBB SAÚDE","CARE PLUS","CASEMBRAPA","CAEME-GO","CAMED","CAESAN","CASEC","CTI","CONAB","ELETRONORTE","EMBRATEL","E-VIDA","FACEB","FAPES (BNDES)","FASCAL","FIOSAÚDE (FIOPREV)","FURNAS","GAMA SAÚDE","INSTITUTO DE ASSISTÊNCIA À SAÚDE DOS SERVIDORES DO DISTRITO FEDERAL","INFRAERO","IRB","IRMÃOS GRAVIA","LIFE EMPRESARIAL","MAPFRE SAÚDE","MPDFT","MPF","MPM","MPT","NOTRE DAME","PAME","PLAN-ASSISTE","PROASA","PRÓ-SOCIAL","SAÚDE CAIXA","SERPRO","SIS SENADO","STF-MED","STJ","STM","TJDFT","TST SAÚDE","T.R.E.","TRF","TRT","UNAFISCO","UNIBANCO - TEMPO SAUDE","UNIMED CENTRAL NACIONAL","UNIMED PLANALTO","UNIMED INTERCÂMBIO","UNIVERSAL ASSISTENCE"];
+// Exames realizados (fonte: seção "### Exames realizados" no index.js).
+const EXAMES=["Pentacam HR","Paquimetria","Topografia","Microscopia Especular","Retinografia","Tonometria","CDPO (Curva Diária de Pressão Ocular)","Teste de Sobrecarga Hídrica","Mapeamento de Retina","Gonioscopia","Teste de Lente de Contato","Teste de Visão Cromática","Teste de Estereopsia"];
+const MOTIVO_PRINCIPAIS=["Consulta","Retorno","Avaliação de cirurgia"];
+const chkMotivo=v=>'<label><input type="checkbox" value="'+v+'"> '+v+'</label>';
+const MOTIVO_HTML=MOTIVO_PRINCIPAIS.map(chkMotivo).join('')
+  +'<div class="chk-sub">Exames</div>'+EXAMES.map(chkMotivo).join('');
+function agDayStr(d){ return d.toLocaleDateString('en-CA',{timeZone:TZ_BR}); }   // 'YYYY-MM-DD' em Brasília
+// Só a primeira letra: text-transform:capitalize deixaria "Semana De 27/07 A 31/07".
+function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
+// Alterna Dia | Semana. No modo semana o seletor de unidade some (a semana já
+// mostra a unidade de cada dia na própria coluna).
+function setAgView(v){
+  agView=v; localStorage.setItem('iobb_agenda_gview', v);
+  $('#ag-view-dia').classList.toggle('active', v==='dia');
+  $('#ag-view-sem').classList.toggle('active', v==='semana');
+  $('#ag-unidade').style.display = v==='semana' ? 'none' : '';
+  $('#ag-body').style.display = v==='semana' ? 'none' : 'flex';
+  $('#ag-week').style.display = v==='semana' ? 'flex' : 'none';
+  agRefresh();
+}
+// Não busca nada enquanto a grade estiver escondida: setAgView roda no boot só
+// para deixar os botões certos, e quem abriu na lista de transferência não deve
+// pagar 3 chamadas de API por uma tela que não está vendo.
+function agRefresh(){ if(VIEW!=='grade') return; agView==='semana' ? agLoadWeek() : agLoad(); }
+
+async function agLoad(){
+  agUnidade=$('#ag-unidade').value;
+  $('#ag-date-label').textContent=cap(agDate.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'}));
+  $('#ag-body').innerHTML='<div class="ag-empty">Carregando…</div>';
+  try{
+    const dia=agDayStr(agDate);
+    const from=new Date(dia+'T00:00:00-03:00'), to=new Date(from.getTime()+24*3600*1000);
+    const u=encodeURIComponent(agUnidade);
+    const [fs,ap]=await Promise.all([
+      api('/api/agenda/slots?unidade='+u),
+      api('/api/agenda/appointments?unidade='+u+'&from='+from.toISOString()+'&to='+to.toISOString()),
+    ]);
+    agFree=(fs&&fs.slots)||[]; agBooked=(ap&&ap.appointments)||[];
+    agRender();
+  }catch(e){ if(String(e.message)!=='401') $('#ag-body').innerHTML='<div class="ag-empty">Erro ao carregar a agenda. Tente ⟳</div>'; }
+}
+function agRender(){
+  const dia=agDayStr(agDate);
+  const free=agFree.filter(s=>agDayStr(new Date(s.inicio))===dia);
+  const booked=agBooked.filter(a=>agDayStr(new Date(a.inicio))===dia);
+  const items=[
+    ...booked.map(a=>({t:new Date(a.inicio).getTime(),type:'booked',a})),
+    ...free.map(s=>({t:new Date(s.inicio).getTime(),type:'free',s})),
+  ].sort((x,y)=>x.t-y.t);
+  if(!items.length){ $('#ag-body').innerHTML='<div class="ag-empty">Sem horários para esta unidade neste dia.<br><small>(Cada unidade atende em dias específicos.)</small></div>'; return; }
+  $('#ag-body').innerHTML=items.map(it=>{
+    const hora=new Date(it.t).toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+    if(it.type==='free') return `<button class="ag-slot free" data-ini="${esc(it.s.inicio)}">${hora} · livre</button>`;
+    const a=it.a, nome=esc(a.paciente_nome||'—');
+    const hold=a.status==='reservado'?'<span class="ag-hold">reservando…</span>':'';
+    const via=a.origem==='ana'?' · via Ana':'';
+    return `<div class="ag-slot booked${a.origem==='ana'?' ana':''}" data-id="${a.id}" title="Ver detalhes"><div><b>${hora}</b> · ${nome} ${hold}${tagPresenca(a)}<br><small>${esc(a.convenio||'')}${via}</small></div><button class="ag-cancel" data-id="${a.id}" title="Cancelar">✕</button></div>`;
+  }).join('');
+}
+// Selo de comparecimento na própria grade — a secretária vê num relance quem
+// já foi marcado e quem ainda falta marcar, sem abrir agendamento por agendamento.
+function tagPresenca(a){
+  if(a.compareceu===true)  return '<span class="ag-pres veio">veio</span>';
+  if(a.compareceu===false) return '<span class="ag-pres faltou">faltou</span>';
+  return '';
+}
+$('#ag-body').addEventListener('click', async e=>{
+  const free=e.target.closest('.ag-slot.free');
+  if(free){ openAgBook(free.dataset.ini); return; }
+  const cancel=e.target.closest('.ag-cancel');
+  if(cancel){
+    if(!confirm('Cancelar este agendamento? O horário volta a ficar livre.')) return;
+    try{ await api('/api/agenda/'+cancel.dataset.id+'/cancel',{method:'POST'}); toast('Agendamento cancelado.'); agRefresh(); }
+    catch(err){ if(String(err.message)!=='401') toast('Falha ao cancelar.'); }
+    return;
+  }
+  const booked=e.target.closest('.ag-slot.booked');
+  if(booked){ openAgDetails(booked.dataset.id); }
+});
+
+// ===== Visão de semana (colunas seg..sex; cada dia mostra a unidade daquele dia) =====
+function dowBR(d){ return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(d.toLocaleDateString('en-US',{timeZone:TZ_BR,weekday:'short'})); }
+function weekDaysBR(d){
+  const anchor=new Date(agDayStr(d)+'T12:00:00-03:00');   // meio-dia Brasília (evita virada de dia)
+  const off=-(((dowBR(anchor))+6)%7);                     // recua até segunda-feira
+  const days=[];
+  for(let i=0;i<5;i++){ const dd=new Date(anchor.getTime()); dd.setDate(dd.getDate()+off+i); days.push(dd); }
+  return days;   // seg, ter, qua, qui, sex
+}
+const UNIDADE_DA_COLUNA=['Conjunto Nacional','Taguatinga','Conjunto Nacional','Taguatinga','Conjunto Nacional'];
+async function agLoadWeek(){
+  const days=weekDaysBR(agDate), ini=days[0], fim=days[4];
+  $('#ag-date-label').textContent='Semana de '+ini.toLocaleDateString('pt-BR',{timeZone:TZ_BR,day:'2-digit',month:'2-digit'})+' a '+fim.toLocaleDateString('pt-BR',{timeZone:TZ_BR,day:'2-digit',month:'2-digit'});
+  $('#ag-week').innerHTML='<div class="ag-day-empty">Carregando…</div>';
+  try{
+    const from=new Date(agDayStr(ini)+'T00:00:00-03:00'), to=new Date(agDayStr(fim)+'T23:59:59-03:00');
+    const [ap,fsC,fsT]=await Promise.all([
+      api('/api/agenda/appointments?from='+from.toISOString()+'&to='+to.toISOString()),
+      api('/api/agenda/slots?unidade='+encodeURIComponent('Conjunto Nacional')),
+      api('/api/agenda/slots?unidade='+encodeURIComponent('Taguatinga')),
+    ]);
+    agBooked=(ap&&ap.appointments)||[];
+    agFree=[...((fsC&&fsC.slots)||[]),...((fsT&&fsT.slots)||[])];
+    agRenderWeek(days);
+  }catch(e){ if(String(e.message)!=='401') $('#ag-week').innerHTML='<div class="ag-day-empty">Erro ao carregar a semana. Tente ⟳</div>'; }
+}
+function agRenderWeek(days){
+  const hojeStr=agDayStr(new Date());
+  $('#ag-week').innerHTML=days.map((dd,i)=>{
+    const ds=agDayStr(dd), unidade=UNIDADE_DA_COLUNA[i];
+    const booked=agBooked.filter(a=>agDayStr(new Date(a.inicio))===ds);
+    const free=agFree.filter(s=>s.unidade===unidade && agDayStr(new Date(s.inicio))===ds);
+    const items=[...booked.map(a=>({t:new Date(a.inicio).getTime(),type:'booked',a})),
+                 ...free.map(s=>({t:new Date(s.inicio).getTime(),type:'free',s}))].sort((x,y)=>x.t-y.t);
+    const head=dd.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'short',day:'2-digit',month:'2-digit'});
+    const corpo=items.length ? items.map(it=>{
+      const hora=new Date(it.t).toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+      if(it.type==='free') return `<button class="ag-wslot free" data-ini="${esc(it.s.inicio)}" data-unidade="${esc(unidade)}">${hora} · livre</button>`;
+      const a=it.a, hold=a.status==='reservado'?'<span class="ag-hold">•</span>':'';
+      const anaTag=a.origem==='ana'?'<span class="ag-anatag">Ana</span>':'';
+      return `<div class="ag-wslot booked${a.origem==='ana'?' ana':''}" data-id="${a.id}" title="Ver detalhes"><b>${hora}</b> ${esc(a.paciente_nome||'—')} ${hold}${anaTag}${tagPresenca(a)}</div>`;
+    }).join('') : '<div class="ag-day-empty">—</div>';
+    return `<div class="ag-day"><div class="ag-day-h${ds===hojeStr?' hoje':''}">${head}<small>${esc(unidade)}</small></div>${corpo}</div>`;
+  }).join('');
+}
+$('#ag-week').addEventListener('click', e=>{
+  const free=e.target.closest('.ag-wslot.free');
+  if(free){ openAgBook(free.dataset.ini, free.dataset.unidade); return; }
+  const booked=e.target.closest('.ag-wslot.booked');
+  if(booked){ openAgDetails(booked.dataset.id); }
+});
+
+// ----- detalhes do agendamento ------------------------------------------------
+let agDetId=null;
+function openAgDetails(id){
+  const a=(agBooked||[]).find(x=>String(x.id)===String(id));
+  if(!a) return;
+  agDetId=id;
+  const d=new Date(a.inicio);
+  $('#agdet-quando').textContent=a.unidade+' — '+d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'})+' às '+d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+  const linha=(rot,val)=> `<div class="det-row"><span class="det-k">${rot}</span><span class="det-v">${val?esc(val):'—'}</span></div>`;
+  const origem=a.origem==='ana'?'Ana (automático)':(a.origem==='secretaria'?'Secretária':(a.origem||'—'));
+  const nasc=nascimentoDe(a.observacoes), cart=carteirinhaDe(a.observacoes);
+  $('#agdet-body').innerHTML=
+    linha('Nome', a.paciente_nome)+
+    (nasc?linha('Nascimento', nasc):'')+
+    linha('Telefone', fone(a.paciente_telefone))+
+    linha('Convênio', a.convenio)+
+    (cart?linha('Carteirinha', cart):'')+
+    linha('Motivo', a.motivo)+
+    linha('Observações', a.observacoes)+
+    linha('Registrado por', origem)+
+    (a.status==='reservado'?linha('Status','Reserva temporária (aguardando confirmação)'):'');
+  renderPresenca(a);
+  $('#agdet-modal').classList.add('show');
+}
+function closeAgDetails(){ $('#agdet-modal').classList.remove('show'); }
+
+// Comparecimento: só faz sentido depois que a consulta aconteceu, então para
+// horário futuro os botões ficam escondidos — evita a recepção marcar presença
+// de quem ainda nem chegou.
+function renderPresenca(a){
+  const passou = new Date(a.inicio).getTime() <= Date.now();
+  const box=$('#agdet-presenca');
+  if(!passou){ box.style.display='none'; return; }
+  box.style.display='block';
+  const est=$('#agdet-presenca-estado');
+  if(a.compareceu===true)       est.innerHTML='<b style="color:#0a7d3c">Compareceu</b>'+(a.compareceu_por?' — marcado por '+esc(a.compareceu_por):'');
+  else if(a.compareceu===false) est.innerHTML='<b style="color:#b3261e">Faltou</b>'+(a.compareceu_por?' — marcado por '+esc(a.compareceu_por):'');
+  else                          est.innerHTML='<span style="color:#6b7b8c">Ainda não marcado</span>';
+  // O botão da marcação atual fica destacado — sem isso "Compareceu" aparece
+  // sempre verde e parece já selecionado mesmo quando ninguém marcou nada.
+  $('#agdet-veio').className   = 'pbtn '+(a.compareceu===true ?'primary':'ghost');
+  $('#agdet-faltou').className = 'pbtn '+(a.compareceu===false?'danger':'ghost');
+}
+async function setPresenca(v){
+  if(!agDetId) return;
+  try{
+    const d = await api('/api/agenda/'+agDetId+'/presenca', {method:'POST', body:{compareceu:v}});
+    if(!d || !d.ok){ toast((d&&d.error)||'Falha ao marcar.'); return; }
+    // Atualiza o cache local para o modal e a grade refletirem sem recarregar.
+    const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
+    if(a){ a.compareceu=v; a.compareceu_por=null; renderPresenca(a); }
+    toast(v===true?'Marcado: compareceu ✓':(v===false?'Marcado: faltou':'Marcação removida'));
+    agRefresh();
+  }catch(e){ if(String(e.message)!=='401') toast('Falha de conexão.'); }
+}
+$('#agdet-veio').onclick   = ()=>setPresenca(true);
+$('#agdet-faltou').onclick = ()=>setPresenca(false);
+$('#agdet-limpar').onclick = ()=>setPresenca(null);
+$('#agdet-fechar').onclick = closeAgDetails;
+$('#agdet-ficha').onclick  = ()=>{
+  const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
+  if(a) copiar(blocoFicha(a), 'Ficha completa copiada!');
+};
+$('#agdet-cancelar').onclick = async ()=>{
+  if(!agDetId) return;
+  if(!confirm('Cancelar este agendamento? O horário volta a ficar livre.')) return;
+  try{ await api('/api/agenda/'+agDetId+'/cancel',{method:'POST'}); toast('Agendamento cancelado.'); closeAgDetails(); agRefresh(); }
+  catch(err){ if(String(err.message)!=='401') toast('Falha ao cancelar.'); }
+};
+
+// ----- marcar horário a partir de uma vaga livre --------------------------------
+function openAgBook(ini, unidade){
+  agBookIni=ini;
+  if(unidade) agUnidade=unidade;   // no modo semana, a unidade vem da coluna do dia
+  const d=new Date(ini);
+  $('#agbook-slot').textContent=agUnidade+' — '+d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'})+' às '+d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+  if(!$('#agbook-conv').options.length){
+    $('#agbook-conv').innerHTML='<option value="">Selecione o convênio…</option>'+CONVENIOS.map(c=>'<option>'+c+'</option>').join('');
+  }
+  $('#agbook-motivo').innerHTML=MOTIVO_HTML;   // recria = zera as marcações
+  $('#agbook-nome').value=''; $('#agbook-tel').value=''; $('#agbook-conv').value=''; $('#agbook-obs').value='';
+  $('#agbook-error').style.display='none';
+  $('#agbook-modal').classList.add('show'); $('#agbook-nome').focus();
+}
+function closeAgBook(){ $('#agbook-modal').classList.remove('show'); }
+function agBookErr(m){ const el=$('#agbook-error'); el.textContent=m; el.style.display='block'; }
+async function agBookSave(){
+  const body={ unidade:agUnidade, inicio:agBookIni,
+    nome:$('#agbook-nome').value.trim(), telefone:$('#agbook-tel').value.trim(),
+    convenio:$('#agbook-conv').value.trim(), motivo:[...$('#agbook-motivo').querySelectorAll('input:checked')].map(c=>c.value).join(', '), observacoes:$('#agbook-obs').value.trim() };
+  if(!body.nome){ agBookErr('Informe o nome do paciente.'); return; }
+  $('#agbook-save').disabled = true;
+  try{
+    const d = await api('/api/agenda/book', {method:'POST', body});
+    if(!d || !d.ok){
+      // 409 = o horário foi ocupado enquanto o modal estava aberto: fecha e recarrega
+      if(d && d.taken){ closeAgBook(); toast('Esse horário acabou de ser ocupado.'); agRefresh(); return; }
+      agBookErr((d&&d.error)||'Falha ao marcar — tente novamente.');
+      return;
+    }
+    closeAgBook();
+    toast(d.aviso ? '⚠️ Agendado SEM telefone — não receberá a confirmação da véspera' : 'Horário marcado ✓');
+    agRefresh();
+  }catch(e){ if(String(e.message)!=='401') agBookErr('Falha de conexão.'); }
+  finally{ $('#agbook-save').disabled = false; }
+}
+$('#agbook-cancel').onclick=closeAgBook;
+$('#agbook-save').onclick=agBookSave;
+
+// navegação da grade
+$('#ag-view-dia').onclick=()=>setAgView('dia');
+$('#ag-view-sem').onclick=()=>setAgView('semana');
+$('#ag-unidade').onchange=agRefresh;
+$('#ag-prev').onclick=()=>{ agDate.setDate(agDate.getDate()-(agView==='semana'?7:1)); agRefresh(); };
+$('#ag-next').onclick=()=>{ agDate.setDate(agDate.getDate()+(agView==='semana'?7:1)); agRefresh(); };
+$('#ag-today').onclick=()=>{ agDate=new Date(); agRefresh(); };
+$('#ag-reload').onclick=agRefresh;
+// fechar modais clicando fora
+document.querySelectorAll('.modal-bg').forEach(bg => bg.addEventListener('click', ev => { if(ev.target===bg) bg.classList.remove('show'); }));
+
+// ============================================================================
+// VIEW TRANSFERIR — a lista original de copiar/colar para o prontuário
+// ============================================================================
+// "Só p/ transferir" = origem != iclinic (Ana E secretária ainda não estão no prontuário)
+let soAna = true;
+let transferidos = JSON.parse(localStorage.getItem('iobb_transf')||'{}');
+function salvarTransf(){ localStorage.setItem('iobb_transf', JSON.stringify(transferidos)); }
+
 let LISTA = [];
 async function carregar(){
   const base = $('#f-data').value ? new Date($('#f-data').value+'T00:00:00-03:00') : new Date(new Date().toLocaleDateString('sv-SE',{timeZone:TZ})+'T00:00:00-03:00');
@@ -295,37 +748,32 @@ function desenhar(){
   $('#app').innerHTML = html;
 
   // eventos
-  document.querySelectorAll('.campo').forEach(el => el.onclick = () => copiar(el.dataset.copy));
-  document.querySelectorAll('.btn-ficha').forEach(el => el.onclick = (ev) => {
+  document.querySelectorAll('#app .campo').forEach(el => el.onclick = () => copiar(el.dataset.copy));
+  document.querySelectorAll('#app .btn-ficha').forEach(el => el.onclick = (ev) => {
     const card = ev.target.closest('.card');
     const a = LISTA.find(x => String(x.id) === card.dataset.id);
     if(a) copiar(blocoFicha(a), 'Ficha completa copiada!');
   });
-  document.querySelectorAll('.chk-transf').forEach(el => el.onchange = (ev) => {
+  document.querySelectorAll('#app .chk-transf').forEach(el => el.onchange = (ev) => {
     const card = ev.target.closest('.card');
     if(ev.target.checked) transferidos[card.dataset.id] = true; else delete transferidos[card.dataset.id];
     salvarTransf(); card.classList.toggle('done', ev.target.checked);
     desenhar();
   });
-  document.querySelectorAll('.btn-cancelar').forEach(el => el.onclick = async (ev) => {
+  document.querySelectorAll('#app .btn-cancelar').forEach(el => el.onclick = async (ev) => {
     const card = ev.target.closest('.card');
     const a = LISTA.find(x => String(x.id) === card.dataset.id);
     if(!a) return;
     if(!confirm('Desmarcar '+(a.paciente_nome||'paciente')+' — '+dataBR(a.inicio)+' '+horaBR(a.inicio)+' ('+a.unidade+')?\nO horário volta a ficar livre.')) return;
     try{
       const d = await api('/api/agenda/'+a.id+'/cancel', {method:'POST'});
-      if(d.ok){ copiarToast('Agendamento desmarcado.'); carregar(); }
+      if(d.ok){ toast('Agendamento desmarcado.'); carregar(); }
       else alert('Falha ao desmarcar: '+(d.error||''));
     }catch(e){ if(String(e.message)!=='401') alert('Falha ao desmarcar.'); }
   });
 }
 
-function copiarToast(msg){
-  const t = $('#toast'); t.textContent = msg;
-  t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 1600);
-}
-
-// ----- novo agendamento (modal) ------------------------------------------------
+// ----- novo agendamento pela lista de transferência (modal) ----------------------
 let SLOTS = [], slotSel = null;
 
 function abrirModal(){
@@ -381,8 +829,8 @@ async function salvarAgendamento(){
     if(d.ok){
       fecharModal();
       ['m-nome','m-nasc','m-tel','m-conv','m-motivo'].forEach(id=>{ $('#'+id).value=''; });
-      copiarToast(d.aviso ? '⚠️ Agendado SEM telefone: '+nome+' — não receberá a confirmação da véspera'
-                          : '✅ Agendado: '+nome+' — '+slotSel.dia+' às '+slotSel.hora);
+      toast(d.aviso ? '⚠️ Agendado SEM telefone: '+nome+' — não receberá a confirmação da véspera'
+                    : '✅ Agendado: '+nome+' — '+slotSel.dia+' às '+slotSel.hora);
       carregar();
     } else if(d.taken){
       $('#m-erro').textContent = 'Esse horário acabou de ser ocupado — escolha outro.';
@@ -401,20 +849,27 @@ $('#m-unidade').onchange = () => { slotSel=null; $('#m-sel').textContent=''; car
 $('#m-salvar').onclick = salvarAgendamento;
 $('#overlay').addEventListener('click', ev => { if(ev.target === $('#overlay')) fecharModal(); });
 
-// ----- filtros ----------------------------------------------------------------
+// ----- filtros da lista de transferência -----------------------------------------
 $('#f-origem').onclick = () => { soAna = !soAna; $('#f-origem').classList.toggle('on', soAna); $('#f-origem').textContent = soAna ? 'Só p/ transferir' : 'Todas (com iClinic)'; desenhar(); };
 $('#f-busca').oninput = () => desenhar();
 $('#f-data').onchange = carregar;
 $('#f-dias').onchange = carregar;
 $('#f-unidade').onchange = carregar;
 $('#btn-reload').onclick = carregar;
-setInterval(carregar, 5*60*1000); // atualiza a cada 5 min
+
+// Atualiza sozinho a cada 5 min — mas só a view aberta, e nunca com um modal na
+// frente (recarregar por baixo apagaria o que a secretária está digitando).
+setInterval(() => {
+  if(document.querySelector('.modal-bg.show') || $('#overlay').classList.contains('show')) return;
+  recarregarView();
+}, 5*60*1000);
 
 // ----- boot -------------------------------------------------------------------
 (async () => {
   if(!AUTH && !REFRESH){ mostrarLogin(); return; }
   mostrarApp();
-  carregar();
+  setAgView(agView);          // desenha a grade (e já dispara o carregamento)
+  if(VIEW!=='grade') carregar();
 })();
 </script>
 </body>
