@@ -446,3 +446,24 @@ footer {
   .proof-stats { grid-template-columns: 1fr; }
   .hero-badges { flex-direction: column; gap: 20px; }
 }
+
+/* ── Agendamento 24h pelo WhatsApp ──────────────────────────────────────────
+   A Ana atende e MARCA a qualquer hora; 20% das conversas chegam fora do
+   expediente. O horário de consulta continua nos cartões das unidades, mas
+   rotulado como consulta — a página não pode sugerir que às 22h ninguém
+   responde. O ponto verde é o "online" que todo mundo reconhece do WhatsApp. */
+.cta-note {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 13.5px; font-weight: 500;
+  color: rgba(255,255,255,.78); margin-top: 16px;
+}
+.cta-note::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,.25); flex: 0 0 8px;
+}
+.cta-banner .cta-note { justify-content: center; margin-top: 20px; }
+.unit-hours.h24 { margin-top: -12px; }
+.unit-hours.h24::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,.2); flex: 0 0 8px;
+}
