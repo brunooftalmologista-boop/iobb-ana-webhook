@@ -1015,6 +1015,53 @@ function dowDeDataBR(dd, mm) {
   if (isNaN(d.getTime())) return null;
   return { idx: d.getUTCDay(), data: d };   // 12h BR = 15h UTC no mesmo dia
 }
+// ===== TRAVA: unidade × data ================================================
+// Cada dia pertence a UMA unidade (seg/qua/sex = Conjunto; ter/qui =
+// Taguatinga), então o par data+unidade é determinístico — não devia depender
+// do modelo. Mesmo assim a Ana ofereceu "quarta-feira, 05/08, no Taguatinga",
+// se corrigiu sozinha e REPETIU o mesmo erro na mensagem seguinte; a paciente
+// teve de escrever "está errado novamente!".
+// Qual lado corrigir: preferimos manter a UNIDADE citada (em geral é a que o
+// paciente pediu) e trocar a DATA pela vaga mais próxima daquele mesmo horário
+// naquela unidade. Só quando não existe vaga assim é que trocamos a unidade.
+// Roda ANTES de corrigirDiaDaSemana, que depois acerta o dia da semana escrito.
+function corrigirUnidadeDaData(texto, slots) {
+  if (!texto) return { texto, correcoes: [] };
+  const correcoes = [];
+  const unidadeDaData = (d) => {
+    const dow = DOW_BR[d.getUTCDay()];
+    const r = Object.values(AGENDA_REGRAS).find(x => x.dias.includes(dow));
+    return r ? r.nome : null;
+  };
+  const RE = /(\d{2})\/(\d{2})([\s\S]{0,140}?)(Taguatinga(?:\s+Shopping)?|Conjunto(?:\s+Nacional)?)/gi;
+  const out = texto.replace(RE, (m, dd, mm, meio, unidDita) => {
+    const info = dowDeDataBR(Number(dd), Number(mm));
+    if (!info) return m;
+    const correta = unidadeDaData(info.data);
+    if (!correta) return m;                                  // fim de semana: não opina
+    const ditaEhTag = /taguatinga/i.test(unidDita);
+    if (ditaEhTag === (correta === "Taguatinga")) return m;   // par já coerente
+    const hora = (meio.match(/(\d{1,2})\s*[h:]\s*(\d{2})/) || [])[0];
+    if (hora && Array.isArray(slots)) {
+      const alvo = hora.replace(/\s/g, "").replace(":", "h");
+      const cand = slots.filter(s => /taguatinga/i.test(s.unidade) === ditaEhTag
+        && s.hora.replace(":", "h") === alvo);
+      if (cand.length) {
+        const agora = Date.now();
+        const futuros = cand.filter(s => s.start.getTime() >= agora);
+        const perto = (futuros.length ? futuros : cand).reduce((a, b) => (b.start < a.start ? b : a));
+        const nd = perto.start.toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
+        correcoes.push(`data ${dd}/${mm} → ${nd} (mantida a unidade ${unidDita})`);
+        return `${nd}${meio}${unidDita}`;
+      }
+    }
+    const nova = correta === "Taguatinga" ? "Taguatinga Shopping" : "Conjunto Nacional";
+    correcoes.push(`unidade ${unidDita} → ${nova} (para ${dd}/${mm})`);
+    return `${dd}/${mm}${meio}${nova}`;
+  });
+  return { texto: out, correcoes };
+}
+
 // Devolve o texto com todo par dia-da-semana/data coerente. `slots` serve para
 // decidir o lado a corrigir quando a DATA cai em fim de semana (clínica fechada):
 // aí quem manda é o dia da semana que ela prometeu, e trocamos a data.
@@ -3501,6 +3548,14 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // corrigimos ANTES de sair, porque o paciente anota o que leu e vem no dia
     // errado. Nunca lança: se algo der errado aqui, a mensagem segue como veio.
     try {
+      // Ordem importa: primeiro a unidade (pode trocar a DATA), depois o dia da
+      // semana, que acerta a palavra em cima da data já corrigida.
+      const rUni = corrigirUnidadeDaData(reply, slotsVigentes);
+      if (rUni.correcoes.length) {
+        console.warn(`[UnidadeTrava] Corrigido antes de enviar: ${rUni.correcoes.join(" | ")}`);
+        await registrarErro("unidade_data_corrigida", rUni.correcoes.join(" | "), { conversationId: conversation.id, telefone: from });
+        reply = rUni.texto;
+      }
       const rev = corrigirDiaDaSemana(reply, slotsVigentes);
       if (rev.correcoes.length) {
         console.warn(`[DataTrava] Corrigido antes de enviar: ${rev.correcoes.join(" | ")}`);
