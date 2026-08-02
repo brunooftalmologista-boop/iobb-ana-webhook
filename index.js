@@ -3200,7 +3200,11 @@ app.post("/webhook", async (req, res) => {
     // secretária tinha assumido, num domingo, e ficou sem resposta. Marcar a
     // confirmação não é "responder" — é registro, e a equipe precisa dele
     // independentemente de quem conduz a conversa. Nunca lança.
-    if (text) await registrarRespostaAoLembrete(conversation, patient, from, text).catch(e => console.error("[Confirmação] falhou:", e.message));
+    if (text) {
+      const jaRespondeu = await registrarRespostaAoLembrete(conversation, patient, from, text)
+        .catch(e => { console.error("[Confirmação] falhou:", e.message); return false; });
+      if (jaRespondeu) return;   // confirmação já respondida com texto fixo — sem chamar a IA
+    }
 
     // Verificar se conversa está com humano
     if (conversation.status === "human") {
@@ -4976,11 +4980,64 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
     return;
   }
 
-  if (ap.confirmado_em) return;   // já registrado, não repete
-  const { error } = await supabase.from("appointments")
-    .update({ confirmado_em: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", ap.id);
-  if (error) { console.error("[Confirmação] Falha ao gravar:", error.message); return; }
-  console.log(`[Confirmação] ✅ ${maskFone(fone)} confirmou ${fmtDataHoraBR(ap.inicio)} (${ap.unidade}).`);
+  if (!ap.confirmado_em) {
+    const { error } = await supabase.from("appointments")
+      .update({ confirmado_em: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", ap.id);
+    if (error) { console.error("[Confirmação] Falha ao gravar:", error.message); return false; }
+    console.log(`[Confirmação] ✅ ${maskFone(fone)} confirmou ${fmtDataHoraBR(ap.inicio)} (${ap.unidade}).`);
+  }
+
+  // ATALHO: responde com TEXTO FIXO montado a partir do agendamento e NÃO chama
+  // a IA. Motivo principal não é custo (são centavos) — é que a confirmação é a
+  // mensagem que não pode sair errada, e texto lido do banco não tem como trocar
+  // dia, hora ou unidade. Só no modo BOT: em modo humano a conversa é da
+  // secretária e a Ana continua muda (decisão do Dr. Bruno, 02/08).
+  if (conversation.status !== "bot") return false;
+  // Só se a ÚLTIMA coisa que a clínica mandou foi o próprio lembrete — senão um
+  // "ok" dirigido a outra mensagem viraria uma confirmação fora de contexto.
+  const { data: ultClinica } = await supabase.from("messages")
+    .select("event, timestamp").eq("conversation_id", conversation.id)
+    .in("role", ["assistant", "human"]).order("timestamp", { ascending: false }).limit(1).maybeSingle();
+  if (!ultClinica || ultClinica.event !== "lembrete") return false;
+
+  const primeiro = String(ap.paciente_nome || "").trim().split(/\s+/)[0] || "";
+  const resposta = `Recebido${primeiro ? ", " + primeiro : ""}! Sua consulta está confirmada para *${fmtLembreteQuando(ap.inicio)}*, no ${ap.unidade}. Até lá!`;
+  try {
+    const waId = await sendWhatsApp(from, resposta);
+    await supabase.from("messages").insert({ conversation_id: conversation.id, role: "assistant", content: resposta, wa_message_id: waId, event: "confirmacao" });
+    await supabase.from("conversations").update({ last_message: resposta, updated_at: new Date().toISOString() }).eq("id", conversation.id);
+    console.log(`[Confirmação] Resposta fixa enviada a ${maskFone(fone)} (sem chamar a IA).`);
+    return true;   // o webhook para aqui: não há por que gerar resposta
+  } catch (e) {
+    console.error("[Confirmação] Falha ao responder:", e?.response?.data ? JSON.stringify(e.response.data) : e.message);
+    return false;  // deixa o fluxo normal seguir e a Ana responder
+  }
+}
+
+// ===== DEVOLUÇÃO DE CONVERSA À ANA =========================================
+// A secretária assume uma conversa e nem sempre a devolve — havia 77 paradas
+// assim. Toda vez que uma dessas pessoas escreve de novo, cai no silêncio.
+// O prazo saiu de medição, não de palpite: em 2.770 intervalos entre mensagens
+// da secretária, 90% dos retornos vieram em 30 min e 95% em 1h44; depois disso
+// o próximo só no dia seguinte. Com 120 min, apenas 1,55% dos casos teriam a
+// secretária voltando no mesmo dia. Ajustável em settings.retorno_ana_minutos
+// ("off" desliga) — sem deploy.
+async function devolverConversasParaAna() {
+  try {
+    let minutos = 120;
+    const { data } = await supabase.from("settings").select("value").eq("key", "retorno_ana_minutos").maybeSingle();
+    const v = (data?.value || "").trim().toLowerCase();
+    if (v === "off") return;
+    if (v && !isNaN(Number(v)) && Number(v) > 0) minutos = Number(v);
+    const { data: n, error } = await supabase.rpc("devolver_conversas_para_ana", { minutos });
+    if (error) { console.error("[RetornoAna] RPC falhou:", error.message); return; }
+    if (n) console.log(`[RetornoAna] ${n} conversa(s) devolvida(s) à Ana (secretária sem escrever há ${minutos} min).`);
+  } catch (e) { console.error("[RetornoAna] exceção:", e.message); }
+}
+function startRetornoAna() {
+  setInterval(() => devolverConversasParaAna(), 15 * 60 * 1000);
+  devolverConversasParaAna();
+  console.log("[RetornoAna] Agendador ativo (15 min). Prazo padrão 120 min; settings.retorno_ana_minutos ajusta.");
 }
 
 // Verifica a cada 30 min e dispara uma vez por dia, a partir da hora configurada.
@@ -5008,5 +5065,6 @@ startResumoDiarioScheduler();
 startSyncIClinic();   // reflete o iClinic (Google Calendars) na agenda do painel
 startFollowUp();      // recuperação de leads frios (inerte até ativar no settings)
 startLembreteScheduler(); // confirmação da véspera (inerte até o template na Meta)
+startRetornoAna();        // devolve à Ana conversa que a secretária assumiu e largou
 
 app.listen(process.env.PORT || 3000, () => console.log("Ana online!"));
