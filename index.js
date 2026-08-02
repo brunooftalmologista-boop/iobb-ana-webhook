@@ -3131,6 +3131,11 @@ app.post("/webhook", async (req, res) => {
           .catch(e => sendWhatsApp(from, "⚠️ Falha ao criar campanha: " + e.message));
         return;
       }
+      // Auditoria sob demanda — o mesmo relatório que sai de manhã sozinho.
+      if (/^#AUDITORIA\b/i.test(text)) {
+        await sendWhatsApp(from, await montarAuditoriaDiaria());
+        return;
+      }
       // Lembretes da véspera. "#LEMBRETES" (ou TESTE) lista quem receberia, sem
       // enviar nada; "#LEMBRETES CONFIRMAR" dispara agora, fora do horário.
       const lembCmd = text.match(/^#LEMBRETES\b([\s\S]*)$/i);
@@ -5109,6 +5114,110 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
   }
 }
 
+// ===== AUDITORIA DIÁRIA (WhatsApp, de manhã) ================================
+// Duas perguntas todo dia: "a quem eu ligo hoje?" e "a Ana errou em quê ontem?".
+// É código fixo — não passa pela IA e não custa nada. Acha só o que foi
+// programado para achar; a análise que descobre padrão NOVO continua sendo o
+// agente auditor-conversas (.claude/agents/), rodado sob demanda.
+// Config: AUDITORIA_HORA (0-23, padrão 7; "off" desliga) e AUDITORIA_DESTINO
+// (número; padrão = primeiro de NUMEROS_ADMIN).
+const AUDITORIA_HORA = (() => {
+  const v = (readEnv("AUDITORIA_HORA") || "").trim().toLowerCase();
+  if (v === "off") return null;
+  const n = Number(v);
+  return (v !== "" && Number.isInteger(n) && n >= 0 && n <= 23) ? n : 7;
+})();
+const AUDITORIA_DESTINO = (readEnv("AUDITORIA_DESTINO") || NUMEROS_ADMIN[0]).trim();
+
+async function montarAuditoriaDiaria() {
+  const hojeYMD = new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR });
+  const de = new Date(`${hojeYMD}T00:00:00-03:00`), ate = new Date(`${hojeYMD}T23:59:59-03:00`);
+  const partes = [];
+
+  // 1) Agenda de HOJE: quem confirmou, quem não, quem nem foi avisado.
+  const lista = await listarAgendamentos({ de, ate, unidade: null });
+  if (lista === null) partes.push("⚠️ Não consegui ler a agenda de hoje.");
+  else {
+    const ativos = lista.filter(a => a.status === "confirmado" || a.status === "reservado");
+    const comFone = ativos.filter(a => normalizePhoneBR(a.paciente_telefone));
+    const confirmados = comFone.filter(a => a.confirmado_em);
+    const naoConfirmaram = comFone.filter(a => !a.confirmado_em);
+    const semFone = ativos.length - comFone.length;
+    partes.push(`📅 *Agenda de hoje:* ${ativos.length} paciente(s)\n✅ confirmaram: *${confirmados.length}*  ·  ⏳ sem confirmar: *${naoConfirmaram.length}*${semFone ? `  ·  📵 sem telefone: *${semFone}*` : ""}`);
+    if (naoConfirmaram.length) {
+      partes.push(`📞 *Ligar para:*\n` + naoConfirmaram.slice(0, 12)
+        .map(a => `• ${fmtHoraBR(a.inicio)} ${a.paciente_nome || "—"} — ${a.paciente_telefone}`).join("\n"));
+    }
+    if (semFone) partes.push(`_${semFone} paciente(s) de hoje vieram sem telefone (iClinic) e não recebem confirmação._`);
+  }
+
+  // 2) Aceite que não virou agendamento (ontem) — o vazamento mais caro.
+  try {
+    const desde = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 19);
+    const { data: msgs } = await supabase.from("messages")
+      .select("conversation_id, content, role, timestamp").gte("timestamp", desde)
+      .order("timestamp", { ascending: true }).limit(1200);
+    const porConversa = new Map();
+    for (const m of (msgs || [])) {
+      if (!porConversa.has(m.conversation_id)) porConversa.set(m.conversation_id, []);
+      porConversa.get(m.conversation_id).push(m);
+    }
+    const suspeitas = [];
+    for (const [convId, ms] of porConversa) {
+      const aceitou = ms.some((m, i) => m.role === "user" && RE_CONFIRMA.test(
+        String(m.content || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""))
+        && i > 0 && ms[i - 1].role === "assistant" && /\d{1,2}\s*[h:]\s*\d{2}/.test(ms[i - 1].content || ""));
+      if (!aceitou) continue;
+      const { count } = await supabase.from("appointments").select("id", { count: "exact", head: true })
+        .eq("conversation_id", String(convId)).neq("status", "cancelado");
+      if (!count) suspeitas.push(convId);
+    }
+    if (suspeitas.length) partes.push(`⚠️ *${suspeitas.length} conversa(s)* em que o paciente aceitou um horário e NÃO há agendamento. Ver no painel.`);
+  } catch (e) { console.error("[Auditoria] aceites:", e.message); }
+
+  // 3) O que as travas corrigiram / o que falhou.
+  try {
+    const { data: erros } = await supabase.from("error_log")
+      .select("etapa").gte("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString())
+      .in("etapa", ["unidade_data_corrigida", "dia_semana_corrigido", "agendar_hora_divergente",
+                    "agendar_inicio_invalido", "agendar_nome_incompleto", "lembrete_vespera", "anthropic_fallback"]);
+    const cont = {};
+    for (const e of (erros || [])) cont[e.etapa] = (cont[e.etapa] || 0) + 1;
+    const linhas = Object.entries(cont).map(([k, v]) => `• ${k}: ${v}`);
+    if (linhas.length) partes.push(`🔧 *Correções e falhas nas últimas 24h:*\n${linhas.join("\n")}`);
+  } catch (e) { console.error("[Auditoria] error_log:", e.message); }
+
+  const cab = `🩺 *Auditoria da Ana* — ${brasiliaAgora().hoje}`;
+  return partes.length ? `${cab}\n\n${partes.join("\n\n")}` : `${cab}\n\nNada a reportar.`;
+}
+
+async function enviarAuditoriaDiaria() {
+  try {
+    const texto = await montarAuditoriaDiaria();
+    const r = await trySendWhatsApp(AUDITORIA_DESTINO, texto);
+    if (!r?.ok) console.error("[Auditoria] Envio falhou:", JSON.stringify(r || {}));
+    else console.log("[Auditoria] Relatório enviado.");
+    return !!r?.ok;
+  } catch (e) { console.error("[Auditoria] exceção:", e.message); return false; }
+}
+
+function startAuditoriaDiaria() {
+  if (AUDITORIA_HORA === null) { console.log("[Auditoria] Desativada (AUDITORIA_HORA=off)."); return; }
+  const check = async () => {
+    try {
+      const nowBr = new Date(new Date().toLocaleString("en-US", { timeZone: TZ_BR }));
+      if (nowBr.getHours() < AUDITORIA_HORA) return;
+      const hoje = new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR });
+      const { data } = await supabase.from("settings").select("value").eq("key", "auditoria_last").maybeSingle();
+      if (data?.value === hoje) return;                       // já saiu hoje
+      if (await enviarAuditoriaDiaria()) await supabase.from("settings").upsert({ key: "auditoria_last", value: hoje });
+    } catch (e) { console.error("[Auditoria] scheduler:", e.message); }
+  };
+  setInterval(check, 30 * 60 * 1000);
+  check();
+  console.log(`[Auditoria] Agendador ativo (diária a partir das ${AUDITORIA_HORA}h) → ${maskFone(AUDITORIA_DESTINO)}.`);
+}
+
 // ===== DEVOLUÇÃO DE CONVERSA À ANA =========================================
 // A secretária assume uma conversa e nem sempre a devolve — havia 77 paradas
 // assim. Toda vez que uma dessas pessoas escreve de novo, cai no silêncio.
@@ -5161,5 +5270,6 @@ startSyncIClinic();   // reflete o iClinic (Google Calendars) na agenda do paine
 startFollowUp();      // recuperação de leads frios (inerte até ativar no settings)
 startLembreteScheduler(); // confirmação da véspera (inerte até o template na Meta)
 startRetornoAna();        // devolve à Ana conversa que a secretária assumiu e largou
+startAuditoriaDiaria();   // relatório de manhã no WhatsApp: a quem ligar + o que falhou
 
 app.listen(process.env.PORT || 3000, () => console.log("Ana online!"));
