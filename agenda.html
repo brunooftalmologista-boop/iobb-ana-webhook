@@ -40,6 +40,7 @@
   .b-ana{background:#e7f7f1;color:#0a6b52}
   .b-secr{background:#e8f2fb;color:#155e97}
   .b-iclinic{background:#eef0f3;color:#5a6b7c}
+  .b-conf{background:#25d366;color:#08301c}
   .b-un{background:#fdf1e2;color:#8a5a13}
   .linha2{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:8px;font-size:14px;color:#3d5163}
   .campo{cursor:pointer;border-bottom:1px dashed #c6d2dd;padding-bottom:1px}
@@ -727,6 +728,7 @@ function desenhar(){
           <span class="nome campo" data-copy="${esc(a.paciente_nome||'')}" title="Clique para copiar o nome">${esc(a.paciente_nome||'—')}</span>
           <span class="badge ${a.origem==='ana'?'b-ana':a.origem==='secretaria'?'b-secr':'b-iclinic'}">${a.origem==='ana'?'ANA':a.origem==='secretaria'?'SECRETÁRIA':'ICLINIC'}</span>
           <span class="badge b-un">${esc(a.unidade)}</span>
+          ${a.confirmado_em?`<span class="badge b-conf" title="O paciente respondeu ao lembrete confirmando presença em ${esc(dataBR(a.confirmado_em)+' às '+horaBR(a.confirmado_em))}">✅ CONFIRMOU</span>`:''}
           <span class="acoes">
             <button class="mini btn-ficha">📋 copiar ficha</button>
             <label class="mini" style="display:flex;gap:5px;align-items:center;">

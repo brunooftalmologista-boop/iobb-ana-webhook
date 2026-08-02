@@ -1156,7 +1156,7 @@ async function agendamentosDoPaciente(telefone) {
 // para o painel NÃO quebrar caso a migração ainda não tenha rodado: se o Postgres
 // recusar por coluna inexistente, refazemos a consulta sem elas e a agenda
 // continua funcionando — só sem a marcação de presença.
-const COLS_AGENDA_BASE = "id, unidade, inicio, fim, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, origem, hold_expira_em";
+const COLS_AGENDA_BASE = "id, unidade, inicio, fim, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, origem, hold_expira_em, confirmado_em";
 const COLS_AGENDA_PRESENCA = COLS_AGENDA_BASE + ", compareceu, compareceu_em, compareceu_por";
 let avisouSemComparecimento = false;
 
@@ -3195,6 +3195,13 @@ app.post("/webhook", async (req, res) => {
     if (refToken && !cliqueDaMsg) await vincularClique(refToken, from, conversation.id);
     if (referral) await registrarLeadMeta(referral, from, conversation.id);   // lead do IG/FB → rastreio + sempre-ativa
 
+    // RESPOSTA AO LEMBRETE DA VÉSPERA. Roda ANTES do desvio para modo humano de
+    // propósito: o primeiro paciente a confirmar caiu numa conversa que a
+    // secretária tinha assumido, num domingo, e ficou sem resposta. Marcar a
+    // confirmação não é "responder" — é registro, e a equipe precisa dele
+    // independentemente de quem conduz a conversa. Nunca lança.
+    if (text) await registrarRespostaAoLembrete(conversation, patient, from, text).catch(e => console.error("[Confirmação] falhou:", e.message));
+
     // Verificar se conversa está com humano
     if (conversation.status === "human") {
       const notif = mediaNotification || `👤 *Paciente ${patient.name || from}:*\n${text}`;
@@ -4926,6 +4933,54 @@ async function enviarLembretesDeAmanha() {
   // causa (nome do template, idioma, nº de variáveis) ficava só no Render.
   if (falhas) await registrarErro("lembrete_vespera", `data=${amanhaYMD} enviados=${ok} falhas=${falhas} template="${WA_LEMBRETE_TEMPLATE_NAME}" lang="${WA_LEMBRETE_TEMPLATE_LANG}" erro=${primeiroErro || "?"}`).catch(() => {});
   return { ok, falhas, data: amanhaYMD, erro: primeiroErro };
+}
+
+// ===== RESPOSTA DO PACIENTE AO LEMBRETE =====================================
+// Marca `appointments.confirmado_em` quando o paciente responde confirmando, e
+// aciona a equipe quando ele quer remarcar/cancelar. Só age se ESTA conversa
+// recebeu um lembrete nas últimas 48h — assim um "ok" solto de outra conversa
+// nunca vira confirmação. NUNCA lança.
+// O \b vale só para as palavras: depois de emoji não existe fronteira de palavra,
+// e "👍" sozinho é a confirmação mais comum no WhatsApp.
+const RE_CONFIRMA = /^((confirmo|confirmado|confirmada|confirmar|ok|okay|sim|isso|certo|positivo|beleza|blz|combinado|estarei|vou sim|vou estar|tudo certo|perfeito)\b|👍|👌|✅|🙏)/;
+const RE_REMARCAR = /(remarca|desmarca|cancela|n[aã]o vou|n[aã]o poderei|n[aã]o consigo|n[aã]o poder|outro dia|outro hor[aá]rio|mudar o hor|adiar)/;
+
+async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
+  // Houve lembrete nesta conversa há pouco? (messages.timestamp é naive UTC)
+  const corte = new Date(Date.now() - 48 * 3600 * 1000).toISOString().slice(0, 19);
+  const { data: lemb } = await supabase.from("messages")
+    .select("timestamp").eq("conversation_id", conversation.id).eq("event", "lembrete")
+    .gte("timestamp", corte).order("timestamp", { ascending: false }).limit(1).maybeSingle();
+  if (!lemb) return;
+
+  const t = String(texto || "").trim().toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[.!,;]+$/g, "");
+  const confirma = RE_CONFIRMA.test(t);
+  const remarcar = RE_REMARCAR.test(t);
+  if (!confirma && !remarcar) return;
+
+  // A consulta a que o lembrete se referia = a próxima ativa deste telefone.
+  const fone = normalizePhoneBR(from) || from;
+  const { data: ap } = await supabase.from("appointments")
+    .select("id, inicio, unidade, paciente_nome, confirmado_em")
+    .eq("paciente_telefone", fone).in("status", ["reservado", "confirmado"])
+    .gte("inicio", new Date().toISOString()).order("inicio", { ascending: true }).limit(1).maybeSingle();
+  if (!ap) return;
+
+  if (remarcar) {
+    // Não mexe na agenda: quem remarca é a Ana (com a lista) ou a equipe.
+    await marcarPendenciaEquipe(conversation.id).catch(() => {});
+    await espelharParaSecretaria("[Resposta ao lembrete]",
+      `🔄 *PACIENTE QUER REMARCAR/CANCELAR*\n👤 ${ap.paciente_nome || from}\n📱 ${from}\n🕐 ${fmtDataHoraBR(ap.inicio)} — ${ap.unidade}\n💬 "${String(texto).slice(0, 120)}"`).catch(() => {});
+    console.log(`[Confirmação] ${maskFone(fone)} pediu remarcação de ${ap.inicio} — equipe avisada.`);
+    return;
+  }
+
+  if (ap.confirmado_em) return;   // já registrado, não repete
+  const { error } = await supabase.from("appointments")
+    .update({ confirmado_em: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", ap.id);
+  if (error) { console.error("[Confirmação] Falha ao gravar:", error.message); return; }
+  console.log(`[Confirmação] ✅ ${maskFone(fone)} confirmou ${fmtDataHoraBR(ap.inicio)} (${ap.unidade}).`);
 }
 
 // Verifica a cada 30 min e dispara uma vez por dia, a partir da hora configurada.
