@@ -4917,7 +4917,12 @@ async function enviarLembretesDeAmanha() {
         const patient = await getOrCreatePatient(a._fone);
         const conv = patient ? await getOrCreateConversation(patient.id) : null;
         if (conv) {
-          const registro = `🔔 Lembrete automático da véspera enviado: consulta ${quando} — ${a.unidade}.`;
+          // Guardamos o TEOR do que o paciente recebeu, não um recado em terceira
+          // pessoa: se a resposta dele não cair no atalho, a Ana lê o histórico e
+          // precisa entender a que ele está respondendo. Com a versão antiga
+          // ("lembrete enviado: ..."), ela via uma linha de log e respondia com a
+          // saudação genérica — foi o que a Barbara recebeu ao dizer "Confirmo".
+          const registro = `Olá, ${primeiroNome}! Passando para confirmar sua consulta: ${quando}, na unidade ${a.unidade}. Se estiver tudo certo, responda CONFIRMO; se precisar remarcar, responda REMARCAR. _(lembrete automático da véspera)_`;
           await supabase.from("messages").insert({ conversation_id: conv.id, role: "assistant", content: registro, event: "lembrete" });
           await supabase.from("conversations").update({ last_message: registro, updated_at: new Date().toISOString() }).eq("id", conv.id);
         }
@@ -4963,13 +4968,21 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
   const remarcar = RE_REMARCAR.test(t);
   if (!confirma && !remarcar) return;
 
-  // A consulta a que o lembrete se referia = a próxima ativa deste telefone.
+  // A consulta a que o lembrete se referia = a próxima ativa deste paciente.
+  // ⚠️ NÃO dá para comparar telefone por igualdade de string: a secretária grava
+  // "61 8298-1632" e o WhatsApp manda "556182981632". Foi assim que a Barbara
+  // confirmou e recebeu só uma saudação — o agendamento existia e não foi achado.
+  // Comparamos SEMPRE pelo número normalizado, dos dois lados.
   const fone = normalizePhoneBR(from) || from;
-  const { data: ap } = await supabase.from("appointments")
-    .select("id, inicio, unidade, paciente_nome, confirmado_em")
-    .eq("paciente_telefone", fone).in("status", ["reservado", "confirmado"])
-    .gte("inicio", new Date().toISOString()).order("inicio", { ascending: true }).limit(1).maybeSingle();
-  if (!ap) return;
+  const { data: cands } = await supabase.from("appointments")
+    .select("id, inicio, unidade, paciente_nome, confirmado_em, paciente_telefone, conversation_id")
+    .in("status", ["reservado", "confirmado"])
+    .gte("inicio", new Date().toISOString())
+    .lte("inicio", new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString())
+    .order("inicio", { ascending: true }).limit(300);
+  const ap = (cands || []).find(a => String(a.conversation_id || "") === String(conversation.id))
+          || (cands || []).find(a => normalizePhoneBR(a.paciente_telefone) === fone);
+  if (!ap) return false;
 
   if (remarcar) {
     // Não mexe na agenda: quem remarca é a Ana (com a lista) ou a equipe.
