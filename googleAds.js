@@ -708,83 +708,19 @@ async function uploadClickConversions(deps) {
   }
   result.conversionAction = actionId;
 
-  // 3) ENVIO pelo ConversionUploadService da própria Google Ads API.
-  // Por que não o Data Manager: aquela via exige o escopo `datamanager`, que o
-  // refresh token NÃO tem — e por isso 15 conversões ficaram paradas desde
-  // 25/07, enquanto o relatório semanal (escopo `adwords`) seguia funcionando.
-  // Este caminho usa exatamente a mesma credencial do relatório, então não
-  // depende de mexer no Google Cloud nem de regerar token.
-  try {
-    const customerId = String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g, "");
-    const conversions = pend.map(r => {
-      const c = {
-        conversion_action: `customers/${customerId}/conversionActions/${actionId}`,
-        conversion_date_time: formatConversionDateTime(new Date(r.booked_at || r.clicked_at)),
-        conversion_value: Number(r.conversion_value ?? CONVERSION_DEFAULT_VALUE),
-        currency_code: "BRL",
-        order_id: String(r.id),   // dedup: a mesma linha nunca conta duas vezes
-      };
-      if (r.gclid) c.gclid = r.gclid;
-      else if (r.wbraid) c.wbraid = r.wbraid;
-      else if (r.gbraid) c.gbraid = r.gbraid;
-      return c;
-    });
-    const customer = buildCustomer();
-    // Na google-ads-api v24 o acessor é `conversionUploads` (plural, sem
-    // "Service"). Com o nome errado o erro vinha como um TypeError opaco
-    // ("Cannot read properties of undefined"), sem dizer o que faltava.
-    const svc = customer.conversionUploads || customer.conversionUploadService;
-    if (!svc?.uploadClickConversions) {
-      throw new Error("serviço de upload de conversões não encontrado na google-ads-api "
-        + `(propriedades disponíveis: ${Object.keys(customer || {}).slice(0, 12).join(", ") || "?"})`);
-    }
-    const resp = await svc.uploadClickConversions({
-      customer_id: customerId,
-      conversions,
-      partial_failure: true,      // uma recusada não derruba o lote
-      validate_only: !!dryRun,
-    });
-    // Sucesso por índice: sem partial_failure_error, todas passaram. Com erro
-    // parcial, as que venceram ecoam os campos no result correspondente.
-    const houveErroParcial = !!resp?.partial_failure_error;
-    const okIds = [];
-    pend.forEach((r, i) => {
-      const res = resp?.results?.[i];
-      const passou = !houveErroParcial || !!(res && (res.gclid || res.gbraid || res.wbraid || res.conversion_action));
-      const ident = r.gclid || r.wbraid || r.gbraid || "";
-      if (passou) { result.uploaded++; okIds.push(r.id); result.details.push({ ok: true, ident, msg: "enviada" }); }
-      else { result.failed++; result.details.push({ ok: false, ident, msg: resp?.partial_failure_error?.message || "recusada pela API" }); }
-    });
-    if (houveErroParcial && result.failed) result.error = String(resp.partial_failure_error.message || "").slice(0, 400);
-
-    // Marca as enviadas (nunca em dry-run — ali nada foi contabilizado).
-    if (okIds.length && !dryRun) {
-      try {
-        await supabase.from("ad_clicks").update({ reported: true, reported_at: new Date() }).in("id", okIds);
-      } catch (e) {
-        console.error("[AdsConv] ⚠️ Enviei ao Google mas falhei ao marcar reported:", e.message);
-        result.error = (result.error ? result.error + " | " : "") + "enviado, mas falha ao marcar reported: " + e.message;
-      }
-    }
-    result.ok = result.failed === 0 && !result.error;
-    console.log(`[AdsConv] Concluído (Ads API): ${result.uploaded} enviada(s), ${result.failed} falha(s) de ${result.pending}${dryRun ? " [DRY-RUN]" : ""}.`);
-    return result;
-  } catch (e) {
-    result.failed = pend.length;
-    // describeAdsError devolve { text, requestId } — concatenar o objeto direto
-    // imprimia "[object Object]" e escondia o motivo real.
-    const d = describeAdsError(e) || {};
-    let msg = d.text && d.text !== "erro desconhecido" ? d.text : (e?.message || "");
-    if (!msg) { try { msg = JSON.stringify(e).slice(0, 400); } catch (_) { msg = String(e); } }
-    result.error = `Ads API recusou o upload: ${msg}${d.requestId ? ` (request ${d.requestId})` : ""}`;
-    console.error("[AdsConv] ❌ " + result.error);
-    return result;
-  }
+  // 3) Envio via DATA MANAGER API — é a única via aceita hoje.
+  // Tentamos o ConversionUploadService clássico da Google Ads API (que usaria o
+  // escopo `adwords`, já concedido) e o Google recusou explicitamente:
+  // "New integrations for uploading click conversions should use the Data
+  // Manager API. Usage of ConversionUploadService.UploadClickConversions is
+  // limited to existing users." Ou seja: não há atalho — o refresh token
+  // PRECISA do escopo `datamanager`.
+  return await enviarViaDataManager(deps, pend, actionId, dryRun, result);
 }
 
-// ── Via antiga (Data Manager API) — mantida só para referência. Exige o escopo
-// `datamanager` no refresh token, que a conta não tem. Não é mais chamada.
-async function uploadClickConversionsViaDataManager(deps, pend, actionId, dryRun, result) {
+// Envio pela Data Manager API. Exige o escopo `datamanager` no refresh token —
+// se faltar, getGoogleAccessToken avisa com o passo a passo.
+async function enviarViaDataManager(deps, pend, actionId, dryRun, result) {
   const { supabase } = deps;
   let accessToken;
   try {
