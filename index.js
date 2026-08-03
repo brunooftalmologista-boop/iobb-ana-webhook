@@ -252,7 +252,7 @@ EXAMES QUE JÁ ENTRAM na consulta (valem TANTO para particular quanto para os co
 - Mobilidade Extrínseca
 - Pesquisa de Daltonismo
 O edital costuma usar outros nomes para os mesmos exames — reconheça as variações e NÃO trate como exame extra: "motilidade/motricidade ocular" = Mobilidade Extrínseca; "teste de Ishihara" ou "visão cromática/senso cromático" = Pesquisa de Daltonismo; "pressão intraocular/PIO" = Tonometria de Aplanação; "biomicroscopia de segmento anterior/lâmpada de fenda" = Biomicroscopia; "fundo de olho/oftalmoscopia" = Fundoscopia. Se o edital pedir só itens dessa lista, diga com clareza que está TUDO incluso na consulta, sem custo adicional.
-SE O EDITAL PEDIR ALGO ALÉM DESSES: aí sim é cobrado à parte, pelo valor da tabela de exames (ex.: topografia, paquimetria, campo visual, mapeamento de retina). Pelo convênio, vale a regra normal de exames: o que o plano cobre não tem custo, e os exames só-particulares (Pentacam, Sobrecarga Hídrica, Teste de Lente) seguem cobrados.
+SE O EDITAL PEDIR ALGO ALÉM DESSES: aí sim é cobrado à parte, pelo valor da tabela de exames (ex.: topografia, paquimetria, mapeamento de retina). ⚠️ Se o edital exigir um exame que NÃO consta da nossa lista — CAMPIMETRIA / CAMPO VISUAL é o caso mais comum —, diga com clareza que esse exame não é realizado aqui, para o paciente providenciá-lo em outro serviço. NUNCA cite como se fizéssemos: prometer exame que não temos faz o paciente vir e voltar sem o laudo completo. Pelo convênio, vale a regra normal de exames: o que o plano cobre não tem custo, e os exames só-particulares (Pentacam, Sobrecarga Hídrica, Teste de Lente) seguem cobrados.
 PEÇA O EDITAL: sempre que o paciente disser que é para concurso, peça — com naturalidade, UMA vez — que envie o edital ou a parte dele que lista os exames oftalmológicos exigidos, para conferirmos antes. 🚫 Isso NÃO pode atrasar o agendamento: ofereça o horário normalmente na MESMA mensagem e diga que ele pode mandar o edital depois, até o dia da consulta. Nunca condicione a marcação ao envio do edital.
 Se o paciente não tiver o edital em mãos, tudo bem: marque assim mesmo e oriente que leve no dia.
 
@@ -1059,6 +1059,32 @@ function corrigirUnidadeDaData(texto, slots) {
     correcoes.push(`unidade ${unidDita} → ${nova} (para ${dd}/${mm})`);
     return `${dd}/${mm}${meio}${nova}`;
   });
+  return { texto: out, correcoes };
+}
+
+// ===== TRAVA: exame que só existe no Conjunto Nacional ======================
+// Pentacam e retinografia NÃO são feitos no Taguatinga. A regra está no prompt,
+// e mesmo assim a Ana disse a um paciente que "a retinografia ficaria na unidade
+// do Taguatinga Shopping" — a secretária teve de corrigir 4 minutos depois.
+// Aqui a correção é por FRASE, com duas travas contra reescrever frase certa:
+//   (a) o nome do exame e "Taguatinga" precisam estar na MESMA frase;
+//   (b) a frase não pode conter negação nem já citar o Conjunto — senão ela
+//       provavelmente está EXPLICANDO a regra ("não é possível no Taguatinga"),
+//       e trocar o nome ali produziria bobagem.
+const EXAMES_SO_CONJUNTO = /(pentacam|retinografi)/i;
+// Consome também o "(Águas Claras)" que costuma vir logo depois — senão a troca
+// deixa "Conjunto Nacional (Asa Norte) (Águas Claras)".
+const RE_TAGUATINGA = /Taguatinga(?:\s+Shopping)?(?:\s*\((?:em\s+)?[ÁA]guas\s+Claras\))?|[ÁA]guas\s+Claras/i;
+function corrigirUnidadeDeExame(texto) {
+  if (!texto || !EXAMES_SO_CONJUNTO.test(texto)) return { texto, correcoes: [] };
+  const correcoes = [];
+  const frases = texto.split(/(?<=[.!?\n])/);
+  const out = frases.map(f => {
+    if (!EXAMES_SO_CONJUNTO.test(f) || !RE_TAGUATINGA.test(f)) return f;
+    if (/\bn[ãa]o\b|nunca|apenas no conjunto|exclusivamente|somente no conjunto|conjunto nacional/i.test(f)) return f;
+    correcoes.push(`exame só do Conjunto citado como Taguatinga: "${f.trim().slice(0, 90)}"`);
+    return f.replace(RE_TAGUATINGA, "Conjunto Nacional (Asa Norte)");
+  }).join("");
   return { texto: out, correcoes };
 }
 
@@ -3607,6 +3633,12 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     try {
       // Ordem importa: primeiro a unidade (pode trocar a DATA), depois o dia da
       // semana, que acerta a palavra em cima da data já corrigida.
+      const rExa = corrigirUnidadeDeExame(reply);
+      if (rExa.correcoes.length) {
+        console.warn(`[ExameTrava] Corrigido antes de enviar: ${rExa.correcoes.join(" | ")}`);
+        await registrarErro("unidade_exame_corrigida", rExa.correcoes.join(" | ").slice(0, 400), { conversationId: conversation.id, telefone: from });
+        reply = rExa.texto;
+      }
       const rUni = corrigirUnidadeDaData(reply, slotsVigentes);
       if (rUni.correcoes.length) {
         console.warn(`[UnidadeTrava] Corrigido antes de enviar: ${rUni.correcoes.join(" | ")}`);
