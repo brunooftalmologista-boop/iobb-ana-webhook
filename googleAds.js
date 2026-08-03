@@ -763,7 +763,12 @@ async function uploadClickConversions(deps) {
     return result;
   } catch (e) {
     result.failed = pend.length;
-    result.error = "Ads API recusou o upload: " + (describeAdsError(e) || e.message);
+    // describeAdsError devolve { text, requestId } — concatenar o objeto direto
+    // imprimia "[object Object]" e escondia o motivo real.
+    const d = describeAdsError(e) || {};
+    let msg = d.text && d.text !== "erro desconhecido" ? d.text : (e?.message || "");
+    if (!msg) { try { msg = JSON.stringify(e).slice(0, 400); } catch (_) { msg = String(e); } }
+    result.error = `Ads API recusou o upload: ${msg}${d.requestId ? ` (request ${d.requestId})` : ""}`;
     console.error("[AdsConv] ❌ " + result.error);
     return result;
   }
