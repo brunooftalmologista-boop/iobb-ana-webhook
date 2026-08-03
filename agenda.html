@@ -318,7 +318,12 @@ async function api(path, opts, _retried){
   const r = await fetch(API_BASE+path, { method: o.method||'GET', headers, body: o.body ? JSON.stringify(o.body) : undefined });
   if(r.status===401 && !_retried && await tryRefresh()) return api(path, opts, true);
   if(r.status===401){ mostrarLogin(); throw new Error('401'); }
-  return r.json();
+  // Resposta que não é JSON (404/502/HTML de erro) virava "Falha de conexão" e
+  // escondia o motivo. Hoje o toast diz o código — foi o que faltou quando a
+  // rota de presença sumiu do servidor e o clique falhava sem explicação.
+  const txt = await r.text();
+  try { return JSON.parse(txt); }
+  catch (_) { return { ok:false, error:`HTTP ${r.status} em ${path}` }; }
 }
 
 function mostrarLogin(){ $('#login').style.display='block'; $('#topbar').style.display='none'; $('#app').style.display='none'; $('#grade').style.display='none'; }
