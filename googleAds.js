@@ -730,7 +730,15 @@ async function uploadClickConversions(deps) {
       return c;
     });
     const customer = buildCustomer();
-    const resp = await customer.conversionUploadService.uploadClickConversions({
+    // Na google-ads-api v24 o acessor é `conversionUploads` (plural, sem
+    // "Service"). Com o nome errado o erro vinha como um TypeError opaco
+    // ("Cannot read properties of undefined"), sem dizer o que faltava.
+    const svc = customer.conversionUploads || customer.conversionUploadService;
+    if (!svc?.uploadClickConversions) {
+      throw new Error("serviço de upload de conversões não encontrado na google-ads-api "
+        + `(propriedades disponíveis: ${Object.keys(customer || {}).slice(0, 12).join(", ") || "?"})`);
+    }
+    const resp = await svc.uploadClickConversions({
       customer_id: customerId,
       conversions,
       partial_failure: true,      // uma recusada não derruba o lote
