@@ -5129,9 +5129,28 @@ const AUDITORIA_HORA = (() => {
 })();
 const AUDITORIA_DESTINO = (readEnv("AUDITORIA_DESTINO") || NUMEROS_ADMIN[0]).trim();
 
-async function montarAuditoriaDiaria() {
-  const hojeYMD = new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR });
-  const de = new Date(`${hojeYMD}T00:00:00-03:00`), ate = new Date(`${hojeYMD}T23:59:59-03:00`);
+// Hora efetiva: settings.auditoria_hora (ajustável sem deploy) > env > 7.
+async function horaDaAuditoria() {
+  try {
+    const { data } = await supabase.from("settings").select("value").eq("key", "auditoria_hora").maybeSingle();
+    const v = (data?.value || "").trim().toLowerCase();
+    if (v === "off") return null;
+    const n = Number(v);
+    if (v && Number.isInteger(n) && n >= 0 && n <= 23) return n;
+  } catch (e) { /* cai no env */ }
+  return AUDITORIA_HORA;
+}
+
+// De manhã, o relatório é sobre HOJE ("a quem ligo agora"). De tarde/noite, o dia
+// já acabou e o que importa é AMANHÃ — e a essa altura os lembretes das 18h já
+// saíram, então a lista de "ainda sem confirmar" é a de quem procurar amanhã cedo.
+async function montarAuditoriaDiaria(horaRef = null) {
+  const h = horaRef == null ? (await horaDaAuditoria()) : horaRef;
+  const olharAmanha = (h ?? 7) >= 14;
+  const baseMs = Date.now() + (olharAmanha ? 24 * 3600 * 1000 : 0);
+  const alvoYMD = new Date(baseMs).toLocaleDateString("en-CA", { timeZone: TZ_BR });
+  const rotuloDia = olharAmanha ? "amanhã" : "hoje";
+  const de = new Date(`${alvoYMD}T00:00:00-03:00`), ate = new Date(`${alvoYMD}T23:59:59-03:00`);
   const partes = [];
 
   // 1) Agenda de HOJE: quem confirmou, quem não, quem nem foi avisado.
@@ -5143,12 +5162,12 @@ async function montarAuditoriaDiaria() {
     const confirmados = comFone.filter(a => a.confirmado_em);
     const naoConfirmaram = comFone.filter(a => !a.confirmado_em);
     const semFone = ativos.length - comFone.length;
-    partes.push(`📅 *Agenda de hoje:* ${ativos.length} paciente(s)\n✅ confirmaram: *${confirmados.length}*  ·  ⏳ sem confirmar: *${naoConfirmaram.length}*${semFone ? `  ·  📵 sem telefone: *${semFone}*` : ""}`);
+    partes.push(`📅 *Agenda de ${rotuloDia}:* ${ativos.length} paciente(s)\n✅ confirmaram: *${confirmados.length}*  ·  ⏳ sem confirmar: *${naoConfirmaram.length}*${semFone ? `  ·  📵 sem telefone: *${semFone}*` : ""}`);
     if (naoConfirmaram.length) {
-      partes.push(`📞 *Ligar para:*\n` + naoConfirmaram.slice(0, 12)
+      partes.push(`📞 *${olharAmanha ? "Ainda sem confirmar — procurar" : "Ligar para"}:*\n` + naoConfirmaram.slice(0, 12)
         .map(a => `• ${fmtHoraBR(a.inicio)} ${a.paciente_nome || "—"} — ${a.paciente_telefone}`).join("\n"));
     }
-    if (semFone) partes.push(`_${semFone} paciente(s) de hoje vieram sem telefone (iClinic) e não recebem confirmação._`);
+    if (semFone) partes.push(`_${semFone} paciente(s) de ${rotuloDia} vieram sem telefone (iClinic) e não recebem confirmação._`);
   }
 
   // 2) Aceite que não virou agendamento (ontem) — o vazamento mais caro.
@@ -5202,11 +5221,12 @@ async function enviarAuditoriaDiaria() {
 }
 
 function startAuditoriaDiaria() {
-  if (AUDITORIA_HORA === null) { console.log("[Auditoria] Desativada (AUDITORIA_HORA=off)."); return; }
   const check = async () => {
     try {
+      const hora = await horaDaAuditoria();
+      if (hora === null) return;                              // desligada
       const nowBr = new Date(new Date().toLocaleString("en-US", { timeZone: TZ_BR }));
-      if (nowBr.getHours() < AUDITORIA_HORA) return;
+      if (nowBr.getHours() < hora) return;
       const hoje = new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR });
       const { data } = await supabase.from("settings").select("value").eq("key", "auditoria_last").maybeSingle();
       if (data?.value === hoje) return;                       // já saiu hoje
@@ -5215,7 +5235,9 @@ function startAuditoriaDiaria() {
   };
   setInterval(check, 30 * 60 * 1000);
   check();
-  console.log(`[Auditoria] Agendador ativo (diária a partir das ${AUDITORIA_HORA}h) → ${maskFone(AUDITORIA_DESTINO)}.`);
+  horaDaAuditoria().then(h => console.log(h === null
+    ? "[Auditoria] Desativada (auditoria_hora=off)."
+    : `[Auditoria] Agendador ativo (diária a partir das ${h}h, ${h >= 14 ? "relatório sobre AMANHÃ" : "relatório sobre HOJE"}) → ${maskFone(AUDITORIA_DESTINO)}.`));
 }
 
 // ===== DEVOLUÇÃO DE CONVERSA À ANA =========================================
