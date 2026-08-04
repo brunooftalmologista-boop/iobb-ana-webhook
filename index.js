@@ -1037,7 +1037,11 @@ function corrigirUnidadeDaData(texto, slots) {
   // [^\n]{0,80}: NÃO atravessa quebra de linha. Antes, numa lista com uma unidade
   // por linha, a data de uma linha casava com a unidade da linha de baixo e a
   // trava trocava a unidade certa. (?!\/?\d) descarta data de nascimento.
-  const RE = /(\d{2})\/(\d{2})(?!\/?\d)([^\n]{0,80}?)(Taguatinga(?:\s+Shopping)?|Conjunto(?:\s+Nacional)?)/gi;
+  // [^\n.;!?]: não atravessa quebra de linha NEM fim de frase. A correção de
+  // 03/08 tapou só a quebra de linha, e em 04/08 a trava voltou a corromper —
+  // casou o "07/08." de uma frase com o "Taguatinga" da frase SEGUINTE e
+  // entregou "Conjunto Nacional (em Águas Claras)", que é endereço errado.
+  const RE = /(\d{2})\/(\d{2})(?!\/?\d)([^\n.;!?]{0,80}?)(Taguatinga(?:\s+Shopping)?|Conjunto(?:\s+Nacional)?)/gi;
   const out = texto.replace(RE, (m, dd, mm, meio, unidDita) => {
     const info = dowDeDataBR(Number(dd), Number(mm));
     if (!info) return m;
@@ -1644,10 +1648,14 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
 
 // Extrai o bloco [CANCELAR] inicio: <ISO> | unidade: <...>. Mesma mecânica do extrairAgendar.
 function extrairCancelar(reply) {
+  // A flag `g` importa: sem ela o replace tira só o PRIMEIRO bloco e, quando a
+  // Ana emite dois na mesma mensagem, o segundo vai como texto visível — dois
+  // pacientes receberam o bloco técnico cru em 04/08.
+  const reTodos = /\[CANCELAR\]([\s\S]*?)\[\/CANCELAR\]/gi;
   const re = /\[CANCELAR\]([\s\S]*?)\[\/CANCELAR\]/i;
   let inner, limpo;
   const m = reply.match(re);
-  if (m) { inner = m[1]; limpo = reply.replace(re, "").replace(/\n{3,}/g, "\n\n").trim(); }
+  if (m) { inner = m[1]; limpo = reply.replace(reTodos, "").replace(/\n{3,}/g, "\n\n").trim(); }
   else {
     const mo = reply.match(/\[CANCELAR\]([\s\S]*)$/i);
     if (!mo) return { limpo: reply, registro: null };
@@ -1672,10 +1680,14 @@ function extrairCancelar(reply) {
 // do extrairCancelar. A Ana o emite ao LER a foto da carteirinha (visão restrita)
 // ou quando o paciente digita o número — os dados vão para a ficha do agendamento.
 function extrairCarteirinha(reply) {
+  // A flag `g` importa: sem ela o replace tira só o PRIMEIRO bloco e, quando a
+  // Ana emite dois na mesma mensagem, o segundo vai como texto visível — dois
+  // pacientes receberam o bloco técnico cru em 04/08.
+  const reTodos = /\[CARTEIRINHA\]([\s\S]*?)\[\/CARTEIRINHA\]/gi;
   const re = /\[CARTEIRINHA\]([\s\S]*?)\[\/CARTEIRINHA\]/i;
   let inner, limpo;
   const m = reply.match(re);
-  if (m) { inner = m[1]; limpo = reply.replace(re, "").replace(/\n{3,}/g, "\n\n").trim(); }
+  if (m) { inner = m[1]; limpo = reply.replace(reTodos, "").replace(/\n{3,}/g, "\n\n").trim(); }
   else {
     const mo = reply.match(/\[CARTEIRINHA\]([\s\S]*)$/i);
     if (!mo) return { limpo: reply, registro: null };
@@ -2332,12 +2344,16 @@ async function espelharParaSecretaria(label, texto) {
 // bloco (o que o paciente vê) e `registros` é a lista de pré-agendamentos (uma
 // entrada por paciente). Se não houver bloco, registros = [].
 function extrairPreAgendamento(reply) {
+  // A flag `g` importa: sem ela o replace tira só o PRIMEIRO bloco e, quando a
+  // Ana emite dois na mesma mensagem, o segundo vai como texto visível — dois
+  // pacientes receberam o bloco técnico cru em 04/08.
+  const reTodos = /\[PREAGENDAMENTO\]([\s\S]*?)\[\/PREAGENDAMENTO\]/gi;
   const re = /\[PREAGENDAMENTO\]([\s\S]*?)\[\/PREAGENDAMENTO\]/i;
   let inner, limpo;
   const m = reply.match(re);
   if (m) {
     inner = m[1];
-    limpo = reply.replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
+    limpo = reply.replace(reTodos, "").replace(/\n{3,}/g, "\n\n").trim();
   } else {
     // Salvaguarda: bloco sem tag de fechamento — remove da abertura até o fim,
     // para o marcador técnico NUNCA vazar para o paciente.
@@ -2689,12 +2705,16 @@ function startResumoDiarioScheduler() {
 // { limpo, recado } — `limpo` é a mensagem SEM o bloco (o que o paciente vê) e
 // `recado` é { tipo, resumo, prioritario } ou null se não houver bloco.
 function extrairRecado(reply) {
+  // A flag `g` importa: sem ela o replace tira só o PRIMEIRO bloco e, quando a
+  // Ana emite dois na mesma mensagem, o segundo vai como texto visível — dois
+  // pacientes receberam o bloco técnico cru em 04/08.
+  const reTodos = /\[RECADO\]([\s\S]*?)\[\/RECADO\]/gi;
   const re = /\[RECADO\]([\s\S]*?)\[\/RECADO\]/i;
   let inner, limpo;
   const m = reply.match(re);
   if (m) {
     inner = m[1];
-    limpo = reply.replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
+    limpo = reply.replace(reTodos, "").replace(/\n{3,}/g, "\n\n").trim();
   } else {
     // Salvaguarda: bloco sem tag de fechamento — remove da abertura até o fim,
     // para o marcador técnico NUNCA vazar para o paciente.
