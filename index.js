@@ -1352,6 +1352,18 @@ async function syncCalendarioIClinic(url, unidade) {
 }
 
 async function syncIClinicTodas() {
+  // DESLIGÁVEL sem deploy: settings.sync_iclinic_enabled = 'false'. A partir de
+  // 04/08 a agenda da Ana passou a ser a principal e as secretárias lançam nela
+  // direto — espelhar o iClinic só criava duplicata (a mesma consulta em dois
+  // horários diferentes, como a Bruna Stéfany em 07/08).
+  // ⚠️ Desligar NÃO apaga nada: o último retrato do iClinic fica congelado e
+  // segue bloqueando aqueles horários. O que deixa de acontecer é a atualização
+  // — consulta nova lançada no iClinic fica invisível para a Ana (risco de
+  // overbooking) e cancelamento feito lá não libera a vaga aqui.
+  try {
+    const { data } = await supabase.from("settings").select("value").eq("key", "sync_iclinic_enabled").maybeSingle();
+    if (String(data?.value || "").trim().toLowerCase() === "false") return;
+  } catch (e) { /* sem a chave, segue ligado */ }
   const cfg = await getIcalSyncConfig();
   if (!cfg.length) return;   // sem URLs ainda — nada a fazer
   for (const c of cfg) {
