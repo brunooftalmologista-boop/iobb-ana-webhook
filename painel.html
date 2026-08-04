@@ -218,6 +218,7 @@
 </style>
 </head>
 <body>
+<div id="move-bar" style="display:none;position:sticky;top:0;z-index:60;background:#fff3cd;border-bottom:1px solid #ffe08a;color:#7a5b00;padding:10px 18px;font-size:14px"><b>Remarcando <span id="move-nome"></span></b> — clique no novo horário livre na agenda. <button id="move-cancel" style="margin-left:10px;border:1px solid #d9b45b;background:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px">Desistir</button></div>
 <div id="app">
   <!-- Sidebar -->
   <aside id="sidebar">
@@ -451,6 +452,7 @@
       </div>
     </div>
     <div class="modal-actions">
+      <button class="btn ghost" id="agdet-remarcar">🔄 Remarcar</button>
       <button class="btn ghost" id="agdet-cancelar">Cancelar agendamento</button>
       <button class="btn primary" id="agdet-fechar">Fechar</button>
     </div>
@@ -1613,7 +1615,34 @@ function closeAgDetails(){ $('#agdet-modal').classList.remove('show'); }
 $('#agdet-veio').onclick   = ()=>setPresenca(true);
 $('#agdet-faltou').onclick = ()=>setPresenca(false);
 $('#agdet-limpar').onclick = ()=>setPresenca(null);
+// ----- REMARCAR: move o paciente sem cancelar e refazer ------------------------
+// Mesmo fluxo da página /agenda: entra em modo remarcação e o próximo horário
+// livre clicado recebe o paciente. O endpoint /move cria o novo ANTES de
+// cancelar o antigo, então se a vaga for tomada no meio o antigo é mantido.
+let agMoveId=null, agMoveNome='';
+function entrarModoRemarcar(a){
+  agMoveId=a.id; agMoveNome=a.paciente_nome||'paciente';
+  document.getElementById('move-nome').textContent=agMoveNome;
+  document.getElementById('move-bar').style.display='block';
+  closeAgDetails();
+}
+function sairModoRemarcar(){ agMoveId=null; agMoveNome=''; document.getElementById('move-bar').style.display='none'; }
+document.getElementById('move-cancel').onclick = sairModoRemarcar;
+async function moverPara(ini, unidade){
+  const d=new Date(ini);
+  const quando=d.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'})+' às '+
+               d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  if(!confirm('Remarcar '+agMoveNome+' para '+quando+'?\n\nO horário antigo será liberado.')) return;
+  try{
+    const r=await api('/api/agenda/'+agMoveId+'/move',{method:'POST',body:{inicio:ini, unidade:unidade||undefined}});
+    if(!r || !r.ok){ alert((r&&r.error)||'Falha ao remarcar.'); if(r&&r.taken) agRefresh(); return; }
+    sairModoRemarcar(); agRefresh();
+  }catch(e){ if(String(e.message)!=='401') alert('Falha ao remarcar.'); }
+}
+
 function openAgBook(ini, unidade){
+  // Em modo remarcação, a vaga livre move o paciente em vez de abrir o formulário.
+  if(agMoveId) return moverPara(ini, unidade);
   agBookIni=ini;
   if(unidade) agUnidade=unidade;   // no modo semana, a unidade vem da coluna do dia
   const d=new Date(ini);
@@ -1654,6 +1683,10 @@ $('#ag-today').onclick=()=>{ agDate=new Date(); agRefresh(); };
 $('#agbook-cancel').onclick=closeAgBook;
 $('#agbook-save').onclick=agBookSave;
 $('#agdet-fechar').onclick=closeAgDetails;
+$('#agdet-remarcar').onclick=()=>{
+  const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
+  if(a) entrarModoRemarcar(a);
+};
 $('#agdet-cancelar').onclick=async()=>{
   if(!agDetId) return;
   if(!confirm('Cancelar este agendamento? O horário volta a ficar livre.')) return;
