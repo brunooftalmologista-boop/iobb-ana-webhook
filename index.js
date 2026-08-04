@@ -1555,6 +1555,23 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
           return { ok: true, already: true };
         }
         if (doMesmoPaciente.length) {
+          // 🚫 RE-EMISSÃO MUDA: a Ana às vezes repete o bloco [AGENDAR] numa
+          // mensagem de cortesia ("Por nada, até terça!"), com OUTRO horário. O
+          // código lia isso como remarcação: gravava o novo, cancelava o antigo
+          // e não avisava ninguém — nem log gerava. Aconteceu 2× em 03/08:
+          // Ludmilla (16h40→15h40 em 26s) e Elaine (11h20→11h40 em 24s). As duas
+          // ficaram sabendo do horário ANTIGO; a Ludmilla chegou a ocupar duas
+          // vagas, porque a secretária transcreveu o primeiro para o iClinic.
+          // Regra: anúncio de horário SEMPRE traz a hora na prosa. Se a mensagem
+          // não cita hora nenhuma, isto não é remarcação — é repetição. Ignora.
+          const prosaTemHora = /(\d{1,2})\s*[h:]\s*(\d{2})\b/.test(String(replyTexto || ""));
+          if (!prosaTemHora) {
+            console.warn(`[Agendar] Re-emissão IGNORADA (${nome || "sem nome"}): bloco pedia ${ini.toISOString()}, mas a mensagem não cita horário — mantido ${new Date(doMesmoPaciente[0].inicio).toISOString()}.`);
+            await registrarErro("agendar_reemissao_ignorada",
+              `paciente=${nome || "—"} mantido=${new Date(doMesmoPaciente[0].inicio).toISOString()} descartado=${ini.toISOString()}`,
+              { conversationId, telefone }).catch(() => {});
+            return { ok: true, already: true };
+          }
           idParaCancelar = doMesmoPaciente[0].id;   // remarcação DESTE paciente: cancela o antigo SÓ se o novo gravar
           console.log(`[Agendar] Reagendamento (${nome || "sem nome"}): novo ${ini.toISOString()}, antigo ${new Date(doMesmoPaciente[0].inicio).toISOString()} (id ${idParaCancelar}).`);
         } else {
