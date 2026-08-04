@@ -191,6 +191,7 @@
 </div>
 
 <!-- view TRANSFERIR -->
+<div id="move-bar" style="display:none;position:sticky;top:52px;z-index:9;background:#fff3cd;border-bottom:1px solid #ffe08a;color:#7a5b00;padding:10px 18px;font-size:14px"><b>Remarcando <span id="move-nome"></span></b> — clique no novo horário livre na agenda. <button id="move-cancel" style="margin-left:10px;border:1px solid #d9b45b;background:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px">Desistir</button></div>
 <div class="wrap" id="app" style="display:none"></div>
 
 <div class="login" id="login" style="display:none">
@@ -265,6 +266,7 @@
     </div>
     <div class="pmodal-actions">
       <button class="pbtn ghost" id="agdet-ficha">📋 Copiar ficha</button>
+      <button class="pbtn ghost" id="agdet-remarcar">🔄 Remarcar</button>
       <button class="pbtn ghost" id="agdet-cancelar">Cancelar agendamento</button>
       <button class="pbtn primary" id="agdet-fechar">Fechar</button>
     </div>
@@ -624,6 +626,10 @@ $('#agdet-ficha').onclick  = ()=>{
   const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
   if(a) copiar(blocoFicha(a), 'Ficha completa copiada!');
 };
+$('#agdet-remarcar').onclick = ()=>{
+  const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
+  if(a) entrarModoRemarcar(a);
+};
 $('#agdet-cancelar').onclick = async ()=>{
   if(!agDetId) return;
   if(!confirm('Cancelar este agendamento? O horário volta a ficar livre.')) return;
@@ -631,8 +637,42 @@ $('#agdet-cancelar').onclick = async ()=>{
   catch(err){ if(String(err.message)!=='401') toast('Falha ao cancelar.'); }
 };
 
+// ----- REMARCAR: mover o paciente sem cancelar e refazer -------------------------
+// Antes, remarcar exigia cancelar e criar de novo — dois passos, e no meio deles
+// a vaga ficava livre para outra pessoa. O endpoint /move já criava o novo ANTES
+// de cancelar o antigo (se o novo horário for tomado, o antigo é mantido); só
+// faltava a tela expor. Fluxo: entra em modo remarcação e o próximo horário
+// livre clicado na grade recebe o paciente.
+let agMoveId=null, agMoveNome='';
+function entrarModoRemarcar(a){
+  agMoveId=a.id; agMoveNome=a.paciente_nome||'paciente';
+  $('#move-nome').textContent=agMoveNome;
+  $('#move-bar').style.display='block';
+  closeAgDetails();
+  toast('Escolha o novo horário na agenda.');
+}
+function sairModoRemarcar(){ agMoveId=null; agMoveNome=''; $('#move-bar').style.display='none'; }
+$('#move-cancel').onclick = sairModoRemarcar;
+async function moverPara(ini, unidade){
+  const d=new Date(ini);
+  const quando=d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'})+' às '+
+               d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+  if(!confirm('Remarcar '+agMoveNome+' para '+quando+'?\n\nO horário antigo será liberado.')) return;
+  try{
+    const r=await api('/api/agenda/'+agMoveId+'/move',{method:'POST',body:{inicio:ini, unidade:unidade||undefined}});
+    if(!r || !r.ok){
+      // 409 = tomaram a vaga com o modal aberto; o antigo continua de pé
+      toast((r&&r.error)||'Falha ao remarcar.'); if(r&&r.taken) agRefresh(); return;
+    }
+    toast('Remarcado: '+agMoveNome+' — '+quando);
+    sairModoRemarcar(); agRefresh();
+  }catch(e){ if(String(e.message)!=='401') toast('Falha ao remarcar.'); }
+}
+
 // ----- marcar horário a partir de uma vaga livre --------------------------------
 function openAgBook(ini, unidade){
+  // Em modo remarcação, a vaga livre move o paciente em vez de abrir o formulário.
+  if(agMoveId) return moverPara(ini, unidade);
   agBookIni=ini;
   if(unidade) agUnidade=unidade;   // no modo semana, a unidade vem da coluna do dia
   const d=new Date(ini);
