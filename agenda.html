@@ -148,6 +148,9 @@
   <h1>🗓️ Agenda IOBB</h1>
   <span class="chip on" id="v-grade" title="A mesma agenda do painel da Ana">Grade</span>
   <span class="chip" id="v-transf" title="Lista para copiar e colar no prontuário">Transferir</span>
+  <!-- Exportar fica FORA dos blocos de view: é tarefa de rotina e estava escondida
+       na aba Transferir, onde ninguém achou. -->
+  <button class="btn ghost" id="btn-iclinic" title="Baixa um CSV no formato de importação do iClinic com os agendamentos feitos aqui (não inclui os que vieram do próprio iClinic)">⬇️ Exportar p/ iClinic</button>
 
   <!-- controles da GRADE -->
   <span class="ctl grow" id="ctl-grade">
@@ -177,7 +180,6 @@
     <input type="search" id="f-busca" placeholder="Buscar nome…">
     <button class="btn ghost" id="btn-reload" title="Atualizar">⟳</button>
     <button class="btn" id="btn-novo">➕ Agendar</button>
-    <button class="btn ghost" id="btn-iclinic" title="Baixa um CSV no formato de importação do iClinic com os agendamentos feitos aqui">⬇️ Exportar p/ iClinic</button>
   </span>
 
   <span class="sub" id="sub-txt"></span>
