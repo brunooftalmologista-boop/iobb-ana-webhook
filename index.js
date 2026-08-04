@@ -4624,6 +4624,83 @@ app.post("/api/agenda/book", async (req, res) => {
 });
 
 // Cancela um agendamento (libera o slot).
+// ── EXPORTAR PARA O ICLINIC ─────────────────────────────────────────────────
+// Gera o CSV no formato de IMPORTAÇÃO DE AGENDAMENTOS do iClinic
+// (docs.iclinic.com.br/schedulings.html), para a secretária parar de redigitar
+// paciente por paciente. Colunas e formatos são os documentados por eles.
+// NÃO exporta origem='iclinic': essas consultas já existem lá, e reimportar
+// criaria duplicata — que é exatamente o problema que motivou tudo isso.
+// physician_id é obrigatório no arquivo e não temos: vem por query (?physician_id=)
+// ou de settings.iclinic_physician_id.
+const ICLINIC_COLS = ["patient_birth_date","patient_name","physician_id","date","status",
+  "patient_mobile_phone","patient_home_phone","patient_email","arrival_time","start_time",
+  "end_time","description","all_day","cancel_reason","healthinsurance_name",
+  "event_blocked_scheduling","eventprocedure_pack"];
+
+function nascimentoDeObs(obs) {
+  const m = String(obs || "").match(/Nascimento:\s*(\d{2})\/(\d{2})\/(\d{2,4})/i);
+  if (!m) return "";
+  let [, d, mth, y] = m;
+  if (y.length === 2) y = (Number(y) > 30 ? "19" : "20") + y;   // 74 → 1974; 06 → 2006
+  return `${y}-${mth}-${d}`;
+}
+function foneICliClinic(tel) {
+  const d = String(tel || "").replace(/\D/g, "").replace(/^55/, "");
+  if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  return "";
+}
+const csvCell = (v) => {
+  const s = String(v ?? "");
+  return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+app.get("/api/agenda/export-iclinic", async (req, res) => {
+  try {
+    const de = req.query.from ? new Date(String(req.query.from)) : new Date();
+    const ate = req.query.to ? new Date(String(req.query.to)) : new Date(Date.now() + 30 * 24 * 3600 * 1000);
+    let physicianId = String(req.query.physician_id || "").replace(/\D/g, "");
+    if (!physicianId) {
+      const { data } = await supabase.from("settings").select("value").eq("key", "iclinic_physician_id").maybeSingle();
+      physicianId = String(data?.value || "").replace(/\D/g, "");
+    }
+    const lista = await listarAgendamentos({ de, ate, unidade: null });
+    if (lista === null) return res.status(502).json({ ok: false, error: "Não foi possível ler a agenda." });
+    const alvos = lista.filter(a => a.origem !== "iclinic" && a.status !== "cancelado");
+
+    const hhmm = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const linhas = alvos.map(a => ICLINIC_COLS.map(col => {
+      switch (col) {
+        case "patient_birth_date": return nascimentoDeObs(a.observacoes);
+        case "patient_name": return (a.paciente_nome || "").slice(0, 128);
+        case "physician_id": return physicianId;
+        case "date": return new Date(a.inicio).toLocaleDateString("en-CA", { timeZone: TZ_BR });
+        case "status": return "sc";                     // agendamento futuro
+        case "patient_mobile_phone": return foneICliClinic(a.paciente_telefone);
+        case "start_time": return hhmm(a.inicio);
+        case "end_time": return hhmm(a.fim || new Date(new Date(a.inicio).getTime() + SLOT_MIN * 60000));
+        case "description": return [a.motivo, a.unidade].filter(Boolean).join(" — ").slice(0, 128);
+        case "all_day": return "0";
+        case "healthinsurance_name": return a.convenio || "";
+        case "event_blocked_scheduling": return "0";
+        default: return "";
+      }
+    }).map(csvCell).join(","));
+
+    const semNascimento = alvos.filter(a => !nascimentoDeObs(a.observacoes)).length;
+    const csv = "﻿" + [ICLINIC_COLS.join(","), ...linhas].join("\n") + "\n";
+    res.set("Content-Type", "text/csv; charset=utf-8");
+    res.set("Content-Disposition", `attachment; filename="iclinic_agendamentos_${new Date().toISOString().slice(0,10)}.csv"`);
+    res.set("X-Total", String(alvos.length));
+    res.set("X-Sem-Nascimento", String(semNascimento));
+    res.set("X-Physician-Id", physicianId || "FALTA");
+    res.send(csv);
+  } catch (e) {
+    console.error("[Agenda] export-iclinic falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ── COMPARECIMENTO ──────────────────────────────────────────────────────────
 // Quem marca é a recepção, no painel, quando o paciente chega (ou quando fica
 // claro que não veio). É um campo SEPARADO do status: 'confirmado' ali quer

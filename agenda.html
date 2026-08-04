@@ -177,6 +177,7 @@
     <input type="search" id="f-busca" placeholder="Buscar nome…">
     <button class="btn ghost" id="btn-reload" title="Atualizar">⟳</button>
     <button class="btn" id="btn-novo">➕ Agendar</button>
+    <button class="btn ghost" id="btn-iclinic" title="Baixa um CSV no formato de importação do iClinic com os agendamentos feitos aqui">⬇️ Exportar p/ iClinic</button>
   </span>
 
   <span class="sub" id="sub-txt"></span>
@@ -626,6 +627,33 @@ $('#agdet-ficha').onclick  = ()=>{
   const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
   if(a) copiar(blocoFicha(a), 'Ficha completa copiada!');
 };
+// ----- exportar para o iClinic ---------------------------------------------
+// Baixa o CSV no formato de importação do iClinic. Não inclui o que veio do
+// próprio iClinic — reimportar duplicaria.
+$('#btn-iclinic').onclick = async ()=>{
+  const de = prompt('Exportar agendamentos a partir de qual data? (AAAA-MM-DD)', new Date().toISOString().slice(0,10));
+  if(!de) return;
+  const ate = prompt('Até qual data? (AAAA-MM-DD)', new Date(Date.now()+30*864e5).toISOString().slice(0,10));
+  if(!ate) return;
+  try{
+    syncTokensFromStorage();
+    const r = await fetch(API_BASE+'/api/agenda/export-iclinic?from='+de+'&to='+ate,
+      { headers:{ Authorization:'Bearer '+AUTH } });
+    if(r.status===401){ mostrarLogin(); return; }
+    if(!r.ok){ toast('Falha ao exportar (HTTP '+r.status+').'); return; }
+    const total=r.headers.get('X-Total'), semNasc=r.headers.get('X-Sem-Nascimento'), phys=r.headers.get('X-Physician-Id');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download='iclinic_agendamentos_'+de+'.csv'; a.click();
+    URL.revokeObjectURL(url);
+    let msg = total+' agendamento(s) exportado(s)';
+    if(phys==='FALTA') msg += ' — ⚠️ preencha a coluna physician_id antes de importar';
+    else if(semNasc && semNasc!=='0') msg += ' — '+semNasc+' sem data de nascimento';
+    toast(msg);
+  }catch(e){ toast('Falha ao exportar.'); }
+};
+
 $('#agdet-remarcar').onclick = ()=>{
   const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
   if(a) entrarModoRemarcar(a);
