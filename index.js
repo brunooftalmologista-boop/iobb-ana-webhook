@@ -5212,6 +5212,18 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
           || (cands || []).find(a => normalizePhoneBR(a.paciente_telefone) === fone);
   if (!ap) return false;
 
+  // FAMÍLIA NO MESMO NÚMERO: mãe e filho, ou dois irmãos, dividem o WhatsApp e
+  // cada um tem seu horário. Um único "CONFIRMO" chegava e o código pegava
+  // sempre o agendamento MAIS CEDO — respondia com o nome e a hora da pessoa
+  // errada e marcava só um. Aconteceu 2× em 03/08 (Bianca 17h20 recebeu a
+  // confirmação do Luciano 17h00; Rodrigo 11h40 recebeu a do Gabriel 11h20).
+  // Como quem divide telefone quase sempre vem junto, confirmamos TODOS os
+  // agendamentos daquele número NO MESMO DIA e listamos todos na resposta.
+  const diaDe = (d) => new Date(d).toLocaleDateString("en-CA", { timeZone: TZ_BR });
+  const doDia = (cands || []).filter(a => normalizePhoneBR(a.paciente_telefone) === fone
+                                       && diaDe(a.inicio) === diaDe(ap.inicio));
+  const grupo = doDia.length ? doDia : [ap];
+
   if (remarcar) {
     // Não mexe na agenda: quem remarca é a Ana (com a lista) ou a equipe.
     await marcarPendenciaEquipe(conversation.id).catch(() => {});
@@ -5221,11 +5233,13 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
     return;
   }
 
-  if (!ap.confirmado_em) {
+  const aConfirmar = grupo.filter(a => !a.confirmado_em);
+  if (aConfirmar.length) {
     const { error } = await supabase.from("appointments")
-      .update({ confirmado_em: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", ap.id);
+      .update({ confirmado_em: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .in("id", aConfirmar.map(a => a.id));
     if (error) { console.error("[Confirmação] Falha ao gravar:", error.message); return false; }
-    console.log(`[Confirmação] ✅ ${maskFone(fone)} confirmou ${fmtDataHoraBR(ap.inicio)} (${ap.unidade}).`);
+    console.log(`[Confirmação] ✅ ${maskFone(fone)} confirmou ${aConfirmar.length} agendamento(s) em ${fmtDataHoraBR(ap.inicio)} (${ap.unidade}).`);
   }
 
   // ATALHO: responde com TEXTO FIXO montado a partir do agendamento e NÃO chama
@@ -5241,8 +5255,18 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
     .in("role", ["assistant", "human"]).order("timestamp", { ascending: false }).limit(1).maybeSingle();
   if (!ultClinica || ultClinica.event !== "lembrete") return false;
 
-  const primeiro = String(ap.paciente_nome || "").trim().split(/\s+/)[0] || "";
-  const resposta = `Recebido${primeiro ? ", " + primeiro : ""}! Sua consulta está confirmada para *${fmtLembreteQuando(ap.inicio)}*, no ${ap.unidade}. Até lá!`;
+  const primeiroNomeDe = (a) => String(a.paciente_nome || "").trim().split(/\s+/)[0] || "";
+  const emOrdem = [...grupo].sort((x, y) => new Date(x.inicio) - new Date(y.inicio));
+  let resposta;
+  if (emOrdem.length === 1) {
+    const p = primeiroNomeDe(emOrdem[0]);
+    resposta = `Recebido${p ? ", " + p : ""}! Sua consulta está confirmada para *${fmtLembreteQuando(emOrdem[0].inicio)}*, no ${emOrdem[0].unidade}. Até lá!`;
+  } else {
+    // Mais de um agendamento no mesmo número e no mesmo dia: lista todos, com
+    // nome e hora de cada um. Assim ninguém recebe o horário de outra pessoa.
+    const itens = emOrdem.map(a => `• *${primeiroNomeDe(a) || "paciente"}* — ${fmtHoraBR(a.inicio)}`).join("\n");
+    resposta = `Recebido! Estão confirmadas para *${fmtLembreteQuando(emOrdem[0].inicio).replace(/ às .*/, "")}*, no ${emOrdem[0].unidade}:\n${itens}\n\nAté lá!`;
+  }
   try {
     const waId = await sendWhatsApp(from, resposta);
     await supabase.from("messages").insert({ conversation_id: conversation.id, role: "assistant", content: resposta, wa_message_id: waId, event: "confirmacao" });
