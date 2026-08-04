@@ -1033,7 +1033,10 @@ function corrigirUnidadeDaData(texto, slots) {
     const r = Object.values(AGENDA_REGRAS).find(x => x.dias.includes(dow));
     return r ? r.nome : null;
   };
-  const RE = /(\d{2})\/(\d{2})([\s\S]{0,140}?)(Taguatinga(?:\s+Shopping)?|Conjunto(?:\s+Nacional)?)/gi;
+  // [^\n]{0,80}: NÃO atravessa quebra de linha. Antes, numa lista com uma unidade
+  // por linha, a data de uma linha casava com a unidade da linha de baixo e a
+  // trava trocava a unidade certa. (?!\/?\d) descarta data de nascimento.
+  const RE = /(\d{2})\/(\d{2})(?!\/?\d)([^\n]{0,80}?)(Taguatinga(?:\s+Shopping)?|Conjunto(?:\s+Nacional)?)/gi;
   const out = texto.replace(RE, (m, dd, mm, meio, unidDita) => {
     const info = dowDeDataBR(Number(dd), Number(mm));
     if (!info) return m;
@@ -1122,11 +1125,14 @@ function corrigirDiaDaSemana(texto, slots) {
   };
   const DOWS = "segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo";
   // Formato A: "sexta-feira, 31/07" / "sexta, 31/07" / "sexta 31/07"
-  let out = texto.replace(new RegExp(`\\b(${DOWS})(-feira)?,?\\s+(\\d{2})/(\\d{2})\\b`, "gi"),
+  let out = texto.replace(new RegExp(`\\b(${DOWS})(-feira)?,?\\s+(\\d{2})/(\\d{2})(?!/?\\d)\\b`, "gi"),
     (m, dow, feira, dd, mm) => ajusta(dow, dd, mm, (novoDow, d2, m2) =>
       `${novoDow}${feira || ""}, ${d2}/${m2}`) || m);
   // Formato B: "o dia 11/08 é uma terça-feira"
-  out = out.replace(new RegExp(`\\b(\\d{2})/(\\d{2})\\b(\\s+(?:é|e|ser[áa])\\s+(?:um[ae]\\s+)?)(${DOWS})(-feira)?`, "gi"),
+  // "e" saiu do grupo: em "12/08 e sexta-feira 14/08" a conjunção era lida como
+  // o verbo "é" e a trava corrigia o dia do item SEGUINTE da lista, corrompendo
+  // uma mensagem correta. Só verbo mesmo. E (?!/\\d) evita data de nascimento.
+  out = out.replace(new RegExp(`\\b(\\d{2})/(\\d{2})(?!/?\\d)\\b(\\s+(?:é|era|ser[áa]|seria)\\s+(?:um[ae]\\s+)?)(${DOWS})(-feira)?`, "gi"),
     (m, dd, mm, meio, dow, feira) => ajusta(dow, dd, mm, (novoDow, d2, m2) =>
       `${d2}/${m2}${meio}${novoDow}${feira || ""}`) || m);
   return { texto: out, correcoes };
@@ -3646,8 +3652,11 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         const contexto = reply + " " + (messages || []).slice(-6).map(m => m.content || "").join(" ");
         const temaCaro = /(esclera|cirurgia|refrativa|catarata|crosslinking|anel intra|ceratocone)/i.test(contexto);
         const temHorario = /\d{1,2}\s*[h:]\s*\d{2}/.test(reply);
-        const temPergunta = /\?/.test(reply);
-        if (temPreco && temaCaro && !temHorario && !temPergunta && Array.isArray(slotsVigentes) && slotsVigentes.length) {
+        // Antes eu descartava qualquer mensagem com "?" — e 13 das 14 com preço
+        // terminam em "Posso ajudar em mais alguma coisa?", que é justamente o
+        // beco. O que importa não é ter pergunta: é oferecer AGENDAMENTO.
+        const ofereceAgenda = /(reserv|agend|marc[ao]|hor[áa]rio|pode ser|dispon[ií]vel)/i.test(reply);
+        if (temPreco && temaCaro && !temHorario && !ofereceAgenda && Array.isArray(slotsVigentes) && slotsVigentes.length) {
           await registrarErro("preco_sem_horario", `preço citado sem oferta de horário: "${reply.slice(0, 160)}"`,
             { conversationId: conversation.id, telefone: from }).catch(() => {});
           console.warn("[Preço] Valor informado sem oferecer horário — registrado para medição.");
