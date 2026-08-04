@@ -5110,10 +5110,13 @@ for (const slug of LP_SLUGS) {
 }
 
 // Servir o painel web das secretárias
-app.get("/painel", (req, res) => res.sendFile(__dirname + "/painel.html"));
+// no-store nas duas páginas: elas mudam com frequência e o navegador estava
+// servindo a versão antiga — a secretária não via o botão novo mesmo depois do
+// deploy, e a única saída era Cmd+Shift+R, que ninguém adivinha.
+app.get("/painel", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/painel.html"); });
 // Agenda em página única p/ transferência ao prontuário (copiar/colar rápido).
 // Mesma sessão do painel (localStorage compartilhado) — login lá vale aqui.
-app.get("/agenda", (req, res) => res.sendFile(__dirname + "/agenda.html"));
+app.get("/agenda", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/agenda.html"); });
 
 // ── Follow-up de leads frios (recuperação de conversão) ──────────────────────
 // Uma ÚNICA mensagem gentil para LEAD PAGO (ad_click) que engajou e NÃO agendou,
