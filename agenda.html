@@ -366,7 +366,7 @@ function carteirinhaDe(obs){
   const m = String(obs||'').match(/carteirinha:\s*([^|]+)/i);
   return m ? m[1].trim() : '';
 }
-function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function esc(s){ return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function toast(msg){
   const t = $('#toast'); t.textContent = msg;
