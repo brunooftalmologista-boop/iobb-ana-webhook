@@ -3028,9 +3028,14 @@ function enfileirarPorPaciente(chave, fn) {
 // é 0, que é justamente o valor de "desligado". Só um número explícito vale.
 const ANA_DEBOUNCE_MS = (() => {
   const bruto = readEnv("ANA_DEBOUNCE_MS");
-  if (bruto == null || bruto === "") return 12000;
+  // 20s e não 12s: medido em 14 dias de conversa real (2.449 mensagens de
+  // paciente), a fatia que chega colada na anterior é 10,4% em 8s · 15,3% em
+  // 12s · 26,8% em 20s · 38,9% em 30s. De 12s para 20s a economia quase dobra;
+  // de 20s para 30s cresce bem menos e a espera já incomoda quem manda uma
+  // mensagem só. 20s é onde a curva ainda paga a latência.
+  if (bruto == null || bruto === "") return 20000;
   const n = Number(bruto);
-  return Number.isFinite(n) && n >= 0 ? n : 12000;
+  return Number.isFinite(n) && n >= 0 ? n : 20000;
 })();
 const seqPorPaciente = new Map();
 function marcarChegada(phone) {
