@@ -2925,6 +2925,27 @@ app.get("/webhook", (req, res) => {
   }
 });
 
+// ===== UMA RESPOSTA POR VEZ, POR PACIENTE ==================================
+// O paciente manda "pode sim" e emenda outra mensagem 2 segundos depois. A Meta
+// entrega os dois eventos e o webhook processava OS DOIS EM PARALELO: duas
+// gerações, duas respostas. Em 3 dias foram 35 respostas duplas (intervalo médio
+// de 3 segundos) e, num caso, uma paciente disse "não tenho interesse" e recebeu
+// ao mesmo tempo um "compreendo" e um "agendado para quinta". Também foi assim
+// que a Ana inventou pedir e-mail: três respostas coladas numa só.
+// A fila serializa por telefone. A segunda mensagem espera a primeira terminar e
+// só então é processada — já com a resposta anterior no histórico, então a Ana
+// enxerga o que acabou de dizer em vez de duplicar.
+const filaPorPaciente = new Map();
+function enfileirarPorPaciente(chave, fn) {
+  const anterior = filaPorPaciente.get(chave) || Promise.resolve();
+  const atual = anterior.then(fn, fn);          // erro anterior não trava a fila
+  // Só limpa se ninguém entrou depois — senão apagaríamos a fila de quem espera.
+  const marcador = atual.catch(() => {});
+  filaPorPaciente.set(chave, marcador);
+  marcador.then(() => { if (filaPorPaciente.get(chave) === marcador) filaPorPaciente.delete(chave); });
+  return atual;
+}
+
 // Webhook principal
 app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
@@ -2972,6 +2993,9 @@ app.post("/webhook", async (req, res) => {
     if (await jaProcessado(msg.id)) { console.log("[Ana] Mensagem duplicada ignorada:", msg.id); return; }
 
     const from = msg.from;
+    // A partir daqui, uma mensagem por vez para este paciente (ver
+    // enfileirarPorPaciente). Sem isso, rajada vira resposta duplicada.
+    await enfileirarPorPaciente(from, async () => {
     // Click-to-WhatsApp: quando o paciente vem de um ANÚNCIO (Instagram/Facebook),
     // a Meta envia aqui um objeto `referral` com o TÍTULO/DESCRIÇÃO do anúncio —
     // mesmo que a mensagem dele seja genérica ("posso ter mais informações sobre
@@ -3791,6 +3815,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
 
     // Espelhar para clínica (isolado: notificarClinica nunca lança)
     await notificarClinica(`👤 *${patient.name || from}:*\n${text}\n\n🤖 *Ana:*\n${reply}`);
+    });   // fim da fila por paciente
 
   } catch(e) {
     console.error("[Ana] Erro não tratado no webhook:", e?.response?.status || "", e?.response?.data ? JSON.stringify(e.response.data) : e.message);
