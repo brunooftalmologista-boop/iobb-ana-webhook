@@ -3003,6 +3003,46 @@ function enfileirarPorPaciente(chave, fn) {
   return atual;
 }
 
+// ===== AGRUPAMENTO DE MENSAGENS ============================================
+// No WhatsApp ninguém escreve tudo numa mensagem só: "Oi" · "bom dia" · "queria
+// marcar" · "pra minha mãe". Sem agrupar, cada pedaço vira uma chamada INTEIRA
+// ao modelo (~29 mil tokens: persona + agenda + histórico) e uma resposta
+// separada — a Ana respondendo "Oi" antes de saber o que a pessoa quer. Era 4×
+// o custo e 4 mensagens seguidas para o paciente.
+// Agora esperamos o paciente terminar de escrever. Se chegar outra mensagem na
+// janela, o turno atual DESISTE na hora e o novo assume — já com tudo no
+// histórico, porque cada mensagem é gravada no banco ANTES da espera. Nada se
+// perde: só a resposta é adiada, nunca o registro.
+// O contador é incrementado no webhook, FORA de enfileirarPorPaciente: dentro
+// da fila a mensagem seguinte ficaria presa atrás desta espera e o agrupamento
+// nunca enxergaria que ela chegou.
+// Env vazia ou com lixo NÃO pode desligar o agrupamento por acidente: Number("")
+// é 0, que é justamente o valor de "desligado". Só um número explícito vale.
+const ANA_DEBOUNCE_MS = (() => {
+  const bruto = readEnv("ANA_DEBOUNCE_MS");
+  if (bruto == null || bruto === "") return 12000;
+  const n = Number(bruto);
+  return Number.isFinite(n) && n >= 0 ? n : 12000;
+})();
+const seqPorPaciente = new Map();
+function marcarChegada(phone) {
+  const n = (seqPorPaciente.get(phone) || 0) + 1;
+  seqPorPaciente.set(phone, n);
+  return n;
+}
+// Devolve false se outra mensagem chegou (este turno não responde). Confere a
+// cada 300ms em vez de dormir a janela inteira: assim os turnos abandonados
+// saem quase na hora e a resposta final não acumula o atraso de todos eles.
+async function aguardarPacienteTerminar(phone, meuSeq) {
+  if (!ANA_DEBOUNCE_MS) return true;                 // 0 desliga (env no Render)
+  const ate = Date.now() + ANA_DEBOUNCE_MS;
+  while (Date.now() < ate) {
+    await sleep(300);
+    if (seqPorPaciente.get(phone) !== meuSeq) return false;
+  }
+  return seqPorPaciente.get(phone) === meuSeq;
+}
+
 // Webhook principal
 app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
@@ -3050,6 +3090,14 @@ app.post("/webhook", async (req, res) => {
     if (await jaProcessado(msg.id)) { console.log("[Ana] Mensagem duplicada ignorada:", msg.id); return; }
 
     const from = msg.from;
+    // Marca a chegada AQUI, fora da fila: é o que permite ao turno que está
+    // esperando descobrir que o paciente ainda está escrevendo (ver
+    // aguardarPacienteTerminar). Dentro da fila, esta linha só rodaria depois
+    // que a espera terminasse — tarde demais.
+    // Só TEXTO cancela um turno em espera. Uma foto/PDF que cai no texto-pronto
+    // ("vou encaminhar para a equipe") e retorna não responde a pergunta que veio
+    // antes dela — se ela cancelasse, o paciente ficava sem resposta nenhuma.
+    const meuSeq = msg.type === "text" ? marcarChegada(from) : (seqPorPaciente.get(from) || 0);
     // A partir daqui, uma mensagem por vez para este paciente (ver
     // enfileirarPorPaciente). Sem isso, rajada vira resposta duplicada.
     await enfileirarPorPaciente(from, async () => {
@@ -3553,6 +3601,16 @@ app.post("/webhook", async (req, res) => {
       // — cai no fluxo normal, com uma orientação extra no prompt (ver adiante).
       await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification} (provável carteirinha — a Ana segue o pré-agendamento)`);
       await marcarPendenciaEquipe(conversation.id, "action");   // equipe verifica a carteirinha
+    }
+
+    // ESPERA O PACIENTE TERMINAR DE ESCREVER. Tudo que precisava ser imediato já
+    // aconteceu acima: a mensagem está gravada, a equipe já foi notificada e os
+    // comandos administrativos já responderam. O que fica para depois é só a
+    // resposta da Ana. Se chegou outra mensagem, saímos sem responder — o turno
+    // dela vai ler o histórico completo, com esta inclusive.
+    if (!await aguardarPacienteTerminar(from, meuSeq)) {
+      console.log(`[Agrupar] ${from}: chegou outra mensagem — este turno não responde (a próxima responde por todas).`);
+      return;
     }
 
     // Buscar histórico do banco
