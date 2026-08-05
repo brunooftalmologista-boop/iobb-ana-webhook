@@ -1206,7 +1206,14 @@ function instrucaoUmHorario(horas) {
 // a paciente (vinda de anúncio pago) respondeu "Não, obrigada" 75 segundos
 // depois. Vazamento de instrução interna derruba a credibilidade na hora, então
 // vale a mesma regeneração usada para os vários horários.
-const RE_VAZOU_INSTRUCAO = /minha[s]?\s+instru[çc][õo]e?s?|meu\s+prompt|fui\s+instru[íi]d[ao]|o\s+sistema\s+me\s+(manda|pede|instru)|padr[ãa]o\s+correto\s+daqui|conforme\s+solicitado,?\s+mas|me\s+corrigindo|minha\s+regra/i;
+// Inclui também a auto-correção EM PÚBLICO: "Aguarde — deixa eu corrigir: sexta
+// é no Conjunto, não em Taguatinga" foi para uma paciente em 04/08. Ela acertou
+// o fato, mas o paciente lê a Ana se desdizendo no meio da frase. Regenerando,
+// ele recebe a informação certa já na primeira versão.
+// Ancorado na forma AUTOrreferente ("deixa eu corrigir", "me corrijo") para não
+// pegar "corrigir a miopia" / "óculos para corrigir o grau", que é vocabulário
+// normal da clínica.
+const RE_VAZOU_INSTRUCAO = /minha[s]?\s+instru[çc][õo]e?s?|meu\s+prompt|fui\s+instru[íi]d[ao]|o\s+sistema\s+me\s+(manda|pede|instru)|padr[ãa]o\s+correto\s+daqui|conforme\s+solicitado,?\s+mas|me\s+corrigindo|minha\s+regra|deixa\s+eu\s+corrigir|me\s+corrijo|corrigindo:|na\s+verdade,?\s+me\s+equivoquei/i;
 
 // Quando o horário combinado não pode ser gravado (sumiu da lista ou foi ocupado
 // na corrida), esta é a vaga que oferecemos no lugar. Prioriza o MESMO DIA que o
