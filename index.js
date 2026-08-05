@@ -5193,6 +5193,18 @@ for (const slug of LP_SLUGS) {
 // servindo a versão antiga — a secretária não via o botão novo mesmo depois do
 // deploy, e a única saída era Cmd+Shift+R, que ninguém adivinha.
 app.get("/painel", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/painel.html"); });
+// Qual commit está REALMENTE no ar. Já anunciei deploy pronto olhando um /agenda
+// que respondia 200 pelo processo ANTIGO; sem um marcador de versão não dá para
+// distinguir "no ar" de "ainda subindo". Público de propósito: não expõe dado.
+app.get("/version", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({
+    commit: process.env.RENDER_GIT_COMMIT || null,
+    branch: process.env.RENDER_GIT_BRANCH || null,
+    subiu_em: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+    uptime_s: Math.round(process.uptime()),
+  });
+});
 // Agenda em página única p/ transferência ao prontuário (copiar/colar rápido).
 // Mesma sessão do painel (localStorage compartilhado) — login lá vale aqui.
 app.get("/agenda", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/agenda.html"); });
