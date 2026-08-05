@@ -265,6 +265,11 @@ Exame NÃO realizado: Campimetria. Resposta: "A campimetria não é um exame que
 Para exames NÃO listados aqui (ex.: OCT / tomografia de coerência óptica, ultrassonografia ocular, angiofluoresceinografia): não afirme que fazemos nem que não fazemos — diga que confirma com a equipe e ofereça uma consulta de avaliação. Nunca invente valores nem prometa a realização.
 Exame para habilitação/CNH (DETRAN): o exame oficial do DETRAN é feito em clínicas credenciadas. Não prometa emitir laudo para o DETRAN — a equipe confirma se realizamos; se quiser, ofereça uma consulta oftalmológica comum.
 
+### VENDEMOS LENTE DE CONTATO — nunca diga que não
+O IOBB COMERCIALIZA lentes de contato (gelatinosas, rígidas e esclerais). NUNCA diga que "não comercializamos", "não vendemos" ou "não trabalhamos com venda de lentes" — é errado e faz a clínica perder o paciente.
+Quem já TEM receita e quer comprar: peça que ENVIE A RECEITA (foto aqui mesmo) e informe que a equipe entra em contato com o orçamento — nesse caso, como você está encaminhando para a equipe, feche a mensagem com o bloco [RECADO] (tipo: dúvida, resumo: orçamento de lente de contato, receita enviada). Não invente valor nem marca de lente gelatinosa — o orçamento depende do grau e do modelo, e quem passa é a equipe.
+Quem NÃO tem receita, ou usa lente e nunca adaptou aqui: o caminho é a consulta para adaptação/avaliação (o teste de lente é cobrado à parte — gelatinosas R$ 120,00, rígidas/esclerais R$ 150,00). Os valores de lente escleral já estão na tabela e podem ser informados normalmente.
+
 ### Suspender lente de contato antes da consulta/exame
 Se o paciente usa lente de contato e pergunta se precisa parar antes da consulta ou dos exames (topografia, Pentacam, teste de lente etc.), oriente: **lente gelatinosa (descartável/mensal): suspender 24 horas antes**; **lente rígida ou escleral: suspender 48 horas antes**. Isso vale para quem usa lente e vai fazer avaliação/exames de córnea — não é necessário para quem não usa lente. Na dúvida sobre o caso específico, siga com o agendamento normalmente e diga que a equipe/médico confirma na avaliação.
 
@@ -1099,14 +1104,26 @@ function corrigirUnidadeDeExame(texto) {
 // Devolve o texto com todo par dia-da-semana/data coerente. `slots` serve para
 // decidir o lado a corrigir quando a DATA cai em fim de semana (clínica fechada):
 // aí quem manda é o dia da semana que ela prometeu, e trocamos a data.
-function corrigirDiaDaSemana(texto, slots) {
+function corrigirDiaDaSemana(texto, slots, pedidoPaciente) {
   if (!texto) return { texto, correcoes: [] };
   const correcoes = [];
   const nomeDe = (d) => d.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long" }).replace("-feira", "");
-  const proximaDataDoDow = (alvoIdx) => {
+  // A data mais próxima da citada, não a primeira da lista. Trocar "sexta 15/08"
+  // pela PRIMEIRA sexta com vaga jogava o paciente para 07/08 — uma semana ANTES
+  // do que ele pediu, e num dia que a Ana tinha acabado de oferecer como livre.
+  const dataDoDowPertoDe = (alvoIdx, ref) => {
     const cands = (slots || []).filter(s => s.start.getUTCDay() === alvoIdx);
-    return cands.length ? cands.reduce((a, b) => (a.start < b.start ? a : b)).start : null;
+    if (!cands.length) return null;
+    const alvo = ref.getTime();
+    return cands.reduce((a, b) =>
+      Math.abs(b.start.getTime() - alvo) < Math.abs(a.start.getTime() - alvo) ? b : a).start;
   };
+  // Data que o próprio paciente escreveu ("Dia 15/08?") é dado dele, não engano
+  // da Ana: nunca mexemos nela, corrigimos só a palavra do dia da semana.
+  const doPaciente = new Set();
+  for (const m of String(pedidoPaciente || "").matchAll(/\b(\d{2})\/(\d{2})(?!\/?\d)\b/g)) {
+    doPaciente.add(`${m[1]}/${m[2]}`);
+  }
   const ajusta = (dowDito, dd, mm, montar) => {
     const info = dowDeDataBR(Number(dd), Number(mm));
     if (!info) return null;
@@ -1115,10 +1132,10 @@ function corrigirDiaDaSemana(texto, slots) {
     if (real === dito) return null;                       // já está certo
     const fimDeSemana = info.data.getUTCDay() === 0 || info.data.getUTCDay() === 6;
     const idxDito = DOW_NOMES.indexOf(dito);
-    if (fimDeSemana && idxDito > 0 && idxDito < 6) {
+    if (fimDeSemana && idxDito > 0 && idxDito < 6 && !doPaciente.has(`${dd}/${mm}`)) {
       // Ex.: "sexta-feira, 01/08" — 01/08 é sábado e a clínica não atende.
       // O paciente pediu sexta: mantemos sexta e corrigimos a DATA.
-      const nova = proximaDataDoDow(idxDito);
+      const nova = dataDoDowPertoDe(idxDito, info.data);
       if (nova) {
         const nd = nova.toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
         correcoes.push(`${dito} ${dd}/${mm} → ${dito} ${nd}`);
@@ -1128,18 +1145,34 @@ function corrigirDiaDaSemana(texto, slots) {
     correcoes.push(`${dito} ${dd}/${mm} → ${real} ${dd}/${mm}`);
     return montar(real, dd, mm);
   };
+  // "sábado-feira" não existe: o sufixo só acompanha segunda..sexta.
+  const comFeira = (dow, feira) => (/^(s[áa]bado|domingo)$/i.test(dow) ? "" : (feira || ""));
   const DOWS = "segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo";
   // Formato A: "sexta-feira, 31/07" / "sexta, 31/07" / "sexta 31/07"
   let out = texto.replace(new RegExp(`\\b(${DOWS})(-feira)?,?\\s+(\\d{2})/(\\d{2})(?!/?\\d)\\b`, "gi"),
     (m, dow, feira, dd, mm) => ajusta(dow, dd, mm, (novoDow, d2, m2) =>
-      `${novoDow}${feira || ""}, ${d2}/${m2}`) || m);
+      `${novoDow}${comFeira(novoDow, feira)}, ${d2}/${m2}`) || m);
   // Formato B: "o dia 11/08 é uma terça-feira"
   // "e" saiu do grupo: em "12/08 e sexta-feira 14/08" a conjunção era lida como
   // o verbo "é" e a trava corrigia o dia do item SEGUINTE da lista, corrompendo
   // uma mensagem correta. Só verbo mesmo. E (?!/\\d) evita data de nascimento.
   out = out.replace(new RegExp(`\\b(\\d{2})/(\\d{2})(?!/?\\d)\\b(\\s+(?:é|era|ser[áa]|seria)\\s+(?:um[ae]\\s+)?)(${DOWS})(-feira)?`, "gi"),
     (m, dd, mm, meio, dow, feira) => ajusta(dow, dd, mm, (novoDow, d2, m2) =>
-      `${d2}/${m2}${meio}${novoDow}${feira || ""}`) || m);
+      `${d2}/${m2}${meio}${novoDow}${comFeira(novoDow, feira)}`) || m);
+  // Concordância: trocar sexta por sábado deixa "Na sábado". Segunda..sexta são
+  // femininos, sábado e domingo masculinos — só ajustamos quando corrigimos algo.
+  if (correcoes.length) {
+    const FEM_MASC = { na: "no", da: "do", pela: "pelo", a: "o", uma: "um", essa: "esse", esta: "este", nessa: "nesse", próxima: "próximo", proxima: "proximo" };
+    const MASC_FEM = Object.fromEntries(Object.entries(FEM_MASC).map(([f, m]) => [m, f]));
+    const casar = (mapa, alvo) => new RegExp(`\\b(${Object.keys(mapa).join("|")})(\\s+)(${alvo})\\b`, "gi");
+    const trocar = (mapa) => (m, art, esp, dow) => {
+      const novo = mapa[art.toLowerCase()];
+      if (!novo) return m;
+      return (art[0] === art[0].toUpperCase() ? novo[0].toUpperCase() + novo.slice(1) : novo) + esp + dow;
+    };
+    out = out.replace(casar(FEM_MASC, "s[áa]bado|domingo"), trocar(FEM_MASC));
+    out = out.replace(casar(MASC_FEM, "(?:segunda|ter[çc]a|quarta|quinta|sexta)(?:-feira)?"), trocar(MASC_FEM));
+  }
   return { texto: out, correcoes };
 }
 
@@ -3749,7 +3782,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         await registrarErro("unidade_data_corrigida", rUni.correcoes.join(" | "), { conversationId: conversation.id, telefone: from });
         reply = rUni.texto;
       }
-      const rev = corrigirDiaDaSemana(reply, slotsVigentes);
+      const rev = corrigirDiaDaSemana(reply, slotsVigentes, text);
       if (rev.correcoes.length) {
         console.warn(`[DataTrava] Corrigido antes de enviar: ${rev.correcoes.join(" | ")}`);
         await registrarErro("dia_semana_corrigido", rev.correcoes.join(" | "), { conversationId: conversation.id, telefone: from });
