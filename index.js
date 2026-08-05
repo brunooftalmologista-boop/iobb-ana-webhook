@@ -3800,7 +3800,18 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           model: ANA_MODEL, max_tokens: 1000,
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-            { type: "text", text: dynamicPrompt },
+            // 2º marcador de cache: a lista de vagas. Ela é ~5.400 tokens que iam
+            // a PREÇO CHEIO em toda mensagem — 55% da conta da API. O texto que a
+            // Ana lê não muda uma vírgula; muda só como é cobrado.
+            // Por que compensa: leitura custa 0,1× e gravação 1,25×, então o ponto
+            // de equilíbrio é 21,7% de aproveitamento. Dentro de uma conversa, a
+            // lista só muda se alguém agendar no meio dela ou se um horário
+            // vencer — na prática são ~8 chamadas por conversa, ou ~88% de
+            // aproveitamento. Folga larga sobre o mínimo.
+            // O marcador vai DEPOIS do prompt fixo de propósito: cache é casamento
+            // de prefixo, então a agenda mudar invalida só ela, e a persona (22 mil
+            // tokens, 87% de aproveitamento hoje) continua sendo lida barato.
+            { type: "text", text: dynamicPrompt, cache_control: { type: "ephemeral" } },
           ],
           messages: apiMessages,
         });
@@ -3817,6 +3828,20 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           });
         } else throw e1;
       }
+      // Custo REAL desta chamada, direto do que a API cobrou. Sem isto, a única
+      // fonte é o console da Anthropic — que soma o dia inteiro e não separa
+      // leitura de cache de entrada cheia, então não dá para saber se um
+      // marcador de cache novo pegou ou virou desperdício. Com o custo por
+      // chamada no log, a resposta aparece em minutos, não no fim do mês.
+      try {
+        const u = response.data?.usage || {};
+        const lidos = u.cache_read_input_tokens || 0;
+        const gravados = u.cache_creation_input_tokens || 0;
+        const cheios = u.input_tokens || 0;
+        const usd = (cheios * 3 + gravados * 3.75 + lidos * 0.3 + (u.output_tokens || 0) * 15) / 1e6;
+        const aproveitamento = (lidos + gravados) ? Math.round(100 * lidos / (lidos + gravados)) : 0;
+        console.log(`[Custo] cheio=${cheios} gravado=${gravados} lido=${lidos} saida=${u.output_tokens || 0} | cache ${aproveitamento}% | US$ ${usd.toFixed(4)}`);
+      } catch (_) { /* medição nunca pode derrubar a resposta ao paciente */ }
       reply = response.data?.content?.[0]?.text;
       if (!reply || !reply.trim()) throw new Error("Resposta vazia da IA");
     } catch (err) {
