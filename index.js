@@ -1176,6 +1176,30 @@ function corrigirDiaDaSemana(texto, slots, pedidoPaciente) {
   return { texto: out, correcoes };
 }
 
+// ===== TRAVA: um horário por vez ===========================================
+// A regra "ofereça UM horário" está escrita em TRÊS pontos do prompt e mesmo
+// assim a Ana volta a listar 3 ou 4 de uma vez. É slip de geração, não falta de
+// instrução — e custa caro: quem recebe cardápio compara e some, ainda mais
+// paciente vindo de anúncio pago. Aqui a detecção é determinística.
+// "às" é o que ancora: pega "às 09h20" e "às 9h", e ignora "24h antes"
+// (suspensão de lente) e "das 9h às 18h" (só casa o 18h — um horário só).
+function horariosOferecidos(texto) {
+  const achados = new Set();
+  // Sem \b antes de "às": acento não é caractere de palavra em regex JS, então
+  // \b nunca casa ali — a primeira versão desta trava não detectava nada.
+  for (const m of String(texto || "").matchAll(/(?:^|[\s,;:(–-])[àa]s\s+(\d{1,2})\s*(?:h|:)\s*(\d{2})?/gi)) {
+    achados.add(`${String(m[1]).padStart(2, "0")}:${m[2] || "00"}`);
+  }
+  return [...achados];
+}
+// Não reescrevemos o texto: as travas que mexem na prosa já corromperam
+// mensagem CERTA neste projeto. Aqui pedimos a resposta de novo com a regra
+// explícita — custa uma chamada a mais só quando dispara, e o modelo devolve
+// português coerente em vez de uma frase remendada por regex.
+function instrucaoUmHorario(horas) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ofereceu ${horas.length} horários de uma vez (${horas.join(", ")}). Isso faz o paciente comparar e sumir, em vez de decidir. Reescreva a MESMA mensagem, com o mesmo tom e o mesmo conteúdo, mas oferecendo UM ÚNICO horário — exatamente um POR PACIENTE (se houver dois pacientes, dois horários, um para cada, dizendo qual é de quem). Escolha o horário mais próximo do que ele pediu e proponha ESSE, perguntando se serve. NÃO liste alternativas, NÃO ofereça "ou então", NÃO cite outros horários disponíveis: se não servir, ele mesmo pede outro.`;
+}
+
 // Quando o horário combinado não pode ser gravado (sumiu da lista ou foi ocupado
 // na corrida), esta é a vaga que oferecemos no lugar. Prioriza o MESMO DIA que o
 // paciente pediu — antes disso pegávamos a primeira vaga da lista inteira, o que
@@ -3725,6 +3749,36 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       await saveMessage(conversation.id, "assistant", FRIENDLY_FALLBACK).catch(e => console.error("[Ana] Falha ao salvar fallback:", e.message));
       return;
     }
+
+    // TRAVA: um horário por vez. Roda ANTES de separar os blocos, no texto cru,
+    // e só na etapa de OFERTA — se ela já emitiu [AGENDAR]/[PREAGENDAMENTO] o
+    // horário está combinado e não se mexe. Uma tentativa só: se a segunda ainda
+    // vier com vários (caso legítimo de 2 pacientes = 2 horários), mandamos a
+    // segunda assim mesmo. Nunca truncamos texto — no pior caso gastamos uma
+    // chamada extra, nunca entregamos frase remendada.
+    try {
+      const etapaDeOferta = !/\[(AGENDAR|PREAGENDAMENTO)\]/i.test(reply);
+      const horas = etapaDeOferta ? horariosOferecidos(reply) : [];
+      if (horas.length > 1) {
+        console.warn(`[HorarioTrava] Resposta com ${horas.length} horários (${horas.join(", ")}) — pedindo de novo.`);
+        await registrarErro("varios_horarios_refeito", `${horas.join(", ")} | ${reply.slice(0, 200)}`,
+          { conversationId: conversation.id, telefone: from });
+        const r2 = await anthropicMessages({
+          model: ANA_MODEL, max_tokens: 1000,
+          system: [
+            { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+            { type: "text", text: dynamicPrompt + instrucaoUmHorario(horas) },
+          ],
+          messages: apiMessages,
+        });
+        const novo = r2.data?.content?.[0]?.text;
+        if (novo && novo.trim()) {
+          const horas2 = horariosOferecidos(novo);
+          console.log(`[HorarioTrava] Reescrita veio com ${horas2.length} horário(s).`);
+          reply = novo;
+        }
+      }
+    } catch (e) { console.error("[HorarioTrava] falhou (segue a resposta original):", e.message); }
 
     // Separar os blocos técnicos (invisíveis ao paciente) do texto que será
     // realmente enviado. `reply` nunca conterá nenhum dos blocos.
