@@ -3307,7 +3307,8 @@ app.post("/webhook", async (req, res) => {
     // Só TEXTO cancela um turno em espera. Uma foto/PDF que cai no texto-pronto
     // ("vou encaminhar para a equipe") e retorna não responde a pergunta que veio
     // antes dela — se ela cancelasse, o paciente ficava sem resposta nenhuma.
-    const meuSeq = msg.type === "text" ? marcarChegada(from) : (seqPorPaciente.get(from) || 0);
+    const meuSeq = (msg.type === "text" || msg.type === "button" || msg.type === "interactive")
+      ? marcarChegada(from) : (seqPorPaciente.get(from) || 0);
     // A partir daqui, uma mensagem por vez para este paciente (ver
     // enfileirarPorPaciente). Sem isso, rajada vira resposta duplicada.
     await enfileirarPorPaciente(from, async () => {
@@ -3324,6 +3325,7 @@ app.post("/webhook", async (req, res) => {
       await registrarErro("referral_recebido", JSON.stringify(referral).slice(0, 1500), { telefone: from });
     }
     let text = "";
+    let intencaoBotao = null;   // "remarcar" | "desmarcar" quando veio de botão
     let mediaNotification = "";
     let media = null; // { path, type, name } do anexo salvo no Storage, se houver
     // Binário da imagem recebida ({ buffer, mimeType }), mantido em memória só
@@ -3366,6 +3368,25 @@ app.post("/webhook", async (req, res) => {
       if (dl) media = await storeInboundMedia(dl.buffer, dl.mimeType, `video.${extFromMime(dl.mimeType)}`);
       text = msg.video?.caption ? `[Vídeo recebido]: ${msg.video.caption}` : "[Vídeo recebido]";
       mediaNotification = "🎥 Paciente enviou um vídeo";
+    } else if (msg.type === "button" || msg.type === "interactive") {
+      // BOTÕES. "button" é o toque num botão de Resposta Rápida de TEMPLATE (o
+      // lembrete da véspera); "interactive" é o de mensagem interativa dentro da
+      // janela de 24h. Antes os dois caíam no "ignorar outros tipos" e sumiam
+      // sem rastro — o paciente clicava e nada acontecia.
+      // O texto do botão vira o texto da mensagem, então todo o resto do fluxo
+      // (confirmação do lembrete, Ana, painel) funciona sem saber a diferença.
+      const rotulo = msg.button?.text
+        || msg.interactive?.button_reply?.title
+        || msg.interactive?.list_reply?.title
+        || msg.button?.payload || "";
+      if (!rotulo) { console.warn("[Botão] Toque sem rótulo reconhecível:", JSON.stringify(msg).slice(0, 200)); return; }
+      text = String(rotulo).trim();
+      // Só a intenção de DESMARCAR precisa de tratamento especial: toque errado
+      // acontece, e cancelar direto tira o paciente da agenda sem ninguém ver.
+      const semAcento = text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      if (/desmarc|cancel/.test(semAcento)) intencaoBotao = "desmarcar";
+      else if (/remarc|trocar|mudar/.test(semAcento)) intencaoBotao = "remarcar";
+      console.log(`[Botão] ${from} tocou "${text}"${intencaoBotao ? ` (intenção: ${intencaoBotao})` : ""}.`);
     } else {
       return; // Ignorar outros tipos
     }
@@ -3873,6 +3894,16 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // O paciente respondeu ao pedido de carteirinha com uma FOTO. A Ana não vê o
     // conteúdo, mas a equipe já recebeu — então ela deve considerar entregue e
     // seguir, em vez de dead-endar como faria com uma imagem qualquer.
+    // O paciente TOCOU num botão do lembrete. A intenção é inequívoca — não há o
+    // que interpretar — mas "Desmarcar" precisa de um passo de confirmação:
+    // toque errado acontece, e cancelar direto tira alguém da agenda sem que
+    // ninguém perceba até a cadeira ficar vazia.
+    if (intencaoBotao === "desmarcar") {
+      dynamicPrompt += `\n\n### O paciente TOCOU no botão "Desmarcar" do lembrete\nA intenção é clara, mas pode ter sido toque acidental. NÃO cancele ainda: pergunte, em UMA frase curta e cordial, se ele confirma o cancelamento, repetindo dia, hora e unidade da consulta (ex.: "Confirma que deseja desmarcar sua consulta de quinta-feira, 13/08, às 14h20, no Taguatinga Shopping?"). Só emita [CANCELAR] depois que ele confirmar. Se ele confirmar, cancele e ofereça, na mesma mensagem, remarcar para outra data — muita gente desmarca por conflito de horário, não por desistência.`;
+    } else if (intencaoBotao === "remarcar") {
+      dynamicPrompt += `\n\n### O paciente TOCOU no botão "Remarcar" do lembrete\nEle quer trocar o horário da consulta que já tem. NÃO pergunte "como posso ajudar?" nem peça que ele explique — a intenção já está dada. Confirme em meia linha qual é a consulta atual (dia, hora e unidade) e ofereça JÁ um horário concreto da lista para substituí-la, perguntando se serve. Ao ele aceitar, faça a remarcação normalmente ([CANCELAR] do antigo + [AGENDAR] do novo).`;
+    }
+
     if (fotoDeCarteirinha) {
       dynamicPrompt += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nA imagem vai anexada nesta conversa quando disponível — ou seja, você PODE vê-la.\n🚫 NUNCA diga que vai "encaminhar a carteirinha para a equipe", que "a equipe vai verificar o cartão" ou que "a equipe entra em contato" por causa dela. A carteirinha NÃO precisa de ninguém: você lê os dados e o sistema anexa sozinho à ficha do agendamento. Falar em encaminhamento faz o paciente achar que o atendimento parou — e ele para mesmo.\nO que fazer:\n- Se for MESMO uma carteirinha/cartão de convênio: leia o NOME DO CONVÊNIO e, se estiver legível, o NÚMERO, e REGISTRE emitindo o bloco [CARTEIRINHA] (convenio + numero) ao final da mensagem — o sistema anexa à ficha. Se o fluxo for de pré-agendamento, registre TAMBÉM no bloco de pré-agendamento (convênio lido e número; se o número não estiver legível, use "carteirinha por foto"). Confirme em UMA linha qual convênio você identificou e SIGA IMEDIATAMENTE para o próximo passo do agendamento (oferecer o horário ou confirmar o que já foi combinado) — nunca termine a mensagem na carteirinha.\n- Se o arquivo for PDF ou você não conseguir enxergá-lo: NÃO diga que vai encaminhar. Peça, em uma frase, o NÚMERO da carteirinha digitado (ou uma foto do cartão) e siga o agendamento normalmente na mesma mensagem.\n- 📝 NOME COMPLETO: o documento quase sempre traz o nome INTEIRO do paciente. TRANSCREVA esse nome e use-o no campo "nome:" do [AGENDAR] e do [PREAGENDAMENTO] — não continue com só o primeiro nome nem com o apelido do WhatsApp. Caso real: você leu o documento, disse "identifiquei seu nome e data de nascimento", gravou o nascimento e ainda assim registrou só "Raquel" — a ficha chegou à recepção sem sobrenome. Se o documento não trouxer o nome e você só tiver o primeiro, PODE marcar assim mesmo (nunca atrase o agendamento por isso), mas peça o nome completo na MESMA mensagem em que confirma o horário.\n- Se estiver ilegível, peça gentilmente uma foto mais nítida — sem travar o agendamento.\n- Se a imagem NÃO for uma carteirinha: NÃO descreva o que vê e NÃO comente o conteúdo. Apenas acolha e diga que vai encaminhar à equipe.\nLIMITE ABSOLUTO (inegociável): você só lê DOCUMENTO ADMINISTRATIVO (carteirinha/cartão do plano). Se a imagem for clínica — foto de olho, exame, laudo, receita, resultado, OCT, retinografia etc. — NUNCA descreva, interprete, opine, sugira diagnóstico ou diga se está normal/alterado. Nesses casos: acolha, diga que quem avalia é o médico na consulta, e siga para o agendamento. Continuam valendo todas as regras absolutas (nunca diagnosticar, nunca interpretar exames).\nConcluído isso, CONTINUE/CONCLUA o pré-agendamento normalmente. NÃO peça a carteirinha de novo e NÃO diga apenas que "vai encaminhar" — conclua, explicando que a equipe confirma a cobertura junto com o horário.`;
     }
