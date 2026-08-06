@@ -1256,10 +1256,60 @@ async function criarAgendamento({ unidade, inicio, fim, status, nome, telefone, 
       .eq("unidade", unidade).eq("inicio", inicioIso)
       .eq("status", "reservado").lt("hold_expira_em", new Date().toISOString());
 
+    // HERANÇA NA REMARCAÇÃO. Remarcar é [CANCELAR] + [AGENDAR], e no segundo
+    // bloco a Ana costuma repetir só o essencial — o convênio some e o nome vem
+    // encurtado. Casos reais de 06/08: "Rosemery Leal Lima / Unimed Central
+    // Nacional" virou "Rosemery / (vazio)", e Idalia Oliveira igual. A secretária
+    // recebe um paciente sem forma de pagamento e descobre no balcão.
+    // Instrução no prompt não resolve isso de forma confiável (é omissão, não
+    // erro de conteúdo); aqui a recuperação é determinística.
+    let convenioFinal = convenio, nomeFinal = nome;
+    if (conversationId && (!convenio || !String(convenio).trim())) {
+      try {
+        const { data: anteriores } = await supabase.from("appointments")
+          .select("paciente_nome, convenio")
+          .eq("conversation_id", String(conversationId))
+          .not("convenio", "is", null)
+          .order("created_at", { ascending: false }).limit(10);
+        const limpos = (anteriores || []).filter(a => String(a.convenio || "").trim());
+        const norm = (s) => String(s || "").trim().toLowerCase();
+        const novo = norm(nome);
+        // Casar pelo NOME é o que protege conversa de família (mãe + filhos no
+        // mesmo atendimento, cada um com seu convênio): sem isso herdaríamos o
+        // convênio do irmão. "Rosemery" casa com "Rosemery Leal Lima" porque um
+        // é prefixo do outro.
+        let fonte = limpos.find(a => {
+          const velho = norm(a.paciente_nome);
+          return velho && novo && (velho === novo || velho.startsWith(novo) || novo.startsWith(velho));
+        });
+        // Sem casar pelo nome, só herda se a conversa inteira tiver UM paciente.
+        if (!fonte && limpos.length && new Set(limpos.map(a => norm(a.paciente_nome))).size === 1) fonte = limpos[0];
+        if (fonte) {
+          convenioFinal = fonte.convenio;
+          // Aproveita para recuperar o nome completo, mas só quando o novo é
+          // pedaço do antigo — nunca troca um nome por outro diferente.
+          if (norm(fonte.paciente_nome).startsWith(novo) && String(fonte.paciente_nome).length > String(nome || "").length) {
+            nomeFinal = fonte.paciente_nome;
+          }
+          console.log(`[Agenda] Remarcação herdou do agendamento anterior: convenio="${convenioFinal}" nome="${nomeFinal}".`);
+        }
+      } catch (e) { console.error("[Agenda] Herança na remarcação falhou (segue sem):", e.message); }
+    }
+    // Se mesmo assim não há forma de pagamento, o agendamento vale — mas a
+    // secretária precisa SABER. Sem isso ela só descobre no balcão, com o
+    // paciente na frente. Fica visível na observação e rastreável no error_log.
+    let obsFinal = observacoes;
+    if (origem === "ana" && st !== "cancelado" && (!convenioFinal || !String(convenioFinal).trim())) {
+      obsFinal = `⚠️ FORMA DE PAGAMENTO NÃO INFORMADA — confirmar com o paciente${observacoes ? ` · ${observacoes}` : ""}`;
+      registrarErro("agendamento_sem_convenio", `${nomeFinal || "(sem nome)"} · ${inicioIso} · ${unidade}`,
+        { conversationId }).catch(() => {});
+      console.warn(`[Agenda] Agendamento SEM convênio/particular: ${nomeFinal} em ${inicioIso}.`);
+    }
+
     const row = {
       unidade, inicio: inicioIso, fim: fimIso, status: st,
-      paciente_nome: nome || null, paciente_telefone: telefone || null,
-      convenio: convenio || null, motivo: motivo || null, observacoes: observacoes || null,
+      paciente_nome: nomeFinal || null, paciente_telefone: telefone || null,
+      convenio: convenioFinal || null, motivo: motivo || null, observacoes: obsFinal || null,
       origem: origem || null, conversation_id: conversationId ? String(conversationId) : null,
       criado_por: criadoPor || null,
       hold_expira_em: (st === "reservado" && holdMin) ? new Date(Date.now() + holdMin * 60000).toISOString() : null,
