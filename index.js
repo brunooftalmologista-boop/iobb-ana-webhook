@@ -1201,10 +1201,71 @@ function horariosOferecidos(texto) {
 // mensagem CERTA neste projeto. Aqui pedimos a resposta de novo com a regra
 // explícita — custa uma chamada a mais só quando dispara, e o modelo devolve
 // português coerente em vez de uma frase remendada por regex.
+function instrucaoDataReal(motivo) {
+  const h = brasiliaAgora().ymd;
+  const dd = (n) => String(n).padStart(2, "0");
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. HOJE é ${dd(h.dia)}/${dd(h.mes)}. Só escreva "hoje" se a data for exatamente essa, e só escreva "amanhã" se for o dia seguinte a essa. Cada vaga da lista traz o dia e a data corretos — copie DA LISTA em vez de calcular. Se a vaga que você vai oferecer não é de hoje, diga o dia da semana e a data (ex.: "na segunda-feira, 10/08"), NUNCA "hoje" nem "ainda hoje". Um paciente que lê "hoje" vem hoje, e no dia errado a unidade pode nem estar atendendo.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões. Uma mensagem só, limpa.`;
+}
 function instrucaoUmHorario(horas) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ofereceu ${horas.length} horários de uma vez (${horas.join(", ")}). Isso faz o paciente comparar e sumir, em vez de decidir. Reescreva a MESMA mensagem, com o mesmo tom e o mesmo conteúdo, mas oferecendo UM ÚNICO horário — exatamente um POR PACIENTE (se houver dois pacientes, dois horários, um para cada, dizendo qual é de quem). Escolha o horário mais próximo do que ele pediu e proponha ESSE, perguntando se serve. NÃO liste alternativas, NÃO ofereça "ou então", NÃO cite outros horários disponíveis: se não servir, ele mesmo pede outro.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE. Ele NÃO pode saber que existiu correção: nunca mencione suas instruções, seu padrão, seu prompt, nem diga coisas como "listei conforme solicitado, mas minha instrução é...", "vou seguir o padrão correto daqui para frente" ou "me corrigindo". Nada de "---" separando duas versões. Uma mensagem só, limpa, como se fosse a primeira.`;
 }
+// ===== TRAVA: "hoje"/"amanhã" × data real ==================================
+// 06/08 (quinta), a Ana ofereceu "disponibilidade ainda hoje, às 12h20, no
+// Conjunto Nacional" e confirmou "Agendado para hoje, segunda-feira, 10/08" —
+// com o endereço da Asa Norte. A vaga era de SEGUNDA; quinta é Taguatinga. A
+// paciente leu "hoje" e podia ter ido ao lugar errado no dia errado.
+// A trava de dia-da-semana não pega isso: "segunda-feira, 10/08" é um par
+// CORRETO. O que está errado é a palavra "hoje" ao lado dele.
+// Duas checagens, ambas determinísticas:
+//  (a) "hoje"/"amanhã" colado numa data que não é a de hoje/amanhã;
+//  (b) "hoje" junto de um horário que não existe na agenda de hoje.
+function contradizHojeAmanha(texto, slots) {
+  if (!texto) return null;
+  const hoje = brasiliaAgora().ymd;
+  const dd = (n) => String(n).padStart(2, "0");
+  const hojeStr = `${dd(hoje.dia)}/${dd(hoje.mes)}`;
+  const amanhaD = new Date(Date.UTC(hoje.ano, hoje.mes - 1, hoje.dia + 1, 12));
+  const amanhaStr = `${dd(amanhaD.getUTCDate())}/${dd(amanhaD.getUTCMonth() + 1)}`;
+  // Só casa quando entre a palavra e a data há APENAS separador, dia da semana
+  // ou "dia". Assim "hoje, segunda-feira, 10/08" dispara e "Hoje não tenho, mas
+  // na sexta 07/08 consigo" — que é uma frase correta — não dispara.
+  const DOWS = "segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo";
+  // Fecha com (?![\wà-ú]) e NÃO com \b: "amanhã," tem ã (não é caractere de
+  // palavra em regex JS) antes da vírgula, então \b nunca casa ali e a checagem
+  // do "amanhã" passava batido. Mesmo erro que já matou a trava dos horários.
+  const colado = (palavra) => new RegExp(
+    `\\b${palavra}(?![\\wà-ú])[,\\s—-]*(?:dia\\s+)?(?:(?:${DOWS})(?:-feira)?[,\\s]*)?(\\d{2})\\/(\\d{2})(?!\\/?\\d)`, "i");
+  for (const [palavra, esperado] of [["hoje", hojeStr], ["amanh[ãa]", amanhaStr]]) {
+    const m = texto.match(colado(palavra));
+    if (m && `${m[1]}/${m[2]}` !== esperado) {
+      return `"${palavra.replace("[ãa]", "ã")}" citado com ${m[1]}/${m[2]} (hoje é ${hojeStr})`;
+    }
+  }
+  // (b) "hoje" + horário que não existe na agenda de hoje. Pega a mensagem de
+  // OFERTA ("ainda hoje, às 12h20"), que não traz data nenhuma e por isso
+  // escapa da checagem acima — foi ela que enganou a paciente primeiro.
+  // "Hoje não tenho vaga, mas na sexta 07/08 consigo às 15h" é uma frase
+  // CERTA — o horário citado é de outro dia de propósito. Só checamos quando o
+  // "hoje" vem afirmativo, sem negação logo depois.
+  const hojeNegado = /\bhoje\b[^.!?\n]{0,15}\bn[ãa]o\b/i.test(texto);
+  if (/\bhoje\b/i.test(texto) && !hojeNegado && Array.isArray(slots)) {
+    const horas = horariosOferecidos(texto);
+    if (horas.length) {
+      const diaBR = (d) => d.toLocaleDateString("en-CA", { timeZone: TZ_BR });
+      const hojeISO = `${hoje.ano}-${dd(hoje.mes)}-${dd(hoje.dia)}`;
+      const deHoje = new Set(slots.filter(s => diaBR(s.start) === hojeISO)
+        .map(s => s.start.toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" })));
+      const semVaga = horas.filter(h => !deHoje.has(h));
+      if (semVaga.length === horas.length) {
+        return `"hoje" com horário que não existe na agenda de hoje (${horas.join(", ")})`;
+      }
+    }
+  }
+  return null;
+}
+
 // A Ana já mandou ao paciente "ressalto que minha instrução é oferecer um por
 // vez. Vou seguir o padrão correto daqui para frente" — e emendou uma segunda
 // resposta depois de um "---". Quem lê isso vê um robô discutindo consigo mesmo:
@@ -3918,17 +3979,19 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const etapaDeOferta = !/\[(AGENDAR|PREAGENDAMENTO)\]/i.test(reply);
       const horas = etapaDeOferta ? horariosOferecidos(reply) : [];
       const vazouInstrucao = RE_VAZOU_INSTRUCAO.test(reply);
-      if (horas.length > 1 || vazouInstrucao) {
-        const motivo = vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`;
+      const contradicao = contradizHojeAmanha(reply, slotsVigentes);
+      if (horas.length > 1 || vazouInstrucao || contradicao) {
+        const motivo = contradicao || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
-        await registrarErro(vazouInstrucao ? "vazou_instrucao_refeito" : "varios_horarios_refeito",
-          `${horas.join(", ")} | ${reply.slice(0, 250)}`,
+        await registrarErro(
+          contradicao ? "hoje_amanha_contradiz" : vazouInstrucao ? "vazou_instrucao_refeito" : "varios_horarios_refeito",
+          `${motivo} | ${reply.slice(0, 250)}`,
           { conversationId: conversation.id, telefone: from });
         const r2 = await anthropicMessages({
           model: ANA_MODEL, max_tokens: 1000,
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-            { type: "text", text: dynamicPrompt + instrucaoUmHorario(horas) },
+            { type: "text", text: dynamicPrompt + (contradicao ? instrucaoDataReal(contradicao) : instrucaoUmHorario(horas)) },
           ],
           messages: apiMessages,
         });
