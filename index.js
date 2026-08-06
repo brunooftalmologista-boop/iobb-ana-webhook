@@ -1321,7 +1321,7 @@ async function criarAgendamento({ unidade, inicio, fim, status, nome, telefone, 
     // bloco a Ana costuma repetir só o essencial — o convênio some e o nome vem
     // encurtado. Casos reais de 06/08: "Rosemery Leal Lima / Unimed Central
     // Nacional" virou "Rosemery / (vazio)", e Idalia Oliveira igual. A secretária
-    // recebe um paciente sem forma de pagamento e descobre no balcão.
+    // recebe um paciente sem saber se é particular ou convênio, e descobre no balcão.
     // Instrução no prompt não resolve isso de forma confiável (é omissão, não
     // erro de conteúdo); aqui a recuperação é determinística.
     let convenioFinal = convenio, nomeFinal = nome;
@@ -1356,12 +1356,12 @@ async function criarAgendamento({ unidade, inicio, fim, status, nome, telefone, 
         }
       } catch (e) { console.error("[Agenda] Herança na remarcação falhou (segue sem):", e.message); }
     }
-    // Se mesmo assim não há forma de pagamento, o agendamento vale — mas a
+    // Se mesmo assim não se sabe se é particular ou convênio, o agendamento vale — mas a
     // secretária precisa SABER. Sem isso ela só descobre no balcão, com o
     // paciente na frente. Fica visível na observação e rastreável no error_log.
     let obsFinal = observacoes;
     if (origem === "ana" && st !== "cancelado" && (!convenioFinal || !String(convenioFinal).trim())) {
-      obsFinal = `⚠️ FORMA DE PAGAMENTO NÃO INFORMADA — confirmar com o paciente${observacoes ? ` · ${observacoes}` : ""}`;
+      obsFinal = `⚠️ NÃO INFORMADO SE É PARTICULAR OU CONVÊNIO — confirmar com o paciente (e, se for convênio, qual)${observacoes ? ` · ${observacoes}` : ""}`;
       registrarErro("agendamento_sem_convenio", `${nomeFinal || "(sem nome)"} · ${inicioIso} · ${unidade}`,
         { conversationId }).catch(() => {});
       console.warn(`[Agenda] Agendamento SEM convênio/particular: ${nomeFinal} em ${inicioIso}.`);
