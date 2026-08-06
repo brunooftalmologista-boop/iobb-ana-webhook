@@ -206,6 +206,10 @@ Nesse caso: "Essa situação merece atenção especial da nossa equipe. Nosso te
 - Nada de exclamações em excesso nem tom de empolgação. Nada de diminutivos afetivos ("certinho", "rapidinho", "tudinho") nem comentários pessoais sobre o paciente.
 - Nunca diga "infelizmente". Nunca adicione complementações "vendedoras". Para dar uma negativa (procedimento que não fazemos, fim de semana, menor de 8), seja cordial e direta sem "infelizmente": ex. "Esse procedimento nós não realizamos, mas posso orientar…" / "Não temos atendimento aos sábados; o próximo dia útil é…".
 - Após o paciente sinalizar encerramento: "Por nada. Permaneço à disposição para ajudar em algo mais."
+- 🚫 NUNCA EXPLIQUE AS PALAVRAS DO PACIENTE. Quando ele disser o que quer com as palavras dele — "exame de vista", "consulta de rotina", "exame dos olhos", "ver o grau", "consulta com o oftalmo" — RECONHEÇA e responda direto, como quem já ouviu isso mil vezes. É PROIBIDO repetir a expressão dele entre aspas para definir o que ela significa, e proibido escrever "pode se referir a", "trata-se de", "é um termo que designa", "geralmente significa". Uma secretária de verdade não devolve um verbete de dicionário: ela sabe o que a pessoa quis dizer e segue.
+  ERRADO (aconteceu em 06/08, a paciente escrevera só "Exame de vista"): "\"Exame de vista\" pode se referir à consulta oftalmológica, que inclui a avaliação do grau e a prescrição dos óculos, quando necessário — além de fundo de olho e pressão ocular. O valor da consulta particular é R$ 200,00."
+  CERTO: "O exame de vista é feito na consulta, que é R$ 200,00 no particular. Você tem convênio? Consigo *quinta-feira, 13/08, às 10h20* no Taguatinga Shopping — reservo para você?"
+  E não descreva o que a consulta inclui a menos que perguntem: quem pergunta o preço quer o preço e o próximo passo, não a lista de exames.
 
 ### Calibragem do tom (referência de registro — NÃO copie literalmente; reescreva qualquer fala informal para este padrão)
 - EVITE: "Pode ir passando as informações quando quiser — estou aqui! 😊"  →  PREFIRA: "Certo. Pode me informar os dados para o agendamento, por favor."
@@ -1201,6 +1205,36 @@ function horariosOferecidos(texto) {
 // mensagem CERTA neste projeto. Aqui pedimos a resposta de novo com a regra
 // explícita — custa uma chamada a mais só quando dispara, e o modelo devolve
 // português coerente em vez de uma frase remendada por regex.
+// ===== TRAVA: preço sem horário concreto ===================================
+// Caso de 06/08: paciente perguntou "qual o valor do exame?", a Ana respondeu
+// "R$ 200,00 ... Gostaria de agendar?" e a conversa morreu ali. Antes disso, um
+// lead de lente escleral recebeu "R$ 5.980,00 o par" e nunca mais escreveu.
+// Valor sem próximo passo é um beco: o paciente fica com o número na cabeça e
+// nada para responder.
+// A medição anterior nunca acusou nada por dois furos: (1) exigia tema caro, e
+// consulta de R$ 200 é o caso mais comum; (2) aceitava "gostaria de agendar?"
+// como oferta — mas convite vago devolve o trabalho ao paciente. O que conta é
+// um horário CONCRETO, com hora, que ele só precisa aceitar.
+// Secretária nenhuma escreve estas frases. Elas só aparecem quando a Ana deixa
+// de atender e passa a explicar vocabulário ("'Exame de vista' pode se referir
+// à consulta oftalmológica..."). Soa a máquina e derruba a confiança na hora.
+const RE_VERBETE = /pode se referir|geralmente se refere|[ée] um termo que|trata-se de um termo|significa,? em geral/i;
+function instrucaoSemVerbete() {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você explicou o SIGNIFICADO das palavras que o paciente usou, como um verbete de dicionário. Secretária de verdade não faz isso — ela entende o que a pessoa quis dizer e responde direto. Reescreva sem repetir a expressão dele entre aspas, sem "pode se referir a", sem "trata-se de", e sem descrever o que a consulta inclui (a menos que ele tenha perguntado isso). Vá direto ao que ele quer saber e termine com o próximo passo concreto.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+function precoSemHorario(reply, slots) {
+  if (!Array.isArray(slots) || !slots.length) return null;      // sem agenda, nada a oferecer
+  if (!/R\$\s?\d/.test(reply)) return null;
+  if (/\[(AGENDAR|PREAGENDAMENTO)\]/i.test(reply)) return null; // já fechou algo neste turno
+  if (/\d{1,2}\s*[h:]\s*\d{2}/.test(reply)) return null;        // já tem horário concreto
+  return "preço informado sem oferecer horário concreto";
+}
+function instrucaoPrecoComHorario() {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você informou um valor e NÃO ofereceu um horário concreto. Valor sem próximo passo é um beco — o paciente fica com o número na cabeça e nada para responder, e some. Reescreva a MESMA mensagem, com o mesmo conteúdo e o mesmo tom, terminando com UM horário específico da lista, com dia e hora, que ele só precise aceitar (ex.: "Consigo *quinta-feira, 13/08, às 10h20*, no Taguatinga Shopping — reservo para você?"). NÃO termine com "gostaria de agendar?", "posso ajudar em mais alguma coisa?" nem qualquer convite vago: isso devolve o trabalho para o paciente. Um horário só.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
 function instrucaoDataReal(motivo) {
   const h = brasiliaAgora().ymd;
   const dd = (n) => String(n).padStart(2, "0");
@@ -3980,18 +4014,26 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const horas = etapaDeOferta ? horariosOferecidos(reply) : [];
       const vazouInstrucao = RE_VAZOU_INSTRUCAO.test(reply);
       const contradicao = contradizHojeAmanha(reply, slotsVigentes);
-      if (horas.length > 1 || vazouInstrucao || contradicao) {
-        const motivo = contradicao || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
+      const virouVerbete = RE_VERBETE.test(reply);
+      const precoSeco = precoSemHorario(reply, slotsVigentes);
+      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco) {
+        const motivo = contradicao || precoSeco
+          || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
+          || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          contradicao ? "hoje_amanha_contradiz" : vazouInstrucao ? "vazou_instrucao_refeito" : "varios_horarios_refeito",
+          contradicao ? "hoje_amanha_contradiz" : precoSeco ? "preco_sem_horario"
+            : virouVerbete ? "virou_verbete" : vazouInstrucao ? "vazou_instrucao_refeito" : "varios_horarios_refeito",
           `${motivo} | ${reply.slice(0, 250)}`,
           { conversationId: conversation.id, telefone: from });
         const r2 = await anthropicMessages({
           model: ANA_MODEL, max_tokens: 1000,
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-            { type: "text", text: dynamicPrompt + (contradicao ? instrucaoDataReal(contradicao) : instrucaoUmHorario(horas)) },
+            { type: "text", text: dynamicPrompt + (contradicao ? instrucaoDataReal(contradicao)
+              : virouVerbete ? instrucaoSemVerbete()
+              : precoSeco ? instrucaoPrecoComHorario()
+              : instrucaoUmHorario(horas)) },
           ],
           messages: apiMessages,
         });
