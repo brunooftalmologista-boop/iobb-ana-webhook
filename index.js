@@ -1172,6 +1172,16 @@ function corrigirDiaDaSemana(texto, slots, pedidoPaciente) {
   out = out.replace(new RegExp(`\\b(\\d{2})/(\\d{2})(?!/?\\d)\\b(\\s+(?:é|era|ser[áa]|seria)\\s+(?:um[ae]\\s+)?)(${DOWS})(-feira)?`, "gi"),
     (m, dd, mm, meio, dow, feira) => ajusta(dow, dd, mm, (novoDow, d2, m2) =>
       `${d2}/${m2}${meio}${novoDow}${comFeira(novoDow, feira)}`) || m);
+  // Formato C: "22/08 (sexta)" — data com o dia da semana entre parênteses.
+  // 06/08: a Ana registrou a preferência da Carolina como "22/08 (sexta) ou
+  // 26/08 (terça)". 22/08 é SÁBADO, dia em que a clínica não abre, e 26/08 é
+  // quarta. A equipe receberia um recado impossível de cumprir. Os formatos A e
+  // B não pegam este: o dia da semana não vem antes da data nem ligado por
+  // verbo.
+  out = out.replace(new RegExp(`\\b(\\d{2})/(\\d{2})(?!/?\\d)\\b(\\s*\\()(${DOWS})(-feira)?(\\))`, "gi"),
+    (m, dd, mm, abre, dow, feira, fecha) => ajusta(dow, dd, mm, (novoDow, d2, m2) =>
+      `${d2}/${m2}${abre}${novoDow}${comFeira(novoDow, feira)}${fecha}`) || m);
+
   // Concordância: trocar sexta por sábado deixa "Na sábado". Segunda..sexta são
   // femininos, sábado e domingo masculinos — só ajustamos quando corrigimos algo.
   if (correcoes.length) {
