@@ -1324,7 +1324,12 @@ function contradizHojeAmanha(texto, slots) {
   // CERTA — o horário citado é de outro dia de propósito. Só checamos quando o
   // "hoje" vem afirmativo, sem negação logo depois.
   const hojeNegado = /\bhoje\b[^.!?\n]{0,15}\bn[ãa]o\b/i.test(texto);
-  if (/\bhoje\b/i.test(texto) && !hojeNegado && Array.isArray(slots)) {
+  // Falar da consulta QUE O PACIENTE JÁ TEM não é oferta. "Vejo aqui que sua
+  // consulta é hoje, às 11h20" é uma frase CERTA, e esta checagem a recusou —
+  // porque compara com as vagas LIVRES, e 11h20 não estava livre exatamente por
+  // ser a consulta dela. Custou uma regeneração à toa no caso Bruna (07/08).
+  const falaDeConsultaExistente = /(sua|seu)\s+(consulta|agendamento)|voc[êe]\s+(tem|est[áa])|est[áa]\s+(agendad|marcad)|vejo aqui/i.test(texto);
+  if (/\bhoje\b/i.test(texto) && !hojeNegado && !falaDeConsultaExistente && Array.isArray(slots)) {
     const horas = horariosOferecidos(texto);
     if (horas.length) {
       const diaBR = (d) => d.toLocaleDateString("en-CA", { timeZone: TZ_BR });
@@ -1842,8 +1847,24 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
           // ficaram sabendo do horário ANTIGO; a Ludmilla chegou a ocupar duas
           // vagas, porque a secretária transcreveu o primeiro para o iClinic.
           // Regra: anúncio de horário SEMPRE traz a hora na prosa. Se a mensagem
-          // não cita hora nenhuma, isto não é remarcação — é repetição. Ignora.
-          const prosaTemHora = /(\d{1,2})\s*[h:]\s*(\d{2})\b/.test(String(replyTexto || ""));
+          // não cita a hora DO BLOCO, isto não é remarcação — é repetição. Ignora.
+          //
+          // Duas correções depois do caso Bruna (07/08): ela remarcou de 07/08
+          // 11h20 para 10/08 11h, a Ana anunciou "Agendamento remarcado para
+          // segunda-feira, 10/08, às 11h" — e a trava descartou. O antigo foi
+          // cancelado e o novo não gravou: a paciente ficou FORA da agenda,
+          // achando que estava marcada.
+          //  (1) O regex exigia DOIS dígitos depois do "h", então "às 11h" não
+          //      contava como citar hora. "às 11h", "às 9h", "às 12h" é como a
+          //      Ana escreve na maior parte das vezes.
+          //  (2) Agora não basta citar UMA hora qualquer: a prosa tem de citar
+          //      a hora QUE O BLOCO PEDE. Assim uma mensagem de cortesia que
+          //      mencione "24h antes" (suspensão de lente) não libera uma
+          //      re-emissão silenciosa — que é o abuso que esta trava nasceu
+          //      para impedir.
+          const horaDoBloco = ini.toLocaleTimeString("pt-BR",
+            { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
+          const prosaTemHora = horariosOferecidos(replyTexto).includes(horaDoBloco);
           if (!prosaTemHora) {
             console.warn(`[Agendar] Re-emissão IGNORADA (${nome || "sem nome"}): bloco pedia ${ini.toISOString()}, mas a mensagem não cita horário — mantido ${new Date(doMesmoPaciente[0].inicio).toISOString()}.`);
             await registrarErro("agendar_reemissao_ignorada",
