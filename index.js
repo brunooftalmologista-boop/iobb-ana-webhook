@@ -1208,10 +1208,25 @@ function corrigirDiaDaSemana(texto, slots, pedidoPaciente) {
 // (suspensão de lente) e "das 9h às 18h" (só casa o 18h — um horário só).
 function horariosOferecidos(texto) {
   const achados = new Set();
+  // Primeiro tira FAIXAS de funcionamento ("das 8h às 18h"): o "às" ali não
+  // oferece nada, e sem isso uma mensagem que cite o horário da clínica mais um
+  // horário de consulta pareceria dois horários oferecidos.
+  const t = String(texto || "").replace(
+    /\bdas\s+\d{1,2}\s*[h:]?\s*(?:\d{2})?\s*[àa]s\s+\d{1,2}\s*[h:]?\s*(?:\d{2})?/gi, " ");
   // Sem \b antes de "às": acento não é caractere de palavra em regex JS, então
   // \b nunca casa ali — a primeira versão desta trava não detectava nada.
-  for (const m of String(texto || "").matchAll(/(?:^|[\s,;:(–-])[àa]s\s+(\d{1,2})\s*(?:h|:)\s*(\d{2})?/gi)) {
+  // Âncora "às": pega o formato sem minutos ("às 12h"), que é como ela escreve
+  // na maior parte das vezes.
+  for (const m of t.matchAll(/(?:^|[\s,;:(–-])[àa]s\s+(\d{1,2})\s*(?:h|:)\s*(\d{2})?/gi)) {
     achados.add(`${String(m[1]).padStart(2, "0")}:${m[2] || "00"}`);
+  }
+  // E qualquer hora COM minutos, mesmo sem "às" antes. É o que a âncora sozinha
+  // não pegava: "tenho ainda às 15h40, 16h40, 17h00 e 17h20" tem UM "às" e
+  // QUATRO horários — a lista passou inteira pela trava em 07/08.
+  // Exigir os minutos é o que mantém fora "24h antes" (suspensão de lente) e
+  // "das 8h às 18h", que não têm minutos.
+  for (const m of t.matchAll(/\b(\d{1,2})\s*[h:]\s*(\d{2})\b/g)) {
+    achados.add(`${String(m[1]).padStart(2, "0")}:${m[2]}`);
   }
   return [...achados];
 }
