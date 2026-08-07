@@ -5686,6 +5686,14 @@ async function alvosDoLembrete(amanhaYMD) {
     .filter(a => a._fone && !a._fone.startsWith("55619900"));
 }
 
+// A agenda grava a unidade como "Taguatinga", mas esse não é o nome que o
+// paciente conhece nem o que ele procura no mapa — o lugar é o Taguatinga
+// Shopping. No lembrete, que é a última coisa que ele lê antes de sair de casa,
+// vale o nome completo. (O Conjunto Nacional já é gravado por extenso.)
+function unidadeParaPaciente(u) {
+  return String(u || "").trim().toLowerCase() === "taguatinga" ? "Taguatinga Shopping" : u;
+}
+
 // Envia os lembretes. Idempotente: guarda em settings (chave lembretes_enviados)
 // a data e os ids já avisados, então reinício do Render ou segunda passagem no
 // mesmo dia não duplicam. NUNCA lança.
@@ -5711,9 +5719,10 @@ async function enviarLembretesDeAmanha() {
   for (const a of alvos) {
     const quando = fmtLembreteQuando(a.inicio);
     const primeiroNome = String(a.paciente_nome || "").trim().split(/\s+/)[0] || "tudo bem";
+    const unidadeMsg = unidadeParaPaciente(a.unidade);
     try {
       await sendWhatsAppTemplate(a._fone, WA_LEMBRETE_TEMPLATE_NAME, WA_LEMBRETE_TEMPLATE_LANG,
-        [primeiroNome, quando, a.unidade]);
+        [primeiroNome, quando, unidadeMsg]);
       ok++;
       enviados.add(a.id);
       // Registra na conversa para a Ana ter contexto quando o paciente responder
@@ -5727,7 +5736,7 @@ async function enviarLembretesDeAmanha() {
           // precisa entender a que ele está respondendo. Com a versão antiga
           // ("lembrete enviado: ..."), ela via uma linha de log e respondia com a
           // saudação genérica — foi o que a Barbara recebeu ao dizer "Confirmo".
-          const registro = `Olá, ${primeiroNome}! Passando para confirmar sua consulta: ${quando}, na unidade ${a.unidade}. Se estiver tudo certo, responda CONFIRMO; se precisar remarcar, responda REMARCAR. _(lembrete automático da véspera)_`;
+          const registro = `Olá, ${primeiroNome}! Passando para confirmar sua consulta: ${quando}, na unidade ${unidadeMsg}. Se estiver tudo certo, responda CONFIRMO; se precisar remarcar, responda REMARCAR. _(lembrete automático da véspera)_`;
           await supabase.from("messages").insert({ conversation_id: conv.id, role: "assistant", content: registro, event: "lembrete" });
           await supabase.from("conversations").update({ last_message: registro, updated_at: new Date().toISOString() }).eq("id", conv.id);
         }
