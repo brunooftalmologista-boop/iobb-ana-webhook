@@ -129,3 +129,66 @@ customizado no Render** — a Cloudflare já manda o Host certo (onrender.com).
   as rotas do Worker com `www.` também.
 - **Número do WhatsApp:** os HTMLs das landings têm números `wa.me` fixos, mas o app
   reescreve todos para `WA_LP_NUMBER` em tempo de resposta — o que vale é a env.
+
+---
+
+# Auditoria das landing pages — 07/08/2026
+
+**Correção importante do que estava registrado antes:** as páginas em
+`iobb.com.br/<tema>` **não são** as do app no Render servidas por proxy. São
+páginas **diferentes**, de outro projeto no Cloudflare Pages. Medido pelo título
+e pelo tamanho: `iobb.com.br/aguas-claras` tem 542 KB, `onrender.com/lp/aguas-claras`
+tem 20 KB, e os títulos não batem. Quem editar `landings/*.html` neste
+repositório **não altera** o que está no domínio.
+
+## Quantas existem, e onde
+
+**No domínio (Cloudflare, fora deste repositório — não temos acesso de publicação):**
+`/refrativa` · `/catarata` · `/ceratocone` · `/escleral` · `/aguas-claras` ·
+`/asa-norte` · `/taguatinga` · `/consulta` — mais a home.
+`/exames`, `/cirurgias`, `/convenios` e `/contato` **não existem**: devolvem a home.
+
+**Neste repositório (`landings/*.html`, servidas em `/lp/<tema>` pelo Render):**
+as mesmas 7, menos catarata. `/escleral` também responde sem o `/lp/`.
+
+## Comparação de conteúdo
+
+| | iobb.com.br | onrender `/lp/` |
+|---|---|---|
+| Tamanho do texto | 980–2.532 palavras | 749–969 palavras |
+| Preços | **sim, e corretos** | **nenhum preço** |
+| Convênio/Unimed na refrativa | sim | **não menciona** |
+| Rastreio `[ref:token]` + número da Ana | sim | sim |
+
+Preços conferidos contra a base da Ana e **todos corretos**: consulta R$ 200,
+teste de lente rígida/escleral R$ 150, ZenLens R$ 5.980 o par, PRK/LASIK R$ 5.990,
+Femto-LASIK R$ 8.890. Dias por unidade corretos (Conjunto seg/qua/sex, Taguatinga
+ter/qui). Exames inclusos corretos, inclusive a nuance de a refrativa incluir o
+Pentacam e as demais não.
+
+## ⚠️ Conflito em aberto: idade mínima
+
+O site diz *"Atendem crianças? **Sim. Para menores de 8 anos, o agendamento é
+confirmado com a nossa equipe**"*. A regra que a Ana segue é que **8 anos é mínimo
+categórico** — ela recusa. Enquanto os anúncios não apontarem para essas páginas o
+risco é baixo; depois da migração, pai de criança de 6 anos lê "sim, atendemos" num
+anúncio pago, escreve, e ouve não. **Falta o Dr. Bruno decidir qual das duas vale.**
+
+## Recomendação
+
+Apontar todos os anúncios para `iobb.com.br` e aposentar as URLs `onrender.com`
+nos anúncios — o domínio aparece na URL do anúncio, e "iobb-ana-webhook.onrender.com"
+num resultado de busca de clínica médica derruba credibilidade. As do domínio também
+são mais completas e têm preço.
+
+Em 07/08 ainda havia **R$ 822 gastos** em URLs do onrender: `/lp/aguas-claras`
+(171 cliques), `/lp/asa-norte` (166), `/lp/escleral` (11), `/lp/ceratocone` (10),
+`/escleral` (5), `/lp/refrativa` (2). Todas funcionam e rastreiam — não há clique
+perdido, é duplicidade.
+
+**Também apareceram cliques pagos em páginas que não existem** (caem na home):
+`copia-convenios-3` (55 cliques, 54 com gclid), `cirurgias` (7), `home` (7),
+`copia-contato` (5), `exames` (4), `copia-ceratocone-1` (2), `copia-exames` (1).
+Vale caçar esses anúncios no painel do Google Ads.
+
+`/taguatinga` está órfã: último clique em 15/07, enquanto `/aguas-claras` recebeu 453.
