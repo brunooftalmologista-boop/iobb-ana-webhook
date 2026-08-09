@@ -3714,7 +3714,7 @@ app.post("/webhook", async (req, res) => {
           : "_ninguém com telefone na agenda de amanhã_";
         const estado = !WA_LEMBRETE_TEMPLATE_NAME ? "⚠️ INERTE (falta WA_LEMBRETE_TEMPLATE_NAME no Render)"
           : LEMBRETE_HORA === null ? "⚠️ desligado (LEMBRETE_HORA=off)"
-          : `✅ ativo, dispara às ${LEMBRETE_HORA}h`;
+          : `✅ ativo, dispara a partir das ${LEMBRETE_HORA}h\n📄 Template em uso: *${WA_LEMBRETE_TEMPLATE_NAME}* (${WA_LEMBRETE_TEMPLATE_LANG})`;
         await sendWhatsApp(from, `🔔 *Lembretes da véspera* — ${estado}\nConsultas de ${dd}/${mm}/${aa}:\n${linhas}\n\n_Nada foi enviado. Para disparar agora: *#LEMBRETES CONFIRMAR*_`);
         return;
       }
