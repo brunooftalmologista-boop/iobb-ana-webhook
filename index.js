@@ -1018,12 +1018,28 @@ async function fetchBusyFromDB() {
 
 // Devolve os horários livres a partir da agenda do banco (mesma forma que o antigo
 // fetchSlots devolvia a partir do iCal). `null` = falha ao carregar; `[]` = sem vaga.
+// EGRESS: num turno em que a Ana marca, esta função roda DUAS vezes — uma para
+// montar a lista de vagas e outra para validar o horário antes de gravar — e cada
+// uma faz duas consultas (appointments de 15 dias + settings). Era a duplicata
+// visível nos logs da API. As duas chamadas acontecem com menos de meio segundo
+// de diferença, então um cache curtíssimo elimina a segunda sem mudar nada.
+// SEGURANÇA: o cache é derrubado a cada gravação/cancelamento (invalidarCacheSlots).
+// Sem isso a Ana poderia oferecer uma vaga que acabou de ser ocupada. E mesmo que
+// escapasse, o índice único em (unidade, inicio) continua sendo a garantia real
+// contra overbooking — o cache não afrouxa essa proteção.
+const cacheSlots = new Map();
+const SLOTS_TTL_MS = 10000;
+function invalidarCacheSlots() { cacheSlots.clear(); }
 async function fetchSlotsDB(unidadePref) {
+  const chave = String(unidadePref || "");
+  const emCache = cacheSlots.get(chave);
+  if (emCache && Date.now() - emCache.ts < SLOTS_TTL_MS) return emCache.slots;
   const events = await fetchBusyFromDB();
-  if (events === null) return null;
+  if (events === null) return null;                 // falha de leitura nunca entra no cache
   await carregarHorariosExtras();   // exceções por data (ex.: abrir 9h numa quinta)
   const slots = getAvailableSlots(events, unidadePref);
   console.log(`[Agenda DB] ${events.length} ocupado(s) → ${slots.length} vaga(s) nos próximos 14 dias.`);
+  cacheSlots.set(chave, { ts: Date.now(), slots });
   return slots;
 }
 
@@ -1489,6 +1505,7 @@ async function criarAgendamento({ unidade, inicio, fim, status, nome, telefone, 
       criado_por: criadoPor || null,
       hold_expira_em: (st === "reservado" && holdMin) ? new Date(Date.now() + holdMin * 60000).toISOString() : null,
     };
+    invalidarCacheSlots();                            // a agenda mudou: próxima leitura vai ao banco
     const { data, error } = await supabase.from("appointments").insert(row).select().single();
     if (error) {
       if (error.code === "23505") return { ok: false, taken: true };   // trava única: slot ocupado
@@ -1514,6 +1531,7 @@ async function confirmarAgendamento(id) {
 
 // Cancela um agendamento (libera o slot). Best-effort.
 async function cancelarAgendamento(id) {
+  invalidarCacheSlots();
   const { error } = await supabase.from("appointments")
     .update({ status: "cancelado", updated_at: new Date().toISOString() }).eq("id", id);
   if (error) { console.error("[Agenda DB] Falha ao cancelar:", error.message); return { ok: false, error: error.message }; }
