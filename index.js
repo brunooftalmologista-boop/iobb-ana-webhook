@@ -4496,6 +4496,7 @@ async function requirePanelAuth(req, res, next) {
 app.use("/api", requirePanelAuth);
 
 // API para o painel web
+let cacheAdClicks = { ts: 0, map: null };   // origem de anúncio, revalidada a cada 60s
 app.get("/api/conversations", async (req, res) => {
   const { data } = await supabase.from("conversations").select(`*, patients(name, phone)`).order("updated_at", { ascending: false });
   const convs = data || [];
@@ -4509,11 +4510,24 @@ app.get("/api/conversations", async (req, res) => {
   // no painel, com ?since= e teto de linhas, e derrubou a lista da equipe para
   // uma conversa — revertida em a056217. Aqui não se toca em front-end.)
   try {
-    const ids = convs.map(c => String(c.id)).filter(Boolean);
-    if (!ids.length) return res.json(convs);        // nada a anotar
-    const { data: clicks } = await supabase.from("ad_clicks").select("conversation_id, source, booked").in("conversation_id", ids);
-    const map = {};
-    for (const c of (clicks || [])) { if (c.conversation_id) map[c.conversation_id] = c; }
+    // A tentativa anterior mandava os ids das 826 conversas num .in() — a URL
+    // estourava o limite do PostgREST e TODA chamada voltava 400. O catch
+    // engolia o erro, o painel continuava de pé e as marcações de "veio de
+    // anúncio" simplesmente sumiam da tela, sem ninguém notar.
+    // A solução que funciona é outra: manter o mapa em memória por 60s. O painel
+    // pede a lista a cada 5s, então isso troca 12 varreduras por minuto por UMA
+    // — mesma resposta, sem depender do tamanho da URL. Ficar 1 minuto
+    // desatualizado num rótulo de origem de anúncio não tem consequência.
+    const AD_TTL_MS = 60000;
+    if (!cacheAdClicks.map || Date.now() - cacheAdClicks.ts > AD_TTL_MS) {
+      const { data: clicks, error } = await supabase.from("ad_clicks")
+        .select("conversation_id, source, booked").not("conversation_id", "is", null);
+      if (error) throw error;                        // mantém o mapa anterior
+      const m = {};
+      for (const c of (clicks || [])) { if (c.conversation_id) m[c.conversation_id] = c; }
+      cacheAdClicks = { ts: Date.now(), map: m };
+    }
+    const map = cacheAdClicks.map;
     for (const cv of convs) {
       const a = map[String(cv.id)];
       if (a) { cv.ad_source = a.source || "anúncio"; cv.ad_booked = !!a.booked; }
