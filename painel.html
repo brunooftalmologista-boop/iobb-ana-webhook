@@ -610,32 +610,11 @@ function isUnread(c){
 function saveRead(){ localStorage.setItem(LS.read, JSON.stringify(readState)); }
 
 // ---------- Lista de conversas ----------
-// EGRESS: antes isto pedia as 826 conversas a cada 5 segundos (~330 KB por
-// poll, ~1,8 GB por dia). Agora manda o updated_at mais recente que já temos e
-// recebe só o que mudou — a maioria dos polls volta com lista vazia.
-// A primeira carga (sem `since`) continua trazendo tudo, uma vez só.
-let ultimoUpdated = null;
 async function loadConversations(){
   try{
-    const url = ultimoUpdated
-      ? '/api/conversations?since=' + encodeURIComponent(ultimoUpdated)
-      : '/api/conversations';
-    const data = await api(url);
+    const data = await api('/api/conversations');
     el.conn.textContent = 'online';
-    const novas = Array.isArray(data)? data : [];
-    if(ultimoUpdated && !novas.length) return;      // nada mudou: nem redesenha
-    if(ultimoUpdated){
-      // mescla: substitui as que mudaram, mantém o resto, reordena
-      const porId = new Map(conversations.map(c => [c.id, c]));
-      for(const c of novas) porId.set(c.id, c);
-      conversations = [...porId.values()]
-        .sort((a,b) => String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
-    } else {
-      conversations = novas;
-    }
-    for(const c of novas){
-      if(c.updated_at && (!ultimoUpdated || c.updated_at > ultimoUpdated)) ultimoUpdated = c.updated_at;
-    }
+    conversations = Array.isArray(data)? data : [];
 
     // detectar novidades para notificação/contador
     for(const c of conversations){
@@ -654,6 +633,7 @@ async function loadConversations(){
       prevUpdated[c.id] = c.updated_at;
     }
     applyFilter();
+    loadAnaStatus();   // reflete o estado global da Ana (ligada/desligada) a cada ciclo
     if(activeId){
       activeConv = conversations.find(c=>c.id===activeId) || activeConv;
       updateChatHeader();
@@ -1740,11 +1720,7 @@ if('Notification' in window && Notification.permission==='default'){
   clearTokens(); showLogin();
 })();
 // intervalos só rodam quando autenticado
-setInterval(()=>{ if(AUTH) loadConversations(); }, 5000);          // lista + notificações (só o que mudou)
-// Estado da Ana em ciclo PRÓPRIO: antes vinha junto do loadConversations, e ao
-// passar a sair cedo quando nada mudou ele deixaria de ser atualizado — a
-// secretária não veria a Ana desligada. 30s basta e é 6x menos chamada.
-setInterval(()=>{ if(AUTH) loadAnaStatus(); }, 30000);
+setInterval(()=>{ if(AUTH) loadConversations(); }, 5000);          // lista + notificações
 setInterval(()=>{ if(AUTH && activeId) loadMessages(false); }, 3000); // chat aberto
 </script>
 </body>
