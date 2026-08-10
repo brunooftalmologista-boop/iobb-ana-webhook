@@ -4434,12 +4434,26 @@ async function requirePanelAuth(req, res, next) {
 app.use("/api", requirePanelAuth);
 
 // API para o painel web
+// EGRESS: este endpoint é chamado pelo painel a cada 5 segundos. Sem limite ele
+// devolvia as 826 conversas + a tabela ad_clicks INTEIRA (1.218 linhas) a cada
+// chamada — ~330 KB por poll, ~1,8 GB por dia de expediente com UM painel aberto.
+// Foi o que estourou a cota de 5,5 GB do Supabase (aviso de 08/08/2026).
+// Duas defesas: teto de linhas e, principalmente, `?since=` — o painel manda o
+// updated_at mais recente que já tem e recebe só o que mudou desde então, o que
+// faz a maioria dos polls voltar vazia.
 app.get("/api/conversations", async (req, res) => {
-  const { data } = await supabase.from("conversations").select(`*, patients(name, phone)`).order("updated_at", { ascending: false });
+  const limite = Math.min(Number(req.query.limit) || 200, 500);
+  let q = supabase.from("conversations").select(`*, patients(name, phone)`)
+    .order("updated_at", { ascending: false }).limit(limite);
+  if (req.query.since) q = q.gt("updated_at", String(req.query.since));
+  const { data } = await q;
   const convs = data || [];
-  // Anota quais conversas vieram de anúncio (clique vinculado) e se já agendaram
+  if (!convs.length) return res.json([]);      // nada mudou: resposta de 2 bytes
+  // Anota quais conversas vieram de anúncio (clique vinculado) e se já agendaram.
+  // Só das conversas devolvidas — antes lia a tabela toda a cada poll.
   try {
-    const { data: clicks } = await supabase.from("ad_clicks").select("conversation_id, source, booked").not("conversation_id", "is", null);
+    const ids = convs.map(c => String(c.id));
+    const { data: clicks } = await supabase.from("ad_clicks").select("conversation_id, source, booked").in("conversation_id", ids);
     const map = {};
     for (const c of (clicks || [])) { if (c.conversation_id) map[c.conversation_id] = c; }
     for (const cv of convs) {
