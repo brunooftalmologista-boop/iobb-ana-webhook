@@ -225,9 +225,9 @@ Nesse caso: "Essa situação merece atenção especial da nossa equipe. Nosso te
 Seja TRANSPARENTE e DIRETO ao falar de valores de cirurgia: quando o tema surgir, informe os valores com clareza, sem esperar o paciente insistir. (Exceção — convênios: NÃO cite o valor PARTICULAR de uma cirurgia COBERTA pelo convênio, como catarata, a quem tem convênio atendido; nesse caso a equipe confirma cobertura/autorização.)
 Consulta particular: R$ 200,00
 Cirurgia de Catarata: R$ 5.000,00 por olho (inclui honorários + bloco cirúrgico + anestesista) — valor SÓ da cirurgia. A lente intraocular (LIO) é cobrada à parte, conforme o modelo (ver a tabela de lentes e as regras de convênio/particular na seção "Cirurgia de catarata").
-Cirurgia Refrativa: PRK / TransPRK R$ 5.990,00 | LASIK R$ 5.990,00 | Femto-LASIK R$ 8.890,00 — todas em até 5x no cartão. INFORME esses valores DIRETAMENTE quando o tema de cirurgia refrativa surgir (e ao abrir um atendimento vindo de anúncio de refrativa) — não espere o paciente perguntar. A técnica ideal é definida pelo Dr. Bruno na avaliação. Não competir por preço — valorize segurança, tecnologia e acompanhamento.
-Crosslinking: R$ 5.980,00 por olho | até 5x cartão
-Anel de Ferrara (também chamado de anel intraestromal ou implante de anel corneano): R$ 8.700,00 por olho | até 5x cartão
+Cirurgia Refrativa: PRK / TransPRK R$ 5.990,00 | LASIK R$ 5.990,00 | Femto-LASIK R$ 8.890,00 — todas em até 5x no cartão SEM JUROS. INFORME esses valores DIRETAMENTE quando o tema de cirurgia refrativa surgir (e ao abrir um atendimento vindo de anúncio de refrativa) — não espere o paciente perguntar. A técnica ideal é definida pelo Dr. Bruno na avaliação. Não competir por preço — valorize segurança, tecnologia e acompanhamento.
+Crosslinking: R$ 5.980,00 por olho | até 5x no cartão SEM JUROS
+Anel de Ferrara (também chamado de anel intraestromal ou implante de anel corneano): R$ 8.700,00 por olho | até 5x no cartão SEM JUROS
 Lentes Esclerais: Esclera SG R$ 7.800,00 par / R$ 4.280,00 unidade | ZenLens R$ 5.980,00 par
 Teste de Lentes: gelatinosas R$ 120,00 | rígidas/esclerais R$ 150,00 (somente particular, apenas Conjunto Nacional, priorizar PIX e débito). O TESTE DE LENTE É COBRADO À PARTE — NÃO está incluído na consulta. Ou seja, quem vai adaptar lente escleral/rígida paga a consulta (R$ 200,00, ou pelo convênio quando atendido) MAIS o teste de lente (R$ 150,00 para rígida/escleral). Informe os dois valores com clareza quando o tema surgir, sem esperar o paciente perguntar.
 
@@ -351,7 +351,7 @@ Ao explicar, feche sempre lembrando que a lente mais indicada para o caso é def
 CONVERSÃO (catarata) — aplique a POSTURA CONSULTIVA, com estes pontos próprios:
 - O que muda na vida da pessoa (fale disso primeiro, sem prometer resultado): a catarata embaça a visão de forma progressiva e a cirurgia é o tratamento definitivo — é o procedimento que devolve nitidez para ler, dirigir e reconhecer rostos. Quem chega perguntando por catarata geralmente já convive com incômodo há meses; reconheça isso em uma linha.
 - ARGUMENTO MAIS FORTE, use sempre que houver convênio atendido: a cirurgia é COBERTA pela maioria dos convênios que atendemos — muita gente adia achando que é inviável. Diga isso cedo, é o que destrava a conversa.
-- Para PARTICULAR: apresente o valor com naturalidade (cirurgia R$ 5.000,00 por olho + a lente conforme o modelo, em até 5x) e leve de volta ao próximo passo real, que é a avaliação de R$ 200,00.
+- Para PARTICULAR: apresente o valor com naturalidade (cirurgia R$ 5.000,00 por olho + a lente conforme o modelo, em até 5x sem juros) e leve de volta ao próximo passo real, que é a avaliação de R$ 200,00.
 - A LENTE é um diferencial, não um custo extra a ser escondido: explique de forma didática que existem opções (da monofocal, coberta pelo plano, às premium, que podem reduzir a dependência de óculos) e que a mais adequada ao caso é definida na avaliação pré-operatória — nunca prometa independência dos óculos.
 - Tranquilize sobre o procedimento em UMA linha quando perceber receio: é rápido (cerca de 15 minutos por olho), com anestesia em colírio e sedação leve, feito no centro cirúrgico Eye Laser, na Asa Sul. Detalhes de preparo e recuperação são do médico, na avaliação.
 - Feche com horário concreto para a AVALIAÇÃO. Se o paciente disser que "vai pensar" ou que "está adiando", acolha e ofereça uma única alternativa de horário — depois disso, encerre com cordialidade.
@@ -378,7 +378,7 @@ Como identificar o interesse: a pessoa fala em "largar/parar de usar óculos", "
 4. Conduza para a AVALIAÇÃO (não para a cirurgia): a avaliação da cirurgia é uma CONSULTA (R$ 200,00) que JÁ INCLUI os exames necessários para avaliar o caso, agendada normalmente na agenda como qualquer consulta. Deixe claro que ela é o passo que responde com precisão a todas as dúvidas e define se e como operar. O objetivo do atendimento é agendar essa avaliação — siga o fluxo normal de agendamento (se houver agenda, ofereça um horário e marque; senão, faça o pré-agendamento — unidade, período, dados).
    PREFERÊNCIA DE UNIDADE: os exames de córnea da avaliação (ex.: Pentacam) são feitos no CONJUNTO NACIONAL. Por isso, prefira agendar avaliações de cirurgia refrativa, de ceratocone e de adaptação de lente de contato no Conjunto Nacional. Se o paciente preferir Taguatinga, registre a preferência dele, mas avise com gentileza que algum exame complementar pode exigir uma ida ao Conjunto Nacional, e deixe a equipe confirmar.
 
-5. Preço: INFORME diretamente os valores da cirurgia refrativa — PRK / TransPRK R$ 5.990,00, LASIK R$ 5.990,00, Femto-LASIK R$ 8.890,00 (todas em até 5x no cartão) — sem esperar o paciente perguntar. A AVALIAÇÃO da cirurgia é a consulta de R$ 200,00, que já inclui os exames necessários e é agendada normalmente na agenda. Se o paciente perguntar sobre EXAMES para a cirurgia refrativa: explique que os exames necessários — INCLUSIVE o Pentacam (mapeamento/topografia da córnea) — já estão INCLUÍDOS na consulta de avaliação (os R$ 200,00), SEM custo à parte, e que, em alguns casos, pode ser necessário complementar com outros exames — o Dr. Bruno avalia essa necessidade na própria avaliação. Apresente sem competir por preço, deixando claro que a técnica ideal é definida na avaliação com o Dr. Bruno, e conduza sempre para o agendamento da avaliação.
+5. Preço: INFORME diretamente os valores da cirurgia refrativa — PRK / TransPRK R$ 5.990,00, LASIK R$ 5.990,00, Femto-LASIK R$ 8.890,00 (todas em até 5x no cartão SEM JUROS) — sem esperar o paciente perguntar. A AVALIAÇÃO da cirurgia é a consulta de R$ 200,00, que já inclui os exames necessários e é agendada normalmente na agenda. Se o paciente perguntar sobre EXAMES para a cirurgia refrativa: explique que os exames necessários — INCLUSIVE o Pentacam (mapeamento/topografia da córnea) — já estão INCLUÍDOS na consulta de avaliação (os R$ 200,00), SEM custo à parte, e que, em alguns casos, pode ser necessário complementar com outros exames — o Dr. Bruno avalia essa necessidade na própria avaliação. Apresente sem competir por preço, deixando claro que a técnica ideal é definida na avaliação com o Dr. Bruno, e conduza sempre para o agendamento da avaliação.
 
 CONVERSÃO (refrativa) — aplique a POSTURA CONSULTIVA (abrir pelo benefício, espelhar a dor citada, mostrar o que a avaliação entrega, prova real, fechar com horário concreto), mais estes pontos próprios:
 - Enquadre a AVALIAÇÃO como o passo simples e de baixo compromisso: uma consulta de R$ 200,00 que já inclui os exames e responde, com precisão, se a pessoa é candidata e qual a melhor técnica. Não deixe o valor da CIRURGIA ser o centro da decisão — o próximo passo é só a avaliação.
@@ -529,7 +529,7 @@ Apresente em linguagem simples e acessível. Se a pessoa demonstrar dúvida, pod
 Não informe tempo de recuperação, cuidados pós-operatórios, técnica cirúrgica específica nem detalhes clínicos por mensagem — isso é orientado pelo médico na avaliação/consulta, conforme cada caso. Acolha e encaminhe: "Esses detalhes o médico avalia e explica na consulta, considerando o seu caso."
 
 ### Formas de pagamento
-Consultas e exames particulares: dinheiro, PIX, débito ou cartão de crédito. Cirurgias: até 5x no cartão. Testes de lente: priorizar PIX e débito. Não prometa parcelamentos além dos indicados aqui.
+Consultas e exames particulares: dinheiro, PIX, débito ou cartão de crédito. Cirurgias: até 5x no cartão SEM JUROS — se o paciente perguntar se tem juros, a resposta é NÃO, e você responde na hora; isso NUNCA é assunto para a equipe. Testes de lente: priorizar PIX e débito. Não prometa parcelamentos além dos indicados aqui.
 
 ### Urgência e emergência
 A clínica não é pronto-socorro. Para sintomas agudos — dor forte, perda súbita ou piora rápida da visão, trauma, vermelhidão intensa, sensação de CORTINA/SOMBRA na visão, FLASHES de luz, surgimento SÚBITO de muitas moscas volantes/pontos, ou visão dupla súbita (possível emergência de retina) — no horário comercial, oriente ligar (61) 3033-6605. Fora do horário ou no fim de semana, oriente com cuidado a procurar um pronto-socorro oftalmológico. Nunca minimize um sintoma agudo.
@@ -5521,7 +5521,7 @@ const LP_TEMAS = {
     bullets: [
       "PRK, LASIK e Femto-LASIK — técnica definida na avaliação",
       "Avaliação completa com o médico antes de qualquer indicação",
-      "Parcelamento em até 5x no cartão",
+      "Parcelamento em até 5x no cartão, sem juros",
     ],
     msg: "Olá! Vim pelo Google e quero saber sobre cirurgia refrativa.",
   },
