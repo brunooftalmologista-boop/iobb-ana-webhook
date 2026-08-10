@@ -4499,9 +4499,19 @@ app.use("/api", requirePanelAuth);
 app.get("/api/conversations", async (req, res) => {
   const { data } = await supabase.from("conversations").select(`*, patients(name, phone)`).order("updated_at", { ascending: false });
   const convs = data || [];
-  // Anota quais conversas vieram de anúncio (clique vinculado) e se já agendaram
+  // Anota quais conversas vieram de anúncio (clique vinculado) e se já agendaram.
+  // EGRESS: este endpoint é chamado pelo painel a cada 5 segundos, e a consulta
+  // abaixo varria a tabela ad_clicks INTEIRA (1.218 linhas) toda vez — sozinha,
+  // metade do tráfego que estourou a cota de 5,5 GB do Supabase em 08/08.
+  // Agora pede só os cliques DAS CONVERSAS que estão sendo devolvidas.
+  // A resposta ao painel é IDÊNTICA: mesmos campos, mesmas conversas, mesma
+  // ordem. Muda só como o servidor a monta. (A tentativa anterior mexia também
+  // no painel, com ?since= e teto de linhas, e derrubou a lista da equipe para
+  // uma conversa — revertida em a056217. Aqui não se toca em front-end.)
   try {
-    const { data: clicks } = await supabase.from("ad_clicks").select("conversation_id, source, booked").not("conversation_id", "is", null);
+    const ids = convs.map(c => String(c.id)).filter(Boolean);
+    if (!ids.length) return res.json(convs);        // nada a anotar
+    const { data: clicks } = await supabase.from("ad_clicks").select("conversation_id, source, booked").in("conversation_id", ids);
     const map = {};
     for (const c of (clicks || [])) { if (c.conversation_id) map[c.conversation_id] = c; }
     for (const cv of convs) {
