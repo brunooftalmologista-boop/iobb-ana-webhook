@@ -449,8 +449,9 @@ QUANDO A LISTA "### Horários REALMENTE disponíveis" ESTIVER no seu contexto:
    ⛔ FICHA COMPLETA — CONDIÇÃO ABSOLUTA PARA MARCAR (sem exceção, sem "depois a gente ajusta"): você só emite [AGENDAR] quando tiver, do paciente que vai ser atendido:
      (1) NOME COMPLETO (nome e sobrenome — só o primeiro nome NÃO serve);
      (2) DATA DE NASCIMENTO;
-     (3) PARTICULAR ou CONVÊNIO — e, sendo convênio, QUAL, conferido contra a LISTA DE CONVÊNIOS ATENDIDOS, mais o número da carteirinha (ou a foto dela).
-   Se faltar QUALQUER um desses, NÃO marque. Diga que está separando o horário e peça TUDO o que falta de uma vez, em UMA frase natural — nunca peça um dado, mande, e peça o resto na mensagem seguinte. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se será particular ou por convênio (se convênio, qual e o número da carteirinha)?"
+     (3) PARTICULAR ou CONVÊNIO — e, sendo convênio, QUAL, conferido contra a LISTA DE CONVÊNIOS ATENDIDOS.
+   ⚠️ ÚNICA EXIGÊNCIA EXTRA — UNIMED: para paciente de Unimed (qualquer variação) você precisa TAMBÉM do NÚMERO da carteirinha antes de marcar, porque a liberação junto à operadora depende dele. Nos DEMAIS convênios a carteirinha continua sendo pedida por cortesia ao concluir (ver abaixo), mas NUNCA é condição para marcar: saber qual é o plano basta, e a equipe confere a cobertura depois.
+   Se faltar QUALQUER um desses, NÃO marque. Diga que está separando o horário e peça TUDO o que falta de uma vez, em UMA frase natural — nunca peça um dado, mande, e peça o resto na mensagem seguinte. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se será particular ou por convênio (se for convênio, qual)?"
    Por que isso é inegociável: a ficha incompleta só aparece na recepção, com o paciente na frente — e aí ou ele é cobrado errado, ou descobre ali que o plano não é atendido, ou a consulta atrasa. Perguntar custa uma frase; não perguntar custa o paciente.
    Se o convênio citado NÃO estiver na lista de atendidos: diga com cordialidade que esse plano não é atendido e ofereça o atendimento particular (R$ 200,00). NUNCA marque "para confirmar depois".
    📋 NÃO REPITA A LISTA DE DADOS na sua mensagem de confirmação: o sistema anexa automaticamente, ao final dela, um resumo com nome, nascimento, forma de atendimento, data/hora e unidade para o paciente conferir. Sua mensagem continua sendo a de sempre (confirmação + endereço completo + aviso de lente de contato) — o resumo entra sozinho depois.
@@ -1373,15 +1374,18 @@ function convenioAtendido(nome) {
   const nc = n.replace(/ /g, "");
   return CONVENIOS_ATENDIDOS.some(a => n.includes(a) || a.includes(n) || nc.includes(a) || a.includes(nc));
 }
-// Carteirinha: aceita foto, número digitado ou o bloco [CARTEIRINHA] do turno.
-// Generoso pelo mesmo motivo — o fluxo da Unimed já morreu uma vez por pedir o
-// cartão e parar (ver a persona), então aqui a dúvida joga a favor de marcar.
-function carteirinhaConhecida(reply, messages) {
-  if (/\[CARTEIRINHA\]/i.test(reply)) return true;
+// Carteirinha só é EXIGIDA na Unimed (11/08, Dr. Bruno): nos demais convênios
+// basta saber qual é o plano — a equipe confere a cobertura depois, e exigir o
+// cartão para marcar é o que matou o fluxo da Unimed uma vez (ela pedia o cartão
+// e parava). Na Unimed a liberação junto à operadora depende do número, então
+// aqui ele é pré-requisito. Precisa ser NÚMERO mesmo: "por foto" não serve, é
+// justamente o caso em que ninguém sabe o número.
+function numeroCarteirinhaConhecido(reply, messages) {
+  const doBloco = reply.match(/\[CARTEIRINHA\][\s\S]*?numero\s*:\s*([^|\n\]]+)/i);
+  if (doBloco && /\d{4,}/.test(doBloco[1])) return true;
   for (const m of (messages || [])) {
     const c = String(m.content || "");
-    if (/\[imagem recebida\]|\[documento recebido\]/i.test(c)) return true;
-    if (/carteirinha|cart[ãa]o do (plano|conv[êe]nio)|matr[íi]cula/i.test(c) && /\d{5,}/.test(c)) return true;
+    if (/carteirinha|cart[ãa]o|matr[íi]cula|n[úu]mero/i.test(c) && /\d{5,}/.test(c)) return true;
   }
   return false;
 }
@@ -1400,15 +1404,15 @@ function fichaIncompleta(registros, reply, messages) {
     if (!conv) faltas.push(`se o atendimento ${quem} é PARTICULAR ou por CONVÊNIO (e, sendo convênio, qual)`);
     else if (!/^particular$/i.test(conv)) {
       if (!convenioAtendido(conv)) faltas.push(`a confirmação do convênio "${conv}" ${quem} — ele NÃO está na lista de convênios atendidos`);
-      else if (!carteirinhaConhecida(reply, messages)) faltas.push(`a carteirinha do convênio ${quem} (o número ou uma foto)`);
+      else if (/unimed/i.test(conv) && !numeroCarteirinhaConhecido(reply, messages)) faltas.push(`o NÚMERO da carteirinha da Unimed ${quem} (a Unimed precisa dele para a liberação; nos outros convênios não é preciso)`);
     }
   }
   return [...new Set(faltas)];
 }
 function instrucaoFichaCompleta(faltas) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ia marcar a consulta com a ficha INCOMPLETA. Falta: ${faltas.join("; ")}.
-REGRA ABSOLUTA, SEM EXCEÇÃO: você NUNCA marca uma consulta sem nome completo, data de nascimento e a forma de atendimento (particular, ou qual convênio com a carteirinha). Ficha incompleta vira problema no balcão: o paciente é cobrado errado, descobre ali que o plano não é atendido, ou a consulta atrasa.
-NÃO emita o bloco de agendamento agora. Reescreva a mensagem confirmando que o horário está separado para ele e pedindo, de uma vez só e em UMA frase natural, TUDO o que falta — não peça um dado, mande, e peça o resto depois. Deixe claro que é rapidinho e que assim que ele responder você confirma. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se o atendimento será particular ou por convênio (se for convênio, qual e o número da carteirinha)?"
+REGRA ABSOLUTA, SEM EXCEÇÃO: você NUNCA marca uma consulta sem nome completo, data de nascimento e a forma de atendimento (particular, ou QUAL convênio — e, só na Unimed, o número da carteirinha). Ficha incompleta vira problema no balcão: o paciente é cobrado errado, descobre ali que o plano não é atendido, ou a consulta atrasa.
+NÃO emita o bloco de agendamento agora. Reescreva a mensagem confirmando que o horário está separado para ele e pedindo, de uma vez só e em UMA frase natural, TUDO o que falta — não peça um dado, mande, e peça o resto depois. Deixe claro que é rápido e que assim que ele responder você confirma. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se o atendimento será particular ou por convênio (se for convênio, qual)?"
 ${faltas.some(f => /NÃO está na lista/.test(f)) ? `⚠️ Sobre o convênio que não está na lista: confira o nome INTEIRO contra a lista de convênios atendidos, sem encurtar nome composto. Se realmente não estiver, diga com cordialidade que esse plano não é atendido e ofereça o atendimento particular (R$ 200,00) — nunca marque assim mesmo.\n` : ""}🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 // Resumo dos dados anexado À MESMA mensagem de confirmação. É montado pelo
