@@ -1475,7 +1475,14 @@ ${faltas.some(f => /NÃO está na lista/.test(f)) ? `⚠️ Sobre o convênio qu
 }
 // Resumo dos dados anexado À MESMA mensagem de confirmação. É montado pelo
 // sistema a partir do que vai ser GRAVADO — não do que a Ana lembrou de repetir.
-function resumoDaFicha(registros, cartRegistro) {
+// UMA VEZ SÓ por agendamento: a Ana re-emite [AGENDAR] em mensagens seguintes
+// (ao corrigir um dado, ao se despedir), e a ficha ia junto toda vez. Aqui
+// pulamos o registro cujo dia/hora JÁ apareceu num resumo anterior desta
+// conversa. Remarcação muda a data, então gera resumo novo — que é o certo.
+function resumoDaFicha(registros, cartRegistro, messages) {
+  const jaResumido = (linhaData) => (messages || []).some(m =>
+    m.role === "assistant" && String(m.content || "").includes("Confira seus dados")
+    && String(m.content || "").includes(linhaData));
   const linhas = [];
   for (const r of (registros || [])) {
     const v = (x) => { const s = String(x || "").trim(); return (s && s !== "-") ? s : null; };
@@ -1487,6 +1494,7 @@ function resumoDaFicha(registros, cartRegistro) {
     const atendimento = !conv ? "—"
       : /^particular$/i.test(conv) ? "Particular"
       : `Convênio ${conv}${numCart ? ` — carteirinha ${numCart}` : ""}`;
+    if (quando && jaResumido(`📅 ${quando}`)) continue;   // já conferido nesta conversa
     linhas.push([
       `👤 ${v(r.nome) || "—"}`,
       `🎂 Nascimento: ${v(r.nascimento) || "—"}`,
@@ -4500,7 +4508,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // ou um convênio antes de a ficha chegar à recepção.
     if (ag.registros.length) {
       try {
-        const resumo = resumoDaFicha(ag.registros, cart.registro);
+        const resumo = resumoDaFicha(ag.registros, cart.registro, messages);
         if (resumo) reply += resumo;
       } catch (e) { console.error("[Ficha] Resumo falhou (mensagem segue sem ele):", e.message); }
     }
