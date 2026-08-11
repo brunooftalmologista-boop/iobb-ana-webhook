@@ -446,6 +446,14 @@ QUANDO A LISTA "### Horários REALMENTE disponíveis" ESTIVER no seu contexto:
 4. Quando o paciente CONFIRMAR (disse "pode", "sim", "isso", "fechado" etc.), dê a mensagem de confirmação — ex.: "Agendado para quinta, 24/07, às 14h20, no Conjunto Nacional. Caso surja algum imprevisto, por favor nos avise." — e anexe o bloco técnico [AGENDAR] (ver abaixo). É o bloco que grava o horário; sem ele, NADA é marcado.
    AO CONFIRMAR, inclua SEMPRE (na própria mensagem de confirmação) o ENDEREÇO COMPLETO da unidade do agendamento — copie da seção "ENDEREÇOS COMPLETOS" (ex.: "Shopping Conjunto Nacional — SDN Conjunto A, Sala 6017 (Torre Verde), 6º andar · Asa Norte"). Nunca confirme um agendamento só com o nome da unidade.
    AO CONFIRMAR, inclua SEMPRE (na própria mensagem de confirmação) o aviso sobre lente de contato, de forma condicional: "Se você usa lente de contato, suspenda o uso antes da consulta: 24 horas antes se for gelatinosa, ou 48 horas antes se for rígida/escleral." (não precisa perguntar se ele usa — só deixe o aviso registrado).
+   ⛔ FICHA COMPLETA — CONDIÇÃO ABSOLUTA PARA MARCAR (sem exceção, sem "depois a gente ajusta"): você só emite [AGENDAR] quando tiver, do paciente que vai ser atendido:
+     (1) NOME COMPLETO (nome e sobrenome — só o primeiro nome NÃO serve);
+     (2) DATA DE NASCIMENTO;
+     (3) PARTICULAR ou CONVÊNIO — e, sendo convênio, QUAL, conferido contra a LISTA DE CONVÊNIOS ATENDIDOS, mais o número da carteirinha (ou a foto dela).
+   Se faltar QUALQUER um desses, NÃO marque. Diga que está separando o horário e peça TUDO o que falta de uma vez, em UMA frase natural — nunca peça um dado, mande, e peça o resto na mensagem seguinte. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se será particular ou por convênio (se convênio, qual e o número da carteirinha)?"
+   Por que isso é inegociável: a ficha incompleta só aparece na recepção, com o paciente na frente — e aí ou ele é cobrado errado, ou descobre ali que o plano não é atendido, ou a consulta atrasa. Perguntar custa uma frase; não perguntar custa o paciente.
+   Se o convênio citado NÃO estiver na lista de atendidos: diga com cordialidade que esse plano não é atendido e ofereça o atendimento particular (R$ 200,00). NUNCA marque "para confirmar depois".
+   📋 NÃO REPITA A LISTA DE DADOS na sua mensagem de confirmação: o sistema anexa automaticamente, ao final dela, um resumo com nome, nascimento, forma de atendimento, data/hora e unidade para o paciente conferir. Sua mensagem continua sendo a de sempre (confirmação + endereço completo + aviso de lente de contato) — o resumo entra sozinho depois.
    CARTEIRINHA (apenas para paciente de CONVÊNIO, não particular): ao concluir o agendamento, PEÇA de forma cordial a carteirinha do convênio — a FOTO dela OU o NÚMERO — para anexar ao agendamento. Ex.: "Para deixar tudo certo com o seu convênio, poderia me enviar uma foto da sua carteirinha ou o número dela? Assim já anexo ao seu agendamento." Se o paciente JÁ tiver enviado a carteirinha (ou o número) antes nesta conversa, NÃO peça de novo — apenas agradeça/confirme que está anexada. Nunca peça carteirinha a paciente particular.
 5. ENCAIXE, HORÁRIO MAIS CEDO ou ERRO (TRAVA DE SEGURANÇA): se o paciente pedir um ENCAIXE, ou um horário ANTERIOR/mais cedo do que os que estão na lista (ex.: quer amanhã e a lista só tem daqui a alguns dias), ou se por QUALQUER motivo você não conseguir oferecer/encontrar um horário, NÃO invente, NÃO force e NÃO marque um horário fora da lista. Explique com gentileza que vai registrar o pedido e que a nossa equipe de agendamento entrará em contato o mais breve possível (segunda a sexta, das 8h às 18h), e emita o bloco [PREAGENDAMENTO].
 
@@ -458,6 +466,7 @@ Assim que o paciente CONFIRMAR um horário da lista, anexe ao FINAL da sua mensa
 inicio: <copie o valor EXATO do [inicio:...] daquele horário na lista> | unidade: <Conjunto Nacional ou Taguatinga> | nome: <nome completo> | telefone: <telefone informado ou "-"> | nascimento: <data de nascimento informada, ou "-"> | convenio: <convênio ou "particular"> | motivo: <Consulta por padrão; Retorno ou "Avaliação de cirurgia" só se o paciente deixar claro>
 [/AGENDAR]
 Regras do bloco:
+- ⛔ NENHUM campo pode sair como "-" em nome, nascimento ou convenio. Se você não tem o dado, você NÃO emite o bloco — pergunta primeiro. "convenio: -" já colocou 5 pacientes na agenda sem ninguém saber se eram particular ou de plano.
 - O campo "inicio" TEM que ser copiado ao pé da letra do token [inicio:...] do horário escolhido — é o que garante que você marque o horário certo. Nunca reescreva a data/hora à mão.
 - Emita [AGENDAR] SOMENTE no exato momento em que o paciente ACABOU de confirmar um horário que você ofereceu. NÃO reemita o bloco em mensagens seguintes (ex.: ao responder "não uso lente", uma dúvida, um agradecimento) — se você já confirmou o horário antes, a marcação já foi feita; apenas converse, SEM anexar [AGENDAR] de novo. Só emita [AGENDAR] outra vez se o paciente pedir para MUDAR o horário e confirmar um NOVO (aí sim, com o novo [inicio:]). Não emita [AGENDAR] e [PREAGENDAMENTO] na mesma mensagem — use [AGENDAR] quando marcou um horário real; use [PREAGENDAMENTO] quando NÃO havia agenda/horário.
 - DEPOIS de confirmar um horário, NÃO repita a data/hora do agendamento nas mensagens seguintes — você pode ERRAR o horário ao repetir (dizer 11h40 quando marcou 11h20). Se precisar se referir ao agendamento, diga apenas "seu agendamento já está confirmado", SEM repetir data/hora. Em especial: se o paciente enviar a carteirinha DEPOIS de você já ter confirmado o horário, apenas agradeça e diga que está tudo certo com o agendamento — NÃO repita a data/hora nem reemita [AGENDAR].
@@ -1330,6 +1339,104 @@ function instrucaoPerguntarConvenio() {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ia marcar a consulta sem em nenhum momento perguntar se o atendimento é PARTICULAR ou por CONVÊNIO. A recepção só descobre com o paciente na frente, e aí ou ele é cobrado errado ou a consulta atrasa. NÃO emita o bloco de agendamento agora. Reescreva confirmando o horário combinado e perguntando, em UMA frase curta e natural, se será particular ou por convênio — e, sendo convênio, qual. Ex.: "Perfeito, então fica quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Só me confirma: o atendimento será particular ou por convênio?" Assim que ele responder, aí sim você marca.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
+// ===== TRAVA DURA: FICHA INCOMPLETA =======================================
+// 11/08/2026, ordem do Dr. Bruno, sem exceção: a Ana NÃO marca consulta sem
+// nome completo, data de nascimento e forma de atendimento (particular OU qual
+// convênio — e um que a clínica atenda, com a carteirinha).
+// Até aqui o [AGENDAR] saía com "convenio: -" e a recepção só descobria com o
+// paciente na frente: 5 casos em 4 dias (Iolanda, Domingos, Sônia e mais um).
+// Marcar na observação avisava a equipe e não resolvia nada — agora BLOQUEIA.
+const _normFicha = (s) => String(s || "").toLowerCase().normalize("NFD")
+  .replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+// A lista vem do próprio prompt: uma fonte só, sem cópia para desatualizar.
+const CONVENIOS_ATENDIDOS = (() => {
+  const m = SYSTEM_PROMPT.match(/LISTA DE CONV[ÊE]NIOS ATENDIDOS:\s*\n(.+)/i);
+  if (!m) { console.error("[Ficha] Lista de convênios não encontrada no prompt — validação de convênio DESLIGADA."); return []; }
+  const alt = [];
+  for (const entrada of m[1].split(",")) {
+    // "CASEC (CODEVASF)" e "E-VIDA (hoje LUMINAR SAÚDE)" valem pelos dois nomes.
+    for (const pedaco of entrada.split(/[()\/]/)) {
+      const n = _normFicha(pedaco).replace(/^hoje /, "").trim();
+      if (n.length >= 3) { alt.push(n); alt.push(n.replace(/ /g, "")); }  // "t r e" e "tre"
+    }
+  }
+  return [...new Set(alt)];
+})();
+const CONVENIOS_NAO_ATENDIDOS = ["quality", "quallity", "qualyty"];
+// Casar é DE PROPÓSITO generoso (substring nos dois sentidos): um falso positivo
+// deixa passar um agendamento; um falso negativo trava um agendamento legítimo.
+function convenioAtendido(nome) {
+  const n = _normFicha(nome);
+  if (!n) return false;
+  if (CONVENIOS_NAO_ATENDIDOS.some(x => n.includes(x))) return false;
+  if (!CONVENIOS_ATENDIDOS.length) return true;               // lista não carregou: não trava
+  const nc = n.replace(/ /g, "");
+  return CONVENIOS_ATENDIDOS.some(a => n.includes(a) || a.includes(n) || nc.includes(a) || a.includes(nc));
+}
+// Carteirinha: aceita foto, número digitado ou o bloco [CARTEIRINHA] do turno.
+// Generoso pelo mesmo motivo — o fluxo da Unimed já morreu uma vez por pedir o
+// cartão e parar (ver a persona), então aqui a dúvida joga a favor de marcar.
+function carteirinhaConhecida(reply, messages) {
+  if (/\[CARTEIRINHA\]/i.test(reply)) return true;
+  for (const m of (messages || [])) {
+    const c = String(m.content || "");
+    if (/\[imagem recebida\]|\[documento recebido\]/i.test(c)) return true;
+    if (/carteirinha|cart[ãa]o do (plano|conv[êe]nio)|matr[íi]cula/i.test(c) && /\d{5,}/.test(c)) return true;
+  }
+  return false;
+}
+// Devolve a lista do que falta (vazia = ficha completa). Uma frase por buraco,
+// já no jeito que a instrução de correção vai usar.
+function fichaIncompleta(registros, reply, messages) {
+  const faltas = [];
+  for (const r of (registros || [])) {
+    const v = (x) => { const s = String(x || "").trim(); return (s && s !== "-") ? s : null; };
+    const quem = v(r.nome) ? `de ${v(r.nome)}` : "do paciente";
+    const nome = v(r.nome);
+    if (!nome) faltas.push("o nome completo do paciente");
+    else if (nome.split(/\s+/).filter(p => p.length > 1).length < 2) faltas.push(`o SOBRENOME ${quem} (você só tem o primeiro nome)`);
+    if (!v(r.nascimento)) faltas.push(`a data de nascimento ${quem}`);
+    const conv = v(r.convenio);
+    if (!conv) faltas.push(`se o atendimento ${quem} é PARTICULAR ou por CONVÊNIO (e, sendo convênio, qual)`);
+    else if (!/^particular$/i.test(conv)) {
+      if (!convenioAtendido(conv)) faltas.push(`a confirmação do convênio "${conv}" ${quem} — ele NÃO está na lista de convênios atendidos`);
+      else if (!carteirinhaConhecida(reply, messages)) faltas.push(`a carteirinha do convênio ${quem} (o número ou uma foto)`);
+    }
+  }
+  return [...new Set(faltas)];
+}
+function instrucaoFichaCompleta(faltas) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ia marcar a consulta com a ficha INCOMPLETA. Falta: ${faltas.join("; ")}.
+REGRA ABSOLUTA, SEM EXCEÇÃO: você NUNCA marca uma consulta sem nome completo, data de nascimento e a forma de atendimento (particular, ou qual convênio com a carteirinha). Ficha incompleta vira problema no balcão: o paciente é cobrado errado, descobre ali que o plano não é atendido, ou a consulta atrasa.
+NÃO emita o bloco de agendamento agora. Reescreva a mensagem confirmando que o horário está separado para ele e pedindo, de uma vez só e em UMA frase natural, TUDO o que falta — não peça um dado, mande, e peça o resto depois. Deixe claro que é rapidinho e que assim que ele responder você confirma. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se o atendimento será particular ou por convênio (se for convênio, qual e o número da carteirinha)?"
+${faltas.some(f => /NÃO está na lista/.test(f)) ? `⚠️ Sobre o convênio que não está na lista: confira o nome INTEIRO contra a lista de convênios atendidos, sem encurtar nome composto. Se realmente não estiver, diga com cordialidade que esse plano não é atendido e ofereça o atendimento particular (R$ 200,00) — nunca marque assim mesmo.\n` : ""}🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+// Resumo dos dados anexado À MESMA mensagem de confirmação. É montado pelo
+// sistema a partir do que vai ser GRAVADO — não do que a Ana lembrou de repetir.
+function resumoDaFicha(registros, cartRegistro) {
+  const linhas = [];
+  for (const r of (registros || [])) {
+    const v = (x) => { const s = String(x || "").trim(); return (s && s !== "-") ? s : null; };
+    const ini = new Date(v(r.inicio));
+    const quando = isNaN(ini.getTime()) ? null
+      : `${ini.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit" })}, às ${fmtHoraBR(ini.toISOString()).replace(":", "h")}`;
+    const conv = v(r.convenio);
+    const numCart = v(cartRegistro?.numero);
+    const atendimento = !conv ? "—"
+      : /^particular$/i.test(conv) ? "Particular"
+      : `Convênio ${conv}${numCart ? ` — carteirinha ${numCart}` : ""}`;
+    linhas.push([
+      `👤 ${v(r.nome) || "—"}`,
+      `🎂 Nascimento: ${v(r.nascimento) || "—"}`,
+      `💳 ${atendimento}`,
+      `📅 ${quando || "—"}`,
+      `📍 ${unidadeParaPaciente(v(r.unidade)) || "—"}`,
+    ].join("\n"));
+  }
+  if (!linhas.length) return "";
+  return `\n\n*Confira seus dados, por favor:*\n${linhas.join("\n\n")}\n\nSe algo estiver incorreto, é só me avisar.`;
+}
+
 function instrucaoPrecoComHorario() {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você informou um valor e NÃO ofereceu um horário concreto. Valor sem próximo passo é um beco — o paciente fica com o número na cabeça e nada para responder, e some. Reescreva a MESMA mensagem, com o mesmo conteúdo e o mesmo tom, terminando com UM horário específico da lista, com dia e hora, que ele só precise aceitar (ex.: "Consigo *quinta-feira, 13/08, às 10h20*, no Taguatinga Shopping — reservo para você?"). NÃO termine com "gostaria de agendar?", "posso ajudar em mais alguma coisa?" nem qualquer convite vago: isso devolve o trabalho para o paciente. Um horário só.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
@@ -4184,24 +4291,17 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const contradicao = contradizHojeAmanha(reply, slotsVigentes);
       const virouVerbete = RE_VERBETE.test(reply);
       const precoSeco = precoSemHorario(reply, slotsVigentes);
-      // AGENDOU SEM SABER SE É PARTICULAR OU CONVÊNIO. 5 casos em 4 dias desde
-      // que passei a registrar (07-11/08): Iolanda, Domingos, Sônia e mais um
-      // sem nome. A secretária só descobre no balcão, com o paciente na frente.
-      // Marcar na observação (que já fazemos) avisa a equipe, mas não resolve —
-      // agora ela PERGUNTA antes de fechar.
-      // Só dispara quando a conversa inteira nunca tocou no assunto: se o
-      // paciente já disse "particular" ou citou um plano e ela só esqueceu de
-      // preencher o campo, deixamos passar (a observação cobre) para não
-      // perguntar duas vezes a mesma coisa.
+      // FICHA INCOMPLETA. 5 casos em 4 dias desde que passei a registrar
+      // (07-11/08): Iolanda, Domingos, Sônia e mais um sem nome — todos gravados
+      // sem particular/convênio. A secretária só descobria no balcão, com o
+      // paciente na frente. Agora nenhum [AGENDAR] sai sem nome completo,
+      // nascimento e forma de atendimento.
+      let faltasFicha = [];
       let semFormaPagamento = null;
       try {
-        const agPrevia = extrairAgendar(reply);
-        if (agPrevia.registros.some(r => !String(r.convenio || "").trim())) {
-          const conversa = ((messages || []).map(m => String(m.content || "")).join(" ") + " " + reply).toLowerCase();
-          const falouDoAssunto = /particular|conv[êe]nio|plano de sa[uú]de|carteirinha|unimed|reembolso/.test(conversa);
-          if (!falouDoAssunto) semFormaPagamento = "vai agendar sem saber se é particular ou convênio";
-        }
-      } catch (_) { /* checagem nunca impede o atendimento */ }
+        faltasFicha = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
+        if (faltasFicha.length) semFormaPagamento = `ficha incompleta: falta ${faltasFicha.join("; ")}`;
+      } catch (e) { console.error("[Ficha] Checagem falhou (segue sem travar):", e.message); }
       const maisCedo = existeVagaMaisCedo(reply, slotsVigentes, text);
       if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento) {
         const motivo = contradicao || maisCedo || semFormaPagamento || precoSeco
@@ -4210,7 +4310,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
           contradicao ? "hoje_amanha_contradiz" : maisCedo ? "vaga_mais_cedo_ignorada"
-            : semFormaPagamento ? "agendou_sem_perguntar_convenio" : precoSeco ? "preco_sem_horario"
+            : semFormaPagamento ? "agendou_com_ficha_incompleta" : precoSeco ? "preco_sem_horario"
             : virouVerbete ? "virou_verbete" : vazouInstrucao ? "vazou_instrucao_refeito" : "varios_horarios_refeito",
           `${motivo} | ${reply.slice(0, 250)}`,
           { conversationId: conversation.id, telefone: from });
@@ -4221,7 +4321,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             { type: "text", text: dynamicPrompt + (contradicao ? instrucaoDataReal(contradicao)
               : maisCedo ? instrucaoMaisCedo(maisCedo)
               : virouVerbete ? instrucaoSemVerbete()
-              : semFormaPagamento ? instrucaoPerguntarConvenio()
+              : semFormaPagamento ? instrucaoFichaCompleta(faltasFicha)
               : precoSeco ? instrucaoPrecoComHorario()
               : instrucaoUmHorario(horas)) },
           ],
@@ -4232,6 +4332,35 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           const horas2 = horariosOferecidos(novo);
           console.log(`[HorarioTrava] Reescrita veio com ${horas2.length} horário(s).`);
           reply = novo;
+          // A ficha é a única trava que insiste: se a reescrita AINDA vier com o
+          // [AGENDAR] incompleto, pedimos mais uma vez. Uma tentativa só deixava
+          // a garantia por conta da boa vontade do modelo, e é justamente isso
+          // que falhou 5 vezes. Se nem assim, a mensagem segue (o paciente não
+          // pode ficar sem resposta) — mas a ficha vai marcada e a equipe avisada.
+          try {
+            const aindaFalta = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
+            if (aindaFalta.length) {
+              console.warn(`[Ficha] Reescrita AINDA incompleta (${aindaFalta.join("; ")}) — insistindo.`);
+              const r3 = await anthropicMessages({
+                model: ANA_MODEL, max_tokens: 1000,
+                system: [
+                  { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+                  { type: "text", text: dynamicPrompt + instrucaoFichaCompleta(aindaFalta) },
+                ],
+                messages: apiMessages,
+              });
+              const novo3 = r3.data?.content?.[0]?.text;
+              if (novo3 && novo3.trim()) reply = novo3;
+              const resta = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
+              if (resta.length) {
+                console.error(`[Ficha] ⚠️ Passou incompleta mesmo após 2 tentativas: ${resta.join("; ")}`);
+                await registrarErro("ficha_incompleta_persistiu", resta.join("; ").slice(0, 400),
+                  { conversationId: conversation.id, telefone: from }).catch(() => {});
+                await marcarPendenciaEquipe(conversation.id, "action").catch(() => {});
+                await notificarClinica(`⚠️ *Agendamento com ficha INCOMPLETA*\nPaciente: ${patient?.name || from}\nFalta: ${resta.join("; ")}\nA Ana insistiu duas vezes e não obteve. Confirmar com o paciente antes da consulta.`).catch(() => {});
+              }
+            }
+          } catch (e) { console.error("[Ficha] Segunda checagem falhou:", e.message); }
         }
       }
     } catch (e) { console.error("[HorarioTrava] falhou (segue a resposta original):", e.message); }
@@ -4299,6 +4428,17 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         reply = rev.texto;
       }
     } catch (e) { console.error("[DataTrava] falhou (mensagem segue original):", e.message); }
+
+    // CONFERÊNCIA DOS DADOS na própria mensagem de confirmação (11/08). Montada
+    // pelo SISTEMA a partir do que vai ser gravado — não do que a Ana lembrou de
+    // repetir. É a última chance de o paciente corrigir um nome, um nascimento
+    // ou um convênio antes de a ficha chegar à recepção.
+    if (ag.registros.length) {
+      try {
+        const resumo = resumoDaFicha(ag.registros, cart.registro);
+        if (resumo) reply += resumo;
+      } catch (e) { console.error("[Ficha] Resumo falhou (mensagem segue sem ele):", e.message); }
+    }
 
     // Salvar resposta (já sem o bloco técnico)
     await saveMessage(conversation.id, "assistant", reply);
