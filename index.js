@@ -1129,6 +1129,46 @@ function corrigirUnidadeDaData(texto, slots) {
   return { texto: out, correcoes };
 }
 
+// ===== TRAVA: horário de uma unidade oferecido como se fosse da outra =======
+// 11/08, avaliação de lente escleral: "A adaptação é feita no **Conjunto
+// Nacional** (Asa Norte). Tenho disponível ainda **hoje, terça-feira, 11/08, às
+// 12h20** nessa unidade". Terça é Taguatinga — o Conjunto está FECHADO. A vaga
+// das 12h20 existe, mas em Águas Claras. Ela repetiu o erro na mensagem seguinte.
+// A trava corrigirUnidadeDaData() não pega isto: ela exige a DATA antes do nome
+// da unidade, na mesma frase. Aqui a unidade veio antes, em outra frase, e o
+// horário se referia a ela por PRONOME ("nessa unidade").
+// Esta aqui não depende de proximidade nenhuma: pega os horários oferecidos e as
+// datas citadas e pergunta à AGENDA de quem é aquela vaga. Se a mensagem cita uma
+// única unidade e a vaga é da outra, a resposta é refeita (não reescrita: trocar
+// o nome da unidade mandaria o paciente fazer escleral onde não se faz escleral).
+function unidadeContradizOferta(texto, slots) {
+  if (!texto || !Array.isArray(slots) || !slots.length) return null;
+  const dizTag = /taguatinga|[áa]guas claras/i.test(texto);
+  const dizConj = /conjunto\s*(nacional)?|asa norte/i.test(texto);
+  if (dizTag === dizConj) return null;              // as duas ou nenhuma: ambíguo, não opina
+  const horas = horariosOferecidos(texto);
+  if (!horas.length) return null;
+  const comoData = (d) => d.toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
+  const datas = new Set();
+  for (const m of texto.matchAll(/\b(\d{2})\/(\d{2})(?!\/?\d)\b/g)) datas.add(`${m[1]}/${m[2]}`);
+  if (/\bhoje\b/i.test(texto)) datas.add(comoData(new Date()));
+  if (/\bamanh[ãa]/i.test(texto)) datas.add(comoData(new Date(Date.now() + 86400000)));
+  if (!datas.size) return null;
+  for (const hora of horas) {
+    const naData = slots.filter(s => datas.has(comoData(s.start)) && s.hora === hora);
+    if (!naData.length) continue;                                    // não é vaga: não opina
+    if (naData.some(s => /taguatinga/i.test(s.unidade) === dizTag)) continue;   // existe na unidade citada
+    return `ofereceu ${hora.replace(":", "h")} como sendo do ${dizTag ? "Taguatinga Shopping" : "Conjunto Nacional"}, mas nesse dia essa vaga é do ${naData[0].unidade} — a unidade citada nem abre nesse dia`;
+  }
+  return null;
+}
+function instrucaoUnidadeDoDia(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. O paciente iria à unidade errada e encontraria a porta fechada.
+CADA DIA PERTENCE A UMA ÚNICA UNIDADE: segunda, quarta e sexta são no Conjunto Nacional (Asa Norte); terça e quinta são no Taguatinga Shopping (Águas Claras). Não existe horário do Conjunto numa terça, nem do Taguatinga numa sexta.
+Reescreva a mensagem escolhendo, DA LISTA, um horário que seja de VERDADE da unidade que você citou — confira na própria linha da lista, que diz a unidade de cada vaga. Se a unidade citada é obrigatória (o procedimento só é feito nela) e não tem vaga hoje, ofereça o primeiro dia DELA que aparece na lista, dizendo o dia da semana e a data. NUNCA ofereça a vaga de uma unidade dizendo "nessa unidade" quando a unidade que você nomeou é outra.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
 // ===== TRAVA: exame que só existe no Conjunto Nacional ======================
 // Pentacam e retinografia NÃO são feitos no Taguatinga. A regra está no prompt,
 // e mesmo assim a Ana disse a um paciente que "a retinografia ficaria na unidade
@@ -4307,13 +4347,15 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         if (faltasFicha.length) semFormaPagamento = `ficha incompleta: falta ${faltasFicha.join("; ")}`;
       } catch (e) { console.error("[Ficha] Checagem falhou (segue sem travar):", e.message); }
       const maisCedo = existeVagaMaisCedo(reply, slotsVigentes, text);
-      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento) {
-        const motivo = contradicao || maisCedo || semFormaPagamento || precoSeco
+      const unidadeErrada = unidadeContradizOferta(reply, slotsVigentes);
+      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada) {
+        const motivo = unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          contradicao ? "hoje_amanha_contradiz" : maisCedo ? "vaga_mais_cedo_ignorada"
+          unidadeErrada ? "unidade_dia_contradiz"
+            : contradicao ? "hoje_amanha_contradiz" : maisCedo ? "vaga_mais_cedo_ignorada"
             : semFormaPagamento ? "agendou_com_ficha_incompleta" : precoSeco ? "preco_sem_horario"
             : virouVerbete ? "virou_verbete" : vazouInstrucao ? "vazou_instrucao_refeito" : "varios_horarios_refeito",
           `${motivo} | ${reply.slice(0, 250)}`,
@@ -4322,7 +4364,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           model: ANA_MODEL, max_tokens: 1000,
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-            { type: "text", text: dynamicPrompt + (contradicao ? instrucaoDataReal(contradicao)
+            { type: "text", text: dynamicPrompt + (unidadeErrada ? instrucaoUnidadeDoDia(unidadeErrada)
+              : contradicao ? instrucaoDataReal(contradicao)
               : maisCedo ? instrucaoMaisCedo(maisCedo)
               : virouVerbete ? instrucaoSemVerbete()
               : semFormaPagamento ? instrucaoFichaCompleta(faltasFicha)
