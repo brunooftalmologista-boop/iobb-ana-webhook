@@ -1326,6 +1326,10 @@ function precoSemHorario(reply, slots) {
   if (/\d{1,2}\s*[h:]\s*\d{2}/.test(reply)) return null;        // já tem horário concreto
   return "preço informado sem oferecer horário concreto";
 }
+function instrucaoPerguntarConvenio() {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ia marcar a consulta sem em nenhum momento perguntar se o atendimento é PARTICULAR ou por CONVÊNIO. A recepção só descobre com o paciente na frente, e aí ou ele é cobrado errado ou a consulta atrasa. NÃO emita o bloco de agendamento agora. Reescreva confirmando o horário combinado e perguntando, em UMA frase curta e natural, se será particular ou por convênio — e, sendo convênio, qual. Ex.: "Perfeito, então fica quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Só me confirma: o atendimento será particular ou por convênio?" Assim que ele responder, aí sim você marca.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
 function instrucaoPrecoComHorario() {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você informou um valor e NÃO ofereceu um horário concreto. Valor sem próximo passo é um beco — o paciente fica com o número na cabeça e nada para responder, e some. Reescreva a MESMA mensagem, com o mesmo conteúdo e o mesmo tom, terminando com UM horário específico da lista, com dia e hora, que ele só precise aceitar (ex.: "Consigo *quinta-feira, 13/08, às 10h20*, no Taguatinga Shopping — reservo para você?"). NÃO termine com "gostaria de agendar?", "posso ajudar em mais alguma coisa?" nem qualquer convite vago: isso devolve o trabalho para o paciente. Um horário só.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
@@ -4180,14 +4184,33 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const contradicao = contradizHojeAmanha(reply, slotsVigentes);
       const virouVerbete = RE_VERBETE.test(reply);
       const precoSeco = precoSemHorario(reply, slotsVigentes);
+      // AGENDOU SEM SABER SE É PARTICULAR OU CONVÊNIO. 5 casos em 4 dias desde
+      // que passei a registrar (07-11/08): Iolanda, Domingos, Sônia e mais um
+      // sem nome. A secretária só descobre no balcão, com o paciente na frente.
+      // Marcar na observação (que já fazemos) avisa a equipe, mas não resolve —
+      // agora ela PERGUNTA antes de fechar.
+      // Só dispara quando a conversa inteira nunca tocou no assunto: se o
+      // paciente já disse "particular" ou citou um plano e ela só esqueceu de
+      // preencher o campo, deixamos passar (a observação cobre) para não
+      // perguntar duas vezes a mesma coisa.
+      let semFormaPagamento = null;
+      try {
+        const agPrevia = extrairAgendar(reply);
+        if (agPrevia.registros.some(r => !String(r.convenio || "").trim())) {
+          const conversa = ((messages || []).map(m => String(m.content || "")).join(" ") + " " + reply).toLowerCase();
+          const falouDoAssunto = /particular|conv[êe]nio|plano de sa[uú]de|carteirinha|unimed|reembolso/.test(conversa);
+          if (!falouDoAssunto) semFormaPagamento = "vai agendar sem saber se é particular ou convênio";
+        }
+      } catch (_) { /* checagem nunca impede o atendimento */ }
       const maisCedo = existeVagaMaisCedo(reply, slotsVigentes, text);
-      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo) {
-        const motivo = contradicao || maisCedo || precoSeco
+      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento) {
+        const motivo = contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          contradicao ? "hoje_amanha_contradiz" : maisCedo ? "vaga_mais_cedo_ignorada" : precoSeco ? "preco_sem_horario"
+          contradicao ? "hoje_amanha_contradiz" : maisCedo ? "vaga_mais_cedo_ignorada"
+            : semFormaPagamento ? "agendou_sem_perguntar_convenio" : precoSeco ? "preco_sem_horario"
             : virouVerbete ? "virou_verbete" : vazouInstrucao ? "vazou_instrucao_refeito" : "varios_horarios_refeito",
           `${motivo} | ${reply.slice(0, 250)}`,
           { conversationId: conversation.id, telefone: from });
@@ -4198,6 +4221,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             { type: "text", text: dynamicPrompt + (contradicao ? instrucaoDataReal(contradicao)
               : maisCedo ? instrucaoMaisCedo(maisCedo)
               : virouVerbete ? instrucaoSemVerbete()
+              : semFormaPagamento ? instrucaoPerguntarConvenio()
               : precoSeco ? instrucaoPrecoComHorario()
               : instrucaoUmHorario(horas)) },
           ],
