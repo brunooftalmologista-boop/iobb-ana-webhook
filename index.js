@@ -2326,13 +2326,35 @@ async function processarCancelarDaAna({ registro, from, conversationId }) {
 // de processar (assíncrono), então o backoff não afeta a entrega do webhook.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ANTHROPIC_RETRY_STATUS = new Set([429, 500, 502, 503, 504, 529]);
+// ===== TTL DO CACHE DO PROMPT ==============================================
+// Medido na fatura de 01–12/08: GRAVAÇÃO de cache virou 70% da conta (era 27%).
+// O prompt tem ~27.500 tokens e cada gravação custa US$ 0,10 — e o cache estava
+// FRIO em 41–55% das chamadas, porque o TTL de 5 minutos expira entre um
+// paciente e outro (e todo deploy esfria tudo).
+// Em 05/08 eu havia registrado "não mexer no TTL, o de 1h custa 2× para gravar".
+// Aquilo valia quando gravação era 27% da conta; com 70%, o que importa não é o
+// preço de cada gravação e sim QUANTAS acontecem: ~70/dia a 1,25× contra ~15/dia
+// a 2×. Estimativa de economia: US$ 120–160/mês, metade da conta.
+// ANA_CACHE_TTL=5m no Render volta ao comportamento antigo, sem deploy.
+const ANA_CACHE_TTL = String(readEnv("ANA_CACHE_TTL") || "1h").trim().toLowerCase() === "5m" ? null : "1h";
+function cacheControl() {
+  return ANA_CACHE_TTL ? { type: "ephemeral", ttl: ANA_CACHE_TTL } : { type: "ephemeral" };
+}
 async function anthropicMessages(payload, { tentativas = 3, timeout = 30000 } = {}) {
   for (let i = 1; ; i++) {
     try {
       return await axios.post(
         "https://api.anthropic.com/v1/messages",
         payload,
-        { headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, timeout }
+        { headers: {
+            "x-api-key": ANTHROPIC_KEY,
+            "anthropic-version": "2023-06-01",
+            // O TTL estendido pede este beta em algumas versões da API. Mandar o
+            // header quando ele não é mais necessário é inofensivo; NÃO mandar
+            // quando é necessário derruba a chamada em 400.
+            ...(ANA_CACHE_TTL === "1h" ? { "anthropic-beta": "extended-cache-ttl-2025-04-11" } : {}),
+            "Content-Type": "application/json",
+          }, timeout }
       );
     } catch (err) {
       const status = err?.response?.status;
@@ -4404,7 +4426,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         response = await anthropicMessages({
           model: ANA_MODEL, max_tokens: 1000,
           system: [
-            { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+            { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             // 2º marcador de cache: a lista de vagas. Ela é ~5.400 tokens que iam
             // a PREÇO CHEIO em toda mensagem — 55% da conta da API. O texto que a
             // Ana lê não muda uma vírgula; muda só como é cobrado.
@@ -4416,7 +4438,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             // O marcador vai DEPOIS do prompt fixo de propósito: cache é casamento
             // de prefixo, então a agenda mudar invalida só ela, e a persona (22 mil
             // tokens, 87% de aproveitamento hoje) continua sendo lida barato.
-            { type: "text", text: dynamicPrompt, cache_control: { type: "ephemeral" } },
+            { type: "text", text: dynamicPrompt, cache_control: cacheControl() },
           ],
           messages: apiMessages,
         });
@@ -4424,13 +4446,35 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         // BLINDAGEM: se o caching (system em blocos) for recusado (400), refaz com o
         // system como TEXTO simples — o paciente não fica sem resposta por causa disso.
         if (e1?.response?.status === 400) {
-          console.warn("[Ana] Chamada com cache_control recusada (400) — refazendo sem caching.");
-          await registrarErro("cache_control_400", e1?.response?.data ? JSON.stringify(e1.response.data) : e1.message, { conversationId: conversation.id });
-          response = await anthropicMessages({
-            model: ANA_MODEL, max_tokens: 1000,
-            system: SYSTEM_PROMPT + "\n\n" + dynamicPrompt,
-            messages: apiMessages,
-          });
+          const detalhe = e1?.response?.data ? JSON.stringify(e1.response.data) : e1.message;
+          await registrarErro("cache_control_400", detalhe, { conversationId: conversation.id });
+          // DEGRAU 1: se o problema for o TTL de 1h (beta não aceito, por ex.),
+          // cair para o cache de 5 minutos — NÃO para "sem cache". Perder o
+          // caching inteiro multiplica o custo da chamada por ~10; perder só o
+          // TTL estendido nos devolve ao comportamento de antes de 12/08.
+          if (ANA_CACHE_TTL === "1h") {
+            try {
+              console.warn("[Ana] 400 com TTL de 1h — refazendo com cache de 5 minutos.");
+              response = await anthropicMessages({
+                model: ANA_MODEL, max_tokens: 1000,
+                system: [
+                  { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+                  { type: "text", text: dynamicPrompt, cache_control: { type: "ephemeral" } },
+                ],
+                messages: apiMessages,
+              });
+            } catch (e2) { response = null; }
+          }
+          // DEGRAU 2: caching recusado de qualquer forma — system como texto
+          // simples. Caro, mas o paciente não fica sem resposta.
+          if (!response) {
+            console.warn("[Ana] Chamada com cache_control recusada (400) — refazendo sem caching.");
+            response = await anthropicMessages({
+              model: ANA_MODEL, max_tokens: 1000,
+              system: SYSTEM_PROMPT + "\n\n" + dynamicPrompt,
+              messages: apiMessages,
+            });
+          }
         } else throw e1;
       }
       // Custo REAL desta chamada, direto do que a API cobrou. Sem isto, a única
@@ -4499,7 +4543,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         const r2 = await anthropicMessages({
           model: ANA_MODEL, max_tokens: 1000,
           system: [
-            { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+            { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             { type: "text", text: dynamicPrompt + (unidadeErrada ? instrucaoUnidadeDoDia(unidadeErrada)
               : contradicao ? instrucaoDataReal(contradicao)
               : maisCedo ? instrucaoMaisCedo(maisCedo)
@@ -4527,7 +4571,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
               const r3 = await anthropicMessages({
                 model: ANA_MODEL, max_tokens: 1000,
                 system: [
-                  { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+                  { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
                   { type: "text", text: dynamicPrompt + instrucaoFichaCompleta(aindaFalta) },
                 ],
                 messages: apiMessages,
