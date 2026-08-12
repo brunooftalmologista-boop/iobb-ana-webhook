@@ -521,6 +521,8 @@ let AGENT    = localStorage.getItem(LS.agent) || 'Secretária';
 let readState = JSON.parse(localStorage.getItem(LS.read) || '{}');
 
 let conversations = [];
+let buscaExtras = [];        // conversas trazidas pela BUSCA no servidor (fora da janela da lista)
+let buscaTimer = null;
 let filtered = [];
 let currentTab = 'active';   // 'active' (não encerradas) | 'closed' (encerradas)
 let activeId = null;
@@ -635,7 +637,9 @@ async function loadConversations(){
     applyFilter();
     loadAnaStatus();   // reflete o estado global da Ana (ligada/desligada) a cada ciclo
     if(activeId){
-      activeConv = conversations.find(c=>c.id===activeId) || activeConv;
+      // todasConversas(): a conversa aberta pode ter vindo da BUSCA, de fora da
+      // janela da lista — procurar só em `conversations` zeraria o cabeçalho dela.
+      activeConv = todasConversas().find(c=>c.id===activeId) || activeConv;
       updateChatHeader();
     }
   }catch(e){
@@ -643,16 +647,46 @@ async function loadConversations(){
     if(!API_BASE) openConfig();
   }
 }
+// A lista carregada pode vir por uma JANELA de tempo (ex.: últimas 12h). O que a
+// busca no servidor trouxe de fora dessa janela entra aqui, sem virar parte da
+// lista polida a cada 5s — senão o ciclo seguinte apagaria o resultado da busca
+// debaixo do dedo de quem está lendo.
+function todasConversas(){
+  if(!buscaExtras.length) return conversations;
+  const vistos = new Set(conversations.map(c=>c.id));
+  return conversations.concat(buscaExtras.filter(c=>!vistos.has(c.id)));
+}
+// Busca no SERVIDOR: a lista da tela pode ser só das últimas horas, então filtrar
+// localmente acharia apenas quem já está nela — e um paciente de ontem pareceria
+// não existir. Falha de rede aqui não quebra nada: o filtro local continua valendo.
+async function buscarNoServidor(termo){
+  if(termo.length < 2){ if(buscaExtras.length){ buscaExtras = []; applyFilter(); } return; }
+  try{
+    const data = await api('/api/conversations?q=' + encodeURIComponent(termo));
+    buscaExtras = Array.isArray(data) ? data : [];
+    applyFilter();
+  }catch(e){ /* silencioso de propósito: o resultado local já está na tela */ }
+}
+function onBusca(){
+  applyFilter();                                   // resposta imediata, sem rede
+  clearTimeout(buscaTimer);
+  const termo = el.search.value.trim();
+  buscaTimer = setTimeout(()=>buscarNoServidor(termo), 350);
+}
 function applyFilter(){
   const q = el.search.value.trim().toLowerCase();
+  const base_ = todasConversas();
   // contadores por aba (sempre sobre o total, independentes da busca)
-  const activeConvs = conversations.filter(c=>c.status!=='closed');
-  const closedConvs = conversations.filter(c=>c.status==='closed');
+  const activeConvs = base_.filter(c=>c.status!=='closed');
+  const closedConvs = base_.filter(c=>c.status==='closed');
   const cntA=$('#cnt-active'), cntC=$('#cnt-closed');
   if(cntA) cntA.textContent = activeConvs.length ? '('+activeConvs.length+')' : '';
   if(cntC) cntC.textContent = closedConvs.length ? '('+closedConvs.length+')' : '';
-  // conjunto da aba atual
-  const base = currentTab==='closed' ? closedConvs : activeConvs;
+  // Sem busca: a aba atual, como sempre. COM busca: pesquisa GLOBAL, ignorando a
+  // aba. Com a lista limitada a uma janela de horas, o paciente procurado quase
+  // sempre está numa conversa encerrada — respeitar a aba faria a busca achar o
+  // registro e mesmo assim não mostrar nada, que é a pior forma de quebrar.
+  const base = q ? base_ : (currentTab==='closed' ? closedConvs : activeConvs);
   filtered = !q ? base : base.filter(c=>{
     const p=c.patients||{};
     return (p.name||'').toLowerCase().includes(q)
@@ -1404,7 +1438,7 @@ function logout(){
 function startApp(){ el.conn.textContent='conectando…'; loadConversations(); }
 
 // ---------- Eventos ----------
-el.search.oninput=applyFilter;
+el.search.oninput=onBusca;
 $('#btn-refresh').onclick=()=>{ loadConversations(); if(activeId) loadMessages(true); };
 // Clicar num anexo SEMPRE abre — mesmo se a hidratação em segundo plano
 // (href/src) ainda não terminou ou falhou: busca a URL assinada sob demanda.
