@@ -1739,7 +1739,9 @@ async function agendamentosDoPaciente(telefone) {
   try {
     const { data } = await supabase.from("appointments")
       .select("id, unidade, inicio, status, motivo, origem")
-      .eq("paciente_telefone", telefone)
+      // As DUAS grafias: a Ana grava sem o 9 e a secretária com ele. Com .eq()
+      // o paciente que a equipe marcou ouvia da Ana que não tinha consulta.
+      .in("paciente_telefone", fonesBR(telefone))
       .neq("status", "cancelado")
       .gte("inicio", new Date(Date.now() - 2 * 3600 * 1000).toISOString())
       .order("inicio", { ascending: true }).limit(5);
@@ -2253,7 +2255,7 @@ async function processarCarteirinhaDaAna({ registro, from, conversationId }) {
       return data && data.length ? data[0] : null;
     };
     let ap = await buscar(q => q.eq("conversation_id", String(conversationId)));
-    if (!ap && from) ap = await buscar(q => q.eq("paciente_telefone", from));
+    if (!ap && from) ap = await buscar(q => q.in("paciente_telefone", fonesBR(from)));
     if (!ap) { console.log("[Carteirinha] Sem agendamento ativo p/ anexar (conversa", conversationId + ") — provável pré-agendamento; equipe já tem a foto."); return; }
 
     const nota = `Carteirinha: ${numero || "por foto"}${convenio ? ` (${convenio})` : ""}`;
@@ -2288,7 +2290,7 @@ async function processarCancelarDaAna({ registro, from, conversationId }) {
     }
     const { data: achados } = await supabase.from("appointments")
       .select("id, unidade, origem, paciente_nome")
-      .eq("paciente_telefone", from).eq("inicio", ini.toISOString())
+      .in("paciente_telefone", fonesBR(from)).eq("inicio", ini.toISOString())
       .in("status", ["reservado", "confirmado"]);
     const alvo = (achados || []).find(a => a.origem === "ana" && (!unidade || a.unidade === unidade))
               || (achados || []).find(a => a.origem === "ana");
@@ -2356,8 +2358,33 @@ function variantePhoneBR(phone) {
   if (!m) return null;
   const [, ddd, resto] = m;
   if (resto.length === 9 && resto.startsWith("9")) return `55${ddd}${resto.slice(1)}`;  // tira o 9
-  if (resto.length === 8) return `55${ddd}9${resto}`;                                    // põe o 9
+  // Só põe o 9 em número que era CELULAR antes da mudança (começava com 6-9).
+  // Fixo começa com 2-5: pôr o 9 no 3303-6605 da clínica inventaria 9 3303-6605,
+  // que é um celular plausível e pode ser de outra pessoa — uma busca por
+  // telefone acharia a ficha errada.
+  if (resto.length === 8 && /^[6-9]/.test(resto)) return `55${ddd}9${resto}`;
   return null;
+}
+
+// ===== NONO DÍGITO: as duas ferramentas para não errar de novo ==============
+// O mesmo paciente chega como 556182981632 (a Meta quase sempre omite o 9) e
+// está gravado como 5561982981632 (a secretária digita com ele). Medido em
+// 12/08: 253 agendamentos sem o 9 e 60 com — e 5 fichas duplicadas.
+// `normalizePhoneBR` NÃO resolve isso (só cuida do DDI e do tamanho), então
+// quem comparava com ela achava que estava protegido e não estava.
+//   • fonesBR()   → as duas grafias, para BUSCA no banco (.in em vez de .eq)
+//   • foneChave() → uma forma canônica, para COMPARAR dois telefones na memória
+function fonesBR(telefone) {
+  const d = String(telefone || "").replace(/\D+/g, "");
+  if (!d) return [];
+  const alt = variantePhoneBR(d);
+  return alt ? [d, alt] : [d];
+}
+function foneChave(telefone) {
+  const n = normalizePhoneBR(telefone);
+  if (!n) return null;
+  const m = n.match(/^55(\d{2})(\d{9})$/);
+  return (m && m[2].startsWith("9")) ? `55${m[1]}${m[2].slice(1)}` : n;   // canônica = sem o 9
 }
 
 async function getOrCreatePatient(phone) {
@@ -6401,7 +6428,10 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
   // "61 8298-1632" e o WhatsApp manda "556182981632". Foi assim que a Barbara
   // confirmou e recebeu só uma saudação — o agendamento existia e não foi achado.
   // Comparamos SEMPRE pelo número normalizado, dos dois lados.
-  const fone = normalizePhoneBR(from) || from;
+  // foneChave (e não normalizePhoneBR): esta comparação já falhou por formato
+  // uma vez (a Barbara confirmou e não foi achada) e voltaria a falhar pelo
+  // NONO DÍGITO — normalizePhoneBR trata o DDI, não o 9.
+  const fone = foneChave(from) || from;
   const { data: cands } = await supabase.from("appointments")
     .select("id, inicio, unidade, paciente_nome, confirmado_em, paciente_telefone, conversation_id")
     .in("status", ["reservado", "confirmado"])
@@ -6409,7 +6439,7 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
     .lte("inicio", new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString())
     .order("inicio", { ascending: true }).limit(300);
   const ap = (cands || []).find(a => String(a.conversation_id || "") === String(conversation.id))
-          || (cands || []).find(a => normalizePhoneBR(a.paciente_telefone) === fone);
+          || (cands || []).find(a => foneChave(a.paciente_telefone) === fone);
   if (!ap) return false;
 
   // FAMÍLIA NO MESMO NÚMERO: mãe e filho, ou dois irmãos, dividem o WhatsApp e
@@ -6420,7 +6450,7 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
   // Como quem divide telefone quase sempre vem junto, confirmamos TODOS os
   // agendamentos daquele número NO MESMO DIA e listamos todos na resposta.
   const diaDe = (d) => new Date(d).toLocaleDateString("en-CA", { timeZone: TZ_BR });
-  const doDia = (cands || []).filter(a => normalizePhoneBR(a.paciente_telefone) === fone
+  const doDia = (cands || []).filter(a => foneChave(a.paciente_telefone) === fone
                                        && diaDe(a.inicio) === diaDe(ap.inicio));
   const grupo = doDia.length ? doDia : [ap];
 
