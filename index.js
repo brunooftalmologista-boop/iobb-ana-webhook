@@ -4848,7 +4848,15 @@ app.get("/api/conversations", async (req, res) => {
   // deploy inócuo. Só quando o painel passar a mandar `desde`/`q` é que a lista
   // encurta, e aí a mudança está isolada num commit de front-end que se reverte
   // sozinho. Foi misturar as duas coisas que derrubou a tela em 10/08 (a056217).
-  const horas = janelaEmHoras(req.query.desde);
+  // Sem `desde` explícito vale a janela padrão do ambiente. 96h (4 dias) foi
+  // escolhido pelo pior momento da SEMANA, não do dia: segunda às 8h o último
+  // expediente foi sexta às 18h — 62 horas antes. Abaixo de 72h a equipe chega
+  // na segunda e não vê a sexta (com 12h veria UMA conversa). Os 4 dias dão
+  // folga para feriado de segunda. E o payload já não cresce depois disso:
+  // 72h = 41 KB, 96h = 43 KB, 7 dias = 69 KB, contra 366 KB da lista inteira —
+  // apertar mais não economiza, só encurta a memória da equipe.
+  // Trocar ou desligar (apagando a env) é feito no Render, sem deploy.
+  const horas = janelaEmHoras(req.query.desde) || janelaEmHoras(readEnv("PAINEL_JANELA_HORAS"));
   const busca = termoDeBusca(req.query.q);
   // Busca IGNORA a janela de propósito: o motivo de existir é achar o paciente
   // antigo que a janela escondeu. Sem isso, encurtar a lista deixaria pacientes
