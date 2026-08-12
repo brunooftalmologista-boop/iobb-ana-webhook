@@ -2811,10 +2811,23 @@ const ESPELHO_AVISA_APOS = 3;
 // só escrevem para manter a janela de 24h aberta, e responder a isso custaria
 // API e criaria um atendimento falso no painel todo dia. WA_NUMEROS_MUDOS (env,
 // vírgula separa) permite acrescentar outros, se um dia fizer falta.
+// ⚠️ NONO DÍGITO: a Meta entrega o `from` de celular brasileiro OMITINDO o 9
+// extra em boa parte dos casos — configuramos 5561992997639 (13) e chegou
+// 556192997639 (12). Comparar string com string falha em silêncio, que foi
+// exatamente o que aconteceu em 12/08: a Ana respondeu ao número do espelho.
+// Por isso a lista guarda AS DUAS formas de cada número.
+function variantesBR(numero) {
+  const d = String(numero || "").replace(/\D+/g, "");
+  if (d.length < 12) return [];
+  const ddi = d.slice(0, 2), ddd = d.slice(2, 4), resto = d.slice(4);
+  const com9 = resto.length === 8 ? `${ddi}${ddd}9${resto}` : d;
+  const sem9 = resto.length === 9 && resto[0] === "9" ? `${ddi}${ddd}${resto.slice(1)}` : d;
+  return [...new Set([d, com9, sem9])];
+}
 const WA_NUMEROS_MUDOS = new Set([
   ...WA_ESPELHO_EXTRA,
   ...String(readEnv("WA_NUMEROS_MUDOS") || "").split(/[,;\s]+/).map(s => s.replace(/\D+/g, "")).filter(n => n.length >= 12),
-]);
+].flatMap(variantesBR));
 async function notificarClinica(texto) {
   for (const numero of [NUMERO_CLINICA, ...WA_ESPELHO_EXTRA]) {
     const r = await trySendWhatsApp(numero, texto);
