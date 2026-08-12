@@ -2403,6 +2403,22 @@ async function getOrCreateConversation(patientId) {
 // ou "Dr. Bruno (WhatsApp)" para mensagens disparadas por comando admin). O
 // painel exibe esse rótulo na bolha (exige a coluna `agent` — ver
 // sql/messages_agent.sql). Se a coluna não existir, o insert reinsere só o básico.
+// ===== Cache das mensagens de UMA conversa (egress, 12/08) =================
+// Com um chat aberto, o painel pedia TODAS as mensagens daquela conversa a cada
+// 3s, sem limite: 6,5 KB numa conversa de 15 mensagens, 37 KB numa de 84 — e
+// piora sozinho, porque conversa de paciente só cresce. Mesmo desenho que
+// resolveu a lista (commit 362eb2e): assinatura barata antes da consulta cara.
+// Aqui a assinatura é quantas mensagens a conversa tem + a timestamp da última.
+// Isso NÃO cobre mudança que não mexe na timestamp — em especial a marcação de
+// falha de entrega, que a secretária precisa ver. Por isso há invalidação
+// EXPLÍCITA nos dois pontos que escrevem mensagem: saveMessage e o retorno de
+// status da Meta. O TTL é rede de segurança, não o mecanismo.
+const cacheMensagens = new Map();          // conversationId → { ts, assinatura, lista }
+const MSGS_TTL_MS = 30000;
+function invalidarCacheMensagens(conversationId) {
+  if (conversationId) cacheMensagens.delete(String(conversationId));
+  else cacheMensagens.clear();
+}
 async function saveMessage(conversationId, role, content, waMessageId = null, media = null, agent = null) {
   const base = { conversation_id: conversationId, role, content, wa_message_id: waMessageId };
   // withMedia preserva a referência do anexo; row adiciona ainda o autor (agent).
@@ -2434,6 +2450,7 @@ async function saveMessage(conversationId, role, content, waMessageId = null, me
   if (error) console.error("[Msg] Falha ao inserir mensagem no banco:", error.message);
   else if (withMedia.media_path) console.log(`[Anexo] media_path gravado na mensagem (${withMedia.media_type || "?"}): ${withMedia.media_path}`);
 
+  invalidarCacheMensagens(conversationId);   // o painel tem de ver esta mensagem já
   await supabase.from("conversations").update({ last_message: content, updated_at: new Date() }).eq("id", conversationId);
 }
 
@@ -3553,6 +3570,10 @@ app.post("/webhook", async (req, res) => {
           await supabase.from("messages")
             .update({ event: `delivery_failed:${err.code || "?"}:${String(motivo).slice(0, 180)}` })
             .eq("wa_message_id", st.id);
+          // Muda a mensagem SEM mudar a timestamp — a assinatura do cache não
+          // veria. Falha de entrega é justamente o que a secretária precisa
+          // enxergar na hora, então limpa tudo (é raro, custa uma consulta).
+          invalidarCacheMensagens();
         }
       }
       return;
@@ -4759,7 +4780,10 @@ const CONV_TTL_MS = 60000;
 // em QUALQUER ação do painel — inclusive nas rotas que eu criar depois, que é o
 // jeito de isto não apodrecer. Ações são raras; o custo é uma consulta a mais.
 app.use("/api", (req, _res, next) => {
-  if (req.method !== "GET") cacheConversas = { ts: 0, assinatura: null, lista: null };
+  if (req.method !== "GET") {
+    cacheConversas = { ts: 0, assinatura: null, lista: null };
+    invalidarCacheMensagens();
+  }
   next();
 });
 app.get("/api/conversations", async (req, res) => {
@@ -4825,17 +4849,42 @@ app.get("/api/conversations", async (req, res) => {
 });
 
 app.get("/api/conversations/:id/messages", async (req, res) => {
-  const { data } = await supabase.from("messages").select("*").eq("conversation_id", req.params.id).order("timestamp");
-  const msgs = data || [];
-  // Abrir a conversa = a equipe viu o alerta → limpa a marca de "precisa da equipe".
-  supabase.from("conversations").update({ team_flag: null }).eq("id", req.params.id)
+  const convId = String(req.params.id);
+  // Abrir a conversa = a equipe viu o alerta → limpa a marca de "precisa da
+  // equipe". Fica FORA do cache: é o efeito colateral que o painel espera de
+  // toda abertura, e some se ficar atrás do atalho.
+  supabase.from("conversations").update({ team_flag: null }).eq("id", convId)
     .then(() => {}, e => console.error("[Painel] Falha ao limpar team_flag:", e?.message || e));
+  // Assinatura barata desta conversa: quantas mensagens tem + a última timestamp.
+  let assinatura = null;
+  try {
+    const { data: ultima, count, error } = await supabase.from("messages")
+      .select("timestamp", { count: "exact" })
+      .eq("conversation_id", convId)
+      .order("timestamp", { ascending: false }).limit(1);
+    if (error) throw error;
+    assinatura = `${count}|${ultima?.[0]?.timestamp || ""}`;
+  } catch (e) {
+    console.error("[Painel] Assinatura das mensagens falhou (busco tudo):", e.message);
+  }
+  const guardado = cacheMensagens.get(convId);
+  if (assinatura && guardado && guardado.assinatura === assinatura && Date.now() - guardado.ts <= MSGS_TTL_MS) {
+    return res.json(guardado.lista);
+  }
+  const { data } = await supabase.from("messages").select("*").eq("conversation_id", convId).order("timestamp");
+  const msgs = data || [];
   // O nome da secretária que atende fica em conversations.assigned_to (não é
   // gravado por mensagem). Rotula as mensagens humanas com esse nome para o
   // painel exibir quem respondeu, em vez do genérico "Secretária".
-  const { data: conv } = await supabase.from("conversations").select("assigned_to").eq("id", req.params.id).single();
+  const { data: conv } = await supabase.from("conversations").select("assigned_to").eq("id", convId).single();
   const agente = conv?.assigned_to || null;
   if (agente) for (const m of msgs) if (m.role === "human" && !m.agent) m.agent = agente;
+  // Só guarda resultado BOM: se a consulta falhou (data null), não congelamos um
+  // chat vazio na tela da secretária. Assumir/liberar passam por POST /api, que
+  // limpa este cache — então o rótulo do agente nunca fica velho.
+  if (assinatura && Array.isArray(data)) {
+    cacheMensagens.set(convId, { ts: Date.now(), assinatura, lista: msgs });
+  }
   res.json(msgs);
 });
 
