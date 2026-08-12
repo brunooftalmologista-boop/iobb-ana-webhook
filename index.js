@@ -6168,6 +6168,15 @@ app.get("/version", (req, res) => {
     branch: process.env.RENDER_GIT_BRANCH || null,
     subiu_em: new Date(Date.now() - process.uptime() * 1000).toISOString(),
     uptime_s: Math.round(process.uptime()),
+    // Só o ESTADO das chaves ligadas por env — nunca o valor. Existe porque em
+    // 12/08 duas features ficaram "sem funcionar" e passamos um tempo adivinhando
+    // se a env não fora salva, se o serviço não reiniciara ou se o código estava
+    // errado. Com isto a resposta é imediata, e nenhum número de telefone vaza.
+    config: {
+      painel_janela_horas: janelaEmHoras(readEnv("PAINEL_JANELA_HORAS")),   // null = lista inteira
+      espelho_extra_numeros: WA_ESPELHO_EXTRA.length,                       // 0 = espelho extra desligado
+      secretaria_espelho: WA_SECRETARIA_NUMBER ? "ligado" : "desligado",
+    },
   });
 });
 // Agenda em página única p/ transferência ao prontuário (copiar/colar rápido).
