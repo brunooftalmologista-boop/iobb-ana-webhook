@@ -4772,8 +4772,29 @@ let cacheAdClicks = { ts: 0, map: null };   // origem de anúncio, revalidada a 
 // NADA MUDA NO PAINEL: mesma rota, mesma resposta, mesmos campos, mesma ordem.
 // A tentativa de 10/08 que quebrou a tela mexia no front-end (?since= + merge);
 // esta é só servidor. Ver a056217.
-let cacheConversas = { ts: 0, assinatura: null, lista: null };
+// O cache guarda UMA resposta por combinação de parâmetros; a assinatura é da
+// TABELA, então serve para todas. Se a tabela mudou, todas as variantes caem.
+let assinaturaConversas = null;
+const cacheConversas = new Map();          // chave → { ts, lista }
 const CONV_TTL_MS = 60000;
+function limparCacheConversas() { assinaturaConversas = null; cacheConversas.clear(); }
+// Sanitiza o termo de busca: vírgula, parênteses e ponto são a SINTAXE do filtro
+// `or` do PostgREST — deixá-los passar não é só bug, é o usuário escrevendo
+// filtro. Também limita o tamanho para a URL não estourar (foi assim que o
+// `.in()` com 826 ids voltava 400 em toda chamada, em silêncio).
+function termoDeBusca(bruto) {
+  const t = String(bruto || "").replace(/[,()*.\\%]/g, " ").trim().slice(0, 60);
+  return t.length >= 2 ? t : null;         // 1 caractere devolveria a base inteira
+}
+// "168", "168h", "7d" → horas. Qualquer coisa inválida vira null (= sem janela,
+// comportamento de hoje). NUNCA lança.
+function janelaEmHoras(bruto) {
+  const m = String(bruto || "").trim().match(/^(\d{1,5})\s*([hd]?)$/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return m[2].toLowerCase() === "d" ? n * 24 : n;
+}
 // Assumir / liberar / encerrar / reabrir NÃO tocam em updated_at (a tabela não
 // tem trigger), então a assinatura sozinha não veria o clique da secretária e
 // ele demoraria até 60s para aparecer na lista. Este middleware derruba o cache
@@ -4781,7 +4802,7 @@ const CONV_TTL_MS = 60000;
 // jeito de isto não apodrecer. Ações são raras; o custo é uma consulta a mais.
 app.use("/api", (req, _res, next) => {
   if (req.method !== "GET") {
-    cacheConversas = { ts: 0, assinatura: null, lista: null };
+    limparCacheConversas();
     invalidarCacheMensagens();
   }
   next();
@@ -4799,11 +4820,50 @@ app.get("/api/conversations", async (req, res) => {
     // nunca para tela vazia.
     console.error("[Painel] Assinatura da lista falhou (busco a lista inteira):", e.message);
   }
-  const expirou = Date.now() - cacheConversas.ts > CONV_TTL_MS;
-  if (assinatura && !expirou && cacheConversas.lista && cacheConversas.assinatura === assinatura) {
-    return res.json(cacheConversas.lista);
+  // ── Parâmetros OPCIONAIS (etapa 1: o painel ainda não os envia) ───────────
+  // SEM parâmetro a resposta é BYTE A BYTE a de hoje — é isso que torna este
+  // deploy inócuo. Só quando o painel passar a mandar `desde`/`q` é que a lista
+  // encurta, e aí a mudança está isolada num commit de front-end que se reverte
+  // sozinho. Foi misturar as duas coisas que derrubou a tela em 10/08 (a056217).
+  const horas = janelaEmHoras(req.query.desde);
+  const busca = termoDeBusca(req.query.q);
+  // Busca IGNORA a janela de propósito: o motivo de existir é achar o paciente
+  // antigo que a janela escondeu. Sem isso, encurtar a lista deixaria pacientes
+  // invisíveis na pesquisa — silenciosamente, que é o pior jeito de quebrar.
+  // `pendentes=0` desliga a proteção; o padrão é MANTER na lista o que a equipe
+  // ainda não resolveu, por mais velho que seja.
+  const guardarPendentes = String(req.query.pendentes ?? "1") !== "0";
+  const chave = `${busca ? "q:" + busca.toLowerCase() : ""}|${busca ? "" : horas || ""}|${guardarPendentes ? 1 : 0}`;
+
+  if (assinatura && assinaturaConversas !== assinatura) limparCacheConversas();
+  const guardado = cacheConversas.get(chave);
+  if (assinatura && guardado && Date.now() - guardado.ts <= CONV_TTL_MS) {
+    return res.json(guardado.lista);
   }
-  const { data } = await supabase.from("conversations").select(`*, patients(name, phone)`).order("updated_at", { ascending: false });
+
+  let q = supabase.from("conversations").select(`*, patients(name, phone)`).order("updated_at", { ascending: false });
+  if (busca) {
+    // Nome e telefone moram em `patients`. Filtrar tabela embutida pelo PostgREST
+    // é traiçoeiro, então resolvo os ids antes — com TETO, porque foi um `.in()`
+    // gigante que estourou a URL e voltou 400 em 100% das chamadas, engolido pelo
+    // catch. 100 ids ≈ 3,7 KB de URL, folgado.
+    let ids = [];
+    try {
+      const { data: ps } = await supabase.from("patients").select("id")
+        .or(`name.ilike.*${busca}*,phone.ilike.*${busca}*`).limit(100);
+      ids = (ps || []).map(p => p.id).filter(Boolean);
+    } catch (e) { console.error("[Painel] Busca por paciente falhou (sigo pelo texto):", e.message); }
+    const partes = [`last_message.ilike.*${busca}*`];
+    if (ids.length) partes.push(`patient_id.in.(${ids.join(",")})`);
+    q = q.or(partes.join(",")).limit(100);
+  } else if (horas) {
+    const corte = new Date(Date.now() - horas * 3600000).toISOString();
+    q = guardarPendentes
+      ? q.or(`updated_at.gte.${corte},status.eq.human,team_flag.not.is.null,unread_count.gt.0`)
+      : q.gte("updated_at", corte);
+  }
+  const { data, error: erroLista } = await q;
+  if (erroLista) console.error("[Painel] Falha ao buscar a lista de conversas:", erroLista.message);
   const convs = data || [];
   // Anota quais conversas vieram de anúncio (clique vinculado) e se já agendaram.
   // EGRESS: este endpoint é chamado pelo painel a cada 5 segundos, e a consulta
@@ -4842,8 +4902,11 @@ app.get("/api/conversations", async (req, res) => {
   }
   // Só guarda resultado BOM. Se a consulta falhou (data null → convs []), não
   // congelamos uma lista vazia por 60s — o painel da equipe ficaria em branco.
-  if (assinatura && Array.isArray(data) && data.length) {
-    cacheConversas = { ts: Date.now(), assinatura, lista: convs };
+  // Busca legitimamente sem resultado PODE ser guardada (é resposta correta);
+  // por isso a exigência de lista não-vazia vale só para a listagem.
+  if (assinatura && Array.isArray(data) && (busca || data.length)) {
+    assinaturaConversas = assinatura;
+    cacheConversas.set(chave, { ts: Date.now(), lista: convs });
   }
   res.json(convs);
 });
