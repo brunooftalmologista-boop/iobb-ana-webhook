@@ -4739,7 +4739,46 @@ app.use("/api", requirePanelAuth);
 
 // API para o painel web
 let cacheAdClicks = { ts: 0, map: null };   // origem de anúncio, revalidada a cada 60s
+// EGRESS (11/08): a lista inteira são 878 conversas = 362 KB, e o painel pedia
+// isso a cada 5s → ~2,0 GB/dia com UM painel aberto, contra uma cota mensal de
+// 5,5 GB. Guardamos a última resposta em memória e, antes de refazer a consulta
+// cara, perguntamos ao banco uma ASSINATURA barata da tabela: quantas linhas
+// existem e qual é o updated_at mais recente. São ~40 bytes contra 362 KB.
+// Toda mensagem nova faz PATCH em conversations.updated_at, então novidade muda
+// a assinatura e o painel a recebe no mesmo tempo de sempre (próximo poll de 5s).
+// O TTL de 60s é só rede de segurança para mudanças que não tocam updated_at
+// (ex.: alguém renomeia um paciente) — nunca é o caminho normal.
+// NADA MUDA NO PAINEL: mesma rota, mesma resposta, mesmos campos, mesma ordem.
+// A tentativa de 10/08 que quebrou a tela mexia no front-end (?since= + merge);
+// esta é só servidor. Ver a056217.
+let cacheConversas = { ts: 0, assinatura: null, lista: null };
+const CONV_TTL_MS = 60000;
+// Assumir / liberar / encerrar / reabrir NÃO tocam em updated_at (a tabela não
+// tem trigger), então a assinatura sozinha não veria o clique da secretária e
+// ele demoraria até 60s para aparecer na lista. Este middleware derruba o cache
+// em QUALQUER ação do painel — inclusive nas rotas que eu criar depois, que é o
+// jeito de isto não apodrecer. Ações são raras; o custo é uma consulta a mais.
+app.use("/api", (req, _res, next) => {
+  if (req.method !== "GET") cacheConversas = { ts: 0, assinatura: null, lista: null };
+  next();
+});
 app.get("/api/conversations", async (req, res) => {
+  let assinatura = null;
+  try {
+    const { data: topo, count, error } = await supabase.from("conversations")
+      .select("updated_at", { count: "exact" })
+      .order("updated_at", { ascending: false }).limit(1);
+    if (error) throw error;
+    assinatura = `${count}|${topo?.[0]?.updated_at || ""}`;
+  } catch (e) {
+    // Sem assinatura confiável, busca tudo — degrada para o comportamento antigo,
+    // nunca para tela vazia.
+    console.error("[Painel] Assinatura da lista falhou (busco a lista inteira):", e.message);
+  }
+  const expirou = Date.now() - cacheConversas.ts > CONV_TTL_MS;
+  if (assinatura && !expirou && cacheConversas.lista && cacheConversas.assinatura === assinatura) {
+    return res.json(cacheConversas.lista);
+  }
   const { data } = await supabase.from("conversations").select(`*, patients(name, phone)`).order("updated_at", { ascending: false });
   const convs = data || [];
   // Anota quais conversas vieram de anúncio (clique vinculado) e se já agendaram.
@@ -4776,6 +4815,11 @@ app.get("/api/conversations", async (req, res) => {
     }
   } catch (e) {
     console.error("[Ads] Falha ao anotar origem de anúncio:", e.message);
+  }
+  // Só guarda resultado BOM. Se a consulta falhou (data null → convs []), não
+  // congelamos uma lista vazia por 60s — o painel da equipe ficaria em branco.
+  if (assinatura && Array.isArray(data) && data.length) {
+    cacheConversas = { ts: Date.now(), assinatura, lista: convs };
   }
   res.json(convs);
 });
