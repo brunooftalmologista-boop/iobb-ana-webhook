@@ -2807,6 +2807,14 @@ const WA_ESPELHO_EXTRA = String(readEnv("WA_ESPELHO_EXTRA") || "")
   .filter(n => n.length >= 12 && n !== NUMERO_CLINICA);
 const falhasEspelho = new Map();          // número → falhas seguidas
 const ESPELHO_AVISA_APOS = 3;
+// Números que a Ana NUNCA responde. Os do espelho entram automaticamente — eles
+// só escrevem para manter a janela de 24h aberta, e responder a isso custaria
+// API e criaria um atendimento falso no painel todo dia. WA_NUMEROS_MUDOS (env,
+// vírgula separa) permite acrescentar outros, se um dia fizer falta.
+const WA_NUMEROS_MUDOS = new Set([
+  ...WA_ESPELHO_EXTRA,
+  ...String(readEnv("WA_NUMEROS_MUDOS") || "").split(/[,;\s]+/).map(s => s.replace(/\D+/g, "")).filter(n => n.length >= 12),
+]);
 async function notificarClinica(texto) {
   for (const numero of [NUMERO_CLINICA, ...WA_ESPELHO_EXTRA]) {
     const r = await trySendWhatsApp(numero, texto);
@@ -3609,6 +3617,19 @@ app.post("/webhook", async (req, res) => {
     if (await jaProcessado(msg.id)) { console.log("[Ana] Mensagem duplicada ignorada:", msg.id); return; }
 
     const from = msg.from;
+    // ── NÚMEROS MUDOS ────────────────────────────────────────────────────────
+    // Quem recebe o espelho NÃO é paciente. Esses números precisam mandar uma
+    // mensagem à clínica de vez em quando só para manter aberta a janela de 24h
+    // da Meta (senão o espelho para de ser entregue). Sem isto, cada "oi" diário
+    // faria a Ana abrir conversa, responder e cobrar ~R$ 2 de API, além de sujar
+    // o painel com um atendimento que não existe.
+    // Saímos ANTES de qualquer gravação: nada de conversa, nada de mensagem no
+    // banco, nada na tela da equipe. A janela da Meta abre do mesmo jeito — ela
+    // conta a mensagem recebida, não o que fazemos com ela.
+    if (WA_NUMEROS_MUDOS.has(from)) {
+      console.log(`[Mudo] Mensagem de ${from} ignorada (número de espelho — só mantém a janela de 24h aberta).`);
+      return;
+    }
     // Marca a chegada AQUI, fora da fila: é o que permite ao turno que está
     // esperando descobrir que o paciente ainda está escrevendo (ver
     // aguardarPacienteTerminar). Dentro da fila, esta linha só rodaria depois
