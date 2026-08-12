@@ -6452,6 +6452,13 @@ async function enviarLembretesDeAmanha() {
 // e "👍" sozinho é a confirmação mais comum no WhatsApp.
 const RE_CONFIRMA = /^((confirmo|confirmado|confirmada|confirmar|ok|okay|sim|isso|certo|positivo|beleza|blz|combinado|estarei|vou sim|vou estar|tudo certo|perfeito)\b|👍|👌|✅|🙏)/;
 const RE_REMARCAR = /(remarca|desmarca|cancela|n[aã]o vou|n[aã]o poderei|n[aã]o consigo|n[aã]o poder|outro dia|outro hor[aá]rio|mudar o hor|adiar)/;
+// CORTESIA DEPOIS DA CONFIRMAÇÃO. O paciente confirma, recebe o "Recebido!" e
+// manda mais uma ("obrigada", "ok", "até lá"). Essa segunda mensagem não é
+// confirmação nem pergunta — e mesmo assim virava uma chamada de API inteira
+// (27.500 tokens) para dizer "até quinta-feira". Em 12/08 foram 4 das 13
+// respostas ao lembrete. O casamento é do texto INTEIRO de propósito: "ok, e o
+// endereço?" precisa continuar chegando na Ana.
+const RE_CORTESIA = /^(obrigad[oa]|obg|obrigado mesmo|de nada|vlw|valeu|ok|okay|blz|beleza|certo|perfeito|combinado|tudo bem|tudo certo|at[eé] (l[aá]|amanh[aã]|mais|breve|logo|quinta|sexta|segunda|ter[cç]a|quarta)|tchau|abra[cç]o|bom dia|boa tarde|boa noite|👍|👌|🙏|😊|❤️|🥰|😉)[\s!.,👍👌🙏😊❤️]*$/;
 
 async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
   // Houve lembrete nesta conversa há pouco? (messages.timestamp é naive UTC)
@@ -6463,6 +6470,41 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
 
   const t = String(texto || "").trim().toLowerCase()
     .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[.!,;]+$/g, "");
+  // ── CORTESIA DEPOIS DA CONFIRMAÇÃO ──────────────────────────────────────
+  // Vem ANTES da checagem de confirmar/remarcar de propósito: "ok" casa com
+  // RE_CONFIRMA, mas quando a confirmação já foi registrada ele não é
+  // confirmação — é despedida. Sem isto, cai no fluxo normal e vira uma chamada
+  // de API inteira para responder "até quinta-feira".
+  if (conversation.status === "bot" && RE_CORTESIA.test(t) && !/\?/.test(String(texto || ""))) {
+    const { data: ult } = await supabase.from("messages")
+      .select("event, timestamp").eq("conversation_id", conversation.id)
+      .in("role", ["assistant", "human"]).order("timestamp", { ascending: false }).limit(1).maybeSingle();
+    const iso = String(ult?.timestamp || "");
+    const quando = /[Zz]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z";   // timestamp é naive UTC
+    const minutos = ult ? (Date.now() - new Date(quando).getTime()) / 60000 : Infinity;
+    if (minutos <= 60) {
+      // Já respondemos uma cortesia: engole a próxima. Responder de novo vira
+      // ping-pong de mensagem automática, e cada rodada custaria de novo.
+      if (ult.event === "cortesia") {
+        console.log(`[Cortesia] "${t}" ignorada (já houve despedida).`);
+        return true;
+      }
+      if (ult.event === "confirmacao") {
+        const resposta = "Permaneço à disposição. Até lá!";
+        try {
+          const waId = await sendWhatsApp(from, resposta);
+          await supabase.from("messages").insert({ conversation_id: conversation.id, role: "assistant", content: resposta, wa_message_id: waId, event: "cortesia" });
+          await supabase.from("conversations").update({ last_message: resposta, updated_at: new Date().toISOString() }).eq("id", conversation.id);
+          console.log(`[Cortesia] Resposta fixa a "${t}" (sem chamar a IA).`);
+          return true;
+        } catch (e) {
+          console.error("[Cortesia] Falha ao responder (segue para a Ana):", e.message);
+          return false;
+        }
+      }
+    }
+  }
+
   const confirma = RE_CONFIRMA.test(t);
   const remarcar = RE_REMARCAR.test(t);
   if (!confirma && !remarcar) return;
