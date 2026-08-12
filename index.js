@@ -2796,12 +2796,35 @@ async function sendWhatsAppTemplate(to, templateName, languageCode = "pt_BR", bo
 // Notificar clínica (espelhamento). NUNCA lança: uma falha aqui — por exemplo,
 // a janela de 24h do WhatsApp fechada para o número da clínica — não pode
 // interromper o atendimento ao paciente.
+// Números EXTRA que recebem o mesmo espelho (12/08). Vêm de env para o Dr. Bruno
+// ligar e desligar sem deploy: WA_ESPELHO_EXTRA=5561992997639 (vírgula separa
+// vários). ⚠️ Isto NÃO é um arquivo confiável: a Meta bloqueia envio para um
+// número que não escreve à clínica há 24h, e um número que só recebe é
+// exatamente esse caso. Por isso a falha aqui é CONTADA e avisada — buraco de
+// histórico que ninguém percebe é pior que espelho nenhum.
+const WA_ESPELHO_EXTRA = String(readEnv("WA_ESPELHO_EXTRA") || "")
+  .split(/[,;\s]+/).map(s => s.replace(/\D+/g, ""))
+  .filter(n => n.length >= 12 && n !== NUMERO_CLINICA);
+const falhasEspelho = new Map();          // número → falhas seguidas
+const ESPELHO_AVISA_APOS = 3;
 async function notificarClinica(texto) {
-  try {
-    await sendWhatsApp(NUMERO_CLINICA, texto);
-  } catch(e) {
-    const d = e?.response?.data;
-    console.error("[Ana] Falha ao espelhar p/ clínica (possível janela de 24h fechada):", d ? JSON.stringify(d) : e.message);
+  for (const numero of [NUMERO_CLINICA, ...WA_ESPELHO_EXTRA]) {
+    const r = await trySendWhatsApp(numero, texto);
+    if (r.ok) {
+      const antes = falhasEspelho.get(numero) || 0;
+      if (antes >= ESPELHO_AVISA_APOS) console.log(`[Espelho] ✅ ${numero} voltou a receber depois de ${antes} falhas seguidas.`);
+      falhasEspelho.set(numero, 0);
+      continue;
+    }
+    const n = (falhasEspelho.get(numero) || 0) + 1;
+    falhasEspelho.set(numero, n);
+    const motivo = r.isWindow ? "JANELA DE 24H FECHADA" : "erro da API";
+    console.error(`[Espelho] ❌ ${numero}: ${motivo} (code=${r.code}) ${r.message} — ${n}ª falha seguida.`);
+    // Avisa UMA vez, no número principal, quando um espelho extra emudece.
+    if (n === ESPELHO_AVISA_APOS && numero !== NUMERO_CLINICA) {
+      await trySendWhatsApp(NUMERO_CLINICA,
+        `⚠️ *O espelho para ${numero} parou de entregar* (${motivo}).\n\nPara voltar, esse número precisa mandar qualquer mensagem para o WhatsApp da clínica — a Meta bloqueia o envio depois de 24h sem interação.\n\nEnquanto estiver assim, o histórico dele fica com buraco.`);
+    }
   }
 }
 
