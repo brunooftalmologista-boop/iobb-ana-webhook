@@ -6458,7 +6458,26 @@ const RE_REMARCAR = /(remarca|desmarca|cancela|n[aã]o vou|n[aã]o poderei|n[aã
 // (27.500 tokens) para dizer "até quinta-feira". Em 12/08 foram 4 das 13
 // respostas ao lembrete. O casamento é do texto INTEIRO de propósito: "ok, e o
 // endereço?" precisa continuar chegando na Ana.
-const RE_CORTESIA = /^(obrigad[oa]|obg|obrigado mesmo|de nada|vlw|valeu|ok|okay|blz|beleza|certo|perfeito|combinado|tudo bem|tudo certo|at[eé] (l[aá]|amanh[aã]|mais|breve|logo|quinta|sexta|segunda|ter[cç]a|quarta)|tchau|abra[cç]o|bom dia|boa tarde|boa noite|👍|👌|🙏|😊|❤️|🥰|😉)[\s!.,👍👌🙏😊❤️]*$/;
+// Desenhado a partir das mensagens REAIS do banco (13/08), não de uma lista
+// imaginada — a primeira versão exigia que o texto INTEIRO fosse uma palavra e
+// não disparou nenhuma vez, porque ninguém escreve só "obrigada": escreve
+// "obrigada, querida", "perfeito, obrigado", "ok, obrigada".
+// ⚠️ As curtas mais comuns do banco são "Bom dia" (62×), "Boa tarde" (53×),
+// "Sim" (51×) e "Pode ser" (26×) — e NENHUMA é cortesia: são saudação que abre
+// assunto novo e resposta a pergunta. Por isso não basta "todas as palavras são
+// inofensivas"; é preciso ter uma palavra-NÚCLEO de agradecimento ou aceite.
+const CORTESIA_NUCLEO = new Set(["obrigada","obrigado","obg","brigada","brigado","agradecida","agradecido","gratidao","valeu","vlw","ok","okay","blz","beleza","certo","perfeito","combinado","ate","tchau","abraco","abracos","amem"]);
+const CORTESIA_ENFEITE = new Set(["muito","mesmo","demais","viu","entao","querida","querido","gente","deus","quiser","se","de","nada","e","por","favor","mais","la","amanha","breve","logo","tudo","bem","otimo","show","maravilha","sim","nao","bom","boa","dia","tarde","noite","voce","voces","ja","entendi","anotado","combinadissimo","segunda","terca","quarta","quinta","sexta","confirmo","confirmado","confirmada","recebido","recebida"]);
+function ehCortesia(texto) {
+  const bruto = String(texto || "");
+  if (/\?/.test(bruto)) return false;                       // pergunta nunca é cortesia
+  const limpo = bruto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const palavras = limpo.replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
+  if (!palavras.length) return /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/u.test(bruto);  // só emoji
+  if (palavras.length > 5) return false;
+  if (!palavras.every(p => CORTESIA_NUCLEO.has(p) || CORTESIA_ENFEITE.has(p))) return false;
+  return palavras.some(p => CORTESIA_NUCLEO.has(p));        // "Bom dia" e "Sim" sozinhos NÃO passam
+}
 
 async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
   // Houve lembrete nesta conversa há pouco? (messages.timestamp é naive UTC)
@@ -6475,7 +6494,7 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
   // RE_CONFIRMA, mas quando a confirmação já foi registrada ele não é
   // confirmação — é despedida. Sem isto, cai no fluxo normal e vira uma chamada
   // de API inteira para responder "até quinta-feira".
-  if (conversation.status === "bot" && RE_CORTESIA.test(t) && !/\?/.test(String(texto || ""))) {
+  if (conversation.status === "bot" && ehCortesia(texto)) {
     const { data: ult } = await supabase.from("messages")
       .select("event, timestamp").eq("conversation_id", conversation.id)
       .in("role", ["assistant", "human"]).order("timestamp", { ascending: false }).limit(1).maybeSingle();
