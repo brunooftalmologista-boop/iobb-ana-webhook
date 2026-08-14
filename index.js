@@ -4363,6 +4363,47 @@ app.post("/webhook", async (req, res) => {
       console.log(`[Ana] Global OFF, mas conversa ${conversation.id} é de campanha sempre-ativa — respondendo.`);
     }
 
+    // RESPOSTA FIXA SEM IA (custos, item 4): endereço/como chegar e horário de
+    // funcionamento. São as perguntas avulsas mais repetidas do banco e a
+    // resposta não muda nunca — não precisam de uma chamada de API inteira.
+    // Guardas: só mensagem de TEXTO curta que é SÓ a pergunta (respostaFixaFAQ),
+    // e só quando a última fala da Ana NÃO terminou em pergunta — se terminou,
+    // há um fluxo em andamento (unidade? período? nome?) e a IA conduz. NUNCA
+    // lança: qualquer falha aqui cai no fluxo normal com IA.
+    if (msg.type === "text") {
+      try {
+        const faq = respostaFixaFAQ(text);
+        if (faq) {
+          const { data: ultA } = await supabase.from("messages").select("content")
+            .eq("conversation_id", conversation.id).in("role", ["assistant", "human"])
+            .order("timestamp", { ascending: false }).limit(1).maybeSingle();
+          const anaPerguntou = /\?\s*$/.test(String(ultA?.content || "").trim());
+          if (!anaPerguntou) {
+            let resposta;
+            if (faq === "horario") {
+              resposta = FAQ_HORARIO;
+            } else {
+              // Endereço: se o paciente tem consulta marcada, manda a unidade DELE;
+              // sem consulta, manda as duas.
+              let unidadeDele = null;
+              try {
+                const meus = await agendamentosDoPaciente(from);
+                if (meus.length) unidadeDele = String(meus[0].unidade || "").toLowerCase();
+              } catch (_) { /* sem agenda — manda as duas */ }
+              resposta = unidadeDele && unidadeDele.includes("tagua") ? FAQ_END_TS
+                : unidadeDele && unidadeDele.includes("conjunto") ? FAQ_END_CN
+                : `${FAQ_END_CN}\n\n${FAQ_END_TS}`;
+            }
+            const waId = await sendWhatsApp(from, resposta);
+            await supabase.from("messages").insert({ conversation_id: conversation.id, role: "assistant", content: resposta, wa_message_id: waId, event: "faq" });
+            await supabase.from("conversations").update({ last_message: resposta, updated_at: new Date().toISOString() }).eq("id", conversation.id);
+            console.log(`[FAQ] "${String(text).slice(0, 60)}" respondida com texto fixo (${faq}), sem IA.`);
+            return;
+          }
+        }
+      } catch (e) { console.error("[FAQ] falhou (segue para a IA):", e.message); }
+    }
+
     // Para imagens/documentos/vídeos: por padrão a Ana só acusa o recebimento e
     // encaminha à equipe. EXCEÇÃO: se ela acabou de pedir a carteirinha (fluxo
     // Unimed) e o paciente responde com uma FOTO, não dead-enda — a equipe é
@@ -4447,7 +4488,19 @@ app.post("/webhook", async (req, res) => {
     const statusAbertura = abertoAgora
       ? `🟢 NESTE MOMENTO A CLÍNICA ESTÁ ABERTA (recepção atende até as 18h). É PROIBIDO dizer "estamos fora do horário comercial", "já encerramos" ou equivalente — é falso agora e faz o paciente procurar outro lugar. Se ele tiver urgência, a equipe pode atendê-lo HOJE.`
       : `🔴 NESTE MOMENTO A CLÍNICA ESTÁ FECHADA (recepção: segunda a sexta, 8h às 18h). Pode dizer que estamos fora do horário de atendimento.`;
-    let dynamicPrompt = `### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n${statusAbertura}\n- Agora: ${dt.agora}.\n- HOJE é ${dt.hoje} — ${uniHoje ? `dia de atendimento na unidade ${uniHoje}` : "SEM atendimento (fim de semana/feriado)"}.\n- AMANHÃ é ${dt.amanha} — ${uniAmanha ? `atendimento na unidade ${uniAmanha}` : "sem atendimento"}.\n- ESTA SEMANA vai até ${fmtDia(domingoDestaSemana)}. "SEMANA QUE VEM" começa na ${fmtDia(proxSeg)}.\nAo dizer qual unidade atende numa data, use ESTA informação já calculada — NÃO deduza o dia da semana sozinha. Lembrete da regra fixa: seg/qua/sex = Conjunto Nacional; ter/qui = Taguatinga. Nunca use outra referência de data.\nREGRA DE LINGUAGEM (datas relativas) — "HOJE" e "AMANHÃ" SÓ para as datas exatas acima: a palavra "hoje" só pode se referir a ${dt.hoje}, e "amanhã" SÓ a ${dt.amanha}. Para QUALQUER outra data, NÃO use hoje/amanhã — diga o dia da semana e a data ("na quinta, 30/07") ou "depois de amanhã" apenas se for exatamente o dia seguinte ao de amanhã. Errar isso faz o paciente vir no dia errado. Na dúvida, escreva só "dia da semana + DD/MM", sem termo relativo.
+    // (custos, item 5) O bloco variável do prompt foi dividido em DOIS:
+    // - dynEstavel: agendamentos do paciente + contexto de anúncio + lista de
+    //   vagas — muda pouco dentro de uma conversa → vai com marcador de cache.
+    // - dynVolatil: data/hora, botão do lembrete, carteirinha — muda a cada
+    //   mensagem → vai SEM marcador (preço cheio, mas é a parte pequena).
+    // Antes, o relógio AO MINUTO dentro do bloco cacheado invalidava a gravação
+    // quase sempre: pagava 2× para gravar e raramente relia. A ordem importa:
+    // cache é casamento de prefixo, então o estável vem ANTES do volátil.
+    // Relógio em blocos de 15 min: o minuto exato não muda nenhuma decisão da
+    // Ana (aberto/fechado é por hora; datas são por dia), mas esfriava o cache.
+    const agoraAprox = dt.agora.replace(/(\d{1,2}):(\d{2})/, (m, h, min) => `${h}:${String(Math.floor(Number(min) / 15) * 15).padStart(2, "0")} (aproximadamente)`);
+    let dynEstavel = "";
+    let dynVolatil = `### Data e hora de agora (fuso de Brasília — use SEMPRE isto)\n${statusAbertura}\n- Agora: ${agoraAprox}.\n- HOJE é ${dt.hoje} — ${uniHoje ? `dia de atendimento na unidade ${uniHoje}` : "SEM atendimento (fim de semana/feriado)"}.\n- AMANHÃ é ${dt.amanha} — ${uniAmanha ? `atendimento na unidade ${uniAmanha}` : "sem atendimento"}.\n- ESTA SEMANA vai até ${fmtDia(domingoDestaSemana)}. "SEMANA QUE VEM" começa na ${fmtDia(proxSeg)}.\nAo dizer qual unidade atende numa data, use ESTA informação já calculada — NÃO deduza o dia da semana sozinha. Lembrete da regra fixa: seg/qua/sex = Conjunto Nacional; ter/qui = Taguatinga. Nunca use outra referência de data.\nREGRA DE LINGUAGEM (datas relativas) — "HOJE" e "AMANHÃ" SÓ para as datas exatas acima: a palavra "hoje" só pode se referir a ${dt.hoje}, e "amanhã" SÓ a ${dt.amanha}. Para QUALQUER outra data, NÃO use hoje/amanhã — diga o dia da semana e a data ("na quinta, 30/07") ou "depois de amanhã" apenas se for exatamente o dia seguinte ao de amanhã. Errar isso faz o paciente vir no dia errado. Na dúvida, escreva só "dia da semana + DD/MM", sem termo relativo.
 REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data ANTERIOR a ${fmtDia(proxSeg)} — datas até domingo são "esta semana" (diga "amanhã", "nesta quarta" etc.). Se o paciente pedir "semana que vem", ofereça um horário a partir de ${fmtDia(proxSeg)}; se houver vaga antes disso, você PODE oferecê-la como opção adicional deixando EXPLÍCITO que é ainda nesta semana (ex.: "tenho já nesta quarta, 29/07, e também na semana que vem"). Nunca ecoe a expressão do paciente se ela não corresponder à data oferecida.`;
 
     // Agenda do paciente: injeta os agendamentos que ELE já tem, para a Ana informar.
@@ -4458,7 +4511,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           const podeMexer = a.origem === "ana";
           return `- ${fmtDataHoraBR(a.inicio)} em ${a.unidade}${a.motivo ? ` (${a.motivo})` : ""} ${podeMexer ? `[inicio:${new Date(a.inicio).toISOString()}] — você PODE cancelar/remarcar este` : "— alteração só pela equipe"}`;
         }).join("\n");
-        dynamicPrompt += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar. Se o paciente só quer confirmar/saber, NÃO ofereça novo horário.\nPara os marcados "você PODE cancelar/remarcar este": se o paciente pedir para DESMARCAR, confirme com ele e emita o bloco [CANCELAR] copiando o token [inicio:...] exato. Para REMARCAR, ofereça um novo horário (da lista de disponíveis), e ao confirmar emita [CANCELAR] do antigo + [AGENDAR] do novo (o sistema marca o novo e cancela o antigo). Para os agendamentos "alteração só pela equipe", oriente o (61) 3033-6605 — NÃO tente cancelar você mesma.`;
+        dynEstavel += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar. Se o paciente só quer confirmar/saber, NÃO ofereça novo horário.\nPara os marcados "você PODE cancelar/remarcar este": se o paciente pedir para DESMARCAR, confirme com ele e emita o bloco [CANCELAR] copiando o token [inicio:...] exato. Para REMARCAR, ofereça um novo horário (da lista de disponíveis), e ao confirmar emita [CANCELAR] do antigo + [AGENDAR] do novo (o sistema marca o novo e cancela o antigo). Para os agendamentos "alteração só pela equipe", oriente o (61) 3033-6605 — NÃO tente cancelar você mesma.`;
       }
     } catch (_) {}
 
@@ -4466,7 +4519,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // DIRETO no tema, mesmo com mensagem genérica. A Meta só envia o referral na
     // 1ª mensagem da conversa (início vindo do anúncio).
     if (referral && (referral.headline || referral.body || referral.source_url)) {
-      dynamicPrompt += `\n\n### Esta conversa começou por um ANÚNCIO (Click-to-WhatsApp — provavelmente Instagram/Facebook)\nA primeira mensagem do paciente pode ser genérica ("posso ter mais informações sobre isso?"). Use o contexto do anúncio abaixo para descobrir o TEMA e abrir DIRETO nele — não cite estes campos ao paciente e NÃO pergunte "o que você busca" se der para inferir o tema.\n- Título do anúncio: ${referral.headline || "—"}\n- Descrição do anúncio: ${referral.body || "—"}\nAbra de forma cordial já falando do assunto do anúncio (ex.: se for cirurgia refrativa / TransPRK / "laser nos olhos" / "largar os óculos", fale disso já com os valores; se for ceratocone, catarata etc., idem). Só se realmente não der para inferir o tema é que você faz a pergunta de acolhimento.`;
+      dynEstavel += `\n\n### Esta conversa começou por um ANÚNCIO (Click-to-WhatsApp — provavelmente Instagram/Facebook)\nA primeira mensagem do paciente pode ser genérica ("posso ter mais informações sobre isso?"). Use o contexto do anúncio abaixo para descobrir o TEMA e abrir DIRETO nele — não cite estes campos ao paciente e NÃO pergunte "o que você busca" se der para inferir o tema.\n- Título do anúncio: ${referral.headline || "—"}\n- Descrição do anúncio: ${referral.body || "—"}\nAbra de forma cordial já falando do assunto do anúncio (ex.: se for cirurgia refrativa / TransPRK / "laser nos olhos" / "largar os óculos", fale disso já com os valores; se for ceratocone, catarata etc., idem). Só se realmente não der para inferir o tema é que você faz a pergunta de acolhimento.`;
     }
 
     // O paciente respondeu ao pedido de carteirinha com uma FOTO. A Ana não vê o
@@ -4477,13 +4530,13 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // toque errado acontece, e cancelar direto tira alguém da agenda sem que
     // ninguém perceba até a cadeira ficar vazia.
     if (intencaoBotao === "desmarcar") {
-      dynamicPrompt += `\n\n### O paciente TOCOU no botão "Desmarcar" do lembrete\nA intenção é clara, mas pode ter sido toque acidental. NÃO cancele ainda: pergunte, em UMA frase curta e cordial, se ele confirma o cancelamento, repetindo dia, hora e unidade da consulta (ex.: "Confirma que deseja desmarcar sua consulta de quinta-feira, 13/08, às 14h20, no Taguatinga Shopping?"). Só emita [CANCELAR] depois que ele confirmar. Se ele confirmar, cancele e ofereça, na mesma mensagem, remarcar para outra data — muita gente desmarca por conflito de horário, não por desistência.`;
+      dynVolatil += `\n\n### O paciente TOCOU no botão "Desmarcar" do lembrete\nA intenção é clara, mas pode ter sido toque acidental. NÃO cancele ainda: pergunte, em UMA frase curta e cordial, se ele confirma o cancelamento, repetindo dia, hora e unidade da consulta (ex.: "Confirma que deseja desmarcar sua consulta de quinta-feira, 13/08, às 14h20, no Taguatinga Shopping?"). Só emita [CANCELAR] depois que ele confirmar. Se ele confirmar, cancele e ofereça, na mesma mensagem, remarcar para outra data — muita gente desmarca por conflito de horário, não por desistência.`;
     } else if (intencaoBotao === "remarcar") {
-      dynamicPrompt += `\n\n### O paciente TOCOU no botão "Remarcar" do lembrete\nEle quer trocar o horário da consulta que já tem. NÃO pergunte "como posso ajudar?" nem peça que ele explique — a intenção já está dada. Confirme em meia linha qual é a consulta atual (dia, hora e unidade) e ofereça JÁ um horário concreto da lista para substituí-la, perguntando se serve. Ao ele aceitar, faça a remarcação normalmente ([CANCELAR] do antigo + [AGENDAR] do novo).`;
+      dynVolatil += `\n\n### O paciente TOCOU no botão "Remarcar" do lembrete\nEle quer trocar o horário da consulta que já tem. NÃO pergunte "como posso ajudar?" nem peça que ele explique — a intenção já está dada. Confirme em meia linha qual é a consulta atual (dia, hora e unidade) e ofereça JÁ um horário concreto da lista para substituí-la, perguntando se serve. Ao ele aceitar, faça a remarcação normalmente ([CANCELAR] do antigo + [AGENDAR] do novo).`;
     }
 
     if (fotoDeCarteirinha) {
-      dynamicPrompt += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nA imagem vai anexada nesta conversa quando disponível — ou seja, você PODE vê-la.\n🚫 NUNCA diga que vai "encaminhar a carteirinha para a equipe", que "a equipe vai verificar o cartão" ou que "a equipe entra em contato" por causa dela. A carteirinha NÃO precisa de ninguém: você lê os dados e o sistema anexa sozinho à ficha do agendamento. Falar em encaminhamento faz o paciente achar que o atendimento parou — e ele para mesmo.\nO que fazer:\n- Se for MESMO uma carteirinha/cartão de convênio: leia o NOME DO CONVÊNIO e, se estiver legível, o NÚMERO, e REGISTRE emitindo o bloco [CARTEIRINHA] (convenio + numero) ao final da mensagem — o sistema anexa à ficha. Se o fluxo for de pré-agendamento, registre TAMBÉM no bloco de pré-agendamento (convênio lido e número; se o número não estiver legível, use "carteirinha por foto"). Confirme em UMA linha qual convênio você identificou e SIGA IMEDIATAMENTE para o próximo passo do agendamento (oferecer o horário ou confirmar o que já foi combinado) — nunca termine a mensagem na carteirinha.\n- Se o arquivo for PDF ou você não conseguir enxergá-lo: NÃO diga que vai encaminhar. Peça, em uma frase, o NÚMERO da carteirinha digitado (ou uma foto do cartão) e siga o agendamento normalmente na mesma mensagem.\n- 🔎 TRANSCREVA O NOME DO CONVÊNIO INTEIRO, COMO ESTÁ IMPRESSO — e depois CONFIRA contra a lista de convênios atendidos E contra a lista dos NÃO atendidos. É PROIBIDO encurtar um nome composto até ele casar com um plano da lista. "Quality Pró-Saúde" NÃO é o "Pró-Saúde" da Câmara dos Deputados: se o cartão trouxer "Quality" (ou Quallity/Qualyty) em qualquer posição, o plano NÃO é atendido, mesmo que o resto do nome coincida com um que atendemos. Caso real (10/08): a paciente perguntou por "quality pro saúde", você distinguiu certo os dois e pediu para ela confirmar qual era — aí veio a foto do cartão, você leu apenas "Pró-Saúde" e agendou. Um convênio que não atendemos entrou na agenda, e isso só apareceria na recepção, com a criança já lá. ⚖️ MAS O CRITÉRIO É A LISTA DOS **NÃO** ATENDIDOS, NÃO A IGUALDADE EXATA. Só trate como não atendido quando o cartão trouxer um nome da lista dos NÃO atendidos (Quality/Quallity/Qualyty). Fora disso, cartão que traga a MARCA de um convênio da lista é ATENDIDO, mesmo com palavras a mais: variações, sub-planos e produtos (\"Seguros Unimed\", \"Unimed Seguros\", \"PME Compacto ENF\", \"Ideal\", \"Enfermaria\", \"Apartamento\") NÃO descredenciam nada — a equipe confirma o sub-plano depois, com o horário já reservado. Exigir nome idêntico faz você NEGAR convênio que atendemos, que é o erro mais caro dos dois: o paciente vai embora achando que não é atendido aqui.\n🚫 NUNCA VOLTE ATRÁS NUMA ACEITAÇÃO. Se você já disse ao paciente que o convênio dele é atendido, é PROIBIDO reverter depois por causa do que leu no cartão — a não ser que apareça um nome da lista dos NÃO atendidos. Ler o cartão serve para REGISTRAR o número e o nome do plano, nunca para reabrir uma decisão já comunicada. Caso real (11/08, Laura): você disse \"O plano é Unimed — atendemos, sim\", ofereceu horário, e três mensagens depois negou o mesmo convênio e ofereceu particular com reembolso.
+      dynVolatil += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nA imagem vai anexada nesta conversa quando disponível — ou seja, você PODE vê-la.\n🚫 NUNCA diga que vai "encaminhar a carteirinha para a equipe", que "a equipe vai verificar o cartão" ou que "a equipe entra em contato" por causa dela. A carteirinha NÃO precisa de ninguém: você lê os dados e o sistema anexa sozinho à ficha do agendamento. Falar em encaminhamento faz o paciente achar que o atendimento parou — e ele para mesmo.\nO que fazer:\n- Se for MESMO uma carteirinha/cartão de convênio: leia o NOME DO CONVÊNIO e, se estiver legível, o NÚMERO, e REGISTRE emitindo o bloco [CARTEIRINHA] (convenio + numero) ao final da mensagem — o sistema anexa à ficha. Se o fluxo for de pré-agendamento, registre TAMBÉM no bloco de pré-agendamento (convênio lido e número; se o número não estiver legível, use "carteirinha por foto"). Confirme em UMA linha qual convênio você identificou e SIGA IMEDIATAMENTE para o próximo passo do agendamento (oferecer o horário ou confirmar o que já foi combinado) — nunca termine a mensagem na carteirinha.\n- Se o arquivo for PDF ou você não conseguir enxergá-lo: NÃO diga que vai encaminhar. Peça, em uma frase, o NÚMERO da carteirinha digitado (ou uma foto do cartão) e siga o agendamento normalmente na mesma mensagem.\n- 🔎 TRANSCREVA O NOME DO CONVÊNIO INTEIRO, COMO ESTÁ IMPRESSO — e depois CONFIRA contra a lista de convênios atendidos E contra a lista dos NÃO atendidos. É PROIBIDO encurtar um nome composto até ele casar com um plano da lista. "Quality Pró-Saúde" NÃO é o "Pró-Saúde" da Câmara dos Deputados: se o cartão trouxer "Quality" (ou Quallity/Qualyty) em qualquer posição, o plano NÃO é atendido, mesmo que o resto do nome coincida com um que atendemos. Caso real (10/08): a paciente perguntou por "quality pro saúde", você distinguiu certo os dois e pediu para ela confirmar qual era — aí veio a foto do cartão, você leu apenas "Pró-Saúde" e agendou. Um convênio que não atendemos entrou na agenda, e isso só apareceria na recepção, com a criança já lá. ⚖️ MAS O CRITÉRIO É A LISTA DOS **NÃO** ATENDIDOS, NÃO A IGUALDADE EXATA. Só trate como não atendido quando o cartão trouxer um nome da lista dos NÃO atendidos (Quality/Quallity/Qualyty). Fora disso, cartão que traga a MARCA de um convênio da lista é ATENDIDO, mesmo com palavras a mais: variações, sub-planos e produtos (\"Seguros Unimed\", \"Unimed Seguros\", \"PME Compacto ENF\", \"Ideal\", \"Enfermaria\", \"Apartamento\") NÃO descredenciam nada — a equipe confirma o sub-plano depois, com o horário já reservado. Exigir nome idêntico faz você NEGAR convênio que atendemos, que é o erro mais caro dos dois: o paciente vai embora achando que não é atendido aqui.\n🚫 NUNCA VOLTE ATRÁS NUMA ACEITAÇÃO. Se você já disse ao paciente que o convênio dele é atendido, é PROIBIDO reverter depois por causa do que leu no cartão — a não ser que apareça um nome da lista dos NÃO atendidos. Ler o cartão serve para REGISTRAR o número e o nome do plano, nunca para reabrir uma decisão já comunicada. Caso real (11/08, Laura): você disse \"O plano é Unimed — atendemos, sim\", ofereceu horário, e três mensagens depois negou o mesmo convênio e ofereceu particular com reembolso.
 - 📝 NOME COMPLETO: o documento quase sempre traz o nome INTEIRO do paciente. TRANSCREVA esse nome e use-o no campo "nome:" do [AGENDAR] e do [PREAGENDAMENTO] — não continue com só o primeiro nome nem com o apelido do WhatsApp. Caso real: você leu o documento, disse "identifiquei seu nome e data de nascimento", gravou o nascimento e ainda assim registrou só "Raquel" — a ficha chegou à recepção sem sobrenome. Se o documento não trouxer o nome e você só tiver o primeiro, PODE marcar assim mesmo (nunca atrase o agendamento por isso), mas peça o nome completo na MESMA mensagem em que confirma o horário.\n- Se estiver ilegível, peça gentilmente uma foto mais nítida — sem travar o agendamento.\n- Se a imagem NÃO for uma carteirinha: NÃO descreva o que vê e NÃO comente o conteúdo. Apenas acolha e diga que vai encaminhar à equipe.\nLIMITE ABSOLUTO (inegociável): você só lê DOCUMENTO ADMINISTRATIVO (carteirinha/cartão do plano). Se a imagem for clínica — foto de olho, exame, laudo, receita, resultado, OCT, retinografia etc. — NUNCA descreva, interprete, opine, sugira diagnóstico ou diga se está normal/alterado. Nesses casos: acolha, diga que quem avalia é o médico na consulta, e siga para o agendamento. Continuam valendo todas as regras absolutas (nunca diagnosticar, nunca interpretar exames).\nConcluído isso, CONTINUE/CONCLUA o pré-agendamento normalmente. NÃO peça a carteirinha de novo e NÃO diga apenas que "vai encaminhar" — conclua, explicando que a equipe confirma a cobertura junto com o horário.`;
     }
 
@@ -4540,17 +4593,22 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         ? `\n⛔ ATÉ ONDE VOCÊ ENXERGA: esta lista vai só até **${ultimoSlot.dia}**. Sobre datas DEPOIS dessa você NÃO TEM INFORMAÇÃO — e não ter informação NÃO É a mesma coisa que não ter vaga. É TERMINANTEMENTE PROIBIDO dizer "não tenho disponibilidade", "não temos vaga" ou "a agenda está cheia" para uma data além de ${ultimoSlot.dia}. O que você faz nesse caso: diga que a agenda ainda não está aberta para aquele período e que a equipe entra em contato para confirmar assim que abrir — e emita [PREAGENDAMENTO] com a data/período que o paciente pediu. Se ele aceitar algo mais próximo, ofereça um horário DA LISTA.`
         : "";
       if (slotsOferta === null) {
-        dynamicPrompt += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
+        dynEstavel += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       } else if (slotsOferta.length > 0) {
-        dynamicPrompt += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, 14, tagAte)}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. MODELO DO QUE SE ESPERA — esta resposta foi elogiada como exatamente o padrão certo, copie o espírito dela: "Posso verificar outras opções, sim. Se o das 9h40 na segunda, 10/08, não for conveniente, me diz o que funciona melhor para você — manhã ou tarde, algum dia de preferência — e eu indico o mais adequado." Repare no que ela faz: acolhe o pedido, NÃO despeja uma lista, relembra o horário que já está na mesa e devolve UMA pergunta objetiva que estreita a escolha. É assim que se descobre a preferência sem transformar o atendimento em cardápio. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.\n🔄 MUDOU O CRITÉRIO? VARRA A LISTA DE NOVO, DESDE O COMEÇO. Quando o paciente troca de período, de horário ou de unidade ("tem na hora do almoço?", "e de tarde?", "e no Taguatinga?"), NÃO continue a partir da data que você acabou de oferecer — volte ao TOPO da lista e ache a data MAIS PRÓXIMA que atende ao novo pedido. Caso real de 06/08: a paciente pediu manhã cedo, recebeu 14/08 às 9h20 (certo, as 9h de 10/08 e 12/08 estavam ocupadas), perguntou "tem na hora do almoço?" e recebeu 14/08 às 12h — mas 10/08 às 12h estava LIVRE. Como a conversa seguiu ancorada no 14/08, ela acabou marcando 19/08: nove dias a mais do que precisava, e a vaga de 10/08 ficou vazia. Só ofereça data mais distante quando o PACIENTE pedir ("semana que vem", um dia específico, "depois do dia X").
+        dynEstavel += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, 14, tagAte)}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quinta, 24/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. MODELO DO QUE SE ESPERA — esta resposta foi elogiada como exatamente o padrão certo, copie o espírito dela: "Posso verificar outras opções, sim. Se o das 9h40 na segunda, 10/08, não for conveniente, me diz o que funciona melhor para você — manhã ou tarde, algum dia de preferência — e eu indico o mais adequado." Repare no que ela faz: acolhe o pedido, NÃO despeja uma lista, relembra o horário que já está na mesa e devolve UMA pergunta objetiva que estreita a escolha. É assim que se descobre a preferência sem transformar o atendimento em cardápio. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.\n🔄 MUDOU O CRITÉRIO? VARRA A LISTA DE NOVO, DESDE O COMEÇO. Quando o paciente troca de período, de horário ou de unidade ("tem na hora do almoço?", "e de tarde?", "e no Taguatinga?"), NÃO continue a partir da data que você acabou de oferecer — volte ao TOPO da lista e ache a data MAIS PRÓXIMA que atende ao novo pedido. Caso real de 06/08: a paciente pediu manhã cedo, recebeu 14/08 às 9h20 (certo, as 9h de 10/08 e 12/08 estavam ocupadas), perguntou "tem na hora do almoço?" e recebeu 14/08 às 12h — mas 10/08 às 12h estava LIVRE. Como a conversa seguiu ancorada no 14/08, ela acabou marcando 19/08: nove dias a mais do que precisava, e a vaga de 10/08 ficou vazia. Só ofereça data mais distante quando o PACIENTE pedir ("semana que vem", um dia específico, "depois do dia X").
 🚫 HORÁRIO PROPOSTO PELO PACIENTE (regra crítica): quando o PACIENTE sugerir um horário ("consigo às 16h20", "tem às 15h?", "pode ser mais cedo, tipo 9h?"), PROCURE esse horário exato na lista acima. Se ele ESTIVER na lista, confirme normalmente. Se NÃO ESTIVER, é porque está ocupado ou não existe — então NUNCA diga "agendado", "remarcado" ou "confirmado" para ele. Responda que nesse horário não tem vaga e ofereça o mais próximo QUE ESTÁ na lista (ex.: "Às 16h20 não tenho vaga; consigo às 16h40 — pode ser?"). Confirmar um horário que não está na lista faz o paciente vir num horário ocupado por outra pessoa — é o pior erro possível.\n💰 PREÇO NUNCA ENCERRA A CONVERSA: sempre que você informar um valor de lente, cirurgia ou procedimento, a MESMA mensagem tem de terminar oferecendo um horário concreto da lista. Caso real: um paciente de lente escleral recebeu "está no valor de R$ 5.980,00 o par" e a conversa morreu ali — nenhum horário foi oferecido e ele nunca mais escreveu. Valor sem próximo passo é um beco: o paciente fica com o número na cabeça, sem nada para responder. O certo é fechar com "...e a avaliação, que define a lente ideal para a sua córnea, é R$ 200,00. Consigo *[dia] às [hora]* — quer que eu reserve?".
 🚫 NÃO PROMETA RESERVA QUE VOCÊ AINDA NÃO FEZ: enquanto faltar qualquer dado para emitir o [AGENDAR], é PROIBIDO dizer "vou já reservar", "já reservei", "está reservado" ou "vou guardar esse horário". O horário só fica reservado no instante em que você emite o bloco — antes disso ele continua livre para outra pessoa. Caso real: a Ana disse "Vou já reservar esse horário para você" e pediu o nome; o paciente não respondeu, nada foi reservado, e a vaga ficou vazia sem ninguém saber. O certo é pedir o dado deixando claro que a reserva depende dele: "Perfeito! Para eu reservar esse horário, me confirma seu nome completo e a data de nascimento?". Depois de gravar, aí sim anuncie: "Agendado para [dia] às [hora]".
 🚫 CORRIGIR UM DADO NÃO É REMARCAR: se você já marcou um horário nesta conversa e depois precisa apenas ajustar convênio, nome, nascimento ou carteirinha, NUNCA re-emita [AGENDAR] com um horário DIFERENTE — repita EXATAMENTE o mesmo [inicio:] de antes (ou apenas emita [CARTEIRINHA]). Trocar o horário por conta própria muda a consulta de lugar sem o paciente pedir, e ele aparece na hora errada. Só mude o horário quando o PACIENTE pedir para mudar.\nVale igual para REMARCAÇÃO: só anuncie a remarcação depois de escolher um horário DA LISTA. Enquanto o novo horário não for um da lista, o agendamento antigo continua valendo — não diga ao paciente que mudou.\nÚNICA EXCEÇÃO à regra do horário único: agendamento para MAIS DE UM paciente — ofereça exatamente UM horário POR paciente (N pacientes = N horários), preferindo horários em sequência no mesmo dia/unidade e dizendo qual é de quem (ver a seção "Agendamento para MAIS DE UM paciente").\nATENÇÃO — A LISTA ACIMA TEM AS DUAS UNIDADES: cada linha diz a unidade e o dia. NUNCA diga que "não há horário" numa unidade ou num dia sem antes procurar na lista inteira: pode haver vaga naquele dia em outra linha, mais abaixo. Lembre que cada dia pertence a UMA unidade (seg/qua/sex = Conjunto Nacional; ter/qui = Taguatinga), então um pedido por um DIA já define a unidade — se o paciente pedir sexta, procure as linhas de sexta (Conjunto Nacional), mesmo que ele tenha citado a outra unidade antes.\nNUNCA escreva o dia da semana de uma data por conta própria: copie o dia da semana exatamente como aparece na linha da lista (ex.: se a linha diz "sexta-feira, 31/07", nunca escreva "quinta-feira, 31/07"). Errar isso faz o paciente vir no dia errado.${horizonteTxt}${(!unidade && ANA_UNIDADE_PREFERIDA) ? `\nPREFERÊNCIA DE UNIDADE (este paciente ainda NÃO disse onde quer ser atendido): hoje temos MAIS DISPONIBILIDADE na unidade **${ANA_UNIDADE_PREFERIDA}**. Use isso de duas formas: (a) AO PERGUNTAR a preferência, acrescente essa informação verdadeira e útil — ex.: "prefere Conjunto Nacional ou Taguatinga Shopping (em Águas Claras)? No Conjunto Nacional tenho mais horários disponíveis esta semana"; (b) se VOCÊ tiver que escolher (paciente sem preferência, com pressa, ou pedindo "o horário mais próximo"), ofereça um horário do **${ANA_UNIDADE_PREFERIDA}**. LIMITES: se o paciente disser que prefere a outra unidade, ou citar bairro/região mais perto dela, ATENDA IMEDIATAMENTE, sem insistir e sem justificar a troca. NUNCA diga que a outra unidade está cheia nem invente motivo — a única coisa que você pode afirmar é que há mais horários disponíveis nesta. EXCEÇÃO IMPORTANTE: se o paciente pedir explicitamente o horário MAIS PRÓXIMO/mais cedo possível (pressa, urgência de agenda), ofereça o horário genuinamente mais próximo da lista, mesmo que seja da outra unidade — nunca empurre uma data mais distante só para preencher a unidade preferida.` : ""}${precisaAntecedencia ? `\nANTECEDÊNCIA DESTE CONVÊNIO: o plano citado por este paciente (Unimed e variações, Casec, Codevasc, Care Plus ou Life Empresarial) é um dos poucos que precisam de um pouco mais de antecedência, porque a liberação junto à operadora não sai em cima da hora. Os horários muito próximos JÁ FORAM RETIRADOS da sua lista — ofereça normalmente o PRIMEIRO horário que aparece nela, de forma positiva (ex.: "Pelo seu convênio, o quanto antes que consigo é [dia] às [hora] — reservo para você?"). ⚠️ ATENÇÃO — A ANTECEDÊNCIA JÁ ESTÁ RESOLVIDA PELA LISTA: todo horário que aparece nela JÁ respeita esse prazo. Portanto, ao paciente aceitar, MARQUE DE VERDADE com [AGENDAR]. A verificação de cobertura é feita pela equipe DEPOIS, com o horário já reservado — ela NUNCA é motivo para deixar de marcar, para "encerrar e a equipe entra em contato" ou para cair em [PREAGENDAMENTO]. Deixar de marcar um horário que está na lista é ERRO GRAVE: o paciente fica sem consulta e a vaga fica vazia. Se o paciente insistir em ser atendido hoje, acolha, explique em UMA frase que esse plano específico exige a verificação prévia de cobertura junto à operadora e registre [PREAGENDAMENTO] para a equipe tentar o encaixe — sem prometer. NUNCA diga que a agenda está cheia (não é o caso) nem classifique horários por forma de pagamento.` : ""}`;
       } else {
-        dynamicPrompt += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias em NENHUMA das duas unidades. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
+        dynEstavel += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias em NENHUMA das duas unidades. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
+
+    // Versão concatenada dos dois blocos, para os caminhos que NÃO usam cache
+    // (degrau de erro 400 e reescritas da trava) — conteúdo idêntico ao que a
+    // chamada principal envia, só que num bloco único.
+    const dynCompleto = (dynEstavel ? dynEstavel.replace(/^\n+/, "") + "\n\n" : "") + dynVolatil;
 
     // Chamar Ana
     // A API da Anthropic exige que o array de mensagens comece e termine com
@@ -4601,18 +4659,12 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           model: ANA_MODEL, max_tokens: 1000,
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
-            // 2º marcador de cache: a lista de vagas. Ela é ~5.400 tokens que iam
-            // a PREÇO CHEIO em toda mensagem — 55% da conta da API. O texto que a
-            // Ana lê não muda uma vírgula; muda só como é cobrado.
-            // Por que compensa: leitura custa 0,1× e gravação 1,25×, então o ponto
-            // de equilíbrio é 21,7% de aproveitamento. Dentro de uma conversa, a
-            // lista só muda se alguém agendar no meio dela ou se um horário
-            // vencer — na prática são ~8 chamadas por conversa, ou ~88% de
-            // aproveitamento. Folga larga sobre o mínimo.
-            // O marcador vai DEPOIS do prompt fixo de propósito: cache é casamento
-            // de prefixo, então a agenda mudar invalida só ela, e a persona (22 mil
-            // tokens, 87% de aproveitamento hoje) continua sendo lida barato.
-            { type: "text", text: dynamicPrompt, cache_control: cacheControl() },
+            // 2º marcador: só a parte ESTÁVEL do bloco variável (agenda do
+            // paciente + anúncio + lista de vagas, ~5.400 tokens). A parte
+            // volátil (relógio, botão, carteirinha) vai FORA do marcador, num
+            // bloco próprio — antes o relógio ao minuto invalidava a gravação.
+            ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
+            { type: "text", text: dynVolatil },
           ],
           // 3º marcador: o histórico da conversa (ver mensagensComCache).
           messages: mensagensComCache(apiMessages),
@@ -4634,7 +4686,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
                 model: ANA_MODEL, max_tokens: 1000,
                 system: [
                   { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-                  { type: "text", text: dynamicPrompt, cache_control: { type: "ephemeral" } },
+                  ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: { type: "ephemeral" } }] : []),
+                  { type: "text", text: dynVolatil },
                 ],
                 messages: apiMessages,
               }, { origem: "atendimento" });
@@ -4646,7 +4699,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             console.warn("[Ana] Chamada com cache_control recusada (400) — refazendo sem caching.");
             response = await anthropicMessages({
               model: ANA_MODEL, max_tokens: 1000,
-              system: SYSTEM_PROMPT + "\n\n" + dynamicPrompt,
+              system: SYSTEM_PROMPT + "\n\n" + dynCompleto,
               messages: apiMessages,
             }, { origem: "atendimento" });
           }
@@ -4707,7 +4760,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           model: ANA_MODEL, max_tokens: 1000,
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
-            { type: "text", text: dynamicPrompt + (unidadeErrada ? instrucaoUnidadeDoDia(unidadeErrada)
+            { type: "text", text: dynCompleto + (unidadeErrada ? instrucaoUnidadeDoDia(unidadeErrada)
               : contradicao ? instrucaoDataReal(contradicao)
               : maisCedo ? instrucaoMaisCedo(maisCedo)
               : virouVerbete ? instrucaoSemVerbete()
@@ -4735,7 +4788,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
                 model: ANA_MODEL, max_tokens: 1000,
                 system: [
                   { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
-                  { type: "text", text: dynamicPrompt + instrucaoFichaCompleta(aindaFalta) },
+                  { type: "text", text: dynCompleto + instrucaoFichaCompleta(aindaFalta) },
                 ],
                 messages: apiMessages,
               }, { origem: "reescrita" });
@@ -6730,6 +6783,29 @@ function ehCortesia(texto) {
   if (palavras.length > 5) return false;
   if (!palavras.every(p => CORTESIA_NUCLEO.has(p) || CORTESIA_ENFEITE.has(p))) return false;
   return palavras.some(p => CORTESIA_NUCLEO.has(p));        // "Bom dia" e "Sim" sozinhos NÃO passam
+}
+
+// ===== RESPOSTAS FIXAS SEM IA (FAQ) =========================================
+// (custos, item 4) Textos copiados das seções "ENDEREÇOS COMPLETOS", "COMO
+// CHEGAR / ACESSO" e horários do prompt da Ana — a resposta fixa diz EXATAMENTE
+// o que a IA diria, só que de graça e na hora. Os padrões de pergunta vêm das
+// mensagens REAIS do banco (14/08): "manda a localização", "endereço certinho",
+// "onde fica dentro do shopping", "qual sala/torre", "que horas abre".
+const FAQ_END_CN = "📍 *Conjunto Nacional* (seg/qua/sex): Shopping Conjunto Nacional — SDN Conjunto A, Sala 6017 (Torre Verde), 6º andar · Asa Norte, Brasília-DF.\nO acesso é pelo primeiro andar, próximo à Magazine Luiza — ali fica o elevador da Torre Verde, que leva à clínica. Se vier de carro, o estacionamento em frente à Magazine Luiza é o mais próximo desse acesso.";
+const FAQ_END_TS = "📍 *Taguatinga Shopping* (ter/qui) — fica em Águas Claras: QS 1, Lote 40, Sala 615 (Torre B) · Águas Claras, Brasília-DF.\nEntre pela porta ao lado do supermercado Assaí; no primeiro piso (P1) fica a recepção da Torre B, ao lado do Starbucks — é por ali que se sobe. A clínica fica no 6º andar (sala 615).";
+const FAQ_HORARIO = "Nosso atendimento é de segunda a sexta, das 8h às 18h. 😊\n• *Conjunto Nacional* (Asa Norte): segundas, quartas e sextas.\n• *Taguatinga Shopping* (em Águas Claras): terças e quintas — a recepção abre às 8h e o atendimento médico começa às 10h.";
+// Decide se a mensagem é SÓ uma pergunta de endereço/horário. Na dúvida, null —
+// falso negativo custa uma chamada de API; falso positivo custa um atendimento.
+function respostaFixaFAQ(texto) {
+  const bruto = String(texto || "").trim();
+  if (!bruto || bruto.length > 90) return null;
+  const t = bruto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  // Qualquer sinal de OUTRO assunto (agendar, preço, convênio, sintoma, dado de
+  // fluxo) → deixa a IA responder. Lista propositalmente larga.
+  if (/(agend|marc|remarc|desmarc|cancel|confirm|vaga|valor|preco|quanto|custa|convenio|plano|unimed|amil|bradesco|dor|urgen|socorro|exame|cirurg|lente|receita|oculos|grau|retorno|resultado|medic|doutor|dr\.|consulta|prefer|amanha|hoje\b|semana|nome|nascimento)/.test(t)) return null;
+  if (/(endereco|localizacao|localizada|onde fica|onde e a clinica|onde voces|como chego|como chegar|referencia|estaciona|qual andar|qual sala|qual torre|dentro do shopping)/.test(t)) return "endereco";
+  if (/(horario de funcionamento|horario de atendimento|que horas (abre|fecha)|ate que horas|abre que horas|abrem que horas|voces (abrem|fecham)|funciona ate|funciona de que)/.test(t)) return "horario";
+  return null;
 }
 
 async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
