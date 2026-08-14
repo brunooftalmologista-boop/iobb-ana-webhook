@@ -2828,10 +2828,19 @@ async function sendWhatsAppImage(to, url, caption = "") {
 //      paciente estiver fora da janela de 24h.
 //
 // `bodyParams` preenche as variáveis {{1}}… do corpo, na ordem informada.
-async function sendWhatsAppTemplate(to, templateName, languageCode = "pt_BR", bodyParams = []) {
+// `quickReplies` (opcional): rótulos dos botões de Resposta Rápida do template.
+// Template com botões exige que o ENVIO passe um payload por botão — foi por
+// isso que o primeiro lembrete (07/2026) ficou sem botões: o envio não passava
+// esses parâmetros. O payload é o próprio rótulo, que é o que o webhook lê
+// quando o paciente toca (msg.button.text / msg.button.payload).
+async function sendWhatsAppTemplate(to, templateName, languageCode = "pt_BR", bodyParams = [], quickReplies = []) {
   const components = bodyParams.length
     ? [{ type: "body", parameters: bodyParams.map(t => ({ type: "text", text: String(t) })) }]
     : [];
+  (quickReplies || []).forEach((rotulo, i) => components.push({
+    type: "button", sub_type: "quick_reply", index: String(i),
+    parameters: [{ type: "payload", payload: String(rotulo) }],
+  }));
   await axios.post(
     `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
     {
@@ -4017,7 +4026,57 @@ app.post("/webhook", async (req, res) => {
       // enviar nada; "#LEMBRETES CONFIRMAR" dispara agora, fora do horário.
       const lembCmd = text.match(/^#LEMBRETES\b([\s\S]*)$/i);
       if (lembCmd) {
-        const arg = lembCmd[1].trim().toUpperCase();
+        // Sem acento e maiúsculo: "botões", "BOTOES" e "Botoes" são o mesmo comando.
+        const arg = lembCmd[1].trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        // ── BOTÕES: criar / acompanhar / ativar o template com Confirmo·Desmarcar·Remarcar
+        const botCmd = arg.match(/^BOTOES\b\s*(\S*)/);
+        if (botCmd) {
+          const sub = botCmd[1] || "";
+          if (sub === "CRIAR") {
+            try {
+              const r = await criarTemplateBotoes();
+              await sendWhatsApp(from, `✅ Template *${TEMPLATE_BOTOES_NOME}* criado na Meta (status: ${r.status || "?"}).\n\nA aprovação leva de minutos a algumas horas. Acompanhe com *#LEMBRETES BOTOES* e, quando aparecer APPROVED, ative com *#LEMBRETES BOTOES USAR*.`);
+            } catch (e) {
+              const d = e?.response?.data;
+              const msg = d ? JSON.stringify(d) : e.message;
+              const jaExiste = /already exists|2388023|192/.test(msg);
+              await sendWhatsApp(from, jaExiste
+                ? `ℹ️ O template *${TEMPLATE_BOTOES_NOME}* já existe na Meta. Veja a situação com *#LEMBRETES BOTOES*.`
+                : `❌ A Meta recusou a criação do template.\n\nResposta:\n${msg.slice(0, 900)}`);
+            }
+            return;
+          }
+          if (sub === "USAR") {
+            let st = null;
+            try { st = await statusTemplateBotoes(); } catch (e) {
+              await sendWhatsApp(from, `⚠️ Não consegui consultar a Meta agora: ${e?.response?.data ? JSON.stringify(e.response.data).slice(0, 400) : e.message}`);
+              return;
+            }
+            if (!st) { await sendWhatsApp(from, `⚠️ O template *${TEMPLATE_BOTOES_NOME}* ainda não existe. Crie com *#LEMBRETES BOTOES CRIAR*.`); return; }
+            if (st.status !== "APPROVED") { await sendWhatsApp(from, `⏳ O template ainda não foi aprovado (status: *${st.status}*). Assim que estiver APPROVED, mande *#LEMBRETES BOTOES USAR* de novo.`); return; }
+            const { error } = await supabase.from("settings").upsert({ key: "lembrete_template", value: JSON.stringify({ name: TEMPLATE_BOTOES_NOME, lang: "pt_BR", botoes: true }) });
+            if (error) { await sendWhatsApp(from, `❌ Falha ao gravar a escolha: ${error.message}`); return; }
+            await sendWhatsApp(from, `✅ Pronto! Os lembretes agora saem com os botões *Confirmo*, *Desmarcar* e *Remarcar*.\n\nTeste no seu número com *#LEMBRETES TESTAR*. Para voltar ao formato antigo: *#LEMBRETES BOTOES VOLTAR*.`);
+            return;
+          }
+          if (sub === "VOLTAR") {
+            await supabase.from("settings").delete().eq("key", "lembrete_template");
+            await sendWhatsApp(from, `↩️ Feito: os lembretes voltaram ao template antigo, só texto (*${WA_LEMBRETE_TEMPLATE_NAME || "—"}*).`);
+            return;
+          }
+          // "#LEMBRETES BOTOES" puro → situação
+          let st = null, erroSt = null;
+          try { st = await statusTemplateBotoes(); } catch (e) { erroSt = e?.response?.data ? JSON.stringify(e.response.data).slice(0, 400) : e.message; }
+          const tplAtual = await templateLembreteAtual();
+          const situacao = erroSt ? `⚠️ não consegui consultar a Meta: ${erroSt}`
+            : !st ? "ainda não foi criado — mande *#LEMBRETES BOTOES CRIAR*"
+            : st.status === "APPROVED" ? "✅ APROVADO na Meta"
+            : `⏳ status na Meta: *${st.status}*`;
+          const emUso = tplAtual.botoes ? "✅ SIM — os lembretes já saem com botões"
+            : `não — os lembretes usam *${tplAtual.name || "—"}* (só texto)${st?.status === "APPROVED" ? ". Para ativar: *#LEMBRETES BOTOES USAR*" : ""}`;
+          await sendWhatsApp(from, `🔘 *Lembrete com botões* (${TEMPLATE_BOTOES_NOME})\n\nTemplate: ${situacao}\nEm uso: ${emUso}\n\nComandos: *CRIAR* · *USAR* · *VOLTAR* (após #LEMBRETES BOTOES)`);
+          return;
+        }
         const amanhaYMD = new Date(Date.now() + 24 * 3600 * 1000).toLocaleDateString("en-CA", { timeZone: TZ_BR });
         const alvos = await alvosDoLembrete(amanhaYMD);
         if (alvos === null) { await sendWhatsApp(from, "⚠️ Não consegui ler a agenda agora."); return; }
@@ -4027,19 +4086,20 @@ app.post("/webhook", async (req, res) => {
         // (nome do template errado, idioma, número de variáveis) sem ler o log do
         // Render. Não toca em paciente nenhum.
         if (arg === "TESTAR") {
-          if (!WA_LEMBRETE_TEMPLATE_NAME) { await sendWhatsApp(from, "⚠️ Falta definir *WA_LEMBRETE_TEMPLATE_NAME* no Render."); return; }
+          const tpl = await templateLembreteAtual();
+          if (!tpl.name) { await sendWhatsApp(from, "⚠️ Falta definir *WA_LEMBRETE_TEMPLATE_NAME* no Render."); return; }
           try {
-            await sendWhatsAppTemplate(from, WA_LEMBRETE_TEMPLATE_NAME, WA_LEMBRETE_TEMPLATE_LANG,
-              ["Teste", "quinta-feira, 30/07 às 14h20", "Conjunto Nacional"]);
-            await sendWhatsApp(from, `✅ Template *${WA_LEMBRETE_TEMPLATE_NAME}* (${WA_LEMBRETE_TEMPLATE_LANG}) enviado com sucesso para este número. Se a mensagem chegou, o lembrete está pronto.`);
+            await sendWhatsAppTemplate(from, tpl.name, tpl.lang,
+              ["Teste", "quinta-feira, 30/07 às 14h20", "Conjunto Nacional"], tpl.botoes ? BOTOES_LEMBRETE : []);
+            await sendWhatsApp(from, `✅ Template *${tpl.name}* (${tpl.lang})${tpl.botoes ? " com botões" : ""} enviado com sucesso para este número. Se a mensagem chegou${tpl.botoes ? " com os três botões" : ""}, o lembrete está pronto.`);
           } catch (e) {
             const d = e?.response?.data;
-            await sendWhatsApp(from, `❌ A Meta recusou o template *${WA_LEMBRETE_TEMPLATE_NAME}* (${WA_LEMBRETE_TEMPLATE_LANG}).\n\nResposta:\n${(d ? JSON.stringify(d) : e.message).slice(0, 900)}`);
+            await sendWhatsApp(from, `❌ A Meta recusou o template *${tpl.name}* (${tpl.lang}).\n\nResposta:\n${(d ? JSON.stringify(d) : e.message).slice(0, 900)}`);
           }
           return;
         }
         if (arg === "CONFIRMAR") {
-          if (!WA_LEMBRETE_TEMPLATE_NAME) { await sendWhatsApp(from, "⚠️ Lembretes INERTES: falta definir *WA_LEMBRETE_TEMPLATE_NAME* no Render (nome do template aprovado na Meta)."); return; }
+          if (!(await templateLembreteAtual()).name) { await sendWhatsApp(from, "⚠️ Lembretes INERTES: falta definir *WA_LEMBRETE_TEMPLATE_NAME* no Render (nome do template aprovado na Meta)."); return; }
           await sendWhatsApp(from, `🔔 Enviando lembretes de ${dd}/${mm} (${alvos.length} paciente(s))...`);
           const r = await enviarLembretesDeAmanha();
           await sendWhatsApp(from, `🔔 Lembretes: *${r.ok}* enviado(s), *${r.falhas}* falha(s).${r.motivo ? ` (${r.motivo})` : ""}${r.erro ? `\n\nMotivo da recusa:\n${String(r.erro).slice(0, 700)}` : ""}`);
@@ -4048,9 +4108,10 @@ app.post("/webhook", async (req, res) => {
         const linhas = alvos.length
           ? alvos.map((a, i) => `*${i + 1}.* ${fmtLembreteQuando(a.inicio)} — ${a.paciente_nome || "—"} · ${a.unidade}`).join("\n")
           : "_ninguém com telefone na agenda de amanhã_";
-        const estado = !WA_LEMBRETE_TEMPLATE_NAME ? "⚠️ INERTE (falta WA_LEMBRETE_TEMPLATE_NAME no Render)"
+        const tplInfo = await templateLembreteAtual();
+        const estado = !tplInfo.name ? "⚠️ INERTE (falta WA_LEMBRETE_TEMPLATE_NAME no Render)"
           : LEMBRETE_HORA === null ? "⚠️ desligado (LEMBRETE_HORA=off)"
-          : `✅ ativo, dispara a partir das ${LEMBRETE_HORA}h\n📄 Template em uso: *${WA_LEMBRETE_TEMPLATE_NAME}* (${WA_LEMBRETE_TEMPLATE_LANG})`;
+          : `✅ ativo, dispara a partir das ${LEMBRETE_HORA}h\n📄 Template em uso: *${tplInfo.name}* (${tplInfo.lang})${tplInfo.botoes ? " — com botões Confirmo·Desmarcar·Remarcar" : " — só texto; para botões: *#LEMBRETES BOTOES*"}`;
         await sendWhatsApp(from, `🔔 *Lembretes da véspera* — ${estado}\nConsultas de ${dd}/${mm}/${aa}:\n${linhas}\n\n_Nada foi enviado. Para disparar agora: *#LEMBRETES CONFIRMAR*_`);
         return;
       }
@@ -6346,6 +6407,71 @@ const LEMBRETE_HORA = (() => {
   return (v !== "" && Number.isInteger(n) && n >= 0 && n <= 23) ? n : 18;
 })();
 
+// ---- Lembrete com BOTÕES (Confirmo / Desmarcar / Remarcar) -----------------
+// Pedido do Dr. Bruno (08/2026): o paciente TOCA em vez de digitar, e a Ana
+// para de receber "ok", "sim, estarei", "não vou poder" em vinte formas. O
+// webhook já sabe ler o toque (msg.type === "button", ver lá em cima); o que
+// faltava era o template TER botões e o envio passar os payloads.
+// Fluxo, todo por WhatsApp (comandos admin):
+//   #LEMBRETES BOTOES         → situação do template na Meta (existe? aprovado?)
+//   #LEMBRETES BOTOES CRIAR   → cria o template na Meta (aprovação: min a horas)
+//   #LEMBRETES BOTOES USAR    → depois de APROVADO, passa a usar nos lembretes
+//   #LEMBRETES BOTOES VOLTAR  → volta ao template antigo (só texto)
+// A escolha fica em settings (chave lembrete_template) — sem mexer em env do
+// Render, sem deploy. WA_WABA_ID tem default fixo porque a WABA da Ana é uma
+// só; env existe para o dia em que isso mudar.
+const WA_WABA_ID = (readEnv("WA_WABA_ID") || "1045823631462015").trim();
+const TEMPLATE_BOTOES_NOME = "lembrete_consulta_botoes";
+const BOTOES_LEMBRETE = ["Confirmo", "Desmarcar", "Remarcar"];
+
+// Qual template o lembrete usa AGORA: o escolhido via settings (botões) ou, na
+// falta dele, o do env (texto). NUNCA lança — na dúvida, cai no env.
+async function templateLembreteAtual() {
+  try {
+    const { data } = await supabase.from("settings").select("value").eq("key", "lembrete_template").single();
+    const v = data?.value ? JSON.parse(data.value) : null;
+    if (v?.name) return { name: v.name, lang: v.lang || "pt_BR", botoes: !!v.botoes };
+  } catch (_) { /* sem escolha gravada — usa o env */ }
+  return { name: WA_LEMBRETE_TEMPLATE_NAME, lang: WA_LEMBRETE_TEMPLATE_LANG, botoes: false };
+}
+
+// Cria o template com botões na Meta. Usa o MESMO token do envio de mensagens;
+// se ele não tiver a permissão whatsapp_business_management, a Meta devolve o
+// erro e o comando mostra — aí o caminho é gerar um token novo com essa
+// permissão no painel de desenvolvedor.
+async function criarTemplateBotoes() {
+  const { data } = await axios.post(
+    `https://graph.facebook.com/v19.0/${WA_WABA_ID}/message_templates`,
+    {
+      name: TEMPLATE_BOTOES_NOME, language: "pt_BR", category: "UTILITY", allow_category_change: true,
+      components: [
+        {
+          type: "BODY",
+          text: "Olá, {{1}}! Aqui é a Ana, do Instituto de Olhos Bruno Borges. Passando para confirmar sua consulta: {{2}}, na unidade {{3}}. É só tocar em uma das opções abaixo.",
+          example: { body_text: [["Maria", "quinta-feira, 30/07 às 14h20", "Taguatinga Shopping"]] },
+        },
+        { type: "BUTTONS", buttons: BOTOES_LEMBRETE.map(t => ({ type: "QUICK_REPLY", text: t })) },
+      ],
+    },
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" }, timeout: 20000 }
+  );
+  return data;   // { id, status, category }
+}
+
+// Situação do template com botões na Meta: null se ainda não existe, senão
+// { status, id } — status APPROVED | PENDING | REJECTED | ...
+async function statusTemplateBotoes() {
+  const { data } = await axios.get(
+    `https://graph.facebook.com/v19.0/${WA_WABA_ID}/message_templates`,
+    {
+      params: { name: TEMPLATE_BOTOES_NOME, fields: "name,status,id,category" },
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` }, timeout: 20000,
+    }
+  );
+  const t = (data?.data || []).find(t => t.name === TEMPLATE_BOTOES_NOME);
+  return t || null;
+}
+
 // "quinta-feira, 30/07 às 14h20" — mais claro que o fmtDataHoraBR padrão para
 // uma mensagem que o paciente lê fora do contexto da conversa.
 function fmtLembreteQuando(iso) {
@@ -6383,7 +6509,8 @@ function unidadeParaPaciente(u) {
 // a data e os ids já avisados, então reinício do Render ou segunda passagem no
 // mesmo dia não duplicam. NUNCA lança.
 async function enviarLembretesDeAmanha() {
-  if (!WA_LEMBRETE_TEMPLATE_NAME) return { ok: 0, falhas: 0, motivo: "template não configurado" };
+  const tpl = await templateLembreteAtual();
+  if (!tpl.name) return { ok: 0, falhas: 0, motivo: "template não configurado" };
   const amanhaYMD = new Date(Date.now() + 24 * 3600 * 1000).toLocaleDateString("en-CA", { timeZone: TZ_BR });
 
   const todos = await alvosDoLembrete(amanhaYMD);
@@ -6399,15 +6526,15 @@ async function enviarLembretesDeAmanha() {
   const alvos = todos.filter(a => !enviados.has(a.id));
   if (!alvos.length) { console.log(`[Lembrete] Nada a enviar para ${amanhaYMD}.`); return { ok: 0, falhas: 0, motivo: "ninguém a avisar" }; }
 
-  console.log(`[Lembrete] ${alvos.length} paciente(s) com consulta em ${amanhaYMD} — template "${WA_LEMBRETE_TEMPLATE_NAME}".`);
+  console.log(`[Lembrete] ${alvos.length} paciente(s) com consulta em ${amanhaYMD} — template "${tpl.name}"${tpl.botoes ? " (com botões)" : ""}.`);
   let ok = 0, falhas = 0, primeiroErro = null;   // guarda o motivo da 1ª recusa da Meta
   for (const a of alvos) {
     const quando = fmtLembreteQuando(a.inicio);
     const primeiroNome = String(a.paciente_nome || "").trim().split(/\s+/)[0] || "tudo bem";
     const unidadeMsg = unidadeParaPaciente(a.unidade);
     try {
-      await sendWhatsAppTemplate(a._fone, WA_LEMBRETE_TEMPLATE_NAME, WA_LEMBRETE_TEMPLATE_LANG,
-        [primeiroNome, quando, unidadeMsg]);
+      await sendWhatsAppTemplate(a._fone, tpl.name, tpl.lang,
+        [primeiroNome, quando, unidadeMsg], tpl.botoes ? BOTOES_LEMBRETE : []);
       ok++;
       enviados.add(a.id);
       // Registra na conversa para a Ana ter contexto quando o paciente responder
@@ -6421,7 +6548,9 @@ async function enviarLembretesDeAmanha() {
           // precisa entender a que ele está respondendo. Com a versão antiga
           // ("lembrete enviado: ..."), ela via uma linha de log e respondia com a
           // saudação genérica — foi o que a Barbara recebeu ao dizer "Confirmo".
-          const registro = `Olá, ${primeiroNome}! Passando para confirmar sua consulta: ${quando}, na unidade ${unidadeMsg}. Se estiver tudo certo, responda CONFIRMO; se precisar remarcar, responda REMARCAR. _(lembrete automático da véspera)_`;
+          const registro = tpl.botoes
+            ? `Olá, ${primeiroNome}! Aqui é a Ana, do Instituto de Olhos Bruno Borges. Passando para confirmar sua consulta: ${quando}, na unidade ${unidadeMsg}. É só tocar em uma das opções abaixo. [botões: Confirmo · Desmarcar · Remarcar] _(lembrete automático da véspera)_`
+            : `Olá, ${primeiroNome}! Passando para confirmar sua consulta: ${quando}, na unidade ${unidadeMsg}. Se estiver tudo certo, responda CONFIRMO; se precisar remarcar, responda REMARCAR. _(lembrete automático da véspera)_`;
           await supabase.from("messages").insert({ conversation_id: conv.id, role: "assistant", content: registro, event: "lembrete" });
           await supabase.from("conversations").update({ last_message: registro, updated_at: new Date().toISOString() }).eq("id", conv.id);
         }
@@ -6439,7 +6568,7 @@ async function enviarLembretesDeAmanha() {
   console.log(`[Lembrete] Concluído: ${ok} enviado(s), ${falhas} falha(s).`);
   // O motivo da recusa da Meta vai JUNTO: sem ele o log dizia só "falhas=7" e a
   // causa (nome do template, idioma, nº de variáveis) ficava só no Render.
-  if (falhas) await registrarErro("lembrete_vespera", `data=${amanhaYMD} enviados=${ok} falhas=${falhas} template="${WA_LEMBRETE_TEMPLATE_NAME}" lang="${WA_LEMBRETE_TEMPLATE_LANG}" erro=${primeiroErro || "?"}`).catch(() => {});
+  if (falhas) await registrarErro("lembrete_vespera", `data=${amanhaYMD} enviados=${ok} falhas=${falhas} template="${tpl.name}" lang="${tpl.lang}" erro=${primeiroErro || "?"}`).catch(() => {});
   return { ok, falhas, data: amanhaYMD, erro: primeiroErro };
 }
 
