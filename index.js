@@ -4776,17 +4776,33 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             : virouVerbete ? "virou_verbete" : vazouInstrucao ? "vazou_instrucao_refeito" : "varios_horarios_refeito",
           `${motivo} | ${reply.slice(0, 250)}`,
           { conversationId: conversation.id, telefone: from });
+        // ⚓ ÂNCORA (custos, item 2): nas travas de HORÁRIO, a instrução mandava o
+        // modelo "escolher da lista de novo" — e às vezes ele errava de novo (14/08:
+        // a reescrita inventou QUATRO horários). O código passa a indicar uma vaga
+        // REAL como porto seguro: ele ainda pode escolher outra DA LISTA que atenda
+        // melhor ao pedido (período/unidade), mas na dúvida oferece a conferida.
+        const travaDeHorario = contradicao || maisCedo || (!unidadeErrada && !virouVerbete && !semFormaPagamento && !precoSeco && horas.length > 1);
+        const ancora = (travaDeHorario && Array.isArray(slotsVigentes) && slotsVigentes.length)
+          ? alternativaMaisProxima(slotsVigentes, new Date(), Date.now()) : null;
+        const ancoraTxt = ancora
+          ? `\n\n⚓ VAGA CONFERIDA PELO SISTEMA (real, copiada da lista): ${ancora.dia} às ${ancora.hora}, no ${ancora.unidade}. Se o paciente pediu um período/dia/unidade específico, escolha DA LISTA um horário que atenda a isso; se não tiver CERTEZA, ofereça exatamente a vaga conferida acima. Horário que não está na lista NÃO EXISTE.`
+          : "";
+        // (custos, item 1) A reescrita repete os MESMOS dois blocos cacheados da
+        // chamada principal (persona + parte estável) — prefixo idêntico = leitura
+        // de cache. Antes ela mandava tudo num bloco único a preço cheio: ~11.700
+        // tokens por reescrita, 17,5% da conta do dia. Só a instrução vai cheia.
         const r2 = await anthropicMessages({
           model: ANA_MODEL, max_tokens: 1000,
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
-            { type: "text", text: dynCompleto + (unidadeErrada ? instrucaoUnidadeDoDia(unidadeErrada)
+            ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
+            { type: "text", text: dynVolatil + (unidadeErrada ? instrucaoUnidadeDoDia(unidadeErrada)
               : contradicao ? instrucaoDataReal(contradicao)
               : maisCedo ? instrucaoMaisCedo(maisCedo)
               : virouVerbete ? instrucaoSemVerbete()
               : semFormaPagamento ? instrucaoFichaCompleta(faltasFicha)
               : precoSeco ? instrucaoPrecoComHorario()
-              : instrucaoUmHorario(horas)) },
+              : instrucaoUmHorario(horas)) + ancoraTxt },
           ],
           messages: apiMessages,
         }, { origem: "reescrita" });
@@ -4834,7 +4850,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
                 model: ANA_MODEL, max_tokens: 1000,
                 system: [
                   { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
-                  { type: "text", text: dynCompleto + instrucaoFichaCompleta(aindaFalta) },
+                  ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
+                  { type: "text", text: dynVolatil + instrucaoFichaCompleta(aindaFalta) },
                 ],
                 messages: apiMessages,
               }, { origem: "reescrita" });
