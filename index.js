@@ -2369,10 +2369,83 @@ function mensagensComCache(msgs) {
   } else return msgs;
   return [...msgs.slice(0, -1), marcado];
 }
-async function anthropicMessages(payload, { tentativas = 3, timeout = 30000 } = {}) {
+// ===== MEDIDOR DE CUSTOS (#CUSTOS) ==========================================
+// Cada chamada à API grava uma linha em api_custos (Supabase) com o uso que a
+// PRÓPRIA API reportou — não é estimativa de contagem, é o que será cobrado.
+// O comando #CUSTOS soma por período. Preços em US$/milhão de tokens (Sonnet).
+// Se o modelo mudar (ANA_MODEL), atualizar aqui.
+const PRECOS_API = { entrada: 3, saida: 15, gravacao5m: 3.75, gravacao1h: 6, leitura: 0.3 };
+function custoUSD(u) {
+  const grav = ANA_CACHE_TTL === "1h" ? PRECOS_API.gravacao1h : PRECOS_API.gravacao5m;
+  return ((u.input_tokens || 0) * PRECOS_API.entrada + (u.cache_creation_input_tokens || 0) * grav
+        + (u.cache_read_input_tokens || 0) * PRECOS_API.leitura + (u.output_tokens || 0) * PRECOS_API.saida) / 1e6;
+}
+// Fire-and-forget: medição NUNCA atrasa nem derruba a resposta ao paciente.
+function registrarCustoAPI(origem, payload, response) {
+  try {
+    const u = response?.data?.usage;
+    if (!u) return;
+    const usd = custoUSD(u);
+    const lidos = u.cache_read_input_tokens || 0, gravados = u.cache_creation_input_tokens || 0;
+    const aproveitamento = (lidos + gravados) ? Math.round(100 * lidos / (lidos + gravados)) : 0;
+    console.log(`[Custo] ${origem} cheio=${u.input_tokens || 0} gravado=${gravados} lido=${lidos} saida=${u.output_tokens || 0} | cache ${aproveitamento}% | US$ ${usd.toFixed(4)}`);
+    supabase.from("api_custos").insert({
+      origem, modelo: payload?.model || null,
+      input_cheio: u.input_tokens || 0, cache_gravado: gravados, cache_lido: lidos,
+      saida: u.output_tokens || 0, usd,
+    }).then(({ error }) => { if (error) console.error("[Custo] registro falhou:", error.message); });
+  } catch (e) { console.error("[Custo] medição falhou:", e.message); }
+}
+
+// Resumo para o comando #CUSTOS. A soma é feita NO banco (função custos_resumo,
+// criada por migração no Supabase) — puxar linha a linha estouraria o limite de
+// 1000 linhas do PostgREST já no primeiro mês.
+async function montarResumoCustos() {
+  const agoraD = new Date();
+  const hojeYMD = agoraD.toLocaleDateString("en-CA", { timeZone: TZ_BR });
+  const dia0 = (ymd) => new Date(`${ymd}T00:00:00-03:00`);
+  const hoje0 = dia0(hojeYMD);
+  const amanha0 = new Date(hoje0.getTime() + 24 * 3600 * 1000);
+  const ontem0 = new Date(hoje0.getTime() - 24 * 3600 * 1000);
+  const sete0 = new Date(hoje0.getTime() - 6 * 24 * 3600 * 1000);
+  const mes0 = dia0(hojeYMD.slice(0, 8) + "01");
+  const soma = async (de, ate) => {
+    const { data, error } = await supabase.rpc("custos_resumo", { desde: de.toISOString(), ate: ate.toISOString() });
+    if (error) throw new Error(error.message);
+    const t = { chamadas: 0, usd: 0, lido: 0, gravado: 0, porOrigem: {} };
+    for (const r of (data || [])) {
+      t.chamadas += Number(r.chamadas || 0); t.usd += Number(r.usd || 0);
+      t.lido += Number(r.cache_lido || 0); t.gravado += Number(r.cache_gravado || 0);
+      t.porOrigem[r.origem] = (t.porOrigem[r.origem] || 0) + Number(r.usd || 0);
+    }
+    return t;
+  };
+  const [hoje, ontem, sete, mes] = await Promise.all([
+    soma(hoje0, amanha0), soma(ontem0, hoje0), soma(sete0, amanha0), soma(mes0, amanha0),
+  ]);
+  if (!mes.chamadas && !sete.chamadas) {
+    return "💵 *Custos da Ana — API do Claude*\nAinda não há chamadas registradas — o medidor acabou de ser ligado. Consulte de novo depois de alguns atendimentos.";
+  }
+  const pct = (t) => (t.lido + t.gravado) ? Math.round(100 * t.lido / (t.lido + t.gravado)) : 0;
+  const usd = (v) => `US$ ${v.toFixed(2)}`;
+  const diaDoMes = Number(hojeYMD.slice(8, 10));
+  const diasNoMes = new Date(Number(hojeYMD.slice(0, 4)), Number(hojeYMD.slice(5, 7)), 0).getDate();
+  const projecao = mes.usd / Math.max(1, diaDoMes) * diasNoMes;
+  const mesNome = agoraD.toLocaleDateString("pt-BR", { timeZone: TZ_BR, month: "long" });
+  const tipos = Object.entries(hoje.porOrigem).sort((a, b) => b[1] - a[1]).map(([o, v]) => `${o} ${usd(v)}`).join(" · ");
+  return `💵 *Custos da Ana — API do Claude*\n` +
+    `Hoje: ${usd(hoje.usd)} — ${hoje.chamadas} chamada(s), cache ${pct(hoje)}% aproveitado\n` +
+    `Ontem: ${usd(ontem.usd)} — ${ontem.chamadas} chamada(s)\n` +
+    `Últimos 7 dias: ${usd(sete.usd)} (média ${usd(sete.usd / 7)}/dia)\n` +
+    `${mesNome.charAt(0).toUpperCase() + mesNome.slice(1)}: ${usd(mes.usd)} → projeção ~${usd(projecao)} no mês\n` +
+    (tipos ? `Por tipo, hoje: ${tipos}\n` : "") +
+    `\n_Só a API do Claude, pelo uso que a própria API reporta a cada chamada. WhatsApp (Meta), Render e Supabase não entram. Medindo desde 14/08/2026._`;
+}
+
+async function anthropicMessages(payload, { tentativas = 3, timeout = 30000, origem = "outro" } = {}) {
   for (let i = 1; ; i++) {
     try {
-      return await axios.post(
+      const r = await axios.post(
         "https://api.anthropic.com/v1/messages",
         payload,
         { headers: {
@@ -2385,6 +2458,8 @@ async function anthropicMessages(payload, { tentativas = 3, timeout = 30000 } = 
             "Content-Type": "application/json",
           }, timeout }
       );
+      registrarCustoAPI(origem, payload, r);
+      return r;
     } catch (err) {
       const status = err?.response?.status;
       // Transitório = status retentável OU falha sem resposta (timeout/rede).
@@ -3457,7 +3532,7 @@ Regras rígidas:
 
 Intenção da equipe: ${intent}`;
   try {
-    const r = await anthropicMessages({ model: ANA_MODEL, max_tokens: 500, system: sys, messages: [{ role: "user", content: "Escreva agora a mensagem para o paciente." }] });
+    const r = await anthropicMessages({ model: ANA_MODEL, max_tokens: 500, system: sys, messages: [{ role: "user", content: "Escreva agora a mensagem para o paciente." }] }, { origem: "recado" });
     const t = r.data?.content?.[0]?.text?.trim();
     return t || null;
   } catch (e) {
@@ -4051,6 +4126,15 @@ app.post("/webhook", async (req, res) => {
         await sendWhatsApp(from, await montarAuditoriaDiaria());
         return;
       }
+      // Custos da API do Claude — quanto a Ana gastou, sem abrir o Render.
+      if (/^#CUSTOS?\b/i.test(text)) {
+        try {
+          await sendWhatsApp(from, await montarResumoCustos());
+        } catch (e) {
+          await sendWhatsApp(from, "⚠️ Não consegui ler os custos agora: " + String(e.message || "erro desconhecido").slice(0, 300));
+        }
+        return;
+      }
       // Lembretes da véspera. "#LEMBRETES" (ou TESTE) lista quem receberia, sem
       // enviar nada; "#LEMBRETES CONFIRMAR" dispara agora, fora do horário.
       const lembCmd = text.match(/^#LEMBRETES\b([\s\S]*)$/i);
@@ -4532,7 +4616,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           ],
           // 3º marcador: o histórico da conversa (ver mensagensComCache).
           messages: mensagensComCache(apiMessages),
-        });
+        }, { origem: "atendimento" });
       } catch (e1) {
         // BLINDAGEM: se o caching (system em blocos) for recusado (400), refaz com o
         // system como TEXTO simples — o paciente não fica sem resposta por causa disso.
@@ -4553,7 +4637,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
                   { type: "text", text: dynamicPrompt, cache_control: { type: "ephemeral" } },
                 ],
                 messages: apiMessages,
-              });
+              }, { origem: "atendimento" });
             } catch (e2) { response = null; }
           }
           // DEGRAU 2: caching recusado de qualquer forma — system como texto
@@ -4564,24 +4648,12 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
               model: ANA_MODEL, max_tokens: 1000,
               system: SYSTEM_PROMPT + "\n\n" + dynamicPrompt,
               messages: apiMessages,
-            });
+            }, { origem: "atendimento" });
           }
         } else throw e1;
       }
-      // Custo REAL desta chamada, direto do que a API cobrou. Sem isto, a única
-      // fonte é o console da Anthropic — que soma o dia inteiro e não separa
-      // leitura de cache de entrada cheia, então não dá para saber se um
-      // marcador de cache novo pegou ou virou desperdício. Com o custo por
-      // chamada no log, a resposta aparece em minutos, não no fim do mês.
-      try {
-        const u = response.data?.usage || {};
-        const lidos = u.cache_read_input_tokens || 0;
-        const gravados = u.cache_creation_input_tokens || 0;
-        const cheios = u.input_tokens || 0;
-        const usd = (cheios * 3 + gravados * 3.75 + lidos * 0.3 + (u.output_tokens || 0) * 15) / 1e6;
-        const aproveitamento = (lidos + gravados) ? Math.round(100 * lidos / (lidos + gravados)) : 0;
-        console.log(`[Custo] cheio=${cheios} gravado=${gravados} lido=${lidos} saida=${u.output_tokens || 0} | cache ${aproveitamento}% | US$ ${usd.toFixed(4)}`);
-      } catch (_) { /* medição nunca pode derrubar a resposta ao paciente */ }
+      // Custo real: agora medido e GRAVADO dentro de anthropicMessages
+      // (registrarCustoAPI) — vale para esta chamada e para todas as outras.
       reply = response.data?.content?.[0]?.text;
       if (!reply || !reply.trim()) throw new Error("Resposta vazia da IA");
     } catch (err) {
@@ -4644,7 +4716,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
               : instrucaoUmHorario(horas)) },
           ],
           messages: apiMessages,
-        });
+        }, { origem: "reescrita" });
         const novo = r2.data?.content?.[0]?.text;
         if (novo && novo.trim()) {
           const horas2 = horariosOferecidos(novo);
@@ -4666,7 +4738,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
                   { type: "text", text: dynamicPrompt + instrucaoFichaCompleta(aindaFalta) },
                 ],
                 messages: apiMessages,
-              });
+              }, { origem: "reescrita" });
               const novo3 = r3.data?.content?.[0]?.text;
               if (novo3 && novo3.trim()) reply = novo3;
               const resta = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
