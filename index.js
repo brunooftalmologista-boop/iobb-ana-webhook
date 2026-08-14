@@ -4821,11 +4821,20 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           // ainda vier errada, quem responde é o CÓDIGO, com uma vaga real
           // copiada da lista. Chata, porém verdadeira.
           try {
-            const aindaErrada =
-              (!/\[(AGENDAR|PREAGENDAMENTO)\]/i.test(reply) && horariosOferecidos(reply).length > 1
-                ? `${horariosOferecidos(reply).length} horários` : null)
-              || contradizHojeAmanha(reply, slotsVigentes)
-              || unidadeContradizOferta(reply, slotsVigentes);
+            // ⚠️ SÓ ERRO DE FATO — nunca de estilo. A 1ª versão (manhã de 14/08)
+            // também substituía quando a reescrita trazia MAIS DE UM horário, e
+            // isso destruiu 5 respostas CERTAS de um casal marcando junto
+            // (2 pacientes = 2 horários é a exceção legítima do prompt): trocou
+            // "Vanderson 16h40 · Elen 17h20" por uma vaga solta, e trocou DUAS
+            // vezes o encaminhamento para a equipe — inclusive depois de o
+            // paciente dizer "preciso falar com uma pessoa". Ele encerrou com
+            // "não quero mais dar seguimento com vocês".
+            // Contar horário é regra de ESTILO e já tem a reescrita para ela.
+            // Aqui só entra o que é MENTIRA sobre a agenda.
+            const escalando = /3033-6605|equipe (vai|ir[áa]|entrar[áa]|entra) em contato|repassar (sua|a) solicita|peço desculpas pelo transtorno/i.test(reply);
+            const aindaErrada = escalando ? null
+              : (contradizHojeAmanha(reply, slotsVigentes)
+                 || unidadeContradizOferta(reply, slotsVigentes));
             if (aindaErrada) {
               const prox = (slotsVigentes || []).length
                 ? alternativaMaisProxima(slotsVigentes, new Date(), Date.now()) : null;
