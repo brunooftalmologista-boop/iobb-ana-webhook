@@ -447,6 +447,9 @@ Localização: as unidades ficam no Conjunto Nacional (região central de Brasí
 
 ### Conferência de óculos
 Não precisa agendar. Comparecer com óculos e receita, por ordem de chegada.
+⛔ E NÃO MARQUE, MESMO QUE ELE PEÇA HORÁRIO. Conferência de óculos, ajuste de armação e retirada de receita NÃO ocupam vaga na agenda — é PROIBIDO emitir [AGENDAR] para isso. Se o paciente pedir um horário assim mesmo ("verifique um horário na segunda", "pode marcar às 17h?"), explique em UMA frase que para esse caso não existe hora marcada e que ele é atendido por ordem de chegada — dizendo o dia, a unidade e a hora em que o MÉDICO começa. Marcar tira uma vaga de quem precisa de consulta e não adianta nada para ele, porque o atendimento é por ordem de chegada de qualquer forma.
+Caso real (13/08): você respondeu certo que não precisava agendar, o paciente agradeceu e encerrou. Horas depois ele voltou pedindo horário, escreveu "Conferência de óculos" como motivo — e você marcou segunda-feira às 17h assim mesmo, ocupando uma vaga do Conjunto Nacional.
+⚠️ ATENÇÃO ao MOTIVO que o paciente escreve: quando ele informa os dados e o motivo é "conferência de óculos", "ver se o óculos está certo", "ajustar a armação" ou "pegar a receita", PARE o agendamento e volte à orientação de ordem de chegada — mesmo que vocês já tenham combinado um horário antes de você saber o motivo.
 ⏰ DIGA O HORÁRIO DO MÉDICO, NÃO O DA RECEPÇÃO — os dois são diferentes:
 - **Conjunto Nacional** (segundas, quartas e sextas): recepção abre às 8h, mas o **atendimento médico começa às 9h** e vai até as 18h.
 - **Taguatinga Shopping** (terças e quintas): recepção abre às 8h, mas o **atendimento médico começa às 10h** e vai até as 18h.
@@ -6364,9 +6367,31 @@ async function followUpAtivo() {
 async function rodarFollowUpLeads() {
   if (!(await followUpAtivo())) return;
   try {
-    const { data: leads, error } = await supabase.rpc("leads_frios_followup");
+    let { data: leads, error } = await supabase.rpc("leads_frios_followup");
     if (error) { console.error("[FollowUp] RPC falhou:", error.message); return; }
     if (!leads || !leads.length) return;
+    // MIRA (13/08): perseguir só quem parou NO MEIO de uma negociação. Dos 158
+    // follow-ups já enviados, mais da metade foi para quem tinha encerrado —
+    // "Obrigada" (11×), "Ok" (5×), "Confirmo/Confirmado" (5×), "Não" (4×) — e um
+    // deles fez um paciente marcar horário para conferência de óculos, que não
+    // precisa de horário. Os 6 agendamentos legítimos vieram de quem havia
+    // parado escolhendo ("Taguatinga", "teria mais tarde?", "vou fazer um
+    // planejamento e retorno"), e nenhum desses é filtrado aqui.
+    const encerrou = (t) => {
+      const s = String(t || "").trim();
+      if (!s) return true;                                  // sem texto: não perseguir
+      if (ehCortesia(s)) return true;                       // "Obrigada", "Ok, obrigada", "👍"
+      const n = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      if (/^(nao|nao obrigad[oa]|nao precisa|nao vou|por enquanto nao)\b/.test(n)) return true;
+      if (/^(confirmo|confirmado|confirmada)\b/.test(n)) return true;   // já confirmou consulta
+      if (/^(so|era so|apenas|por enquanto (e|eh) so)\s+(isso|isto)\b/.test(n)) return true;   // "Só isso"
+      if (/^(bom dia|boa tarde|boa noite|ola|oi)[\s!.,]*$/.test(n)) return true;  // saudação solta
+      return false;
+    };
+    const antes = leads.length;
+    leads = leads.filter(l => !encerrou(l.ultima_msg));
+    if (antes !== leads.length) console.log(`[FollowUp] ${antes - leads.length} de ${antes} descartado(s): o paciente já tinha encerrado.`);
+    if (!leads.length) return;
     for (const lead of leads) {
       const nome = (lead.name || "").trim().split(/\s+/)[0] || "";
       const msg = `Olá${nome ? ", " + nome : ""}. Passando para saber se posso dar sequência ao seu atendimento. Se desejar, verifico um horário para a sua avaliação — fico à disposição.`;
@@ -6596,7 +6621,7 @@ const RE_REMARCAR = /(remarca|desmarca|cancela|n[aã]o vou|n[aã]o poderei|n[aã
 // assunto novo e resposta a pergunta. Por isso não basta "todas as palavras são
 // inofensivas"; é preciso ter uma palavra-NÚCLEO de agradecimento ou aceite.
 const CORTESIA_NUCLEO = new Set(["obrigada","obrigado","obg","brigada","brigado","agradecida","agradecido","gratidao","valeu","vlw","ok","okay","blz","beleza","certo","perfeito","combinado","ate","tchau","abraco","abracos","amem"]);
-const CORTESIA_ENFEITE = new Set(["muito","mesmo","demais","viu","entao","querida","querido","gente","deus","quiser","se","de","nada","e","por","favor","mais","la","amanha","breve","logo","tudo","bem","otimo","show","maravilha","sim","nao","bom","boa","dia","tarde","noite","voce","voces","ja","entendi","anotado","combinadissimo","segunda","terca","quarta","quinta","sexta","confirmo","confirmado","confirmada","recebido","recebida"]);
+const CORTESIA_ENFEITE = new Set(["muito","mesmo","demais","viu","entao","querida","querido","gente","deus","quiser","se","de","nada","e","por","favor","mais","la","amanha","breve","logo","tudo","bem","otimo","show","maravilha","sim","nao","bom","boa","dia","tarde","noite","voce","voces","ja","entendi","anotado","combinadissimo","segunda","terca","quarta","quinta","sexta","confirmo","confirmado","confirmada","recebido","recebida","so","isso","era","enquanto","mesmo","apenas"]);
 function ehCortesia(texto) {
   const bruto = String(texto || "");
   if (/\?/.test(bruto)) return false;                       // pergunta nunca é cortesia
