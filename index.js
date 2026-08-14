@@ -4781,7 +4781,14 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         // a reescrita inventou QUATRO horários). O código passa a indicar uma vaga
         // REAL como porto seguro: ele ainda pode escolher outra DA LISTA que atenda
         // melhor ao pedido (período/unidade), mas na dúvida oferece a conferida.
-        const travaDeHorario = contradicao || maisCedo || (!unidadeErrada && !virouVerbete && !semFormaPagamento && !precoSeco && horas.length > 1);
+        // Só nas travas de FATO sobre a agenda (disse "hoje" e não há vaga hoje;
+        // ignorou vaga mais cedo). A trava de VÁRIOS HORÁRIOS ficou de fora de
+        // propósito: dois horários é a resposta certa quando são dois pacientes
+        // (casal, mãe e filho), e uma âncora de vaga única empurraria a Ana a
+        // colapsar os dois num só. É o mesmo ponto cego que destruiu 5 respostas
+        // do Vanderson e da Elen em 14/08 — aqui não seria destrutivo, mas
+        // enviesaria na mesma direção errada.
+        const travaDeHorario = !!(contradicao || maisCedo);
         const ancora = (travaDeHorario && Array.isArray(slotsVigentes) && slotsVigentes.length)
           ? alternativaMaisProxima(slotsVigentes, new Date(), Date.now()) : null;
         const ancoraTxt = ancora
