@@ -4775,6 +4775,32 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           const horas2 = horariosOferecidos(novo);
           console.log(`[HorarioTrava] Reescrita veio com ${horas2.length} horário(s).`);
           reply = novo;
+          // ── A REESCRITA TAMBÉM PASSA PELAS TRAVAS ─────────────────────────
+          // 14/08, agenda do dia 100% lotada: a trava pegou "hoje às 14h00
+          // disponível" (falso), pediu a reescrita… e a reescrita saiu PIOR —
+          // "Hoje temos 15h20, 15h40, 16h40 e 17h00", QUATRO horários, todos
+          // ocupados — e foi enviada sem passar por trava nenhuma. O Dr. Bruno
+          // desligou a Ana. Sob a pressão de "hoje tem?" com agenda cheia, o
+          // modelo INVENTA; então a segunda chance não é dele: se a reescrita
+          // ainda vier errada, quem responde é o CÓDIGO, com uma vaga real
+          // copiada da lista. Chata, porém verdadeira.
+          try {
+            const aindaErrada =
+              (!/\[(AGENDAR|PREAGENDAMENTO)\]/i.test(reply) && horariosOferecidos(reply).length > 1
+                ? `${horariosOferecidos(reply).length} horários` : null)
+              || contradizHojeAmanha(reply, slotsVigentes)
+              || unidadeContradizOferta(reply, slotsVigentes);
+            if (aindaErrada) {
+              const prox = (slotsVigentes || []).length
+                ? alternativaMaisProxima(slotsVigentes, new Date(), Date.now()) : null;
+              reply = prox
+                ? `Deixe-me confirmar direitinho a agenda: o horário mais próximo que tenho disponível é *${prox.dia} às ${prox.hora}*, no ${unidadeParaPaciente(prox.unidade)}. Pode ser?`
+                : `A agenda está sem horários disponíveis no momento. Posso registrar seu pedido para a nossa equipe verificar uma opção e retornar?`;
+              console.warn(`[HorarioTrava] Reescrita AINDA errada (${aindaErrada}) — resposta substituída pela determinística.`);
+              await registrarErro("reescrita_ainda_errada", `${aindaErrada} | ${String(novo).slice(0, 250)}`,
+                { conversationId: conversation.id, telefone: from }).catch(() => {});
+            }
+          } catch (e) { console.error("[HorarioTrava] Recheque da reescrita falhou (segue a reescrita):", e.message); }
           // A ficha é a única trava que insiste: se a reescrita AINDA vier com o
           // [AGENDAR] incompleto, pedimos mais uma vez. Uma tentativa só deixava
           // a garantia por conta da boa vontade do modelo, e é justamente isso
