@@ -1,0 +1,23 @@
+- [Ana webhook config deps](ana-webhook-config-deps.md) — Render/Supabase/Meta config facts not visible in code (manual SQL migrations, template env vars, no local node)
+- [Custo da API da Ana](custo-api-ana.md) — custo da API (R$26/agendamento) + egress do Supabase estourado em 08/08; painel a cada 5s é a causa; a correção do painel quebrou a tela e foi revertida
+- [Ads iobb.com.br domain migration](ads-iobb-domain-migration.md) — troca de URLs do Ads p/ iobb.com.br; CORRIGIDO em 07/08: domínio e onrender são páginas DIFERENTES, não proxy — auditoria completa em docs/DOMINIO-IOBB.md
+- [Ads performance análise jul/2026](ads-performance-analise-jul2026.md) — análise real (Ads × conversões do banco): Águas Claras é o vencedor (4 agendamentos), Asa Norte gasta sem fechar, plano de ajustes priorizado
+- [Ana Instagram DM](ana-instagram-dm.md) — código pronto no branch feat/instagram-dm (persona técnica + handler no webhook), aguardando só setup na Meta (App Review + IG_ID/IG_TOKEN)
+- [Agenda própria Modelo B](agenda-propria-modelo-b.md) — nova agenda no Supabase (tabela appointments) como fonte única; Fase 1 feita (SQL+endpoints+painel), Fase 2 (Ana marca sozinha) pendente; rodar sql/agenda.sql
+- [Ana sempre-ativa (campanhas)](ana-sempre-ativa-campanhas.md) — leads de refrativa (Google) e de TODOS os anúncios IG/FB são atendidos mesmo com #ANA OFF; controlado pela env ANA_SEMPRE_ATIVA_SOURCES
+- [Egress Supabase: conserto confirmado](egress-supabase-conserto.md) — cota de 5,5 GB estourou em 08/08; os 3 consertos pegaram (verificado nos logs em 10/08); sobrou o poll de `messages` do chat aberto a cada 3s
+- [RLS lockdown Supabase](rls-lockdown-supabase.md) — vazamento de dados de paciente via anon key pública (RLS off) confirmado e corrigido em 2026-07-21; PENDENTE rotacionar as URLs secretas do iCal
+- [Envio secretária / janela 24h](painel-envio-secretaria-24h.md) — mensagens da secretária "pareciam enviadas" mas a Meta recusava (janela 24h); agora falha é visível no painel; pendente template de reengajamento + Ana atropela secretária
+- [Auditoria ampla jul/2026](auditoria-ampla-jul2026.md) — revisão completa do projeto (89 achados, 7 domínios) + plano P0/P1/P2; artifact com tudo; nada aplicado ainda
+- [Incidente 29/07: horizonte da agenda + data](agenda-horizonte-e-data.md) — Ana negava datas livres porque a lista cortava em 8 dias; trava de dia-da-semana; e a lição de não reverter sem confirmar a causa
+- [Trava horário Ana (prosa×token)](agenda-hora-token-guardrail.md) — bug recorrente: Ana dizia 14h40 e salvava 15:40 (token errado); trava no código confia na prosa quando é vaga válida (commit 2d867ac)
+- [Feedback: não inventar (Ads)](feedback-nao-inventar-ads.md) — separar fato (banco) de suposição (print/memória); nunca vender chute como certeza; sem acesso ao painel Ads/Cloudflare — pedir print
+- [Ana: postura consultiva](ana-postura-consultiva.md) — perfil "vendedor" nos 4 temas de maior valor (refrativa, ceratocone, lentes, catarata) dentro dos limites do CFM; oferecer horário cedo, sem questionário
+- [Ana não aprende sozinha](ana-nao-aprende-sozinha.md) — não há efeito aprendizado: o modelo é o mesmo todo dia, só o prompt muda; e por que o contador de travas NÃO prova que ela piorou
+- [Telefone: nono dígito](telefone-nono-digito.md) — mesmo paciente chega com 12 e 13 dígitos; usar fonesBR/foneChave, nunca normalizePhoneBR para comparar
+- [Ficha obrigatória p/ agendar](ficha-obrigatoria-agendamento.md) — Ana NUNCA marca sem nome completo + nascimento + particular/convênio (com carteirinha); trava dura no código; e a lição de travar primeiro, medir depois
+- [Regras de atendimento jul/2026](regras-atendimento-jul2026.md) — idade mínima 8 anos (categórica, sem encaminhar p/ fora), endereço completo na confirmação, por que convênio exige antecedência, e marcar testes como TESTE
+- [Exames: só refrativa inclui](exames-inclusos-so-refrativa.md) — regra global; ceratocone/catarata/escleral cobram exames à parte; erros iguais corrigidos no site
+- [Convênios: nomes equivalentes](convenios-nomes-equivalencias.md) — Plan-Assiste=MPF e afins; lista deduplicada (56 planos); Ana não nega mais nome parcial/duvidoso; suspeita do negativo "inas" x IASES-DF no Ads
+- [Prontuário eletrônico (futuro)](prontuario-eletronico-futuro.md) — Bruno quer futuramente prontuário próprio integrado (Ana+agenda+painel) p/ fechar o ciclo; adiado de propósito, não começar sem ele pedir
+- [Resposta modelo da Ana (horários)](ana-resposta-modelo-horarios.md) — 3 respostas elogiadas como padrão certo (outros horários · carteirinha Unimed sem travar · lente de contato); o alvo, não só o que evitar
