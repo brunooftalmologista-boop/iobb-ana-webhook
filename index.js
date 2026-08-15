@@ -3743,6 +3743,29 @@ const ANA_DEBOUNCE_MS = (() => {
   return Number.isFinite(n) && n >= 0 ? n : 20000;
 })();
 const seqPorPaciente = new Map();
+// ===== IMAGEM QUE SOBREVIVE AO AGRUPAMENTO =================================
+// O turno da imagem é cancelado pelo texto que vem logo depois (o agrupamento
+// espera o paciente terminar de escrever), e o binário só existia dentro
+// daquela requisição. Este depósito atravessa o cancelamento: guarda a última
+// foto por paciente e o turno que de fato responde a recolhe.
+// Prazo curto (3 min) e uso ÚNICO: uma foto não pode ser lida de novo três
+// mensagens depois, nem sobrar em memória. Só o binário — nada é gravado.
+const imagensPendentes = new Map();      // phone → { dl, ts }
+const IMAGEM_PENDENTE_MS = 3 * 60 * 1000;
+function guardarImagemPendente(phone, dl) {
+  imagensPendentes.set(String(phone), { dl, ts: Date.now() });
+  // Faxina barata: sem isto, um pico de fotos ficaria em memória até o restart.
+  for (const [k, v] of imagensPendentes) {
+    if (Date.now() - v.ts > IMAGEM_PENDENTE_MS) imagensPendentes.delete(k);
+  }
+}
+function pegarImagemPendente(phone) {
+  const k = String(phone);
+  const reg = imagensPendentes.get(k);
+  if (!reg) return null;
+  imagensPendentes.delete(k);                                   // uso único
+  return (Date.now() - reg.ts <= IMAGEM_PENDENTE_MS) ? reg.dl : null;
+}
 function marcarChegada(phone) {
   const n = (seqPorPaciente.get(phone) || 0) + 1;
   seqPorPaciente.set(phone, n);
@@ -3880,6 +3903,15 @@ app.post("/webhook", async (req, res) => {
       const dl = await downloadMedia(msg.image.id);
       if (dl) media = await storeInboundMedia(dl.buffer, dl.mimeType, `imagem.${extFromMime(dl.mimeType)}`);
       imagemRecebida = dl; // guardado p/ eventual leitura da carteirinha pela Ana
+      // ⚠️ E TAMBÉM GUARDADO FORA DO TURNO. A imagem não avança o contador do
+      // agrupamento, mas o TEXTO que vem depois dela cancela o turno dela — e
+      // `imagemRecebida` só existe dentro da requisição abortada. Resultado: o
+      // paciente manda a carteirinha, digita "é esse aqui" logo em seguida, e a
+      // Ana responde sem nunca ter visto o cartão. Foi o que aconteceu com a
+      // Sabrina em 15/08 (imagem 13:28:22, textos :27 e :31) e com o Vanderson
+      // em 14/08 — ela chegou a dizer "não consigo ler o conteúdo das imagens".
+      // Com o depósito abaixo, o turno que REALMENTE responde encontra a foto.
+      if (dl?.buffer) guardarImagemPendente(from, dl);
       text = msg.image?.caption ? `[Imagem recebida]: ${msg.image.caption}` : "[Imagem recebida]";
       mediaNotification = "📷 Paciente enviou uma imagem";
     } else if (msg.type === "document") {
@@ -4653,21 +4685,26 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // classificada como carteirinha — nunca para imagem clínica ou qualquer outra
     // (essas nem chegam aqui: o branch de mídia já as encaminha à equipe). Limites
     // da API: formatos suportados e ~5MB em base64 (guardamos 3,5MB de binário).
-    if (fotoDeCarteirinha && imagemRecebida?.buffer) {
+    // A foto pode ter chegado num turno ANTERIOR que o agrupamento cancelou —
+    // nesse caso ela está no depósito, não em `imagemRecebida`. Só recolhe se a
+    // conversa está em contexto de carteirinha, e o resgate é de uso único.
+    const imagemParaLer = imagemRecebida?.buffer ? imagemRecebida
+                        : (fotoDeCarteirinha ? pegarImagemPendente(from) : null);
+    if (fotoDeCarteirinha && imagemParaLer?.buffer) {
       const MIMES_VISAO = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-      const mt = String(imagemRecebida.mimeType || "").toLowerCase().split(";")[0].trim();
-      const cabe = imagemRecebida.buffer.length <= 3.5 * 1024 * 1024;
+      const mt = String(imagemParaLer.mimeType || "").toLowerCase().split(";")[0].trim();
+      const cabe = imagemParaLer.buffer.length <= 3.5 * 1024 * 1024;
       if (MIMES_VISAO.includes(mt) && cabe) {
         const ultima = apiMessages[apiMessages.length - 1];
         const textoAtual = typeof ultima.content === "string" ? ultima.content : text;
         ultima.content = [
-          { type: "image", source: { type: "base64", media_type: mt, data: imagemRecebida.buffer.toString("base64") } },
+          { type: "image", source: { type: "base64", media_type: mt, data: imagemParaLer.buffer.toString("base64") } },
           { type: "text", text: textoAtual || "[Imagem recebida]" },
         ];
-        console.log(`[Visão] Carteirinha anexada para leitura (${mt}, ${Math.round(imagemRecebida.buffer.length / 1024)}KB).`);
+        console.log(`[Visão] Carteirinha anexada para leitura (${mt}, ${Math.round(imagemParaLer.buffer.length / 1024)}KB${imagemRecebida?.buffer ? "" : " — resgatada do turno anterior"}).`);
       } else {
         // Sem visão: a Ana segue o fluxo tratando a carteirinha como entregue.
-        console.log(`[Visão] Imagem NÃO anexada (mime=${mt || "?"}, ${Math.round((imagemRecebida.buffer.length || 0) / 1024)}KB) — fora do formato/tamanho suportado.`);
+        console.log(`[Visão] Imagem NÃO anexada (mime=${mt || "?"}, ${Math.round((imagemParaLer.buffer.length || 0) / 1024)}KB) — fora do formato/tamanho suportado.`);
       }
     }
     let reply;
