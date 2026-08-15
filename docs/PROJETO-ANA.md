@@ -9,7 +9,8 @@ Dr. Bruno (dono do projeto, sem formação técnica) e para qualquer pessoa téc
 venha a trabalhar nele. Quando algo aqui contradisser o código, **o código vale** — e
 este documento deve ser corrigido.
 
-> Última revisão completa: **15/08/2026**.
+> Última revisão completa: **15/08/2026, fim do dia**. Tudo abaixo reflete o sistema
+> COMO ESTÁ HOJE. O que é histórico está marcado como histórico.
 
 ---
 
@@ -33,205 +34,319 @@ Meta (WhatsApp Business API)
   API da Anthropic   SUPABASE (Postgres)
   (claude-sonnet)    · patients, conversations, messages
                      · appointments (a AGENDA)
-                     · error_log, api_custos, settings
+                     · error_log, api_custos, settings, ad_clicks
        ▲
        │ (leitura)
   PAINEL (painel.html) — as secretárias acompanham e assumem conversas
-  AGENDA (agenda.html) — visão da agenda para transferência ao prontuário
+  AGENDA (agenda.html) — visão da agenda p/ transferência ao prontuário
+  iClinic ────iCal────► sync de consultas marcadas fora da Ana
 ```
 
 | peça | onde | acesso |
 |---|---|---|
 | Código | github.com/brunooftalmologista-boop/iobb-ana-webhook | conta GitHub do Bruno |
-| Servidor | Render — serviço `iobb-ana-webhook` (deploy automático a cada push) | dashboard.render.com |
+| Servidor | Render — serviço `iobb-ana-webhook` (deploy automático a cada push; segredos no Secret File `/etc/secrets/.env`, que tem prioridade sobre as variáveis do painel) | dashboard.render.com |
 | Banco | Supabase — projeto `iobb-atendimento` (`pbnphvmzqdgnijxngosc`) | supabase.com/dashboard |
 | WhatsApp | Meta Business — templates em WhatsApp Manager → Modelos de mensagem | business.facebook.com |
-| IA | Anthropic — chave `iobb-ana-2` (console.anthropic.com → uso e fatura) | conta do Bruno |
+| IA | Anthropic — modelo claude-sonnet-4-6, chave `iobb-ana-2` (console.anthropic.com) | conta do Bruno |
+| Áudio | OpenAI Whisper transcreve os áudios dos pacientes (`OPENAI_KEY`) | conta do Bruno |
 | Google Ads | conta `451-429-2857` (MCC "IOBB Admin" `732-549-0192`) | bruno.oftalmologista@gmail.com |
-| Site | iobb.com.br — **Cloudflare Pages**, HTML estático. NÃO há fonte "original": o deploy é um zip com os arquivos na raiz (ver docs/DOMINIO-IOBB.md) | Cloudflare do Bruno |
-| Painel | https://iobb-ana-webhook.onrender.com/painel (login individual por secretária) | senhas via env no Render |
+| Site | iobb.com.br — **Cloudflare Pages**, HTML estático; deploy = zip com arquivos na raiz. Um Worker roteia os paths de landing (`/lp/*` etc.) para o app no Render. Detalhes: docs/DOMINIO-IOBB.md | Cloudflare do Bruno |
+| Painel | https://iobb-ana-webhook.onrender.com/painel — login individual por secretária (Supabase Auth; senhas via env `PANEL_PW_<NOME>`) | — |
+| Agenda | https://iobb-ana-webhook.onrender.com/agenda (mesma sessão do painel) | — |
 
-**Verificar o que está no ar:** `https://iobb-ana-webhook.onrender.com/version` mostra o
-commit, há quanto tempo o processo roda e o estado das principais configurações.
+**O que está no ar agora:** `https://iobb-ana-webhook.onrender.com/version` — commit,
+uptime e estado das configurações principais (janela do painel, espelho, TTL).
 
 ---
 
 ## 2. O fluxo de um atendimento
 
-1. Paciente escreve no WhatsApp → Meta chama o webhook no Render.
-2. **Agrupamento** (`ANA_DEBOUNCE_MS`, 20 s): a Ana espera o paciente terminar de digitar
-   antes de responder — várias mensagens seguidas viram UMA resposta.
-3. Casos que **não** gastam IA: confirmação de lembrete ("Confirmo" → texto fixo),
-   cortesia pós-confirmação ("obrigada" → texto fixo), FAQ de endereço/horário,
-   números mudos (espelho), conversa assumida por secretária (`status = human`).
-4. Nos demais, o app monta o prompt (persona fixa + agenda de vagas + data/hora
-   calculada) e chama a API da Anthropic.
-5. A resposta passa pelas **travas** (seção 5). Se reprovada, é reescrita; se a
-   reescrita mentir sobre a agenda, o código responde com uma vaga real.
-6. Blocos técnicos invisíveis ao paciente executam ações:
-   `[AGENDAR]` grava consulta · `[CANCELAR]` desmarca · `[PREAGENDAMENTO]` e
-   `[RECADO]` notificam a equipe · `[CARTEIRINHA]` anexa convênio/número à ficha.
-7. Tudo é espelhado para o WhatsApp do Bruno (e números extras em `WA_ESPELHO_EXTRA`).
+1. Paciente escreve → Meta chama o webhook no Render.
+2. **Agrupamento** (`ANA_DEBOUNCE_MS`, 20 s): a Ana espera o paciente terminar de
+   digitar; várias mensagens seguidas viram UMA resposta. Fotos enviadas logo antes de
+   um texto ficam num depósito de 3 min e são lidas pelo turno que responde.
+3. Casos que **não** gastam IA (resposta fixa do código):
+   - "Confirmo" após o lembrete → confirma no banco e responde texto fixo;
+   - cortesia depois da confirmação ("obrigada", "ok, obrigada", "👍") → despedida fixa;
+   - FAQ de endereço/como chegar e horário de funcionamento;
+   - números mudos (espelho) → ignorados; conversa em modo humano → só espelha à equipe.
+4. Nos demais, monta o prompt em três blocos cacheados (persona fixa · parte estável da
+   agenda · histórico) + um bloco volátil (data/hora arredondada a 15 min, contexto do
+   turno) e chama a Anthropic.
+5. A resposta passa pelas **travas** (seção 6). Reprovada → reescrita (que passa pelas
+   travas de novo); se a reescrita mentir sobre a agenda, o código responde com uma
+   vaga real; nas travas de horário a reescrita recebe uma "vaga âncora" verificada.
+6. Blocos técnicos invisíveis executam ações: `[AGENDAR]` grava consulta ·
+   `[CANCELAR]` desmarca · `[PREAGENDAMENTO]` e `[RECADO]` notificam a equipe ·
+   `[CARTEIRINHA]` anexa convênio/número à ficha do agendamento.
+7. Tudo é espelhado ao WhatsApp do Bruno e aos números em `WA_ESPELHO_EXTRA`.
 
-**A agenda é nossa** (tabela `appointments` no Supabase), com trava anti-overbooking no
-banco. Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
+**Rotinas automáticas** (rodam sozinhas no servidor):
+- **Lembrete da véspera** (`LEMBRETE_HORA`, 17h): mensagem a cada paciente do dia
+  seguinte; "Confirmo/Remarcar/Desmarcar" tratados sem IA. Template com botões
+  clicáveis: código pronto, aguardando template aprovado na Meta.
+- **Follow-up de leads frios** (a cada 30 min, liga/desliga em
+  `settings.followup_leads_enabled`): reengaja quem parou NO MEIO de uma escolha há
+  3–20 h. Não persegue quem agradeceu/encerrou/já tem consulta (por qualquer via).
+- **Sync iClinic** (iCal das duas unidades, envs `ICAL_ICLINIC_CN/TG`): consultas
+  marcadas fora da Ana entram na agenda para bloquear as vagas. Liga/desliga em
+  `settings.sync_iclinic_enabled`.
+- **Resumo diário à equipe** (`RESUMO_DIARIO_HORA`, 19h): agenda de amanhã, quem
+  confirmou, quem precisa de ligação.
+- **Auditoria diária** (`AUDITORIA_HORA`): varre as conversas do dia atrás de falhas.
+- **Verificação de entrega**: mensagens recusadas pela Meta (janela de 24 h) ficam
+  visíveis no painel em vez de "parecer enviadas".
 
-- **Conjunto Nacional** (Asa Norte): segundas, quartas e sextas — médico das 9h às 18h.
-- **Taguatinga Shopping** (Águas Claras): terças e quintas — médico das 10h às 18h.
+**A agenda é nossa** (tabela `appointments`), com trava anti-overbooking no banco.
+Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
+
+- **Conjunto Nacional** (Asa Norte): seg/qua/sex — médico das 9h às 18h.
+- **Taguatinga Shopping** (Águas Claras): ter/qui — médico das 10h às 18h.
 - Recepção abre 8h nas duas. Fim de semana não há atendimento.
+- Endereços completos e "como chegar" estão no prompt (seções ENDEREÇOS COMPLETOS e
+  COMO CHEGAR) e a Ana os informa na confirmação de todo agendamento.
 
 ---
 
 ## 3. Regras de negócio (decididas pelo Dr. Bruno — não deduzir, não flexibilizar)
 
-As regras vivem no `SYSTEM_PROMPT` dentro do `index.js` (~96 mil caracteres). Resumo do
-que NÃO está escrito em nenhum outro lugar:
-
 **Agendamento**
 - Ficha obrigatória para marcar: **nome completo + data de nascimento + particular ou
-  convênio (qual)**. Unimed exige também o **número** da carteirinha. Sem isso a trava
-  do código impede o `[AGENDAR]`.
-- Um horário por vez na oferta (nunca "cardápio") — exceção: N pacientes = N horários.
-- Idade mínima **8 anos, categórico**. Não encaminhar para fora.
-- Mesmo dia: pode no particular e na maioria dos convênios. Exceções (não marcam para
-  HOJE, só de amanhã em diante): Unimed (todas), Casec, Codevasf, Care Plus, Life
-  Empresarial.
+  convênio (qual)**. Unimed exige também o **número** da carteirinha (foto ilegível não
+  basta). Trava no código impede `[AGENDAR]` sem isso, e a confirmação enviada ao
+  paciente traz os dados gravados para ele conferir.
+- Um horário por vez na oferta (nunca "cardápio") — exceção: N pacientes = N horários
+  (família no mesmo WhatsApp; o lembrete/confirmação também tratam o grupo junto).
+- Idade mínima **8 anos, categórico**. Não encaminhar para fora; só registrar pedido
+  de exceção se o paciente insistir.
+- Mesmo dia: pode no particular e na maioria dos convênios. Exceções (só a partir de
+  amanhã, por causa da liberação na operadora): **Unimed (todas), Casec, Codevasf,
+  Care Plus, Life Empresarial**. Nunca dizer "24 h de antecedência" nem insinuar que
+  convênio vale menos.
 - Conferência de óculos / ajuste de armação / retirada de receita: **ordem de chegada,
-  proibido ocupar vaga** — mesmo que o paciente peça horário.
+  proibido ocupar vaga** — mesmo que o paciente peça horário. Informar o horário do
+  MÉDICO (9h CN / 10h TG), não o da recepção.
 - Teste de lente de contato avulso (sem consulta): só para quem já consultou no IOBB
   **ou** tem exame oftalmológico de até 3 meses (de qualquer serviço — trazer no dia).
   Sempre particular (R$ 120 gelatinosa / R$ 150 rígida ou escleral), só no Conjunto.
+  Quem não se encaixa faz a consulta primeiro. Aceitar a palavra do paciente.
+- Exame avulso com pedido de outro médico: pode, sem consulta prévia aqui.
+- Ana nunca diz "vou reservar" antes de emitir o bloco; nunca repete data/hora depois
+  de confirmado (risco de errar ao repetir); corrigir um dado não é remarcar.
 
 **Convênios**
-- Lista completa de atendidos: no SYSTEM_PROMPT ("LISTA DE CONVÊNIOS ATENDIDOS").
-- **Unimed por produto**: Central Nacional (= Unimed Nacional/CNU), Planalto,
-  Intercâmbio e Seguros Unimed são atendidas; sub-plano no cartão (PME, Ideal etc.)
-  não muda nada. **Unimed regional de outra cidade/estado (João Pessoa, Fortaleza,
-  Amparo…) NÃO se marca direto** — recado para a equipe verificar intercâmbio.
-- **Nunca atendidos:** Quality/Quallity/Qualyty e **SulAmérica** (nenhuma variação).
-- Plan-Assiste = MPF/MPDFT/MPM/MPT (e MPU). Qualicorp é administradora → perguntar a
-  operadora.
-- A cirurgia refrativa é sempre particular. Cirurgia coberta por convênio: não citar o
-  valor particular a quem tem o convênio.
+- Lista de ATENDIDOS (a fonte é o prompt; cópia de 15/08 — se divergir, vale o prompt):
+  AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBRAPA,
+  CAEME-GO, CAMED, CAESAN, CASEC (CODEVASF), CTI, CONAB, ELETRONORTE, EMBRATEL,
+  E-VIDA (hoje LUMINAR SAÚDE), FACEB, FAPES (BNDES), FASCAL, FIOSAÚDE (FIOPREV),
+  FURNAS, GAMA SAÚDE, INFRAERO, IRB, IRMÃOS GRAVIA, LIFE EMPRESARIAL, MAPFRE SAÚDE,
+  MPDFT, MPF, MPM, MPT, NOTRE DAME, PAME, PLAN-ASSISTE, PROASA, PRÓ-SAÚDE (CÂMARA DOS
+  DEPUTADOS), PRÓ-SOCIAL, SAÚDE CAIXA, SERPRO, SIS SENADO, STF-MED, STJ, STM, TJDFT,
+  TST SAÚDE, T.R.E., TRF, TRT, UNAFISCO, UNIBANCO-TEMPO SAÚDE, UNIMED (ver regra),
+  UNIVERSAL ASSISTENCE.
+- **Unimed por produto** (regra de 14/08, substitui a "toda Unimed" de 11/08):
+  atendidas = Central Nacional (= "Unimed Nacional"/CNU), Planalto, Intercâmbio e
+  Seguros Unimed/Unimed Seguros. Sub-plano no cartão (PME, Ideal, Enfermaria…) não
+  muda nada. **Regional de outra cidade/estado (João Pessoa, Fortaleza, Amparo…) NÃO
+  se marca direto** — recado para a equipe verificar intercâmbio + oferecer particular.
+- **Nunca atendidos:** Quality/Quallity/Qualyty e **SulAmérica** (nenhuma variação,
+  nunca foi).
+- Plan-Assiste cobre MPF/MPDFT/MPM/MPT (e MPU). Qualicorp é administradora →
+  perguntar qual a operadora. Nome parcial/duvidoso: não negar — confirmar.
+- Carteirinha: pedir por cortesia ao concluir (foto ou número), NUNCA travar o
+  agendamento por ela — exceto o número no caso Unimed. Se o paciente manda o cartão
+  perguntando "vocês atendem?", a Ana LÊ na hora e responde do que está impresso.
+- Proibido voltar atrás numa aceitação já comunicada (salvo não-atendido/regional).
+- Cirurgia refrativa é sempre particular. Cirurgia coberta pelo convênio (ex.:
+  catarata): não citar o valor particular a quem tem o convênio.
 
-**Valores (agosto/2026)**
-- Consulta particular R$ 200 (na refrativa a avaliação já inclui os exames, inclusive
-  Pentacam; nos demais temas, exames complementares são à parte).
-- Refrativa: PRK/TransPRK R$ 5.990 · **LASIK R$ 7.800** · Femto-LASIK R$ 8.890.
-- Crosslinking R$ 5.980/olho · Anel de Ferrara R$ 8.700/olho.
-- Catarata: R$ 5.000/olho + lente (tabela de LIOs no prompt; monofocal esférica é a
-  coberta por convênio).
-- Lentes esclerais: Esclera SG R$ 7.800 par · ZenLens R$ 5.980 par.
-- **Tudo parcela em até 5x no cartão SEM JUROS — inclusive as lentes.**
-- A Ana nunca sugere forma de pagamento ("priorizamos PIX" é proibido).
-- Não realizamos capsulotomia YAG. Vendemos lente de contato (a compra é na clínica).
+**Valores (15/08/2026)**
+| item | valor |
+|---|---|
+| Consulta particular | R$ 200 (refrativa: avaliação já inclui exames, inclusive Pentacam; demais temas: exames complementares à parte) |
+| PRK / TransPRK | R$ 5.990 |
+| **LASIK** | **R$ 7.800** (atualizado 12/08 — site corrigido em FAQ **e** cards) |
+| Femto-LASIK | R$ 8.890 |
+| Crosslinking | R$ 5.980 / olho |
+| Anel de Ferrara | R$ 8.700 / olho |
+| Catarata (procedimento) | R$ 5.000 / olho + lente |
+| LIOs: monofocal R$ 1.800 · tórica R$ 3.600 · Eyhance R$ 4.200 · Eyhance Toric R$ 5.400 · EDOF R$ 9.800 · EDOF tórica R$ 11.200 · Trifocal R$ 12.000 · Trifocal tórica R$ 13.200 (por olho; monofocal esférica é a coberta por convênio) | |
+| Lentes esclerais | Esclera SG R$ 7.800 par (R$ 4.280 unidade) · ZenLens R$ 5.980 par |
+| Teste de lente | R$ 120 gelatinosa · R$ 150 rígida/escleral (só particular, só Conjunto) |
+| Exames avulsos | Pentacam R$ 300 · Sobrecarga Hídrica R$ 380 · Paquimetria/Topografia R$ 180 (tabela completa no prompt) |
 
-**Site (iobb.com.br)** — os preços da página /refrativa devem bater com os da Ana.
-O preço aparece em DOIS lugares lá: o FAQ e os cards "Quanto custa".
+- **Tudo parcela em até 5x no cartão SEM JUROS — inclusive as lentes esclerais.**
+- A Ana nunca sugere forma de pagamento ("priorizamos PIX" é proibido — removido 12/08).
+- Não realizamos capsulotomia YAG. Vendemos lente de contato (compra na clínica).
+- Postura consultiva nos 4 temas de valor (refrativa, ceratocone, lentes, catarata):
+  informar valores diretamente, abrir pelo benefício, sempre fechar com UM horário.
 
 ---
 
-## 4. Operação — o que o Bruno consegue fazer sozinho
+## 4. Operação — o que o Bruno faz sozinho
 
-**Comandos por WhatsApp** (mandar do seu número para o da clínica):
-- `#ANA ON` / `#ANA OFF` / `#ANA STATUS` — liga/desliga a Ana. Com OFF, leads de
-  anúncio continuam atendidos (`ANA_SEMPRE_ATIVA_SOURCES`).
-- `#LEMBRETES` — mostra quem recebe o lembrete da véspera (sem enviar) e QUAL template
-  está em uso · `#LEMBRETES TESTAR` — manda o template só para você · `#LEMBRETES
-  CONFIRMAR` — dispara agora.
-- `#CUSTOS` — gasto da API somado do banco (`api_custos`).
-- `#AUDITORIA` — auditoria das conversas do dia.
-- `#ADS…` — relatórios e conversões do Google Ads.
-- `#HUMANO <número>` (modo humano por conversa é feito pelo painel; número do
-  espelho/teste: ver env `WA_NUMEROS_MUDOS`).
+**Comandos por WhatsApp** (do seu número para o da clínica; lista completa):
+| comando | o que faz |
+|---|---|
+| `#ANA ON` / `#ANA OFF` / `#ANA STATUS` | liga/desliga/consulta a Ana (OFF não afeta leads de anúncio — `ANA_SEMPRE_ATIVA_SOURCES`) |
+| `#LEMBRETES` | prévia do lembrete da véspera + template em uso (não envia) |
+| `#LEMBRETES TESTAR` | manda o template só para você (testa aprovação na Meta) |
+| `#LEMBRETES CONFIRMAR` | dispara os lembretes agora |
+| `#CUSTOS` | gasto da API somado (tabela `api_custos`) |
+| `#AUDITORIA` | auditoria das conversas do dia |
+| `#TRAFEGO` | tráfego das landing pages |
+| `#ORIGEM` / `#ORIGENS` | de onde vieram as conversas |
+| `#ADS` / `#ADS RELATORIO` | relatório do Google Ads |
+| `#ADSCONV` (+`TESTE`) | sobe conversões offline para o Ads |
+| `#ADSHISTORICO` (+`TESTE`/`CONFIRMAR`) | conversões retroativas |
+| `#CRIARCERATOCONE` / `#CRIARESCLERAL` / `#CRIARCATARATA` / `#CRIARCOMBINADA` (+`TESTE`/`CONFIRMAR`) | criam campanhas no Ads (nascem pausadas) |
+| `#PAUSARCERATOCONE` / `#PAUSARSEPARADAS` | pausam campanhas |
+| `#ENVIAR <número> <msg>` / `#MSG` | manda mensagem pelo número da clínica |
 
-**Variáveis no Render** (Environment — mudam comportamento SEM deploy):
-| variável | efeito | valor atual |
+**Variáveis no Render** (Environment — mudam comportamento SEM deploy). As de
+operação do dia a dia:
+| variável | efeito | atual |
 |---|---|---|
-| `PAINEL_JANELA_HORAS` | lista do painel mostra só os últimos N h (pendências e busca não são afetadas) | 96 |
-| `WA_ESPELHO_EXTRA` | números extras que recebem o espelho | 5561992997639 |
-| `ANA_CACHE_TTL` | `5m` volta o cache do prompt para 5 min | (1h, padrão) |
-| `ANA_DEBOUNCE_MS` | espera antes de responder | 20000 |
-| `WA_LEMBRETE_TEMPLATE_NAME/LANG` | template do lembrete da véspera (o dos botões Confirmo/Remarcar/Desmarcar exige template aprovado na Meta) | conferir na Meta |
-| `LEMBRETE_HORA` | hora do disparo do lembrete | 17 |
+| `PAINEL_JANELA_HORAS` | lista do painel só com os últimos N h (pendências e busca não são afetadas) | 96 |
+| `WA_ESPELHO_EXTRA` | números extras que recebem o espelho (precisam escrever à clínica 1×/dia — regra da Meta; falha 3× avisa o Bruno) | 5561992997639 |
+| `WA_NUMEROS_MUDOS` | números que a Ana nunca responde (os do espelho já entram sozinhos) | — |
+| `ANA_CACHE_TTL` | `5m` volta o cache do prompt para 5 min | 1h (padrão) |
+| `ANA_DEBOUNCE_MS` | espera antes de responder (agrupamento) | 20000 |
+| `WA_LEMBRETE_TEMPLATE_NAME` / `_LANG` | template do lembrete da véspera | conferir na Meta |
+| `LEMBRETE_HORA` | hora do lembrete | 17 |
+| `RESUMO_DIARIO_HORA` | hora do resumo à equipe (`off` desliga) | 19 |
+| `AUDITORIA_HORA` / `AUDITORIA_DESTINO` | auditoria diária | — |
 | `ANA_UNIDADE_PREFERIDA` | unidade sugerida quando o paciente não escolheu | — |
+| `ANA_SEMPRE_ATIVA_SOURCES` | origens atendidas mesmo com #ANA OFF | refrativa, IG/FB |
+| `ANA_ANTECEDENCIA_HORAS` | antecedência mínima de oferta | — |
+| `ANA_MARCA_SOZINHA` | Ana grava agendamento (Fase 2 da agenda) | on |
+| `ANA_MODEL` | modelo da Anthropic | claude-sonnet-4-6 |
+
+Técnicas (mexer só sabendo o que faz): `ANTHROPIC_KEY`, `OPENAI_KEY`, `SUPABASE_URL/KEY`,
+`WHATSAPP_TOKEN`, `PHONE_NUMBER_ID`, `VERIFY_TOKEN`, `META_APP_SECRET`, `WA_WABA_ID`,
+`ICAL_ICLINIC_CN/TG`, `WA_SECRETARIA_NUMBER/TEMPLATE_*`, `WA_TEMPLATE_NAME/LANG`,
+`WA_LP_NUMBER`, `GOOGLE_ADS_*`, `PANEL_PASSWORD`/`PANEL_PW_<NOME>`, `ADMIN_PASSWORD`,
+`ANA_ADMIN_PIN`.
+
+**Chaves em `settings` no Supabase** (liga/desliga sem deploy): `ai_enabled` (o #ANA
+mexe aqui) · `followup_leads_enabled` · `sync_iclinic_enabled` · `agenda_horarios_extras`.
 
 **Se algo quebrar:**
-1. `curl -s https://iobb-ana-webhook.onrender.com/version` — o commit no ar é o esperado?
-2. `#ANA OFF` para a Ana enquanto se investiga (equipe atende pelo painel).
-3. Reverter é `git revert <commit>` + push (qualquer sessão do Claude faz).
-4. Logs do banco: Supabase → Logs. Erros de comportamento: tabela `error_log`.
+1. `https://iobb-ana-webhook.onrender.com/version` — o commit no ar é o esperado?
+2. `#ANA OFF` enquanto se investiga (equipe atende pelo painel).
+3. Reverter = `git revert <commit>` + push (qualquer sessão do Claude faz).
+4. Comportamento errado da Ana: tabela `error_log` (coluna `etapa`). Infra: Logs do
+   Supabase e do Render.
 
-**Regra de ouro dos deploys:** cada push reinicia o Render e esfria o cache do prompt
-(encarece as chamadas por ~1 h). Mudanças não urgentes sobem **fora do expediente**.
+**Regra de ouro dos deploys:** cada push reinicia o Render e esfria o cache do prompt.
+Mudança não urgente sobe **fora do expediente**. Urgência de paciente ignora a regra.
 
----
-
-## 5. Como o sistema se defende (as travas)
-
-A lição central do projeto: **regra escrita no prompt não basta** — o modelo erra sob
-pressão. Toda regra crítica tem uma trava determinística no código, que REGENERA a
-resposta (nunca remenda texto). Se a regeneração mentir sobre a agenda, o código
-responde sozinho com uma vaga real. Principais:
-
-- ficha incompleta → não deixa `[AGENDAR]` (insiste 2×, depois avisa a equipe);
-- vários horários no texto (fora o caso de N pacientes);
-- "hoje/amanhã" que contradiz o calendário ou a agenda real;
-- unidade × dia trocados; exame na unidade errada; dia da semana errado (corrige);
-- vaga mais cedo ignorada; preço sem oferta de horário; convênio não atendido;
-- horário do `[AGENDAR]` fora da lista de vagas → não grava e oferece alternativa;
-- anti-duplicata e anti-overbooking (índice único no banco).
-
-Tudo que dispara fica registrado em `error_log` (coluna `etapa`). O `#AUDITORIA` e o
-subagente `auditor-conversas` leem esses registros.
-
-**Telefone brasileiro tem DUAS grafias** (com e sem o 9º dígito — a Meta entrega sem).
-Qualquer comparação usa `fonesBR()` / `foneChave()`; nunca comparar string crua.
+**Convenção de testes:** mensagens começam com `[TESTE - ignorar]`; pacientes
+sintéticos usam telefones `55619900…` (ignorados por lembrete/follow-up). Cancelar os
+agendamentos de teste depois.
 
 ---
 
-## 6. Custos (medidos, não estimados)
+## 5. O painel da equipe
 
-- **API da Ana** (Anthropic): ~US$ 0,034/mensagem em 14/08 → **~US$ 190/mês** no volume
-  atual. Já foi projetado em US$ 261 no início de agosto. Cada linha da fatura é
-  gravada por chamada na tabela `api_custos` (`#CUSTOS` soma).
-- Otimizações ativas: cache do prompt com TTL 1 h · bloco estável da agenda cacheado ·
-  histórico da conversa cacheado · agrupamento 20 s · confirmação/cortesia/FAQ sem IA ·
-  reescritas reaproveitando cache.
-- **Supabase**: egress caiu de ~2 GB/dia para ~60 MB/dia (assinatura barata antes da
-  consulta cara + janela do painel + caches). Cota 5,5 GB/mês — agosto estourou por
-  causa do período ANTES dos consertos; setembro projeta ~25% da cota.
-- WhatsApp: conversas de serviço são gratuitas; templates (lembrete) têm custo por
-  disparo. O espelho para números extras exige que o número escreva à clínica a cada
-  24 h (regra da Meta) — o Bruno manda um "oi" diário do 99299.
+- Lista de conversas (últimas 96 h + toda pendência; busca alcança TUDO pelo servidor).
+- Assumir/devolver conversa (a Ana silencia na hora; "modo humano" por conversa).
+- Enviar mensagem, iniciar conversa nova (respeita a janela de 24 h da Meta — fora
+  dela, só template; falha de entrega fica visível).
+- Marcar "agendou" (fecha conversão do Ads), encerrar/reabrir conversa.
+- Anexos dos pacientes (fotos/PDF/áudio com transcrição) ficam no chat do painel.
 
 ---
 
-## 7. Histórico e decisões — onde procurar o "porquê"
+## 6. Como o sistema se defende (as travas)
 
-1. **`git log`** — 400+ commits com mensagens longas explicando cada mudança e o
-   incidente que a motivou. É a fonte mais rica. Ex.: `git log --oneline --since=2026-08-10`.
-2. **`docs/DECISOES.md`** — diário condensado das decisões de negócio e dos incidentes
-   (cópia versionada das anotações de memória do Claude).
-3. **`docs/DOMINIO-IOBB.md`** — tudo do site, landing pages e Cloudflare.
-4. **`docs/arquivo/`** — documentos históricos de julho (ativação, campanhas, testes).
-   Retratos da época; não descrevem o sistema atual.
+Lição central do projeto: **regra escrita no prompt não basta.** Toda regra crítica
+tem trava determinística que REGENERA a resposta (nunca remenda texto). A reescrita
+passa pelas travas de novo; se ainda mentir sobre a agenda, o código responde sozinho
+com uma vaga real. O recheque só barra MENTIRA (fato), nunca estilo — regra de estilo
+reprovada 2× segue, para não destruir resposta legítima (ex.: casal = 2 horários).
 
-**Convenção de testes:** toda mensagem de teste no WhatssApp começa com
-`[TESTE - ignorar]`; pacientes sintéticos usam telefones `55619900…` e são ignorados
-pelos lembretes/follow-up. Cancelar agendamentos de teste depois.
+- ficha incompleta → bloqueia `[AGENDAR]` (insiste 2×, depois avisa a equipe);
+- vários horários no texto (exceção: N pacientes);
+- "hoje/amanhã" contradizendo o calendário ou a agenda real;
+- unidade × dia trocados · exame na unidade errada · dia da semana errado (corrige);
+- vaga mais cedo ignorada · preço sem oferta de horário · verbete de dicionário;
+- vazamento de instrução interna · convênio não atendido/regional;
+- `[AGENDAR]` com horário fora da lista → não grava, oferece alternativa;
+- prosa × token divergentes → vale a PROSA (o que o paciente leu);
+- anti-duplicata e anti-overbooking (índice único no banco);
+- re-emissão de `[AGENDAR]` sem mudança → ignorada (não duplica).
+
+Tudo registrado em `error_log`. **Telefone BR tem duas grafias** (com/sem o 9º dígito;
+a Meta entrega sem) — comparações usam `fonesBR()`/`foneChave()`, nunca string crua.
 
 ---
 
-## 8. Pendências conhecidas (15/08/2026)
+## 7. Custos (medidos, não estimados)
 
-- Template de lembrete com botões: código pronto; falta confirmar aprovação na Meta e
-  apontar `WA_LEMBRETE_TEMPLATE_NAME`.
+- **API da Ana**: ~US$ 0,034/mensagem (14/08) → **~US$ 190/mês** no volume atual
+  (projeção era US$ 261 no início de agosto, com muito menos regra). Cada chamada é
+  gravada em `api_custos`; `#CUSTOS` soma. TTL do cache = 1 h (decidido 14/08 com dois
+  dias de fatura; `ANA_CACHE_TTL=5m` reverte).
+- Otimizações ativas: 3 blocos de cache (persona/agenda/histórico) · relógio
+  arredondado a 15 min fora do bloco cacheado · agrupamento 20 s · confirmação,
+  cortesia e FAQ sem IA · follow-up com mira estreita · reescritas reaproveitando
+  cache + vaga âncora.
+- **Supabase**: egress de ~2 GB/dia para ~60 MB/dia (assinatura barata antes da
+  consulta cara, janela do painel, caches, `ad_clicks` 60 s). Cota 5,5 GB/mês; agosto
+  estourou pelo período ANTES dos consertos (carência até 08/09); setembro projeta
+  ~25% da cota.
+- WhatsApp: conversa de serviço é grátis; template pago por disparo.
+
+---
+
+## 8. Linha do tempo — do zero até agora
+
+| período | o que aconteceu |
+|---|---|
+| **24/06** | Nasce o webhook: Ana responde WhatsApp com IA, prompt inicial. |
+| **fim de jun–início de jul** | Persona cresce (30 perguntas simuladas); valores e convênios entram; painel das secretárias; transcrição de áudio. |
+| **jul (1ª quinzena)** | Campanhas Google Ads (refrativa etc.); landing pages; rastreamento gclid → conversão offline; templates da Meta. |
+| **21/07** | **Incidente RLS**: dados de paciente expostos por anon key com RLS desligado — corrigido no dia; painel passa a login individual. |
+| **20–27/07** | **Agenda própria (Modelo B)**: tabela `appointments` vira fonte única; Ana marca sozinha; sync iClinic via iCal; anti-overbooking. Regras de negócio ditadas (idade 8+, endereço na confirmação, antecedência de convênio, 1 horário por vez). |
+| **28/07–04/08** | Guerra às alucinações de data/horário: travas de dia-da-semana, unidade×data, prosa×token; incidente do horizonte de 8 dias; migração do site para iobb.com.br. |
+| **05/08** | Análise de custo com fatura real (US$ 261/mês projetado); **agrupamento de mensagens** (20 s); cache da agenda; postura consultiva no prompt. |
+| **08–12/08** | **Egress do Supabase estoura** (painel baixava a lista inteira a cada 5 s): assinatura barata + janela de 96 h + caches = −97%. Ficha obrigatória vira trava dura. Espelho para nº extra. TTL 1 h. LASIK R$ 7.800 (site + Ana). Nono dígito consertado em todas as buscas. |
+| **13/08** | Lembrete com botões (código); cortesia sem IA; follow-up com mira estreita; conferência de óculos não ocupa vaga; medidor `api_custos` + FAQ sem IA + cache do histórico (sessões paralelas). |
+| **14/08** | Agenda lotada expõe invenção de horários → recheque da reescrita; **incidente do recheque** (destruiu 5 respostas certas de um casal) → recheque só barra mentira; Unimed por produto (João Pessoa não); SulAmérica nunca; TTL confirmado com 2 dias de fatura. |
+| **15/08** | Descoberto que a foto da carteirinha **morria no agrupamento** (texto logo depois cancelava o turno da imagem) → depósito de 3 min resolve; documento-mestre criado; docs reorganizados. |
+
+O detalhe de cada passo está nas mensagens dos ~400 commits (`git log`) e em
+`docs/decisoes/`.
+
+---
+
+## 9. Histórico e decisões — onde procurar o "porquê"
+
+1. **`git log`** — a fonte mais rica; cada commit explica o incidente que o motivou.
+2. **`docs/decisoes/`** — as anotações de decisão/incidente do Claude, com data.
+   ⚠️ **São retratos da época**: algumas conclusões foram REVISTAS depois (ex.: "toda
+   Unimed é atendida", de 11/08, caiu em 14/08; "não mexer no TTL", de 05/08, caiu em
+   12/08). Em dúvida, vale ESTE documento e o código.
+3. **`docs/DOMINIO-IOBB.md`** — site, landing pages, Cloudflare, Worker.
+4. **`docs/arquivo/`** — documentos de julho (ativação, campanhas, testes). Históricos.
+
+---
+
+## 10. Pendências conhecidas (15/08/2026)
+
+- Template de lembrete com botões: falta confirmar aprovação na Meta e apontar
+  `WA_LEMBRETE_TEMPLATE_NAME` (testar com `#LEMBRETES TESTAR`).
 - Rotacionar as URLs secretas do iCal (LGPD — pendente desde julho).
-- 5 fichas de paciente duplicadas por grafia de telefone (decisão: não mesclar por ora).
-- `ad_clicks` ainda varre a tabela toda a cada 60 s (segundo maior item do egress atual;
-  baixa prioridade).
-- Ads: URLs de anúncio antigas apontando para onrender.com / páginas inexistentes;
-  conferir "Incluir em Conversões" da ação Agendamento IOBB.
-- Site diz que menores de 8 anos podem "confirmar com a equipe"; a regra real é 8+
-  categórico — corrigir na próxima edição do site.
+- Levantar carteirinhas perdidas pelo bug do agrupamento (05–15/08) p/ repescagem.
+- 5 fichas de paciente duplicadas por grafia de telefone (decisão: não mesclar).
+- `ad_clicks` ainda varre a tabela toda a cada 60 s (baixa prioridade).
+- Ads: URLs antigas apontando para onrender.com/páginas inexistentes; conferir
+  "Incluir em Conversões" da ação Agendamento IOBB.
+- Site: menores de 8 anos ("confirma com a equipe") contradiz a regra real (8+
+  categórico) — corrigir na próxima edição.
+- Instagram DM: código pronto no branch `feat/instagram-dm`, aguardando App Review da
+  Meta + IG_ID/IG_TOKEN.
+- Futuro desejado (não começar sem o Bruno pedir): prontuário eletrônico próprio
+  integrado a Ana + agenda + painel.
