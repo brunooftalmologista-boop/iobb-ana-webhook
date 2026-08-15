@@ -70,6 +70,8 @@ uptime e estado das configurações principais (janela do painel, espelho, TTL).
    - "Confirmo" após o lembrete → confirma no banco e responde texto fixo;
    - cortesia depois da confirmação ("obrigada", "ok, obrigada", "👍") → despedida fixa;
    - FAQ de endereço/como chegar e horário de funcionamento;
+   - **conferência de óculos / ajuste de armação** → texto fixo com as DUAS
+     unidades e o próximo dia de cada uma calculado pelo código;
    - números mudos (espelho) → ignorados; conversa em modo humano → só espelha à equipe.
 4. Nos demais, monta o prompt em três blocos cacheados (persona fixa · parte estável da
    agenda · histórico) + um bloco volátil (data/hora arredondada a 15 min, contexto do
@@ -126,7 +128,8 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
   convênio vale menos.
 - Conferência de óculos / ajuste de armação / retirada de receita: **ordem de chegada,
   proibido ocupar vaga** — mesmo que o paciente peça horário. Informar o horário do
-  MÉDICO (9h CN / 10h TG), não o da recepção.
+  MÉDICO (9h CN / 10h TG), não o da recepção, e **sempre as DUAS unidades**. Desde
+  15/08 isso é resposta fixa do código, sem IA (ver seção 2).
 - Teste de lente de contato avulso (sem consulta): só para quem já consultou no IOBB
   **ou** tem exame oftalmológico de até 3 meses (de qualquer serviço — trazer no dia).
   Sempre particular (R$ 120 gelatinosa / R$ 150 rígida ou escleral), só no Conjunto.

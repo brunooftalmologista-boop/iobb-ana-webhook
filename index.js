@@ -4424,7 +4424,7 @@ app.post("/webhook", async (req, res) => {
     // lança: qualquer falha aqui cai no fluxo normal com IA.
     if (msg.type === "text") {
       try {
-        const faq = respostaFixaFAQ(text);
+        const faq = ehConferenciaOculos(text) ? "conferencia" : respostaFixaFAQ(text);
         if (faq) {
           const { data: ultA } = await supabase.from("messages").select("content")
             .eq("conversation_id", conversation.id).in("role", ["assistant", "human"])
@@ -4432,7 +4432,9 @@ app.post("/webhook", async (req, res) => {
           const anaPerguntou = /\?\s*$/.test(String(ultA?.content || "").trim());
           if (!anaPerguntou) {
             let resposta;
-            if (faq === "horario") {
+            if (faq === "conferencia") {
+              resposta = textoConferenciaOculos(new Date());
+            } else if (faq === "horario") {
               resposta = FAQ_HORARIO;
             } else {
               // Endereço: se o paciente tem consulta marcada, manda a unidade DELE;
@@ -6910,6 +6912,55 @@ function ehCortesia(texto) {
 const FAQ_END_CN = "📍 *Conjunto Nacional* (seg/qua/sex): Shopping Conjunto Nacional — SDN Conjunto A, Sala 6017 (Torre Verde), 6º andar · Asa Norte, Brasília-DF.\nO acesso é pelo primeiro andar, próximo à Magazine Luiza — ali fica o elevador da Torre Verde, que leva à clínica. Se vier de carro, o estacionamento em frente à Magazine Luiza é o mais próximo desse acesso.";
 const FAQ_END_TS = "📍 *Taguatinga Shopping* (ter/qui) — fica em Águas Claras: QS 1, Lote 40, Sala 615 (Torre B) · Águas Claras, Brasília-DF.\nEntre pela porta ao lado do supermercado Assaí; no primeiro piso (P1) fica a recepção da Torre B, ao lado do Starbucks — é por ali que se sobe. A clínica fica no 6º andar (sala 615).";
 const FAQ_HORARIO = "Nosso atendimento é de segunda a sexta, das 8h às 18h. 😊\n• *Conjunto Nacional* (Asa Norte): segundas, quartas e sextas.\n• *Taguatinga Shopping* (em Águas Claras): terças e quintas — a recepção abre às 8h e o atendimento médico começa às 10h.";
+
+// ── CONFERÊNCIA DE ÓCULOS ───────────────────────────────────────────────────
+// Não ocupa vaga (ordem de chegada) e a resposta é sempre a mesma: as DUAS
+// unidades, com os dias de cada uma e a hora em que o MÉDICO começa. Era o
+// campeão de erro com IA — em 15/08 a Ana disse "Conjunto atende seg/qua/sex" e
+// na frase seguinte ofereceu terça (dia de Taguatinga), pulando a segunda e sem
+// citar Taguatinga. As travas não pegaram porque todas dependem de um HORÁRIO
+// citado, e aqui só se fala em DIA. Texto fixo mata o erro e ainda sai de graça.
+// Os dois "próximo dia" são calculados em código (unidadeDoDia), nunca deduzidos.
+function proximoDiaDaUnidade(unidadeNome, agora = new Date()) {
+  const horaBR = Number(agora.toLocaleString("en-US", { timeZone: TZ_BR, hour: "2-digit", hour12: false }));
+  for (let i = 0; i <= 8; i++) {
+    const d = new Date(agora.getTime() + i * 86400000);
+    if (unidadeDoDia(d) !== unidadeNome) continue;
+    // Hoje só vale se o médico ainda estiver atendendo (recepção fecha 18h).
+    if (i === 0 && horaBR >= 17) continue;
+    return d;
+  }
+  return null;
+}
+function textoConferenciaOculos(agora = new Date()) {
+  const fmt = (d) => d && d.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit" });
+  const proxCN = proximoDiaDaUnidade("Conjunto Nacional", agora);
+  const proxTG = proximoDiaDaUnidade("Taguatinga", agora);
+  const hojeStr = agora.toLocaleDateString("pt-BR", { timeZone: TZ_BR });
+  const rotulo = (d) => {
+    if (!d) return "";
+    const ds = d.toLocaleDateString("pt-BR", { timeZone: TZ_BR });
+    return ds === hojeStr ? " — *hoje*" : ` — a próxima é ${fmt(d)}`;
+  };
+  return "Para conferência de óculos *não precisa agendar*: o atendimento é por ordem de chegada. 😊\n\n"
+    + `• *Conjunto Nacional* (Asa Norte) — segundas, quartas e sextas, a partir das 9h${rotulo(proxCN)}.\n`
+    + `• *Taguatinga Shopping* (em Águas Claras) — terças e quintas, a partir das 10h${rotulo(proxTG)}.\n\n`
+    + "É só comparecer na unidade que preferir, levando os óculos e a receita. Se precisar do endereço ou de qualquer outra coisa, é só falar!";
+}
+// Detecta o pedido. Conservador: se houver sinal de OUTRO assunto junto
+// (convênio, valor, sintoma, exame, cirurgia, dado de ficha), devolve false e a
+// IA conduz. Pedir horário para conferência NÃO desqualifica — a resposta certa
+// é justamente explicar que não há hora marcada.
+function ehConferenciaOculos(texto) {
+  const bruto = String(texto || "").trim();
+  if (!bruto || bruto.length > 160) return false;
+  const t = bruto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (/(convenio|plano|unimed|particular|valor|preco|quanto custa|nascimento|carteirinha|dor|vermelh|urgen|cirurg|catarata|ceratocone|refrativ|lente de contato|exame|campo visual|retorno|resultado|crianc|filh)/.test(t)) return false;
+  const CONF = /(conferencia|conferir|confereir|so conferir|ver se (o|os|meu|meus) oculos|checar (o|os|meu|meus) oculos|ajust\w* (a|da|na)? ?armacao|apertar (o|os|a) (oculos|armacao)|regular (o|os) oculos)/;
+  const OCULOS = /(oculos|armacao|lente do oculos|grau do oculos)/;
+  if (/(conferencia|conferir)/.test(t) && OCULOS.test(t)) return true;
+  return CONF.test(t) && OCULOS.test(t);
+}
 // Decide se a mensagem é SÓ uma pergunta de endereço/horário. Na dúvida, null —
 // falso negativo custa uma chamada de API; falso positivo custa um atendimento.
 function respostaFixaFAQ(texto) {
