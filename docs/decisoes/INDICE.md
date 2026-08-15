@@ -21,3 +21,5 @@
 - [Convênios: nomes equivalentes](convenios-nomes-equivalencias.md) — Plan-Assiste=MPF e afins; lista deduplicada (56 planos); Ana não nega mais nome parcial/duvidoso; suspeita do negativo "inas" x IASES-DF no Ads
 - [Prontuário eletrônico (futuro)](prontuario-eletronico-futuro.md) — Bruno quer futuramente prontuário próprio integrado (Ana+agenda+painel) p/ fechar o ciclo; adiado de propósito, não começar sem ele pedir
 - [Resposta modelo da Ana (horários)](ana-resposta-modelo-horarios.md) — 3 respostas elogiadas como padrão certo (outros horários · carteirinha Unimed sem travar · lente de contato); o alvo, não só o que evitar
+- [Documento-mestre do projeto](documento-mestre-projeto.md) — docs/PROJETO-ANA.md é o ponto de entrada; atualizar a cada decisão nova, docs/decisoes/ é o backup da memória
+- [Conferência de óculos: resposta fixa](conferencia-oculos-resposta-fixa.md) — virou texto fixo sem IA (15/08); e o ponto cego das travas: só pegam erro quando há HORÁRIO citado
