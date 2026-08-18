@@ -7069,7 +7069,10 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto, i
     if (intencaoBotao === "desmarcar" && grupo.length === 1) {
       const r = await cancelarAgendamento(ap.id);
       if (r.ok) {
-        const quando = fmtDataHoraBR(ap.inicio);
+        // MESMO formato do lembrete que ele acabou de ler ("terça-feira, 18/08 às
+        // 16h00"): ver a consulta escrita de outro jeito na resposta dá a impressão
+        // de que o sistema cancelou outra coisa.
+        const quando = fmtLembreteQuando(ap.inicio);
         const resposta = `Pronto, sua consulta de ${quando}, na unidade ${unidadeParaPaciente(ap.unidade)}, foi desmarcada. ✅\n\n`
           + "Quando quiser remarcar, é só me chamar por aqui que eu verifico um horário para você. Fico à disposição! 😊";
         const waId = await sendWhatsApp(from, resposta);
