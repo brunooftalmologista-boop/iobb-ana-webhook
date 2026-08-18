@@ -1396,11 +1396,20 @@ function instrucaoMaisCedo(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. Você ficou presa na data que já estava sendo conversada em vez de procurar de novo desde o começo da lista. SEMPRE que o paciente mudar o critério (horário, período, unidade), VARRA A LISTA DESDE A DATA MAIS PRÓXIMA — não continue a partir da data que você ofereceu antes. Reescreva oferecendo o horário mais próximo que atende ao que ele acabou de pedir. Ninguém quer esperar mais do que precisa, e vaga próxima vazia é prejuízo para a clínica.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
+// Quando NÃO dá para oferecer horário — e cobrar isso da Ana é errado. Casos
+// reais de 17/08: Unimed regional (Teresina, BH, Belém) que depende de
+// intercâmbio, e "verifica se atendem meu plano". Nesses a resposta certa é
+// registrar o [RECADO] e esperar a equipe; marcar seria prometer o que não
+// podemos cumprir. A trava disparava assim mesmo, gastava uma reescrita que não
+// tinha como acertar e ainda inflava o contador. Mesmo ponto cego do detector de
+// escalonamento: punir a resposta certa é pior que deixar passar a errada.
+const RE_NAO_DA_PARA_MARCAR = /intercambio|intercâmbio|verificar (a )?(cobertura|se o plano|junto|com a operadora)|equipe (vai |ir[áa] )?(verific|confirm)|n[aã]o tenho como (confirmar|verificar)|precisamos verificar|confirma[cç][aã]o (é|e) feita|aguard(e|ar) (o )?retorno|\[RECADO\]|3033-6605|99299[-\s.]?7639/i;
 function precoSemHorario(reply, slots) {
   if (!Array.isArray(slots) || !slots.length) return null;      // sem agenda, nada a oferecer
   if (!/R\$\s?\d/.test(reply)) return null;
   if (/\[(AGENDAR|PREAGENDAMENTO)\]/i.test(reply)) return null; // já fechou algo neste turno
   if (/\d{1,2}\s*[h:]\s*\d{2}/.test(reply)) return null;        // já tem horário concreto
+  if (RE_NAO_DA_PARA_MARCAR.test(reply)) return null;           // depende da equipe: não há horário a oferecer
   return "preço informado sem oferecer horário concreto";
 }
 function instrucaoPerguntarConvenio() {
@@ -4828,7 +4837,13 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         // colapsar os dois num só. É o mesmo ponto cego que destruiu 5 respostas
         // do Vanderson e da Elen em 14/08 — aqui não seria destrutivo, mas
         // enviesaria na mesma direção errada.
-        const travaDeHorario = !!(contradicao || maisCedo);
+        // precoSeco entrou aqui em 18/08: a instrução mandava "termine com UM
+        // horário específico da lista" e o código NÃO entregava horário nenhum —
+        // a lista está no bloco estável, mas sob a pergunta de preço o modelo
+        // voltava a perguntar do convênio em vez de fechar. Em 17/08, 10 das 21
+        // respostas chegaram ao paciente sem horário mesmo depois da reescrita.
+        // A âncora é exatamente o porto seguro que consertou as outras travas.
+        const travaDeHorario = !!(contradicao || maisCedo || precoSeco);
         const ancora = (travaDeHorario && Array.isArray(slotsVigentes) && slotsVigentes.length)
           ? alternativaMaisProxima(slotsVigentes, new Date(), Date.now()) : null;
         const ancoraTxt = ancora
