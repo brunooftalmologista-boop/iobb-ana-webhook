@@ -23,3 +23,4 @@
 - [Resposta modelo da Ana (horários)](ana-resposta-modelo-horarios.md) — 3 respostas elogiadas como padrão certo (outros horários · carteirinha Unimed sem travar · lente de contato); o alvo, não só o que evitar
 - [Documento-mestre do projeto](documento-mestre-projeto.md) — docs/PROJETO-ANA.md é o ponto de entrada; atualizar a cada decisão nova, docs/decisoes/ é o backup da memória
 - [Conferência de óculos: resposta fixa](conferencia-oculos-resposta-fixa.md) — virou texto fixo sem IA (15/08); e o ponto cego das travas: só pegam erro quando há HORÁRIO citado
+- [Botão Desmarcar cancela na hora](botao-desmarcar-cancela-na-hora.md) — sem pedir confirmação (18/08); vaga da Meyre foi reocupada em 22 min; bug pendente: Ana diz que cancelou e não cancela
