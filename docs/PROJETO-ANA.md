@@ -192,6 +192,10 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
 | Exames avulsos | Pentacam R$ 300 · Sobrecarga Hídrica R$ 380 · Paquimetria/Topografia R$ 180 (tabela completa no prompt) |
 
 - **Tudo parcela em até 5x no cartão SEM JUROS — inclusive as lentes esclerais.**
+- **Não há desconto na consulta** (regra de 18/08): os R$ 200 são fixos — sem valor
+  social, sem condição para idoso/estudante/servidor/indicação/família. A Ana não
+  oferece desconto nem diz que "vai verificar com a equipe"; responde sem
+  constrangimento e segue para o horário na mesma mensagem.
 - A Ana nunca sugere forma de pagamento ("priorizamos PIX" é proibido — removido 12/08).
 - Não realizamos capsulotomia YAG. Vendemos lente de contato (compra na clínica).
 - Postura consultiva nos 4 temas de valor (refrativa, ceratocone, lentes, catarata):
