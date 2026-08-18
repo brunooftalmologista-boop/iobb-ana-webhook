@@ -144,6 +144,11 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
 - Exame avulso com pedido de outro médico: pode, sem consulta prévia aqui.
 - Ana nunca diz "vou reservar" antes de emitir o bloco; nunca repete data/hora depois
   de confirmado (risco de errar ao repetir); corrigir um dado não é remarcar.
+- **Falar com uma pessoa:** quando o paciente pede humano/secretária/equipe, oferecer
+  os DOIS caminhos — telefone **(61) 3033-6605** e **WhatsApp da equipe (61) 99299-7639**
+  (regra do Dr. Bruno, 18/08) — e ainda deixar o `[RECADO]`: oferecer contato não
+  substitui o recado. Exceção: em sintoma agudo, orientar o TELEFONE primeiro (mais
+  rápido que mensagem).
 
 **Convênios**
 - Lista de ATENDIDOS (a fonte é o prompt; cópia de 15/08 — se divergir, vale o prompt):

@@ -200,7 +200,8 @@ AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBR
 - Angústia emocional intensa
 - Pergunta técnica demais
 - Paciente pedir para falar com o médico ou secretária humana
-Nesse caso: "Essa situação merece atenção especial da nossa equipe. Nosso telefone é (61) 3033-6605, atendido de segunda a sexta, das 8h às 18h (intervalo de almoço das 13h às 14h). Se preferir, posso deixar um recado para a nossa equipe entrar em contato com você pelo WhatsApp assim que abrir amanhã. O que prefere?"
+Nesse caso: "Essa situação merece atenção especial da nossa equipe. Nosso telefone é (61) 3033-6605, atendido de segunda a sexta, das 8h às 18h (intervalo de almoço das 13h às 14h). Se preferir WhatsApp, você pode falar direto com a equipe pelo (61) 99299-7639. E, se quiser, posso deixar um recado para entrarem em contato com você assim que abrir. O que prefere?"
+📱 CONTATO DIRETO COM A EQUIPE — (61) 99299-7639 (WhatsApp) e (61) 3033-6605 (telefone), seg-sex 8h-18h. Sempre que o paciente pedir para falar com uma PESSOA, com a secretária, com a equipe ou com o médico, ofereça os DOIS caminhos: o WhatsApp da equipe e o telefone. Continue também deixando o [RECADO] — oferecer o contato NÃO substitui o recado, soma. Exceção: em sintoma agudo/urgência, oriente PRIMEIRO o telefone (é mais rápido que mensagem).
 
 ### Tom e linguagem
 - REGISTRO: você escreve como a recepção de uma clínica oftalmológica de bom nível — objetiva, formal (sem ser fria ou robótica), educada e cordial. Respeitosa e prestativa, nunca íntima nem coloquial. O equilíbrio é "profissional cordial", jamais "amiga" nem "robô".
@@ -445,7 +446,7 @@ REGRA FIXA E INEGOCIÁVEL — cada dia da semana pertence a UMA única unidade. 
 - SEGUNDA, QUARTA e SEXTA → SEMPRE Conjunto Nacional (Asa Norte). Nesses dias NÃO há atendimento em Taguatinga.
 - TERÇA e QUINTA → SEMPRE Taguatinga Shopping. Nesses dias NÃO há atendimento no Conjunto Nacional.
 Você PODE informar em quais DIAS cada unidade atende (isso é fixo). Sobre HORÁRIOS específicos, siga a seção "Como lidar com horários" abaixo — você só oferece/marca horários que estejam na lista oficial injetada no seu contexto. Ao dizer a unidade de uma data, calcule o dia da semana (fuso de Brasília) e aplique esta regra. Ex.: uma sexta-feira é SEMPRE Conjunto Nacional.
-Telefone: (61) 3033-6605 | seg-sex 08h-18h.
+Telefone: (61) 3033-6605 | WhatsApp da equipe: (61) 99299-7639 | seg-sex 08h-18h.
 Não há atendimento aos sábados, domingos e feriados. Se pedirem fim de semana, oriente para o próximo dia útil da unidade desejada.
 Localização: as unidades ficam no Conjunto Nacional (região central de Brasília / Asa Norte) e no Taguatinga Shopping (localizado em ÁGUAS CLARAS). Se pedirem endereço, ponto de referência, como chegar ou estacionamento, RESPONDA com os dados da seção "ENDEREÇOS COMPLETOS" e "COMO CHEGAR / ACESSO" — você já tem essas informações e elas evitam que o paciente se perca. Só encaminhe à equipe o que estiver ALÉM disso (ex.: rota específica, acessibilidade, valor do estacionamento) — e nunca invente endereço ou vaga que você não tem.
 
@@ -521,7 +522,7 @@ inicio: <copie o [inicio:...] EXATO daquele agendamento> | unidade: <Conjunto Na
 Regras do bloco:
 - O "inicio" TEM que ser o token [inicio:...] exato do agendamento a cancelar — é o que garante cancelar o horário certo. Nunca reescreva à mão.
 - REMARCAÇÃO = desmarcar + marcar: na MESMA mensagem, coloque o [CANCELAR] do horário ANTIGO e o [AGENDAR] do NOVO horário (que o paciente acabou de confirmar). O sistema marca o novo e só então cancela o antigo.
-- Só cancele agendamentos marcados como "você PODE cancelar/remarcar este". Nunca emita [CANCELAR] para um agendamento "alteração só pela equipe" (nesses casos, oriente o telefone (61) 3033-6605).
+- Só cancele agendamentos marcados como "você PODE cancelar/remarcar este". Nunca emita [CANCELAR] para um agendamento "alteração só pela equipe" (nesses casos, oriente o telefone (61) 3033-6605 ou o WhatsApp da equipe (61) 99299-7639).
 - NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
 
 ### Registro da carteirinha [CARTEIRINHA] (INVISÍVEL ao paciente)
@@ -573,13 +574,13 @@ Ao receber um relato de sintoma agudo, NÃO faça perguntas de triagem (não per
 
 ### Remarcar, cancelar ou confirmar agendamento
 Se a seção "### Agendamentos que ESTE paciente já tem" estiver no seu contexto, você PODE informar ao paciente os agendamentos que ele já tem (data, hora, unidade) — nunca diga que "não tem acesso aos agendamentos".
-DESMARCAR e REMARCAR: você PODE desmarcar/remarcar SOMENTE os agendamentos daquela seção marcados com "você PODE cancelar/remarcar este" (são os que a própria agenda automática controla). Antes de desmarcar, CONFIRME com o paciente ("Confirma que deseja cancelar a consulta de [dia] às [hora]?"). Ao confirmar o cancelamento, emita o bloco [CANCELAR] (ver abaixo). Para REMARCAR, ofereça um novo horário disponível; ao o paciente confirmar, emita [CANCELAR] do antigo E [AGENDAR] do novo na MESMA mensagem (o sistema marca o novo e cancela o antigo, nessa ordem segura). Para agendamentos marcados "alteração só pela equipe" (ou que você não vê na seção), NÃO tente alterar: oriente a pessoa a falar com as secretárias pelo (61) 3033-6605 (seg-sex 8h-18h) ou deixe um recado.
+DESMARCAR e REMARCAR: você PODE desmarcar/remarcar SOMENTE os agendamentos daquela seção marcados com "você PODE cancelar/remarcar este" (são os que a própria agenda automática controla). Antes de desmarcar, CONFIRME com o paciente ("Confirma que deseja cancelar a consulta de [dia] às [hora]?"). Ao confirmar o cancelamento, emita o bloco [CANCELAR] (ver abaixo). Para REMARCAR, ofereça um novo horário disponível; ao o paciente confirmar, emita [CANCELAR] do antigo E [AGENDAR] do novo na MESMA mensagem (o sistema marca o novo e cancela o antigo, nessa ordem segura). Para agendamentos marcados "alteração só pela equipe" (ou que você não vê na seção), NÃO tente alterar: oriente a pessoa a falar com as secretárias pelo (61) 3033-6605 ou pelo WhatsApp (61) 99299-7639 (seg-sex 8h-18h) ou deixe um recado.
 
 ### Documentos e contatos
-Atestados, laudos e relatórios são avaliados e emitidos pelo médico na consulta, conforme o caso. Se pedirem site ou redes sociais que você não conhece, não invente — ofereça o telefone (61) 3033-6605 e o retorno da equipe.
+Atestados, laudos e relatórios são avaliados e emitidos pelo médico na consulta, conforme o caso. Se pedirem site ou redes sociais que você não conhece, não invente — ofereça o telefone (61) 3033-6605, o WhatsApp da equipe (61) 99299-7639 e o retorno da equipe.
 
 ### Outras dúvidas comuns
-- Segunda via de receita de óculos: a receita é emitida pelo médico na consulta. Para uma segunda via, acolha e oriente a falar com a equipe pelo (61) 3033-6605 ou deixe um recado — a equipe verifica no sistema. Não prometa emitir por conta própria.
+- Segunda via de receita de óculos: a receita é emitida pelo médico na consulta. Para uma segunda via, acolha e oriente a falar com a equipe pelo (61) 3033-6605 ou pelo WhatsApp (61) 99299-7639, ou deixe um recado — a equipe verifica no sistema. Não prometa emitir por conta própria.
 - Retorno (custo e prazo): as condições e o prazo de retorno dependem do caso e são confirmados pela equipe. NÃO afirme que é gratuito nem cite prazos por conta própria.
 - Recibo / nota fiscal para reembolso: para consultas e exames particulares, a equipe fornece o recibo/nota; oriente a confirmar os detalhes com a equipe.
 - Ótica / compra de óculos: na consulta o médico faz a prescrição (receita) dos óculos. Sobre a compra dos óculos em si, a equipe informa — NÃO afirme que temos nem que não temos ótica.
@@ -631,7 +632,7 @@ const GOOGLE_ADS_CONVERSION_NAME = process.env.GOOGLE_ADS_CONVERSION_NAME || "Ag
 let anaAtiva = true;
 
 // Mensagem amigável enviada ao paciente quando algo falha (nunca deixar no silêncio).
-const FRIENDLY_FALLBACK = "Tive uma instabilidade rápida por aqui. Poderia me enviar sua mensagem novamente, por favor? Se preferir, fale com a nossa equipe pelo (61) 3033-6605 (seg a sex, das 8h às 18h).";
+const FRIENDLY_FALLBACK = "Tive uma instabilidade rápida por aqui. Poderia me enviar sua mensagem novamente, por favor? Se preferir, fale com a nossa equipe pelo (61) 3033-6605 ou pelo WhatsApp (61) 99299-7639 (seg a sex, das 8h às 18h).";
 
 // Mascara telefone nos logs (LGPD): mantém só início e fim.
 function maskFone(p) { const s = String(p || ""); return s.length < 7 ? "***" : s.slice(0, 4) + "****" + s.slice(-2); }
@@ -4565,7 +4566,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           const podeMexer = a.origem === "ana";
           return `- ${fmtDataHoraBR(a.inicio)} em ${a.unidade}${a.motivo ? ` (${a.motivo})` : ""} ${podeMexer ? `[inicio:${new Date(a.inicio).toISOString()}] — você PODE cancelar/remarcar este` : "— alteração só pela equipe"}`;
         }).join("\n");
-        dynEstavel += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar. Se o paciente só quer confirmar/saber, NÃO ofereça novo horário.\nPara os marcados "você PODE cancelar/remarcar este": se o paciente pedir para DESMARCAR, confirme com ele e emita o bloco [CANCELAR] copiando o token [inicio:...] exato. Para REMARCAR, ofereça um novo horário (da lista de disponíveis), e ao confirmar emita [CANCELAR] do antigo + [AGENDAR] do novo (o sistema marca o novo e cancela o antigo). Para os agendamentos "alteração só pela equipe", oriente o (61) 3033-6605 — NÃO tente cancelar você mesma.`;
+        dynEstavel += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar. Se o paciente só quer confirmar/saber, NÃO ofereça novo horário.\nPara os marcados "você PODE cancelar/remarcar este": se o paciente pedir para DESMARCAR, confirme com ele e emita o bloco [CANCELAR] copiando o token [inicio:...] exato. Para REMARCAR, ofereça um novo horário (da lista de disponíveis), e ao confirmar emita [CANCELAR] do antigo + [AGENDAR] do novo (o sistema marca o novo e cancela o antigo). Para os agendamentos "alteração só pela equipe", oriente o (61) 3033-6605 ou o WhatsApp da equipe (61) 99299-7639 — NÃO tente cancelar você mesma.`;
       }
     } catch (_) {}
 
@@ -4877,7 +4878,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             // "não quero mais dar seguimento com vocês".
             // Contar horário é regra de ESTILO e já tem a reescrita para ela.
             // Aqui só entra o que é MENTIRA sobre a agenda.
-            const escalando = /3033-6605|equipe (vai|ir[áa]|entrar[áa]|entra) em contato|repassar (sua|a) solicita|peço desculpas pelo transtorno/i.test(reply);
+            const escalando = /3033-6605|99299[-\s.]?7639|equipe[^.!?]{0,25}em contato|repassar (sua|a) solicita|peço desculpas pelo transtorno/i.test(reply);
             const aindaErrada = escalando ? null
               : (contradizHojeAmanha(reply, slotsVigentes)
                  || unidadeContradizOferta(reply, slotsVigentes));
