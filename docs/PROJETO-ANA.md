@@ -86,8 +86,15 @@ uptime e estado das configurações principais (janela do painel, espelho, TTL).
 
 **Rotinas automáticas** (rodam sozinhas no servidor):
 - **Lembrete da véspera** (`LEMBRETE_HORA`, 17h): mensagem a cada paciente do dia
-  seguinte; "Confirmo/Remarcar/Desmarcar" tratados sem IA. Template com botões
-  clicáveis: código pronto, aguardando template aprovado na Meta.
+  seguinte, via template com botões (`lembrete_consulta_botoes`, no ar desde 16/08;
+  rótulos `Confirmo · Desmarcar · Remarcar`, definidos em `BOTOES_LEMBRETE`).
+  O que cada toque faz:
+  - **Confirmo** → grava a confirmação e responde com texto fixo lido do banco. Sem IA.
+  - **Desmarcar** → **cancela na hora**, libera a vaga e responde com texto fixo
+    convidando a remarcar. Sem IA. Não pede confirmação: pedir deixava o horário
+    preso quando o paciente não respondia (decisão do Dr. Bruno, 17/08). Exceção:
+    2+ consultas no mesmo telefone e mesmo dia (família) — aí a Ana pergunta qual.
+  - **Remarcar** → avisa a equipe e a Ana oferece um horário concreto. Usa IA.
 - **Follow-up de leads frios** (a cada 30 min, liga/desliga em
   `settings.followup_leads_enabled`): reengaja quem parou NO MEIO de uma escolha há
   3–20 h. Não persegue quem agradeceu/encerrou/já tem consulta (por qualquer via).

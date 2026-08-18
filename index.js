@@ -4391,7 +4391,7 @@ app.post("/webhook", async (req, res) => {
     // confirmação não é "responder" — é registro, e a equipe precisa dele
     // independentemente de quem conduz a conversa. Nunca lança.
     if (text) {
-      const jaRespondeu = await registrarRespostaAoLembrete(conversation, patient, from, text)
+      const jaRespondeu = await registrarRespostaAoLembrete(conversation, patient, from, text, intencaoBotao)
         .catch(e => { console.error("[Confirmação] falhou:", e.message); return false; });
       if (jaRespondeu) return;   // confirmação já respondida com texto fixo — sem chamar a IA
     }
@@ -4584,7 +4584,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // toque errado acontece, e cancelar direto tira alguém da agenda sem que
     // ninguém perceba até a cadeira ficar vazia.
     if (intencaoBotao === "desmarcar") {
-      dynVolatil += `\n\n### O paciente TOCOU no botão "Desmarcar" do lembrete\nA intenção é clara, mas pode ter sido toque acidental. NÃO cancele ainda: pergunte, em UMA frase curta e cordial, se ele confirma o cancelamento, repetindo dia, hora e unidade da consulta (ex.: "Confirma que deseja desmarcar sua consulta de quinta-feira, 13/08, às 14h20, no Taguatinga Shopping?"). Só emita [CANCELAR] depois que ele confirmar. Se ele confirmar, cancele e ofereça, na mesma mensagem, remarcar para outra data — muita gente desmarca por conflito de horário, não por desistência.`;
+      dynVolatil += `\n\n### O paciente TOCOU no botão "Desmarcar" do lembrete\nO cancelamento automático NÃO foi aplicado porque há MAIS DE UMA consulta neste mesmo telefone para o mesmo dia (família no mesmo WhatsApp) — o toque não diz de QUEM é. Pergunte, em UMA frase curta e cordial, QUAL das consultas ele quer desmarcar, listando-as com nome, hora e unidade (ex.: "Você quer desmarcar a consulta da Bianca às 17h20 ou a do Luciano às 17h00?"). NÃO pergunte se ele tem certeza: a intenção de cancelar já está dada, só falta saber qual. Assim que ele indicar, emita o [CANCELAR] daquela consulta e ofereça, na mesma mensagem, remarcar para outra data — muita gente desmarca por conflito de horário, não por desistência.`;
     } else if (intencaoBotao === "remarcar") {
       dynVolatil += `\n\n### O paciente TOCOU no botão "Remarcar" do lembrete\nEle quer trocar o horário da consulta que já tem. NÃO pergunte "como posso ajudar?" nem peça que ele explique — a intenção já está dada. Confirme em meia linha qual é a consulta atual (dia, hora e unidade) e ofereça JÁ um horário concreto da lista para substituí-la, perguntando se serve. Ao ele aceitar, faça a remarcação normalmente ([CANCELAR] do antigo + [AGENDAR] do novo).`;
     }
@@ -6975,7 +6975,7 @@ function respostaFixaFAQ(texto) {
   return null;
 }
 
-async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
+async function registrarRespostaAoLembrete(conversation, patient, from, texto, intencaoBotao = null) {
   // Houve lembrete nesta conversa há pouco? (messages.timestamp é naive UTC)
   const corte = new Date(Date.now() - 48 * 3600 * 1000).toISOString().slice(0, 19);
   const { data: lemb } = await supabase.from("messages")
@@ -7056,6 +7056,33 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto) {
   const grupo = doDia.length ? doDia : [ap];
 
   if (remarcar) {
+    // BOTÃO "Desmarcar" → CANCELA NA HORA, sem perguntar (Dr. Bruno, 17/08/2026).
+    // Antes a Ana pedia confirmação ("confirma que deseja desmarcar?") para que um
+    // toque acidental não tirasse ninguém da agenda. Na prática o efeito era o
+    // oposto do pretendido: muita gente toca no botão e NÃO responde à pergunta —
+    // aí o horário fica PRESO, ninguém percebe, e a vaga só aparece vazia no dia,
+    // quando já não dá para oferecê-la a outro paciente. Segurar a vaga custa mais
+    // que um cancelamento indevido, que o paciente resolve mandando uma mensagem.
+    // Só cancela quando o toque é INEQUÍVOCO: um único agendamento naquele dia
+    // para este telefone. Família no mesmo número (2+ no mesmo dia) continua indo
+    // para a Ana, porque o toque não diz DE QUEM é o cancelamento.
+    if (intencaoBotao === "desmarcar" && grupo.length === 1) {
+      const r = await cancelarAgendamento(ap.id);
+      if (r.ok) {
+        const quando = fmtDataHoraBR(ap.inicio);
+        const resposta = `Pronto, sua consulta de ${quando}, na unidade ${unidadeParaPaciente(ap.unidade)}, foi desmarcada. ✅\n\n`
+          + "Quando quiser remarcar, é só me chamar por aqui que eu verifico um horário para você. Fico à disposição! 😊";
+        const waId = await sendWhatsApp(from, resposta);
+        await supabase.from("messages").insert({ conversation_id: conversation.id, role: "assistant", content: resposta, wa_message_id: waId, event: "cancelamento_botao" });
+        await supabase.from("conversations").update({ last_message: resposta, updated_at: new Date().toISOString() }).eq("id", conversation.id);
+        await espelharParaSecretaria("[Resposta ao lembrete]",
+          `❌ *CONSULTA DESMARCADA PELO PACIENTE* (botão do lembrete)\n👤 ${ap.paciente_nome || from}\n📱 ${from}\n🕐 ${quando} — ${ap.unidade}\n♻️ A vaga já foi liberada na agenda.`).catch(() => {});
+        console.log(`[Confirmação] ❌ ${maskFone(fone)} desmarcou ${ap.inicio} pelo botão — vaga liberada, sem IA.`);
+        return true;   // resposta pronta enviada: não chama a IA
+      }
+      console.error("[Confirmação] Falha ao cancelar pelo botão — segue para a Ana.");
+    }
+
     // Não mexe na agenda: quem remarca é a Ana (com a lista) ou a equipe.
     await marcarPendenciaEquipe(conversation.id).catch(() => {});
     await espelharParaSecretaria("[Resposta ao lembrete]",
