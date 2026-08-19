@@ -24,3 +24,4 @@
 - [Documento-mestre do projeto](documento-mestre-projeto.md) — docs/PROJETO-ANA.md é o ponto de entrada; atualizar a cada decisão nova, docs/decisoes/ é o backup da memória
 - [Conferência de óculos: resposta fixa](conferencia-oculos-resposta-fixa.md) — virou texto fixo sem IA (15/08); e o ponto cego das travas: só pegam erro quando há HORÁRIO citado
 - [Botão Desmarcar cancela na hora](botao-desmarcar-cancela-na-hora.md) — sem pedir confirmação (18/08); vaga da Meyre foi reocupada em 22 min; bug pendente: Ana diz que cancelou e não cancela
+- [Agenda única / Ana independente](agenda-unica-ana-independente.md) — iClinic acabou (19/08); Ana gere TODA a agenda; cobrança de recado 4h; Unimed mesmo-dia
