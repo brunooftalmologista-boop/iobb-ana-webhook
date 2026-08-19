@@ -1406,6 +1406,36 @@ function instrucaoMaisCedo(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. Você ficou presa na data que já estava sendo conversada em vez de procurar de novo desde o começo da lista. SEMPRE que o paciente mudar o critério (horário, período, unidade), VARRA A LISTA DESDE A DATA MAIS PRÓXIMA — não continue a partir da data que você ofereceu antes. Reescreva oferecendo o horário mais próximo que atende ao que ele acabou de pedir. Ninguém quer esperar mais do que precisa, e vaga próxima vazia é prejuízo para a clínica.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
+// ===== TRAVA: PEDIU A FICHA EM CONTA-GOTAS ================================
+// A regra "peça TUDO o que falta de uma vez" está no prompt em DOIS lugares, com
+// exemplo pronto — e ela desobedece assim mesmo. Caso Valdecy (18/08): o paciente
+// aceitou o horário às 18h31 e a Ana pediu nome; ele respondeu; ela pediu o
+// nascimento; ele respondeu; ela perguntou "será particular, correto?". Três
+// idas e voltas, 18 minutos entre aceitar e confirmar — e cada volta é uma
+// chance de o paciente largar. É o mesmo padrão de sempre: regra no prompt não
+// segura comportamento, trava segura.
+// Só reprova quando ela pede MENOS do que falta: pedir um dado quando só falta
+// aquele é o certo e não dispara nada.
+function fichaEmContaGotas(reply, messages) {
+  const pedeNome  = /nome completo/i.test(reply);
+  const pedeNasc  = /data de nascimento|sua data de nasc|o nascimento/i.test(reply);
+  const pedeForma = /particular ou (por )?(conv[êe]nio|plano)|qual (é o )?conv[êe]nio|tem conv[êe]nio|tem algum (plano|conv[êe]nio)|ser[áa] particular/i.test(reply);
+  const pediu = [pedeNome, pedeNasc, pedeForma].filter(Boolean).length;
+  if (!pediu) return null;
+  // O que o paciente JÁ informou, lido do histórico. Conservador: na dúvida
+  // considera que JÁ tem (assim a trava não cobra dado que ele já deu).
+  const ditoPeloPaciente = (messages || []).filter(m => m.role === "user").map(m => String(m.content || "")).join(" \n ");
+  const temNasc  = /\b\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\/.-]\s*\d{2,4}\b/.test(ditoPeloPaciente);
+  const temForma = /particular|conv[êe]nio|unimed|plano de sa[úu]de|amhpdf|saude caixa|sa[úu]de caixa|geap|cassi|fascal|serpro|tjdft|mpf|mpdft/i.test(ditoPeloPaciente);
+  const falta = (pedeNome ? 1 : 0) + (temNasc ? 0 : 1) + (temForma ? 0 : 1);
+  if (pediu >= falta) return null;
+  return `pediu ${pediu} dado(s) da ficha quando ainda faltam ${falta} — vai ter que voltar a perguntar`;
+}
+function instrucaoFichaDeUmaVez() {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você pediu só PARTE dos dados que ainda faltam. Cada ida e volta a mais é uma chance de o paciente largar a conversa no meio — e é o que acontece. Reescreva a MESMA mensagem pedindo, DE UMA VEZ SÓ e em UMA frase natural, TUDO o que falta: o nome completo, a data de nascimento e se o atendimento será particular ou por convênio (e, sendo convênio, qual) — omitindo apenas o que ele JÁ informou nesta conversa. Deixe claro que o horário está separado e que é rápido. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se será particular ou por convênio (se for convênio, qual)?"
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
 // ===== TRAVA: OFERECEU VAGA QUE NÃO EXISTE ================================
 // O buraco mais caro que restava: o código contava QUANTOS horários ela oferecia
 // (trava de "vários horários") e conferia unidade×dia, mas NUNCA conferia se o
@@ -4926,15 +4956,18 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       // Ofereceu vaga que NÃO está livre. Só na etapa de OFERTA: na mensagem de
       // confirmação o horário já saiu da lista (acabou de ser ocupado por ele).
       const ofertaFalsa = etapaDeOferta ? ofertaInexistente(reply, slotsVigentes, meusAgendamentos) : null;
+      // Pediu a ficha em conta-gotas (um dado por mensagem).
+      const contaGotas = etapaDeOferta ? fichaEmContaGotas(reply, messages) : null;
       const cancPrevia = extrairCancelar(reply);
       const cancelouSoNaFala = prometeuCancelarSemBloco(reply, cancPrevia.limpo, cancPrevia.registros, meusAgendamentos);
-      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa) {
-        const motivo = ofertaFalsa || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas) {
+        const motivo = ofertaFalsa || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
           ofertaFalsa ? "ofereceu_vaga_inexistente"
+            : contaGotas ? "ficha_em_conta_gotas"
             : cancelouSoNaFala ? "prometeu_cancelar_sem_bloco"
             : unidadeErrada ? "unidade_dia_contradiz"
             : contradicao ? "hoje_amanha_contradiz" : maisCedo ? "vaga_mais_cedo_ignorada"
@@ -4976,6 +5009,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
             { type: "text", text: dynVolatil + (ofertaFalsa ? instrucaoOfertaReal(ofertaFalsa)
+              : contaGotas ? instrucaoFichaDeUmaVez()
               : cancelouSoNaFala ? instrucaoCancelarDeVerdade(cancelouSoNaFala)
               : unidadeErrada ? instrucaoUnidadeDoDia(unidadeErrada)
               : contradicao ? instrucaoDataReal(contradicao)
