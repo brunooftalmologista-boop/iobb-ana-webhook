@@ -4413,6 +4413,15 @@ app.post("/webhook", async (req, res) => {
       if (jaRespondeu) return;   // confirmação já respondida com texto fixo — sem chamar a IA
     }
 
+    // CANCELAMENTO POR TEXTO LIVRE ("cancela, por favor"). Roda fora do fluxo do
+    // lembrete de propósito: a Iara pediu o cancelamento um dia ANTES de o
+    // lembrete existir, e por isso nada disso rodava. Nunca lança.
+    if (msg.type === "text" && text) {
+      const cancelou = await cancelarPorTextoLivre(conversation, from, text)
+        .catch(e => { console.error("[CancelaTexto] falhou:", e.message); return false; });
+      if (cancelou) return;
+    }
+
     // Verificar se conversa está com humano
     if (conversation.status === "human") {
       const notif = mediaNotification || `👤 *Paciente ${patient.name || from}:*\n${text}`;
@@ -6996,6 +7005,52 @@ function respostaFixaFAQ(texto) {
   if (/(endereco|localizacao|localizada|onde fica|onde e a clinica|onde voces|como chego|como chegar|referencia|estaciona|qual andar|qual sala|qual torre|dentro do shopping)/.test(t)) return "endereco";
   if (/(horario de funcionamento|horario de atendimento|que horas (abre|fecha)|ate que horas|abre que horas|abrem que horas|voces (abrem|fecham)|funciona ate|funciona de que)/.test(t)) return "horario";
   return null;
+}
+
+// ── CANCELAMENTO POR TEXTO LIVRE ────────────────────────────────────────────
+// Mesma decisão do botão "Desmarcar" (18/08), estendida ao texto a pedido do
+// Dr. Bruno: pedido EXPLÍCITO de cancelamento cancela na hora, sem perguntar
+// "confirma?". Caso que motivou: a paciente Iara escreveu "Cancela, por favor"
+// às 17h36 de 17/08, a Ana perguntou se confirmava, ela não respondeu — e a vaga
+// ficou presa 24 h, a ponto de o lembrete da véspera sair no dia seguinte para
+// uma consulta que ela já tinha cancelado.
+// CONSERVADOR DE PROPÓSITO: só frase inequívoca e curta. Pergunta ("posso
+// cancelar?", "como faço para cancelar?"), condicional ("se eu precisar
+// cancelar") e qualquer sinal de REMARCAÇÃO ficam com a Ana — remarcar não é
+// cancelar, e cancelar quem só queria trocar de horário perde o paciente.
+const RE_CANCELA_EXPLICITO = /\b(cancela|cancelar|cancele|cancelamento|desmarca|desmarcar|desmarque)\b|n[aã]o (vou|poderei|posso|consigo)( poder| conseguir)?( mais)? (ir|comparecer|estar)\b|n[aã]o vou mais\b/i;
+const RE_CANCELA_AMBIGUO = /\?|\bse\b|caso |talvez|acho que|ser[áa] que|como (fa[çc]o|cancelo|desmarco)|posso (cancelar|desmarcar|remarcar)|poderia|gostaria de saber|taxa|multa|remarc|reagend|trocar|mudar|outro (dia|hor[áa]rio)|adiar|transferir/i;
+function cancelamentoExplicito(texto) {
+  const bruto = String(texto || "").trim();
+  if (!bruto || bruto.length > 120) return false;
+  const t = bruto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (RE_CANCELA_AMBIGUO.test(t)) return false;
+  return RE_CANCELA_EXPLICITO.test(t);
+}
+// Cancela na hora quando o pedido é inequívoco E não há dúvida de QUAL consulta.
+// Devolve true se já respondeu (o webhook não chama a IA). Nunca lança.
+async function cancelarPorTextoLivre(conversation, from, texto) {
+  if (conversation.status !== "bot") return false;
+  if (!cancelamentoExplicito(texto)) return false;
+  const meus = (await agendamentosDoPaciente(from)).filter(a => a.origem === "ana");
+  // 0 → nada a cancelar (a Ana explica). 2+ → qual delas? a Ana pergunta.
+  if (meus.length !== 1) {
+    if (meus.length > 1) console.log(`[CancelaTexto] ${maskFone(from)} pediu cancelamento com ${meus.length} consultas ativas — a Ana pergunta qual.`);
+    return false;
+  }
+  const ap = meus[0];
+  const r = await cancelarAgendamento(ap.id);
+  if (!r.ok) { console.error("[CancelaTexto] Falha ao cancelar — segue para a Ana."); return false; }
+  const quando = fmtLembreteQuando(ap.inicio);
+  const resposta = `Pronto, sua consulta de ${quando}, na unidade ${unidadeParaPaciente(ap.unidade)}, foi desmarcada. ✅\n\n`
+    + "Quando quiser remarcar, é só me chamar por aqui que eu verifico um horário para você. Fico à disposição! 😊";
+  const waId = await sendWhatsApp(from, resposta);
+  await supabase.from("messages").insert({ conversation_id: conversation.id, role: "assistant", content: resposta, wa_message_id: waId, event: "cancelamento_texto" });
+  await supabase.from("conversations").update({ last_message: resposta, updated_at: new Date().toISOString() }).eq("id", conversation.id);
+  await espelharParaSecretaria("[Cancelamento]",
+    `❌ *CONSULTA DESMARCADA PELO PACIENTE* (pedido por mensagem)\n👤 ${ap.paciente_nome || from}\n📱 ${from}\n🕐 ${quando} — ${ap.unidade}\n💬 "${String(texto).slice(0, 100)}"\n♻️ A vaga já foi liberada na agenda.`).catch(() => {});
+  console.log(`[CancelaTexto] ❌ ${maskFone(from)} desmarcou ${ap.inicio} por texto — vaga liberada, sem IA.`);
+  return true;
 }
 
 async function registrarRespostaAoLembrete(conversation, patient, from, texto, intencaoBotao = null) {
