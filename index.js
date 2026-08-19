@@ -299,11 +299,12 @@ O IOBB COMERCIALIZA lentes de contato (gelatinosas, rígidas e esclerais). NUNCA
 Quem já TEM receita e quer comprar: peça que ENVIE A RECEITA (foto aqui mesmo) e informe que a equipe entra em contato com o orçamento — nesse caso, como você está encaminhando para a equipe, feche a mensagem com o bloco [RECADO] (tipo: dúvida, resumo: orçamento de lente de contato, receita enviada). Não invente valor nem marca de lente gelatinosa — o orçamento depende do grau e do modelo, e quem passa é a equipe.
 MODELO DO QUE SE ESPERA — estas duas respostas foram elogiadas como o padrão certo; copie o espírito delas:
   Paciente: "depois da consulta eu tenho que ir numa ótica pra fazer a lente?"
-  Ana: "A lente é feita sob medida, então após a adaptação a contactóloga passa as especificações exatas para o laboratório. A **compra da lente é feita aqui mesmo** na clínica — não precisa ir a uma ótica. A equipe cuida de todo esse processo para você."
+  Ana: "A lente é feita sob medida: o Dr. Bruno faz a adaptação e define as especificações exatas, que seguem para o laboratório. A **compra da lente é feita aqui mesmo** na clínica — não precisa ir a uma ótica. A equipe cuida de todo esse processo para você."
   Paciente: "Sobre os valores da lente só após a consulta?"
   Ana: "Exatamente. O valor da lente depende do modelo e dos parâmetros definidos na adaptação — por isso a equipe passa o orçamento exato após a consulta, quando já se sabe qual lente é a ideal para o seu caso."
 Repare no que elas fazem: afirmam com segurança que a compra é AQUI (sem "acho que", sem "a equipe confirma"), explicam o PORQUÊ de o valor não sair antes (é sob medida, depende dos parâmetros) em vez de só negar, e não inventam nenhum número. Dizer "não sei o valor" seco soa a desinteresse; dizer por que ele ainda não existe soa a cuidado.
 Quem NÃO tem receita, ou usa lente e nunca adaptou aqui: o caminho é a consulta para adaptação/avaliação (o teste de lente é cobrado à parte — gelatinosas R$ 120,00, rígidas/esclerais R$ 150,00). Os valores de lente escleral já estão na tabela e podem ser informados normalmente.
+👩‍⚕️ QUEM FAZ O QUÊ (não confunda os papéis — correção do Dr. Bruno, 19/08): a **ADAPTAÇÃO** das lentes — avaliação da córnea, definição do modelo e dos parâmetros, orçamento — **é feita pelo Dr. Bruno**, na consulta. A **contactóloga** atua DEPOIS: faz a **colocação das lentes e orienta o uso e os cuidados**. NUNCA diga que "a contactóloga avalia/adapta/define a lente" — quem adapta é o médico.
 🎯 FECHAMENTO OBRIGATÓRIO EM LENTE DE CONTATO: a explicação "o valor depende do modelo, o orçamento sai após a avaliação" está CERTA — mas é PROIBIDO encerrar a mensagem nela. Ela responde a pergunta e não dá o próximo passo; o paciente fica sem nada para decidir e some (aconteceu em 4 conversas perdidas de lente em agosto). SEMPRE que explicar isso, termine a MESMA mensagem enquadrando a avaliação como o passo pequeno e concreto, com horário: "...por isso o orçamento exato sai na avaliação. A consulta é R$ 200,00 e o teste de lente R$ 150,00. Consigo *quinta-feira, 20/08, às 10h20* — reservo para você?".
 🔀 PIVÔS DE LENTE — quando o pedido não é o caminho certo, corrija o rumo SEM perder o paciente (negar e parar é perder; casos reais de agosto):
 - Pediu ESCLERAL mas o caso é MIOPIA simples (sem ceratocone/córnea irregular): explique em uma linha que para miopia a adaptação é de lente comum (gelatinosa ou rígida), que temos, e ofereça a avaliação com horário. NÃO deixe a conversa morrer na explicação do que a escleral não é.
@@ -490,6 +491,7 @@ QUANDO A LISTA "### Horários REALMENTE disponíveis" ESTIVER no seu contexto:
      (2) DATA DE NASCIMENTO;
      (3) PARTICULAR ou CONVÊNIO — e, sendo convênio, QUAL, conferido contra a LISTA DE CONVÊNIOS ATENDIDOS.
    ⚠️ ÚNICA EXIGÊNCIA EXTRA — UNIMED: para paciente de Unimed (qualquer variação) você precisa TAMBÉM do NÚMERO da carteirinha antes de marcar, porque a liberação junto à operadora depende dele. Nos DEMAIS convênios a carteirinha continua sendo pedida por cortesia ao concluir (ver abaixo), mas NUNCA é condição para marcar: saber qual é o plano basta, e a equipe confere a cobertura depois.
+   ⚠️ A ORDEM É: HORÁRIO PRIMEIRO, FICHA DEPOIS. Nome completo e data de nascimento só são pedidos DEPOIS de o paciente aceitar um horário — nunca antes (pedi-los antes é questionário, e paciente some no questionário). Antes do aceite, as únicas perguntas permitidas são as que mudam QUAL vaga oferecer: unidade e particular/convênio.
    Se faltar QUALQUER um desses, NÃO marque. Diga que está separando o horário e peça TUDO o que falta de uma vez, em UMA frase natural — nunca peça um dado, mande, e peça o resto na mensagem seguinte. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se será particular ou por convênio (se for convênio, qual)?"
    Por que isso é inegociável: a ficha incompleta só aparece na recepção, com o paciente na frente — e aí ou ele é cobrado errado, ou descobre ali que o plano não é atendido, ou a consulta atrasa. Perguntar custa uma frase; não perguntar custa o paciente.
    Se o convênio citado NÃO estiver na lista de atendidos: diga com cordialidade que esse plano não é atendido e ofereça o atendimento particular (R$ 200,00). NUNCA marque "para confirmar depois".
@@ -555,13 +557,13 @@ Somos referência em ceratocone. Tratamentos que oferecemos, conforme cada caso:
 Você pode perguntar UMA vez, de forma leve (nunca como triagem clínica), apenas se o diagnóstico de ceratocone já foi confirmado por um médico — só para direcionar a unidade/avaliação. NÃO pergunte sobre progressão, piora, sintomas, tempo nem histórico; se o paciente relatar isso, acolha e conduza à avaliação, sem comentar o quadro. Se ela não souber, não há problema; siga para a consulta de avaliação.
 Não criar barreiras. Nunca assumir que a pessoa quer cirurgia.
 Crosslinking: explique de forma simples que é um procedimento que visa ESTABILIZAR a progressão do ceratocone (fortalece a córnea). Não é feito para "melhorar a visão" e não garante melhora — a indicação e o que esperar são sempre definidos pelo médico na avaliação. Nunca prometa resultado.
-Diferença entre os modelos de lente escleral (ex.: Esclera SG e ZenLens): a escolha do modelo é definida na consulta com o especialista/contactóloga, conforme a córnea e a adaptação de cada paciente — não compare tecnicamente os modelos por mensagem; diga que a diferença e a melhor opção são avaliadas na consulta.
+Diferença entre os modelos de lente escleral (ex.: Esclera SG e ZenLens): a escolha do modelo é definida pelo Dr. Bruno na adaptação, conforme a córnea de cada paciente — não compare tecnicamente os modelos por mensagem; diga que a diferença e a melhor opção são avaliadas na consulta.
 Ao explicar as lentes esclerais, fale NÃO SÓ da visão mais nítida, mas TAMBÉM do CONFORTO — é um dos maiores diferenciais delas: por serem de grande diâmetro e se apoiarem na esclera (a parte branca do olho), NÃO tocam a córnea sensível, e o reservatório de líquido entre a lente e o olho mantém a superfície hidratada — por isso costumam ser confortáveis mesmo em córneas irregulares (ceratocone) e em olhos secos, permitindo uso por longos períodos. Apresente isso como característica GERAL das lentes esclerais, sem prometer que será exatamente assim para o caso da pessoa (o conforto e a adaptação individuais são confirmados na consulta).
 PREÇO da lente escleral (crucial para conversão): a lente tem valor alto e, jogado cru, assusta e faz o paciente sumir. Por isso, quando o tema preço surgir: (1) PRIMEIRO reforce o valor real — voltar a enxergar bem e com conforto quando óculos e lente comum não resolvem; (2) enquadre a AVALIAÇÃO de R$ 200,00 como o passo simples e de baixo compromisso, em que a córnea é avaliada e a lente ideal (e o valor exato) são definidos; (3) informe o valor da lente com transparência quando o paciente perguntar (Esclera SG a partir de R$ 7.800,00 o par; ZenLens a partir de R$ 5.980,00 o par), mas SEMPRE acompanhado do PARCELAMENTO — **em até 5x no cartão sem juros** — e de que o modelo/valor final é definido na avaliação. ⚠️ Diga a condição com a MESMA segurança com que você diz a do crosslinking ou da refrativa: "em até 5x no cartão sem juros". É PROIBIDO a versão vaga "há opções de parcelamento, a equipe confirma as condições" — ela soa a preço escondido justamente no item mais caro, e foi assim que você respondeu em 13/08 a uma paciente que perguntou o valor das esclerais. NUNCA encerre a mensagem no preço: logo após informar, volte a oferecer um horário concreto para a avaliação.
 
 CONVERSÃO (ceratocone / lentes esclerais e rígidas) — aplique a POSTURA CONSULTIVA, mais estes pontos próprios (aqui o benefício central é voltar a enxergar com nitidez E conforto quando óculos e lente comum não resolvem):
 - Acolha com empatia: muitas dessas pessoas convivem há tempo com dificuldade visual e com óculos ou lentes que não resolvem bem — reconheça isso com sobriedade, SEM fazer triagem clínica.
-- Enquadre a AVALIAÇÃO como o passo simples e de baixo compromisso: uma consulta em que o médico avalia a córnea e, com a contactóloga, define o melhor caminho para o caso (crosslinking, anel ou lentes especiais / adaptação de lente escleral ou rígida).
+- Enquadre a AVALIAÇÃO como o passo simples e de baixo compromisso: uma consulta em que o Dr. Bruno avalia a córnea e define o melhor caminho para o caso (crosslinking, anel ou lentes especiais / adaptação de lente escleral ou rígida). A contactóloga participa na etapa das lentes: faz a colocação e orienta o uso e os cuidados.
 - Depois de informar, ofereça um HORÁRIO CONCRETO e próximo em vez de convite vago — ex.: "Consigo sua avaliação já para [dia] às [hora], quer que eu reserve?". Como a adaptação e o teste de lente são feitos no CONJUNTO NACIONAL, prefira essa unidade ao oferecer o horário (se o paciente preferir Taguatinga, registre e avise que a etapa da lente pode exigir uma ida ao Conjunto Nacional).
 - Se perceber receio ou frustração (já tentou de tudo, medo de não se adaptar), tranquilize em 1 linha — somos referência em ceratocone e o caminho é definido com calma na avaliação — e volte a oferecer o horário. NUNCA prometa resultado nem adaptação garantida.
 - Nunca insista se a pessoa disser que só quer informação: responda o que ela pediu e deixe o convite em aberto.
@@ -1442,6 +1444,30 @@ function fichaEmContaGotas(reply, messages) {
 function instrucaoFichaDeUmaVez() {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você pediu só PARTE dos dados que ainda faltam. Cada ida e volta a mais é uma chance de o paciente largar a conversa no meio — e é o que acontece. Reescreva a MESMA mensagem pedindo, DE UMA VEZ SÓ e em UMA frase natural, TUDO o que falta: o nome completo, a data de nascimento e se o atendimento será particular ou por convênio (e, sendo convênio, qual) — omitindo apenas o que ele JÁ informou nesta conversa. Deixe claro que o horário está separado e que é rápido. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se será particular ou por convênio (se for convênio, qual)?"
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
+// ===== TRAVA: FICHA ANTES DO HORÁRIO ======================================
+// Regressão de 19/08, causada pela trava do conta-gotas: quando a Ana pedia UM
+// dado cedo demais, a reescrita mandava pedir TUDO de uma vez — e o "tudo de uma
+// vez" virou QUESTIONÁRIO ANTES DO HORÁRIO ("para reservar o horário, me informa
+// nome completo e nascimento" sem nenhum horário oferecido). A ordem certa da
+// postura consultiva é: HORÁRIO PRIMEIRO, ficha depois do aceite. Nome e
+// nascimento não mudam qual vaga existe — pedi-los antes só adiciona atrito.
+// (Unidade e convênio PODEM vir antes/junto: definem qual agenda e antecedência.)
+function fichaAntesDoHorario(reply, messages, slots) {
+  if (!Array.isArray(slots) || !slots.length) return null;   // sem agenda não há o que oferecer
+  const pedeNomeOuNasc = /nome completo|data de nascimento/i.test(reply);
+  if (!pedeNomeOuNasc) return null;
+  const TEM_HORA = /\d{1,2}\s*[h:]\s*\d{2}|[àa]s\s+\d{1,2}\s*h/i;
+  if (TEM_HORA.test(String(reply).replace(/[*_~`]/g, ""))) return null;   // ofereceu junto: ok
+  // Algum horário já esteve na mesa nesta conversa? (oferta anterior da Ana)
+  for (const m of (messages || [])) {
+    if (m.role !== "user" && TEM_HORA.test(String(m.content || "").replace(/[*_~`]/g, ""))) return null;
+  }
+  return "pediu nome/data de nascimento sem NUNCA ter oferecido um horário nesta conversa";
+}
+function instrucaoHorarioPrimeiro(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. A ordem é HORÁRIO PRIMEIRO, ficha depois: nome e data de nascimento não mudam qual vaga existe — pedi-los antes só cria atrito e o paciente some sem nem saber se havia horário bom. Reescreva OFERECENDO desde já UM horário concreto DA LISTA (o mais próximo que atenda ao que ele pediu); se ainda não souber a unidade ou se é particular/convênio, pergunte APENAS isso na mesma mensagem, junto da oferta. Nome completo e nascimento, você pede DEPOIS que ele aceitar o horário.\n🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
 // ===== TRAVA: OFERECEU VAGA QUE NÃO EXISTE ================================
@@ -4967,16 +4993,18 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       // confirmação o horário já saiu da lista (acabou de ser ocupado por ele).
       const ofertaFalsa = etapaDeOferta ? ofertaInexistente(reply, slotsVigentes, meusAgendamentos) : null;
       // Pediu a ficha em conta-gotas (um dado por mensagem).
-      const contaGotas = etapaDeOferta ? fichaEmContaGotas(reply, messages) : null;
+      const fichaCedo = etapaDeOferta ? fichaAntesDoHorario(reply, messages, slotsVigentes) : null;
+      const contaGotas = (etapaDeOferta && !fichaCedo) ? fichaEmContaGotas(reply, messages) : null;
       const cancPrevia = extrairCancelar(reply);
       const cancelouSoNaFala = prometeuCancelarSemBloco(reply, cancPrevia.limpo, cancPrevia.registros, meusAgendamentos);
-      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas) {
-        const motivo = ofertaFalsa || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo) {
+        const motivo = ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
           ofertaFalsa ? "ofereceu_vaga_inexistente"
+            : fichaCedo ? "ficha_antes_do_horario"
             : contaGotas ? "ficha_em_conta_gotas"
             : cancelouSoNaFala ? "prometeu_cancelar_sem_bloco"
             : unidadeErrada ? "unidade_dia_contradiz"
@@ -5003,7 +5031,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         // voltava a perguntar do convênio em vez de fechar. Em 17/08, 10 das 21
         // respostas chegaram ao paciente sem horário mesmo depois da reescrita.
         // A âncora é exatamente o porto seguro que consertou as outras travas.
-        const travaDeHorario = !!(contradicao || maisCedo || precoSeco || ofertaFalsa);
+        const travaDeHorario = !!(contradicao || maisCedo || precoSeco || ofertaFalsa || fichaCedo);
         const ancora = (travaDeHorario && Array.isArray(slotsVigentes) && slotsVigentes.length)
           ? alternativaMaisProxima(slotsVigentes, new Date(), Date.now()) : null;
         const ancoraTxt = ancora
@@ -5019,6 +5047,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
             { type: "text", text: dynVolatil + (ofertaFalsa ? instrucaoOfertaReal(ofertaFalsa)
+              : fichaCedo ? instrucaoHorarioPrimeiro(fichaCedo)
               : contaGotas ? instrucaoFichaDeUmaVez()
               : cancelouSoNaFala ? instrucaoCancelarDeVerdade(cancelouSoNaFala)
               : unidadeErrada ? instrucaoUnidadeDoDia(unidadeErrada)
@@ -6592,7 +6621,7 @@ const LP_TEMAS = {
     sub: "Instituto de Olhos Bruno Borges • Brasília — Asa Norte e Taguatinga",
     bullets: [
       "Crosslinking, anel intraestromal e lentes de contato especiais (rígidas e esclerais)",
-      "Avaliação com médico especialista e contactóloga",
+      "Avaliação e adaptação conduzidas pelo Dr. Bruno Borges",
       "Atendimento acolhedor pelo WhatsApp, sem compromisso",
     ],
     msg: "Olá! Vim pelo Google e quero saber sobre ceratocone.",
@@ -6601,7 +6630,7 @@ const LP_TEMAS = {
     titulo: "Lentes esclerais e rígidas — visão nítida no ceratocone",
     sub: "Instituto de Olhos Bruno Borges • Brasília — Asa Norte e Taguatinga",
     bullets: [
-      "Adaptação de lentes esclerais e rígidas com contactóloga experiente",
+      "Adaptação de lentes esclerais e rígidas pelo Dr. Bruno, com contactóloga no treino de colocação e uso",
       "Ideais para ceratocone e córneas irregulares",
       "Avaliação acolhedora pelo WhatsApp, sem compromisso",
     ],
