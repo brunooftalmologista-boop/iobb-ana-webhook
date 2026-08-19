@@ -39,7 +39,6 @@ Meta (WhatsApp Business API)
        │ (leitura)
   PAINEL (painel.html) — as secretárias acompanham e assumem conversas
   AGENDA (agenda.html) — visão da agenda p/ transferência ao prontuário
-  iClinic ────iCal────► sync de consultas marcadas fora da Ana
 ```
 
 | peça | onde | acesso |
@@ -98,16 +97,24 @@ uptime e estado das configurações principais (janela do painel, espelho, TTL).
 - **Follow-up de leads frios** (a cada 30 min, liga/desliga em
   `settings.followup_leads_enabled`): reengaja quem parou NO MEIO de uma escolha há
   3–20 h. Não persegue quem agradeceu/encerrou/já tem consulta (por qualquer via).
-- **Sync iClinic** (iCal das duas unidades, envs `ICAL_ICLINIC_CN/TG`): consultas
-  marcadas fora da Ana entram na agenda para bloquear as vagas. Liga/desliga em
-  `settings.sync_iclinic_enabled`.
+- **Sync iClinic — DESATIVADO (19/08)**: o iClinic foi descontinuado; a agenda da
+  Ana é a ÚNICA. O sync (`settings.sync_iclinic_enabled=false`) não roda desde
+  04/08. Sobraram 12 retornos futuros de origem iClinic, legítimos, sem telefone
+  vinculado — a equipe pode adicionar o telefone pelo painel para a Ana geri-los.
+- **Cobrança de recado** (`COBRANCA_RECADO_HORAS`, 4h): recado da Ana sem NENHUMA
+  resposta humana na conversa em 4h úteis → alerta no número principal, uma vez
+  por recado. Nasceu do lead de lente perdido em 03/08 num "a equipe entrará em
+  contato" que ninguém cobrou.
 - **Resumo diário à equipe** (`RESUMO_DIARIO_HORA`, 19h): agenda de amanhã, quem
   confirmou, quem precisa de ligação.
 - **Auditoria diária** (`AUDITORIA_HORA`): varre as conversas do dia atrás de falhas.
 - **Verificação de entrega**: mensagens recusadas pela Meta (janela de 24 h) ficam
   visíveis no painel em vez de "parecer enviadas".
 
-**A agenda é nossa** (tabela `appointments`), com trava anti-overbooking no banco.
+**A agenda é nossa e é a ÚNICA** (tabela `appointments`; o iClinic foi desligado),
+com trava anti-overbooking no banco. Desde 19/08 a Ana pode **remarcar e cancelar
+qualquer consulta** vinculada ao telefone do paciente — inclusive as marcadas pela
+equipe (o espelho avisa toda alteração).
 Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
 
 - **Conjunto Nacional** (Asa Norte): seg/qua/sex — médico das 9h às 18h.

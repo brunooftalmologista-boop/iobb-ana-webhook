@@ -2465,19 +2465,12 @@ async function processarCancelarDaAna({ registro, from, conversationId }) {
       .select("id, unidade, origem, paciente_nome")
       .in("paciente_telefone", fonesBR(from)).eq("inicio", ini.toISOString())
       .in("status", ["reservado", "confirmado"]);
-    const alvo = (achados || []).find(a => a.origem === "ana" && (!unidade || a.unidade === unidade))
-              || (achados || []).find(a => a.origem === "ana");
+    // 19/08/2026: caiu a exigência de origem "ana" — o iClinic acabou e a agenda
+    // da Ana é a única, então consulta da secretária também é cancelável por ela
+    // (o espelho avisa a equipe). A busca já é restrita ao TELEFONE do paciente.
+    const alvo = (achados || []).find(a => (!unidade || a.unidade === unidade))
+              || (achados || [])[0];
     if (!alvo) {
-      const outroAtivo = (achados || []).find(a => a.origem !== "ana");   // iClinic/secretária ativo
-      if (outroAtivo) {
-        // Existe um agendamento de OUTRA origem (iClinic/secretária) nesse horário —
-        // a Ana não mexe (não divergir); encaminha à equipe.
-        console.warn(`[Cancelar] Horário ${ini.toISOString()} é de outra origem (${outroAtivo.origem}) — encaminho à equipe.`);
-        await espelharParaSecretaria("[Cancelamento — verificar]",
-          `⚠️ *PEDIDO DE CANCELAMENTO/REMARCAÇÃO (verificar)*\n📱 ${from}\n🕐 ${fmtDataHoraBR(ini.toISOString())}\nEsse horário não está na agenda automática da Ana (${outroAtivo.origem}). Por favor, verifiquem e ajustem.`);
-        await marcarPendenciaEquipe(conversationId, "action");
-        return { ok: false, encaminhado: true };
-      }
       // Nada ATIVO nesse horário — provavelmente já cancelado (ex.: a remarcação via
       // [AGENDAR] já cancelou o antigo). Não alarma a equipe.
       console.log(`[Cancelar] Nada ativo em ${ini.toISOString()} p/ ${maskFone(from)} — provavelmente já tratado.`);
@@ -4725,7 +4718,10 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       meusAgendamentos = meusAg;
       if (meusAg.length) {
         const linhas = meusAg.map(a => {
-          const podeMexer = a.origem === "ana";
+          // 19/08/2026: o iClinic acabou — a agenda da Ana é a ÚNICA. Toda
+          // consulta encontrada pelo telefone do paciente é gerível por ela
+          // (as da secretária inclusive; o espelho avisa a equipe de toda alteração).
+          const podeMexer = true;
           return `- ${fmtDataHoraBR(a.inicio)} em ${a.unidade}${a.motivo ? ` (${a.motivo})` : ""} ${podeMexer ? `[inicio:${new Date(a.inicio).toISOString()}] — você PODE cancelar/remarcar este` : "— alteração só pela equipe"}`;
         }).join("\n");
         dynEstavel += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar. Se o paciente só quer confirmar/saber, NÃO ofereça novo horário.\nPara os marcados "você PODE cancelar/remarcar este": se o paciente pedir para DESMARCAR, confirme com ele e emita o bloco [CANCELAR] copiando o token [inicio:...] exato. Para REMARCAR, ofereça um novo horário (da lista de disponíveis), e ao confirmar emita [CANCELAR] do antigo + [AGENDAR] do novo (o sistema marca o novo e cancela o antigo). Para os agendamentos "alteração só pela equipe", oriente o (61) 3033-6605 ou o WhatsApp da equipe (61) 99299-7639 — NÃO tente cancelar você mesma.`;
@@ -5247,6 +5243,11 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     else if (rec.recado) {
       await notificarRecadoEquipe(rec.recado, patient, from);
       await marcarPendenciaEquipe(conversation.id, rec.recado.prioritario ? "urgent" : "action");
+      // Registro informativo (não é erro): alimenta a cobrança de recado sem
+      // resposta. Foi um "a equipe entrará em contato" sem ninguém cobrar que
+      // matou um lead de lente em 03/08 — ninguém percebeu até a auditoria.
+      await registrarErro("recado_emitido", `${rec.recado.tipo || "?"}${rec.recado.prioritario ? "/PRIORITÁRIO" : ""} | ${String(rec.recado.resumo || "").slice(0, 180)}`,
+        { conversationId: conversation.id, telefone: from }).catch(() => {});
     }
 
     // CANCELAR (desmarcar / segunda etapa da remarcação) — INDEPENDENTE da cadeia acima.
@@ -7187,7 +7188,7 @@ function cancelamentoExplicito(texto) {
 async function cancelarPorTextoLivre(conversation, from, texto) {
   if (conversation.status !== "bot") return false;
   if (!cancelamentoExplicito(texto)) return false;
-  const meus = (await agendamentosDoPaciente(from)).filter(a => a.origem === "ana");
+  const meus = await agendamentosDoPaciente(from);   // 19/08: agenda única — vale para consulta da secretária também
   // 0 → nada a cancelar (a Ana explica). 2+ → qual delas? a Ana pergunta.
   if (meus.length !== 1) {
     if (meus.length > 1) console.log(`[CancelaTexto] ${maskFone(from)} pediu cancelamento com ${meus.length} consultas ativas — a Ana pergunta qual.`);
@@ -7546,7 +7547,56 @@ function startLembreteScheduler() {
 
 // Agendador do relatório semanal do Google Ads (segunda 08h, Brasília)
 googleAds.startScheduler({ supabase, sendWhatsApp });
+// ===== COBRANÇA DE RECADO SEM RESPOSTA ====================================
+// (item 2 da independência da Ana, 19/08/2026) A Ana escala certo; o que faltava
+// era cobrança. Se um recado fica COBRANCA_RECADO_HORAS horas sem NENHUMA
+// resposta humana na conversa (e a conversa segue aberta e pendente), o número
+// principal recebe um alerta com nome e assunto — uma vez só por recado.
+const COBRANCA_RECADO_HORAS = Number(process.env.COBRANCA_RECADO_HORAS || 4);
+async function cobrarRecadosSemResposta() {
+  const agora = new Date();
+  const hh = Number(agora.toLocaleString("en-US", { timeZone: TZ_BR, hour: "2-digit", hour12: false }));
+  const dow = agora.toLocaleDateString("en-US", { timeZone: TZ_BR, weekday: "short" });
+  if (hh < 8 || hh >= 18 || dow === "Sat" || dow === "Sun") return;   // só em horário comercial
+  const desde = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+  const corte = new Date(Date.now() - COBRANCA_RECADO_HORAS * 3600 * 1000).toISOString();
+  const { data: recs } = await supabase.from("error_log")
+    .select("id, created_at, conversation_id, detalhe").eq("etapa", "recado_emitido")
+    .gte("created_at", desde).lte("created_at", corte)
+    .order("created_at", { ascending: true }).limit(50);
+  for (const r of (recs || [])) {
+    if (!r.conversation_id) continue;
+    const { data: ja } = await supabase.from("error_log").select("id").eq("etapa", "recado_cobrado")
+      .eq("conversation_id", r.conversation_id).gte("created_at", r.created_at).limit(1);
+    if (ja && ja.length) continue;                                    // já cobrado
+    const { data: conv } = await supabase.from("conversations")
+      .select("status, team_flag, patient_id").eq("id", r.conversation_id).maybeSingle();
+    // Tratado = conversa fechada, pendência limpa no painel, ou alguém da equipe
+    // respondeu na conversa depois do recado (role 'human').
+    if (!conv || conv.status === "closed" || !conv.team_flag) continue;
+    const naiveDepois = String(r.created_at).slice(0, 19).replace("T", " ");   // messages.timestamp é naive UTC
+    const { data: resp } = await supabase.from("messages").select("id")
+      .eq("conversation_id", r.conversation_id).eq("role", "human")
+      .gte("timestamp", naiveDepois).limit(1);
+    if (resp && resp.length) continue;
+    let fone = "?", nome = "";
+    try {
+      const { data: pac } = await supabase.from("patients").select("phone, name").eq("id", conv.patient_id).maybeSingle();
+      if (pac) { fone = pac.phone || "?"; nome = pac.name || ""; }
+    } catch (_) { /* segue com o que tem */ }
+    const horas = Math.round((Date.now() - new Date(r.created_at).getTime()) / 3600000);
+    await notificarClinica(`⏰ *RECADO SEM RESPOSTA HÁ ${horas}h*\n👤 ${nome || "(sem nome)"}\n📱 ${fone}\n📝 ${String(r.detalhe || "").slice(0, 140)}\nNinguém da equipe respondeu a esta conversa desde o recado. Vale um retorno ainda hoje.`).catch(() => {});
+    await registrarErro("recado_cobrado", `alerta enviado após ${horas}h sem resposta`, { conversationId: r.conversation_id }).catch(() => {});
+    console.log(`[Cobrança] Recado de ${maskFone(fone)} sem resposta há ${horas}h — alerta enviado.`);
+  }
+}
+function startCobrancaRecadosScheduler() {
+  setInterval(() => cobrarRecadosSemResposta().catch(e => console.error("[Cobrança] falhou:", e.message)), 30 * 60 * 1000);
+  console.log(`[Cobrança] Recado sem resposta humana é cobrado após ${COBRANCA_RECADO_HORAS}h (horário comercial).`);
+}
+
 startResumoDiarioScheduler();
+startCobrancaRecadosScheduler();
 startSyncIClinic();   // reflete o iClinic (Google Calendars) na agenda do painel
 startFollowUp();      // recuperação de leads frios (inerte até ativar no settings)
 startLembreteScheduler(); // confirmação da véspera (inerte até o template na Meta)
