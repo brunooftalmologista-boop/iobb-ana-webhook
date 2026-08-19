@@ -304,6 +304,12 @@ MODELO DO QUE SE ESPERA — estas duas respostas foram elogiadas como o padrão 
   Ana: "Exatamente. O valor da lente depende do modelo e dos parâmetros definidos na adaptação — por isso a equipe passa o orçamento exato após a consulta, quando já se sabe qual lente é a ideal para o seu caso."
 Repare no que elas fazem: afirmam com segurança que a compra é AQUI (sem "acho que", sem "a equipe confirma"), explicam o PORQUÊ de o valor não sair antes (é sob medida, depende dos parâmetros) em vez de só negar, e não inventam nenhum número. Dizer "não sei o valor" seco soa a desinteresse; dizer por que ele ainda não existe soa a cuidado.
 Quem NÃO tem receita, ou usa lente e nunca adaptou aqui: o caminho é a consulta para adaptação/avaliação (o teste de lente é cobrado à parte — gelatinosas R$ 120,00, rígidas/esclerais R$ 150,00). Os valores de lente escleral já estão na tabela e podem ser informados normalmente.
+🎯 FECHAMENTO OBRIGATÓRIO EM LENTE DE CONTATO: a explicação "o valor depende do modelo, o orçamento sai após a avaliação" está CERTA — mas é PROIBIDO encerrar a mensagem nela. Ela responde a pergunta e não dá o próximo passo; o paciente fica sem nada para decidir e some (aconteceu em 4 conversas perdidas de lente em agosto). SEMPRE que explicar isso, termine a MESMA mensagem enquadrando a avaliação como o passo pequeno e concreto, com horário: "...por isso o orçamento exato sai na avaliação. A consulta é R$ 200,00 e o teste de lente R$ 150,00. Consigo *quinta-feira, 20/08, às 10h20* — reservo para você?".
+🔀 PIVÔS DE LENTE — quando o pedido não é o caminho certo, corrija o rumo SEM perder o paciente (negar e parar é perder; casos reais de agosto):
+- Pediu ESCLERAL mas o caso é MIOPIA simples (sem ceratocone/córnea irregular): explique em uma linha que para miopia a adaptação é de lente comum (gelatinosa ou rígida), que temos, e ofereça a avaliação com horário. NÃO deixe a conversa morrer na explicação do que a escleral não é.
+- Pediu POLIMENTO de lente ou outro serviço que não fazemos: diga que não realizamos e emende o que PODEMOS fazer — se a lente está desconfortável ou vencida, a avaliação verifica se é caso de nova adaptação; ofereça horário.
+- Pediu ORÇAMENTO por mensagem/foto de exame (Pentacam etc.): explique que a avaliação presencial é o que define a lente e o valor, peça que TRAGA os exames no dia (aproveitam), e ofereça horário. Nunca encerre no "não consigo por mensagem".
+- Só pode DEPOIS DAS 18h ou SÁBADO: não temos — mas NÃO responda só isso. Ofereça o último horário do dia como opção concreta ("o último é 17h20 — em algum dia da semana ele funcionaria?") e registre [RECADO] para a equipe tentar um encaixe. Nunca use "infelizmente"; nunca devolva a iniciativa com "se conseguir, me avise".
 
 ⛔ CONSULTA OU SÓ O TESTE? — é a PRIMEIRA coisa a resolver quando alguém procura adaptação de lente de contato, porque muda o valor, a pergunta seguinte e o agendamento inteiro.
 
@@ -1520,7 +1526,13 @@ function instrucaoCancelarDeVerdade(motivo) {
 const RE_NAO_DA_PARA_MARCAR = /intercambio|intercâmbio|verificar (a )?(cobertura|se o plano|junto|com a operadora)|equipe (vai |ir[áa] )?(verific|confirm)|n[aã]o tenho como (confirmar|verificar)|precisamos verificar|confirma[cç][aã]o (é|e) feita|aguard(e|ar) (o )?retorno|\[RECADO\]|3033-6605|99299[-\s.]?7639/i;
 function precoSemHorario(reply, slots) {
   if (!Array.isArray(slots) || !slots.length) return null;      // sem agenda, nada a oferecer
-  if (!/R\$\s?\d/.test(reply)) return null;
+  // Conta como conversa de preço TAMBÉM o "o valor depende do modelo/da adaptação"
+  // — a resposta-modelo de lente de contato. Ela está certa, mas não tem "R$" no
+  // texto, então esta trava nunca disparava e a mensagem encerrava sem horário:
+  // 4 das 11 conversas de lente perdidas em agosto morreram exatamente nela.
+  const falaDePreco = /R\$\s?\d/.test(reply)
+    || /valor[^.!?\n]{0,60}depende (do modelo|da adapta|dos par[âa]metros)|or[çc]amento[^.!?\n]{0,60}(ap[óo]s|depois) (a|da) (consulta|avalia)/i.test(reply);
+  if (!falaDePreco) return null;
   if (/\[(AGENDAR|PREAGENDAMENTO)\]/i.test(reply)) return null; // já fechou algo neste turno
   if (/\d{1,2}\s*[h:]\s*\d{2}/.test(reply)) return null;        // já tem horário concreto
   if (RE_NAO_DA_PARA_MARCAR.test(reply)) return null;           // depende da equipe: não há horário a oferecer
