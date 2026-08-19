@@ -1326,7 +1326,10 @@ function horariosOferecidos(texto) {
   // Primeiro tira FAIXAS de funcionamento ("das 8h às 18h"): o "às" ali não
   // oferece nada, e sem isso uma mensagem que cite o horário da clínica mais um
   // horário de consulta pareceria dois horários oferecidos.
-  const t = String(texto || "").replace(
+  // O markdown sai ANTES de tudo: "às **17h**" quebrava o ramo da âncora "às",
+  // e como o outro ramo exige minutos, um "**17h**" em negrito não era contado
+  // como horário oferecido por trava nenhuma.
+  const t = String(texto || "").replace(/[*_~`]/g, "").replace(
     /\bdas\s+\d{1,2}\s*[h:]?\s*(?:\d{2})?\s*[àa]s\s+\d{1,2}\s*[h:]?\s*(?:\d{2})?/gi, " ");
   // Sem \b antes de "às": acento não é caractere de palavra em regex JS, então
   // \b nunca casa ali — a primeira versão desta trava não detectava nada.
@@ -1403,6 +1406,43 @@ function instrucaoMaisCedo(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. Você ficou presa na data que já estava sendo conversada em vez de procurar de novo desde o começo da lista. SEMPRE que o paciente mudar o critério (horário, período, unidade), VARRA A LISTA DESDE A DATA MAIS PRÓXIMA — não continue a partir da data que você ofereceu antes. Reescreva oferecendo o horário mais próximo que atende ao que ele acabou de pedir. Ninguém quer esperar mais do que precisa, e vaga próxima vazia é prejuízo para a clínica.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
+// ===== TRAVA: OFERECEU VAGA QUE NÃO EXISTE ================================
+// O buraco mais caro que restava: o código contava QUANTOS horários ela oferecia
+// (trava de "vários horários") e conferia unidade×dia, mas NUNCA conferia se o
+// horário oferecido estava mesmo na lista de vagas. A checagem só acontecia lá
+// na frente, na hora de gravar o [AGENDAR].
+// Caso real (18/08, Valdecy): o paciente pediu por áudio "sexta às 5 da tarde";
+// às 18h16 ela respondeu "sexta-feira, 21/08, tenho disponível às 17h" — vaga
+// ocupada pela Martha desde 12/08, SEIS DIAS antes. Ninguém pegou. O paciente
+// passou 33 minutos dando nome, nascimento e forma de pagamento, recebeu
+// "Agendado para sexta às 17h" e, dois segundos depois, "esse horário não está
+// disponível". Ele não voltou.
+// Agora a mentira morre na primeira mensagem, não meia hora depois.
+function ofertaInexistente(reply, slots, meusAgendamentos) {
+  if (!Array.isArray(slots) || !slots.length) return null;   // sem agenda carregada não dá para julgar
+  const hhmm = (d) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
+  const ddmm = (d) => new Date(d).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
+  // As consultas que o paciente JÁ tem não estão na lista de vagas (estão
+  // ocupadas — por ele). Lembrar a ele o próprio horário não é oferta.
+  const dele = new Set((meusAgendamentos || []).map(a => `${ddmm(a.inicio)} ${hhmm(a.inicio)}`));
+  // ⚠️ TIRA O MARKDOWN ANTES DE CASAR. A Ana escreve "às **17h**" em negrito, e
+  // com os asteriscos no meio o \\s+ seguido de \\d nunca casava — a trava passava
+  // batido justamente na forma que ela mais usa para oferecer horário.
+  const semMd = String(reply).replace(/[*_~`]/g, "");
+  for (const m of semMd.matchAll(/(\d{2})\/(\d{2})(?!\/?\d)[^.\n]{0,40}?[àa]s\s+(\d{1,2})\s*(?:h|:)\s*(\d{2})?/gi)) {
+    const dia = `${m[1]}/${m[2]}`;
+    const hora = `${String(m[3]).padStart(2, "0")}:${m[4] || "00"}`;
+    if (dele.has(`${dia} ${hora}`)) continue;
+    const existe = slots.some(s => ddmm(s.start) === dia && hhmm(s.start) === hora);
+    if (!existe) return `ofereceu ${dia} às ${hora}, que NÃO está na lista de vagas livres`;
+  }
+  return null;
+}
+function instrucaoOfertaReal(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Esse horário está OCUPADO — oferecê-lo faz o paciente dar todos os dados, ouvir "agendado" e só então descobrir que não existe. É o pior erro que você pode cometer, e o paciente não volta. Reescreva oferecendo UM horário COPIADO DA LISTA de vagas livres, o mais próximo do que ele pediu. Se o que ele pediu não existir, DIGA ISSO com franqueza e ofereça o mais próximo que existe (ex.: "Às 17h não tenho vaga nessa sexta; o mais próximo é às 16h20 — serve para você?"). Horário que não está na lista NÃO EXISTE, por mais que pareça razoável.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
 // ===== TRAVA: PROMETEU E NÃO EXECUTOU =====================================
 // A resposta AFIRMA que cancelou (ou que vai cancelar) mas não traz [CANCELAR]
 // suficiente para o que prometeu. Todas as outras travas conferem o que a Ana
@@ -4883,15 +4923,19 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const maisCedo = existeVagaMaisCedo(reply, slotsVigentes, text);
       const unidadeErrada = unidadeContradizOferta(reply, slotsVigentes);
       // Prometeu cancelar e não emitiu o bloco (ou emitiu menos que prometeu).
+      // Ofereceu vaga que NÃO está livre. Só na etapa de OFERTA: na mensagem de
+      // confirmação o horário já saiu da lista (acabou de ser ocupado por ele).
+      const ofertaFalsa = etapaDeOferta ? ofertaInexistente(reply, slotsVigentes, meusAgendamentos) : null;
       const cancPrevia = extrairCancelar(reply);
       const cancelouSoNaFala = prometeuCancelarSemBloco(reply, cancPrevia.limpo, cancPrevia.registros, meusAgendamentos);
-      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala) {
-        const motivo = cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa) {
+        const motivo = ofertaFalsa || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          cancelouSoNaFala ? "prometeu_cancelar_sem_bloco"
+          ofertaFalsa ? "ofereceu_vaga_inexistente"
+            : cancelouSoNaFala ? "prometeu_cancelar_sem_bloco"
             : unidadeErrada ? "unidade_dia_contradiz"
             : contradicao ? "hoje_amanha_contradiz" : maisCedo ? "vaga_mais_cedo_ignorada"
             : semFormaPagamento ? "agendou_com_ficha_incompleta" : precoSeco ? "preco_sem_horario"
@@ -4916,7 +4960,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         // voltava a perguntar do convênio em vez de fechar. Em 17/08, 10 das 21
         // respostas chegaram ao paciente sem horário mesmo depois da reescrita.
         // A âncora é exatamente o porto seguro que consertou as outras travas.
-        const travaDeHorario = !!(contradicao || maisCedo || precoSeco);
+        const travaDeHorario = !!(contradicao || maisCedo || precoSeco || ofertaFalsa);
         const ancora = (travaDeHorario && Array.isArray(slotsVigentes) && slotsVigentes.length)
           ? alternativaMaisProxima(slotsVigentes, new Date(), Date.now()) : null;
         const ancoraTxt = ancora
@@ -4931,7 +4975,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
-            { type: "text", text: dynVolatil + (cancelouSoNaFala ? instrucaoCancelarDeVerdade(cancelouSoNaFala)
+            { type: "text", text: dynVolatil + (ofertaFalsa ? instrucaoOfertaReal(ofertaFalsa)
+              : cancelouSoNaFala ? instrucaoCancelarDeVerdade(cancelouSoNaFala)
               : unidadeErrada ? instrucaoUnidadeDoDia(unidadeErrada)
               : contradicao ? instrucaoDataReal(contradicao)
               : maisCedo ? instrucaoMaisCedo(maisCedo)
