@@ -1403,6 +1403,43 @@ function instrucaoMaisCedo(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. Você ficou presa na data que já estava sendo conversada em vez de procurar de novo desde o começo da lista. SEMPRE que o paciente mudar o critério (horário, período, unidade), VARRA A LISTA DESDE A DATA MAIS PRÓXIMA — não continue a partir da data que você ofereceu antes. Reescreva oferecendo o horário mais próximo que atende ao que ele acabou de pedir. Ninguém quer esperar mais do que precisa, e vaga próxima vazia é prejuízo para a clínica.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
+// ===== TRAVA: PROMETEU E NÃO EXECUTOU =====================================
+// A resposta AFIRMA que cancelou (ou que vai cancelar) mas não traz [CANCELAR]
+// suficiente para o que prometeu. Todas as outras travas conferem o que a Ana
+// DIZ sobre a agenda; esta confere se a AÇÃO prometida saiu.
+// Caso real (17/08): "Os dois horários de amanhã estão cancelados" com UM bloco
+// só — a paciente (velório na família) foi embora certa de que estava resolvido,
+// e a vaga da Maria da Cruz ficou presa até a véspera, quando o lembrete chegou
+// a sair para ela. A causa raiz era o extrairCancelar comer o 2º bloco; isto
+// aqui é a rede: se ela prometer e o bloco não vier, a resposta é refeita.
+const RE_AFIRMA_CANCELOU = /\b(cancelad[ao]s?|desmarcad[ao]s?)\b|\bcancelei\b|\bcancelamos\b|\bdesmarquei\b|acabei de cancelar/i;
+// Frases que contêm a palavra "cancelada" SEM afirmar que ELA cancelou: pergunta,
+// condicional, explicação de processo, negativa ("não pode ser cancelada aqui") e
+// — importante — cancelamento que fica com a EQUIPE. Cobrar bloco nesses casos
+// puniria justamente a resposta certa dos agendamentos "alteração só pela equipe".
+const RE_CANCEL_NAO_CONTA = /\?|\bse\b|caso |gostaria de cancelar|deseja cancelar|quer cancelar|para cancelar|pol[íi]tica de cancelamento|taxa de cancelamento|posso cancelar|precisar cancelar|n[aã]o (pode|posso|consigo|d[áa]) (ser )?(para )?cancel|cancelad[ao]s? (pela|pelo|junto)|(equipe|recep[çc][aã]o|secret[áa]ri\w+) (vai |ir[áa] )?(cancel|confirmar[áa]? o cancel)|deve ser (feito|cancelad)/i;
+function prometeuCancelarSemBloco(replyBruto, textoLimpo, registrosCancelar, agendamentosAtivos) {
+  const n = Array.isArray(registrosCancelar) ? registrosCancelar.length : 0;
+  if (!RE_AFIRMA_CANCELOU.test(textoLimpo)) return null;
+  if (RE_CANCEL_NAO_CONTA.test(textoLimpo)) return null;     // pergunta/condicional/explicação
+  // Quantos ela prometeu? "os dois"/"ambos" = 2; senão, 1.
+  const plural = /\b(os dois|as duas|ambos|ambas|os seus dois|seus dois)\b/i.test(textoLimpo)
+    || /\bhor[áa]rios\b[^.!?]{0,30}\bcancelad/i.test(textoLimpo)
+    || /\bconsultas\b[^.!?]{0,30}\bcancelad/i.test(textoLimpo);
+  const prometidos = plural ? 2 : 1;
+  // Nunca cobrar mais do que o paciente realmente tem para cancelar.
+  const teto = Array.isArray(agendamentosAtivos) && agendamentosAtivos.length
+    ? Math.min(prometidos, agendamentosAtivos.length) : prometidos;
+  if (n >= teto) return null;
+  return n === 0
+    ? `afirmou que a consulta está cancelada mas NÃO emitiu o bloco [CANCELAR] — nada foi cancelado`
+    : `prometeu cancelar ${teto} consultas e emitiu apenas ${n} bloco [CANCELAR]`;
+}
+function instrucaoCancelarDeVerdade(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. Dizer ao paciente que está cancelado sem emitir o bloco é o pior erro possível: ele vai embora tranquilo, não aparece, e a vaga fica presa até o dia — ninguém percebe. Reescreva a MESMA mensagem, com o mesmo tom, e emita UM bloco [CANCELAR] PARA CADA consulta que você está dizendo que foi cancelada, copiando o token [inicio:...] exato de cada uma, como estão na seção "### Agendamentos que ESTE paciente já tem". Se alguma delas estiver marcada "alteração só pela equipe", NÃO diga que foi cancelada: diga que a equipe vai confirmar o cancelamento e registre [RECADO]. Nunca afirme um cancelamento que você não executou.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
 // Quando NÃO dá para oferecer horário — e cobrar isso da Ana é errado. Casos
 // reais de 17/08: Unimed regional (Teresina, BH, Belém) que depende de
 // intercâmbio, e "verifica se atendem meu plano". Nesses a resposta certa é
@@ -2216,29 +2253,41 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
 }
 
 // Extrai o bloco [CANCELAR] inicio: <ISO> | unidade: <...>. Mesma mecânica do extrairAgendar.
+// ⚠️ DEVOLVE TODOS OS BLOCOS (registros), não só o primeiro. Até 18/08/2026 esta
+// função casava com /…/i (sem `g`) para LER e com /…/gi para APAGAR do texto: ou
+// seja, quando a Ana emitia DOIS [CANCELAR] na mesma mensagem, o primeiro era
+// executado e o segundo era removido do texto e descartado em silêncio — nada
+// nos logs, nada no banco. Foi assim que a Maria da Cruz ouviu "os dois horários
+// de amanhã estão cancelados", teve um cancelado e o outro ficou preso 20 horas
+// com a paciente já avisada de que não viria (a família tinha um velório).
+// O [AGENDAR] sempre devolveu lista; o [CANCELAR] não — a assimetria era o bug.
+// `registro` (singular) continua exposto por compatibilidade: é o primeiro.
 function extrairCancelar(reply) {
-  // A flag `g` importa: sem ela o replace tira só o PRIMEIRO bloco e, quando a
-  // Ana emite dois na mesma mensagem, o segundo vai como texto visível — dois
-  // pacientes receberam o bloco técnico cru em 04/08.
-  const reTodos = /\[CANCELAR\]([\s\S]*?)\[\/CANCELAR\]/gi;
-  const re = /\[CANCELAR\]([\s\S]*?)\[\/CANCELAR\]/i;
-  let inner, limpo;
-  const m = reply.match(re);
-  if (m) { inner = m[1]; limpo = reply.replace(reTodos, "").replace(/\n{3,}/g, "\n\n").trim(); }
-  else {
-    const mo = reply.match(/\[CANCELAR\]([\s\S]*)$/i);
-    if (!mo) return { limpo: reply, registro: null };
-    inner = mo[1]; limpo = reply.slice(0, mo.index).replace(/\n{3,}/g, "\n\n").trim();
+  const registros = [];
+  const parse = (inner) => {
+    const campos = {};
+    for (const par of inner.replace(/\n/g, " ").split("|")) {
+      const idx = par.indexOf(":");                   // 1º ":" — preserva o ISO do inicio
+      if (idx === -1) continue;
+      const chave = par.slice(0, idx).trim().toLowerCase().replace(/^-+\s*/, "");
+      const valor = par.slice(idx + 1).trim();
+      if (chave) campos[chave] = valor;
+    }
+    return Object.keys(campos).length ? campos : null;
+  };
+  let limpo = reply.replace(/\[CANCELAR\]([\s\S]*?)\[\/CANCELAR\]/gi, (m, inner) => {
+    const r = parse(inner);
+    if (r) registros.push(r);
+    return "";
+  });
+  const mo = limpo.match(/\[CANCELAR\]([\s\S]*)$/i);  // último bloco sem fechamento
+  if (mo) {
+    const r = parse(mo[1]);
+    if (r) registros.push(r);
+    limpo = limpo.slice(0, mo.index);
   }
-  const campos = {};
-  for (const par of inner.replace(/\n/g, " ").split("|")) {
-    const idx = par.indexOf(":");
-    if (idx === -1) continue;
-    const chave = par.slice(0, idx).trim().toLowerCase().replace(/^-+\s*/, "");
-    const valor = par.slice(idx + 1).trim();
-    if (chave) campos[chave] = valor;
-  }
-  return { limpo, registro: Object.keys(campos).length ? campos : null };
+  limpo = limpo.replace(/\n{3,}/g, "\n\n").trim();
+  return { limpo, registros, registro: registros[0] || null };
 }
 
 // Cancela um agendamento que a Ana confirma com o paciente. SEGURANÇA: só cancela
@@ -4584,8 +4633,12 @@ app.post("/webhook", async (req, res) => {
 REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data ANTERIOR a ${fmtDia(proxSeg)} — datas até domingo são "esta semana" (diga "amanhã", "nesta quarta" etc.). Se o paciente pedir "semana que vem", ofereça um horário a partir de ${fmtDia(proxSeg)}; se houver vaga antes disso, você PODE oferecê-la como opção adicional deixando EXPLÍCITO que é ainda nesta semana (ex.: "tenho já nesta quarta, 29/07, e também na semana que vem"). Nunca ecoe a expressão do paciente se ela não corresponder à data oferecida.`;
 
     // Agenda do paciente: injeta os agendamentos que ELE já tem, para a Ana informar.
+    // Fica em escopo externo porque a trava "prometeu e não executou" precisa
+    // saber quantas consultas ele realmente tem para cancelar.
+    let meusAgendamentos = [];
     try {
       const meusAg = await agendamentosDoPaciente(from);
+      meusAgendamentos = meusAg;
       if (meusAg.length) {
         const linhas = meusAg.map(a => {
           const podeMexer = a.origem === "ana";
@@ -4829,13 +4882,17 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       } catch (e) { console.error("[Ficha] Checagem falhou (segue sem travar):", e.message); }
       const maisCedo = existeVagaMaisCedo(reply, slotsVigentes, text);
       const unidadeErrada = unidadeContradizOferta(reply, slotsVigentes);
-      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada) {
-        const motivo = unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      // Prometeu cancelar e não emitiu o bloco (ou emitiu menos que prometeu).
+      const cancPrevia = extrairCancelar(reply);
+      const cancelouSoNaFala = prometeuCancelarSemBloco(reply, cancPrevia.limpo, cancPrevia.registros, meusAgendamentos);
+      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala) {
+        const motivo = cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          unidadeErrada ? "unidade_dia_contradiz"
+          cancelouSoNaFala ? "prometeu_cancelar_sem_bloco"
+            : unidadeErrada ? "unidade_dia_contradiz"
             : contradicao ? "hoje_amanha_contradiz" : maisCedo ? "vaga_mais_cedo_ignorada"
             : semFormaPagamento ? "agendou_com_ficha_incompleta" : precoSeco ? "preco_sem_horario"
             : virouVerbete ? "virou_verbete" : vazouInstrucao ? "vazou_instrucao_refeito" : "varios_horarios_refeito",
@@ -4874,7 +4931,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
-            { type: "text", text: dynVolatil + (unidadeErrada ? instrucaoUnidadeDoDia(unidadeErrada)
+            { type: "text", text: dynVolatil + (cancelouSoNaFala ? instrucaoCancelarDeVerdade(cancelouSoNaFala)
+              : unidadeErrada ? instrucaoUnidadeDoDia(unidadeErrada)
               : contradicao ? instrucaoDataReal(contradicao)
               : maisCedo ? instrucaoMaisCedo(maisCedo)
               : virouVerbete ? instrucaoSemVerbete()
@@ -5101,11 +5159,15 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // CANCELAR (desmarcar / segunda etapa da remarcação) — INDEPENDENTE da cadeia acima.
     // Se veio junto de um [AGENDAR] (remarcação), só cancela o antigo se o novo foi
     // gravado com sucesso — assim o paciente NUNCA fica sem nenhum horário.
-    if (canc.registro) {
+    if (canc.registros.length) {
       if (ag.registros.length && !agendouOk) {
         console.warn("[Cancelar] Remarcação: novo horário não gravou — mantenho o antigo, NÃO cancelo.");
       } else {
-        await processarCancelarDaAna({ registro: canc.registro, from, conversationId: conversation.id });
+        // TODOS os blocos, não só o primeiro: mãe e filho no mesmo WhatsApp
+        // cancelam junto, e até 18/08 o segundo era descartado em silêncio.
+        for (const registro of canc.registros) {
+          await processarCancelarDaAna({ registro, from, conversationId: conversation.id });
+        }
       }
     }
 
