@@ -48,7 +48,7 @@ const GOALS = [
     noun: "casos de ceratocone",
     targetCpa: 250,
     keywords: ["ceratocone", "escleral", "esclerais", "lente de contato", "lentes rígidas", "crosslinking", "anel de ferrara", "zenlens"],
-    createTip: 'Criar campanha para "tratamento de ceratocone / lente escleral em Brasília" — nicho de alta intenção; destacar referência em ceratocone e avaliação com contactóloga.',
+    createTip: 'Criar campanha para "tratamento de ceratocone / lente escleral em Brasília" — nicho de alta intenção; destacar referência em ceratocone e avaliação com contatóloga.',
   },
   {
     key: "catarata",
@@ -952,7 +952,7 @@ function buildRefrativaSpec() {
 }
 
 // Spec da campanha de Lentes Esclerais (nicho de alto valor: adaptação com
-// contactóloga p/ ceratocone e córneas irregulares). Mesmo formato da refrativa.
+// contatóloga p/ ceratocone e córneas irregulares). Mesmo formato da refrativa.
 // Destino /escleral (path limpo; tema em LP_TEMAS). Negativas focadas em cortar
 // lente cosmética/colorida/descartável (o grande ruído do termo "lente de contato").
 function buildEscleralSpec() {
