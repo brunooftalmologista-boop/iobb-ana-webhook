@@ -112,7 +112,11 @@ uptime e estado das configurações principais (janela do painel, espelho, TTL).
   visíveis no painel em vez de "parecer enviadas".
 
 **A agenda é nossa e é a ÚNICA** (tabela `appointments`; o iClinic foi desligado),
-com trava anti-overbooking no banco. Desde 19/08 a Ana pode **remarcar e cancelar
+com trava anti-overbooking no banco. **Encaixe** (desde 20/08): a equipe pode
+marcar deliberadamente em cima de um horário ocupado gravando a coluna
+`encaixe = true` — essas linhas ficam fora do índice de slot único. A Ana **nunca**
+cria nem oferece encaixe; para ela o horário continua ocupado. Migração:
+`sql/encaixe.sql`. Desde 19/08 a Ana pode **remarcar e cancelar
 qualquer consulta** vinculada ao telefone do paciente — inclusive as marcadas pela
 equipe (o espelho avisa toda alteração).
 Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
