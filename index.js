@@ -2235,7 +2235,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     let idParaCancelar = null;
     try {
       const { data: existentes } = await supabase.from("appointments")
-        .select("id, inicio, paciente_nome")
+        .select("id, inicio, paciente_nome, motivo")
         .eq("conversation_id", String(conversationId))
         .eq("origem", "ana")
         .in("status", ["reservado", "confirmado"])
@@ -2305,8 +2305,25 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
               { conversationId, telefone }).catch(() => {});
             return { ok: true, already: true };
           }
+          // 🔬 SERVIÇO DIFERENTE = AGENDAMENTO ADICIONAL, NÃO REMARCAÇÃO.
+          // Caso Ronaldo (19/08): marcou o EXAME de topografia às 15h00 e, três
+          // horas depois, na MESMA conversa, a CONSULTA de avaliação de escleral
+          // às 15h20 — dois serviços seguidos, de propósito. Como era o mesmo
+          // paciente com horário diferente, o código leu "remarcação" e cancelou
+          // o exame 0,1s depois de gravar a consulta. Ninguém pediu, ninguém foi
+          // avisado, e ele viria amanhã achando que faria os dois.
+          // Só é remarcação quando o MOTIVO é o mesmo serviço (igual, ou um
+          // contido no outro: "Consulta" ⊂ "Consulta de avaliação").
+          const normMotivo = (x) => String(x || "Consulta").trim().toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+          const mA = normMotivo(doMesmoPaciente[0].motivo), mB = normMotivo(motivo);
+          const mesmoServico = mA === mB || mA.includes(mB) || mB.includes(mA);
+          if (!mesmoServico) {
+            console.log(`[Agendar] Serviço DIFERENTE na mesma conversa ("${mA}" x "${mB}") — agendamento adicional, NÃO cancelo o anterior.`);
+          } else {
           idParaCancelar = doMesmoPaciente[0].id;   // remarcação DESTE paciente: cancela o antigo SÓ se o novo gravar
           console.log(`[Agendar] Reagendamento (${nome || "sem nome"}): novo ${ini.toISOString()}, antigo ${new Date(doMesmoPaciente[0].inicio).toISOString()} (id ${idParaCancelar}).`);
+          }
         } else {
           console.log(`[Agendar] Paciente ADICIONAL na conversa (${nome}) — marca sem cancelar os demais.`);
         }
