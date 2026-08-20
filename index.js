@@ -491,6 +491,7 @@ QUANDO A LISTA "### Horários REALMENTE disponíveis" ESTIVER no seu contexto:
      (2) DATA DE NASCIMENTO;
      (3) PARTICULAR ou CONVÊNIO — e, sendo convênio, QUAL, conferido contra a LISTA DE CONVÊNIOS ATENDIDOS.
    ⚠️ ÚNICA EXIGÊNCIA EXTRA — UNIMED: para paciente de Unimed (qualquer variação) você precisa TAMBÉM do NÚMERO da carteirinha antes de marcar, porque a liberação junto à operadora depende dele. Nos DEMAIS convênios a carteirinha continua sendo pedida por cortesia ao concluir (ver abaixo), mas NUNCA é condição para marcar: saber qual é o plano basta, e a equipe confere a cobertura depois.
+   🔬 CONSULTA + EXAME = UM HORÁRIO SÓ (regra do Dr. Bruno, 20/08/2026): quando o MESMO paciente vai fazer consulta E exame (ou dois exames), NÃO reserve dois horários — os dois cabem no mesmo atendimento. Se ele já tem um horário marcado nesta conversa e agora quer somar outro serviço, OFEREÇA O MESMO HORÁRIO que ele já tem ("no mesmo horário das 15h00 fazemos a consulta e a topografia") e emita o [AGENDAR] com aquele MESMO [inicio:], mudando só o motivo — o sistema soma os serviços na mesma vaga. Reservar duas vagas seguidas para a mesma pessoa tira um horário de outro paciente sem necessidade. Isso vale para o mesmo DIA; se ele quiser o segundo serviço em OUTRO dia, aí sim é um agendamento à parte.
    ⚠️ A ORDEM É: HORÁRIO PRIMEIRO, FICHA DEPOIS. Nome completo e data de nascimento só são pedidos DEPOIS de o paciente aceitar um horário — nunca antes (pedi-los antes é questionário, e paciente some no questionário). Antes do aceite, as únicas perguntas permitidas são as que mudam QUAL vaga oferecer: unidade e particular/convênio.
    Se faltar QUALQUER um desses, NÃO marque. Diga que está separando o horário e peça TUDO o que falta de uma vez, em UMA frase natural — nunca peça um dado, mande, e peça o resto na mensagem seguinte. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se será particular ou por convênio (se for convênio, qual)?"
    Por que isso é inegociável: a ficha incompleta só aparece na recepção, com o paciente na frente — e aí ou ele é cobrado errado, ou descobre ali que o plano não é atendido, ou a consulta atrasa. Perguntar custa uma frase; não perguntar custa o paciente.
@@ -2268,6 +2269,27 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
         const doMesmoPaciente = existentes.filter(a => !nome || !a.paciente_nome || mesmoPaciente(a.paciente_nome, nome));
         const igual = doMesmoPaciente.find(a => new Date(a.inicio).getTime() === ini.getTime());
         if (igual) {
+          // 🔬 CONSULTA + EXAME NO MESMO HORÁRIO (Dr. Bruno, 20/08/2026): não se
+          // reservam duas vagas — os dois serviços cabem no mesmo atendimento.
+          // O índice appointments_slot_unico (unidade+inicio) impede uma segunda
+          // linha, então o segundo serviço é SOMADO ao motivo do agendamento que
+          // já existe. Sem isto, o [AGENDAR] do exame seria descartado como
+          // "re-emit" e a recepção não saberia que há exame junto.
+          const normMot = (x) => String(x || "Consulta").trim().toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+          const jaTem = normMot(igual.motivo), novo = normMot(motivo);
+          if (jaTem !== novo && !jaTem.includes(novo) && !novo.includes(jaTem)) {
+            const motivoSomado = `${String(igual.motivo || "Consulta").trim()} + ${String(motivo).trim()}`.slice(0, 200);
+            const { error: errMerge } = await supabase.from("appointments")
+              .update({ motivo: motivoSomado, updated_at: new Date().toISOString() }).eq("id", igual.id);
+            if (errMerge) console.error("[Agendar] Falha ao somar o serviço:", errMerge.message);
+            else {
+              console.log(`[Agendar] Serviço SOMADO ao mesmo horário (${unidade} ${ini.toISOString()}): "${motivoSomado}" — uma vaga só.`);
+              await espelharParaSecretaria("[Agendamento]",
+                `🔬 *DOIS SERVIÇOS NO MESMO HORÁRIO*\n👤 ${igual.paciente_nome || nome || telefone}\n🕐 ${fmtDataHoraBR(ini.toISOString())} — ${unidade}\n📋 ${motivoSomado}`).catch(() => {});
+            }
+            return { ok: true, already: true, somado: true };
+          }
           console.log(`[Agendar] Re-emit idêntico ignorado (${unidade} ${ini.toISOString()}, ${nome || "sem nome"}) — já marcado.`);
           return { ok: true, already: true };
         }
