@@ -140,10 +140,11 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
   (família no mesmo WhatsApp; o lembrete/confirmação também tratam o grupo junto).
 - Idade mínima **8 anos, categórico**. Não encaminhar para fora; só registrar pedido
   de exceção se o paciente insistir.
-- Mesmo dia: pode no particular e na maioria dos convênios — **incluindo Unimed,
-  liberada em 19/08**. Exceções (só a partir de amanhã, por causa da liberação na
-  operadora): **Casec, Codevasf, Care Plus, Life Empresarial**. Nunca dizer "24 h de
-  antecedência" nem insinuar que convênio vale menos.
+- **Mesmo dia: TODOS**, particular e convênio, sem exceção (Dr. Bruno, 21/08).
+  NENHUM plano exige antecedência — a lista de exceções foi esvaziada (a Unimed saiu
+  em 19/08 e o restante em 21/08). É proibido dizer que um convênio "precisa de 24 h",
+  "exige liberação prévia" ou "verificação de cobertura antes": a verificação é feita
+  pela equipe DEPOIS, com o horário já reservado, e nunca é assunto do paciente.
 - Conferência de óculos / ajuste de armação / retirada de receita: **ordem de chegada,
   proibido ocupar vaga** — mesmo que o paciente peça horário. Informar o horário do
   MÉDICO (9h CN / 10h TG), não o da recepção, e **sempre as DUAS unidades**. Desde
