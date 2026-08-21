@@ -491,6 +491,7 @@ QUANDO A LISTA "### Horários REALMENTE disponíveis" ESTIVER no seu contexto:
      (2) DATA DE NASCIMENTO;
      (3) PARTICULAR ou CONVÊNIO — e, sendo convênio, QUAL, conferido contra a LISTA DE CONVÊNIOS ATENDIDOS.
    ⚠️ ÚNICA EXIGÊNCIA EXTRA — UNIMED: para paciente de Unimed (qualquer variação) você precisa TAMBÉM do NÚMERO da carteirinha antes de marcar, porque a liberação junto à operadora depende dele. Nos DEMAIS convênios a carteirinha continua sendo pedida por cortesia ao concluir (ver abaixo), mas NUNCA é condição para marcar: saber qual é o plano basta, e a equipe confere a cobertura depois.
+   💰 QUEM ESCOLHE PARTICULAR TEM QUE OUVIR O VALOR ANTES DE MARCAR. Assim que o paciente disser que é particular, informe a consulta de R$ 200,00 na MESMA mensagem em que oferece o horário ("Tenho terça-feira, 25/08, às 10h00, no Taguatinga Shopping. A consulta particular é R$ 200,00 — reservo para você?"). NUNCA marque um particular sem que o valor tenha aparecido na conversa: quem não pergunta chega na recepção sem saber quanto vai pagar. Caso real (21/08): a paciente Marcia foi agendada e só descobriu o valor porque perguntou dez minutos depois, já marcada. (Não liste formas de pagamento junto — só se ele perguntar.)
    🔬 CONSULTA + EXAME = UM HORÁRIO SÓ (regra do Dr. Bruno, 20/08/2026): quando o MESMO paciente vai fazer consulta E exame (ou dois exames), NÃO reserve dois horários — os dois cabem no mesmo atendimento. Se ele já tem um horário marcado nesta conversa e agora quer somar outro serviço, OFEREÇA O MESMO HORÁRIO que ele já tem ("no mesmo horário das 15h00 fazemos a consulta e a topografia") e emita o [AGENDAR] com aquele MESMO [inicio:], mudando só o motivo — o sistema soma os serviços na mesma vaga. Reservar duas vagas seguidas para a mesma pessoa tira um horário de outro paciente sem necessidade. Isso vale para o mesmo DIA; se ele quiser o segundo serviço em OUTRO dia, aí sim é um agendamento à parte.
    ⚠️ A ORDEM É: HORÁRIO PRIMEIRO, FICHA DEPOIS. Nome completo e data de nascimento só são pedidos DEPOIS de o paciente aceitar um horário — nunca antes (pedi-los antes é questionário, e paciente some no questionário). Antes do aceite, as únicas perguntas permitidas são as que mudam QUAL vaga oferecer: unidade e particular/convênio.
    Se faltar QUALQUER um desses, NÃO marque. Diga que está separando o horário e peça TUDO o que falta de uma vez, em UMA frase natural — nunca peça um dado, mande, e peça o resto na mensagem seguinte. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se será particular ou por convênio (se for convênio, qual)?"
@@ -1713,8 +1714,17 @@ function resumoDaFicha(registros, cartRegistro, messages) {
       : `${ini.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit" })}, às ${fmtHoraBR(ini.toISOString()).replace(":", "h")}`;
     const conv = v(r.convenio);
     const numCart = v(cartRegistro?.numero);
+    // 💰 VALOR NA FICHA quando é PARTICULAR (Dr. Bruno, 21/08/2026). A paciente
+    // Marcia foi agendada como particular e a Ana nunca disse o preço — ela só
+    // descobriu porque perguntou 10 minutos DEPOIS, já marcada. Quem não pergunta
+    // chega na recepção sem saber. Sai do código, não do prompt: assim o valor
+    // aparece SEMPRE, sem depender de a Ana lembrar.
+    // Consulta é R$ 200,00; se o agendamento for de exame/teste avulso, o valor
+    // varia e a ficha não arrisca um número — só a consulta tem preço fixo.
+    const motivoTxt = String(v(r.motivo) || "Consulta");
+    const ehConsulta = /^consulta$|^retorno$|avalia/i.test(motivoTxt);
     const atendimento = !conv ? "—"
-      : /^particular$/i.test(conv) ? "Particular"
+      : /^particular$/i.test(conv) ? (ehConsulta ? "Particular — R$ 200,00" : "Particular")
       : `Convênio ${conv}${numCart ? ` — carteirinha ${numCart}` : ""}`;
     if (quando && jaResumido(`📅 ${quando}`)) continue;   // já conferido nesta conversa
     linhas.push([
