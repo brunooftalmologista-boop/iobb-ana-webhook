@@ -199,7 +199,7 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
 | Anel de Ferrara | R$ 8.700 / olho |
 | Catarata (procedimento) | R$ 5.000 / olho + lente |
 | LIOs: monofocal R$ 1.800 · tórica R$ 3.600 · Eyhance R$ 4.200 · Eyhance Toric R$ 5.400 · EDOF R$ 9.800 · EDOF tórica R$ 11.200 · Trifocal R$ 12.000 · Trifocal tórica R$ 13.200 (por olho; monofocal esférica é a coberta por convênio) | |
-| Lentes esclerais | Esclera SG R$ 7.800 par (R$ 4.280 unidade) · ZenLens R$ 5.980 par |
+| Lentes esclerais | Esclera SG R$ 7.800 par (R$ 4.280 unidade) · **Zen RC** R$ 5.980 par (chamada de "ZenLens" até 22/08) |
 | Lente rígida gás permeável (corneana) | a partir de R$ 2.500 o par — **só informar se o paciente perguntar** (18/08); não confundir com a escleral |
 | Teste de lente | R$ 120 gelatinosa · R$ 150 rígida/escleral (só particular, só Conjunto) |
 | Exames avulsos | Pentacam R$ 300 · Sobrecarga Hídrica R$ 380 · Paquimetria/Topografia R$ 180 (tabela completa no prompt) |

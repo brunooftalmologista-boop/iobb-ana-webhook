@@ -47,7 +47,7 @@ const GOALS = [
     label: "🔵 Lentes esclerais / ceratocone",
     noun: "casos de ceratocone",
     targetCpa: 250,
-    keywords: ["ceratocone", "escleral", "esclerais", "lente de contato", "lentes rígidas", "crosslinking", "anel de ferrara", "zenlens"],
+    keywords: ["ceratocone", "escleral", "esclerais", "lente de contato", "lentes rígidas", "crosslinking", "anel de ferrara", "zen rc", "zenlens"],
     createTip: 'Criar campanha para "tratamento de ceratocone / lente escleral em Brasília" — nicho de alta intenção; destacar referência em ceratocone e avaliação com contatóloga.',
   },
   {
