@@ -143,7 +143,19 @@ repositório **não altera** o que está no domínio.
 
 ## Quantas existem, e onde
 
-**No domínio (Cloudflare, fora deste repositório — não temos acesso de publicação):**
+> ⚠️ **ATUALIZADO EM 22/08/2026.** O site foi otimizado e republicado: as páginas
+> saíram de ~540 KB (imagens em base64 embutidas) para 34–55 KB, com as fotos em
+> arquivos WebP na pasta `/img/`. O site inteiro caiu de **4,2 MB para 653 KB (−84%)**.
+> A `/escleral` virou pasta (`escleral/index.html`); as demais seguem arquivos soltos.
+> Existe um `_redirects` com `/* /index.html 200` (mantém o comportamento antigo de
+> caminho desconhecido cair na home). **O Dr. Bruno PUBLICA** arrastando o zip no
+> Cloudflare Pages — o zip precisa ter os arquivos na RAIZ, sem pasta-invólucro.
+> Correções de conteúdo aplicadas no mesmo dia: papéis do Dr. Bruno × contatóloga
+> (a adaptação é dele; ela ensina colocação e cuidados) e os DOIS modelos de lente
+> escleral com preço (ZenLens R$ 5.980 o par · Esclera SG R$ 7.800 o par / R$ 4.280
+> a unidade, em até 5x sem juros). Grafia correta: **contatóloga**, sem "c".
+
+**No domínio (Cloudflare, fora deste repositório):**
 `/refrativa` · `/catarata` · `/ceratocone` · `/escleral` · `/aguas-claras` ·
 `/asa-norte` · `/taguatinga` · `/consulta` — mais a home.
 `/exames`, `/cirurgias`, `/convenios` e `/contato` **não existem**: devolvem a home.
