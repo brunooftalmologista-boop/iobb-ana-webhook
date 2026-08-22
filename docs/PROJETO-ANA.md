@@ -376,6 +376,10 @@ O detalhe de cada passo está nas mensagens dos ~400 commits (`git log`) e em
 - `ad_clicks` ainda varre a tabela toda a cada 60 s (baixa prioridade).
 - Ads: URLs antigas apontando para onrender.com/páginas inexistentes; conferir
   "Incluir em Conversões" da ação Agendamento IOBB.
+- **Site mostra 2 das 3 esclerais** (22/08): a página `/escleral` no ar tem Zen RC e
+  Esclera SG, mas **falta a ZenLens** (R$ 7.800 par / R$ 4.280 unidade). A Ana já
+  informa as três corretamente. O Dr. Bruno optou por não refazer o zip agora —
+  retomar quando for mexer no site de novo.
 - Site: menores de 8 anos ("confirma com a equipe") contradiz a regra real (8+
   categórico) — corrigir na próxima edição.
 - Instagram DM: código pronto no branch `feat/instagram-dm`, aguardando App Review da
