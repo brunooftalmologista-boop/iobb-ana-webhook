@@ -1,0 +1,5 @@
+# Catch-all: qualquer caminho desconhecido mostra a home (HTTP 200), que é
+# exatamente o comportamento do site no ar em 21/08/2026. Sem esta linha, o
+# Cloudflare Pages passaria a devolver 404 — e há anúncios com URL errada
+# (copia-convenios-3, cirurgias, exames…) que hoje caem na home.
+/*    /index.html    200

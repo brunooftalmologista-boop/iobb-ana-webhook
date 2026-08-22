@@ -50,6 +50,7 @@ Meta (WhatsApp Business API)
 | IA | Anthropic — modelo claude-sonnet-4-6, chave `iobb-ana-2` (console.anthropic.com) | conta do Bruno |
 | Áudio | OpenAI Whisper transcreve os áudios dos pacientes (`OPENAI_KEY`) | conta do Bruno |
 | Google Ads | conta `451-429-2857` (MCC "IOBB Admin" `732-549-0192`) | bruno.oftalmologista@gmail.com |
+| Site (fonte) | **`site/` neste repositório** — espelho do publicado, desde 22/08. Cuidador: agente `site-landings` | — |
 | Site | iobb.com.br — **Cloudflare Pages**, HTML estático; deploy = zip com arquivos na raiz. Um Worker roteia os paths de landing (`/lp/*` etc.) para o app no Render. Detalhes: docs/DOMINIO-IOBB.md | Cloudflare do Bruno |
 | Painel | https://iobb-ana-webhook.onrender.com/painel — login individual por secretária (Supabase Auth; senhas via env `PANEL_PW_<NOME>`) | — |
 | Agenda | https://iobb-ana-webhook.onrender.com/agenda (mesma sessão do painel) | — |

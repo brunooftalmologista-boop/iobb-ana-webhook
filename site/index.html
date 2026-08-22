@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Instituto de Olhos Bruno Borges | Oftalmologia em Brasília</title>
+<meta name="description" content="Clínica oftalmológica de referência em Brasília. Catarata, ceratocone, cirurgia refrativa, lentes de contato e exames com tecnologia de ponta. Unidades na Asa Norte e Águas Claras.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --azul:#0a4d8c;
+  --azul-esc:#062f56;
+  --azul-prof:#041d38;
+  --teal:#12b3c6;
+  --teal-esc:#0d8b9b;
+  --cinza:#5b6b7d;
+  --cinza-cl:#8a99a8;
+  --bg:#f5f8fb;
+  --bg-card:#ffffff;
+  --linha:#e5edf4;
+  --sombra:0 10px 40px -12px rgba(6,47,86,.18);
+  --sombra-sm:0 4px 18px -8px rgba(6,47,86,.22);
+  --raio:18px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',system-ui,sans-serif;color:#1f2e3d;background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:'Manrope',sans-serif;line-height:1.15;color:var(--azul-esc);font-weight:800}
+a{text-decoration:none;color:inherit}
+img{max-width:100%;display:block}
+.container{width:min(1180px,92%);margin:0 auto}
+section{padding:84px 0}
+.eyebrow{display:inline-block;font-family:'Manrope';font-weight:700;font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--teal-esc);margin-bottom:14px}
+.section-title{font-size:clamp(1.7rem,3.5vw,2.5rem);margin-bottom:16px}
+.section-lead{color:var(--cinza);max-width:640px;font-size:1.05rem}
+.center{text-align:center;margin-left:auto;margin-right:auto}
+
+/* ---------- TOP BAR ---------- */
+.topbar{background:linear-gradient(90deg,var(--azul-esc),var(--azul));color:#fff;font-size:.86rem;font-weight:500}
+.topbar .container{display:flex;align-items:center;justify-content:center;gap:10px;padding:9px 0;text-align:center}
+.topbar svg{width:15px;height:15px;flex:none;opacity:.9}
+
+/* ---------- HEADER ---------- */
+header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--linha)}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:14px 0;gap:20px}
+.brand{display:flex;align-items:center;gap:13px;flex:none}
+.brand-logo{height:44px;width:auto;display:block}
+.hero-photo{width:100%;height:100%;object-fit:cover;object-position:center 22%;border-radius:30px;display:block}
+.sobre-clinic{display:block;width:100%;max-width:620px;height:440px;object-fit:cover;object-position:center 58%;border-radius:16px;margin:14px auto 0;box-shadow:var(--sombra-sm)}
+.clinic-block{margin-top:8px;text-align:center}
+.clinic-label{display:inline-block;font-family:'Manrope';font-weight:700;font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--teal-esc)}
+.clinic-figure{text-align:center}
+.clinic-figure .clinic-label{margin-bottom:12px}
+.clinic-photo{display:block;width:100%;height:470px;object-fit:cover;object-position:center 58%;border-radius:18px;box-shadow:var(--sombra)}
+.doctor-card{display:grid;grid-template-columns:320px 1fr;gap:44px;align-items:center;background:var(--bg-card);border:1px solid var(--linha);border-radius:var(--raio);padding:36px;box-shadow:var(--sombra-sm);max-width:960px;margin:46px auto 0}
+.doctor-photo{width:100%;height:380px;object-fit:cover;object-position:center 22%;border-radius:16px;display:block}
+.doctor-info b{font-family:'Manrope';font-weight:800;color:var(--azul-esc);font-size:1.5rem;display:block}
+.doc-cred{color:var(--teal-esc);font-weight:600;font-size:.92rem;display:block;margin-top:4px}
+.cv-list{list-style:none;margin:20px 0 0;padding:20px 0 0;border-top:1px solid var(--linha);display:grid;gap:12px}
+.cv-list li{position:relative;padding-left:26px;color:#33475b;font-size:.95rem;line-height:1.45}
+.cv-list li::before{content:"";position:absolute;left:0;top:7px;width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,var(--azul),var(--teal))}
+.doc-photo{width:100%;height:300px;object-fit:cover;object-position:center 25%;border-radius:14px;margin-bottom:20px;display:block}
+.brand .logo{width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#cfe6f7,var(--azul) 78%);position:relative;box-shadow:inset 0 0 0 5px #fff,0 0 0 2px var(--azul)}
+.brand .logo::after{content:"";position:absolute;inset:33%;border-radius:50%;background:var(--azul-prof)}
+.brand-txt strong{font-family:'Manrope';font-weight:800;color:var(--azul-esc);font-size:1.02rem;letter-spacing:.02em;display:block;line-height:1.1}
+.brand-txt span{font-size:.72rem;letter-spacing:.22em;color:var(--teal-esc);font-weight:600;text-transform:uppercase}
+.menu{display:flex;gap:4px;align-items:center}
+.menu a{font-size:.9rem;font-weight:500;color:#33475b;padding:9px 13px;border-radius:9px;transition:.2s}
+.menu a:hover{color:var(--azul);background:var(--bg)}
+.nav-cta{display:flex;align-items:center;gap:10px;flex:none}
+.btn{display:inline-flex;align-items:center;gap:8px;font-family:'Manrope';font-weight:700;font-size:.9rem;padding:11px 20px;border-radius:11px;cursor:pointer;transition:.2s;border:none}
+.btn-wa{background:#25d366;color:#fff}
+.btn-wa:hover{background:#1eb959;transform:translateY(-1px)}
+.btn-primary{background:var(--azul);color:#fff}
+.btn-primary:hover{background:var(--azul-esc);transform:translateY(-1px)}
+.btn-ghost{background:transparent;color:var(--azul);border:1.5px solid var(--linha)}
+.btn-ghost:hover{border-color:var(--azul)}
+.btn svg{width:17px;height:17px}
+.burger{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:8px}
+.burger span{width:24px;height:2.5px;background:var(--azul-esc);border-radius:2px;transition:.3s}
+
+/* ---------- HERO ---------- */
+.hero{position:relative;background:linear-gradient(120deg,var(--azul-prof),var(--azul) 55%,var(--teal-esc));color:#fff;overflow:hidden;padding:96px 0 108px}
+.hero::before{content:"";position:absolute;top:-30%;right:-10%;width:70%;height:160%;background:radial-gradient(circle,rgba(255,255,255,.12),transparent 62%)}
+.hero .container{position:relative;display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center}
+.hero h1{color:#fff;font-size:clamp(2.1rem,4.6vw,3.5rem);letter-spacing:-.01em}
+.hero h1 em{font-style:normal;color:#8fe3ee}
+.hero p{color:#d5e6f4;font-size:1.14rem;margin:22px 0 32px;max-width:520px}
+.hero-actions{display:flex;gap:14px;flex-wrap:wrap}
+.hero-stats{display:flex;gap:34px;margin-top:44px;flex-wrap:wrap}
+.hero-stats div span{font-family:'Manrope';font-weight:800;font-size:1.9rem;color:#fff;display:block}
+.hero-stats div small{color:#a9c9e2;font-size:.85rem}
+.hero-visual{position:relative;aspect-ratio:1;border-radius:30px;background:radial-gradient(circle at 50% 45%,#3aa9c9,#0a4d8c 60%,#041d38);box-shadow:0 30px 80px -20px rgba(0,0,0,.5);display:grid;place-items:center;overflow:hidden}
+.iris{width:62%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle at 42% 40%,#eaf7ff 0%,#7fd4e8 18%,#1f7fb8 42%,#0a4d8c 62%,#041d38 100%);position:relative;box-shadow:0 0 60px rgba(60,169,201,.6),inset 0 0 40px rgba(4,29,56,.7)}
+.iris::before{content:"";position:absolute;inset:33%;border-radius:50%;background:radial-gradient(circle at 45% 40%,#12324f,#000)}
+.iris::after{content:"";position:absolute;top:20%;left:26%;width:16%;height:16%;border-radius:50%;background:rgba(255,255,255,.85);filter:blur(1px)}
+.hero-badge{position:absolute;bottom:22px;left:22px;background:rgba(255,255,255,.95);color:var(--azul-esc);padding:12px 16px;border-radius:14px;display:flex;align-items:center;gap:10px;font-size:.82rem;box-shadow:var(--sombra-sm)}
+.hero-badge b{font-family:'Manrope';display:block;font-size:.95rem}
+.hero-wave{position:absolute;bottom:-1px;left:0;width:100%;line-height:0}
+.hero-wave svg{width:100%;height:60px}
+
+/* ---------- SOBRE ---------- */
+.sobre-grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start}
+.sobre-card{background:var(--bg-card);border:1px solid var(--linha);border-radius:var(--raio);padding:30px;box-shadow:var(--sombra-sm)}
+.sobre-doc{display:flex;gap:18px;align-items:center;margin-top:22px;padding-top:22px;border-top:1px solid var(--linha)}
+.sobre-doc .av{width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,var(--azul),var(--teal));flex:none;display:grid;place-items:center;color:#fff;font-family:'Manrope';font-weight:800;font-size:1.3rem}
+.sobre-doc b{font-family:'Manrope';color:var(--azul-esc);font-size:1.05rem}
+.sobre-doc small{color:var(--cinza);display:block}
+.pill-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.pill{background:var(--bg);border:1px solid var(--linha);border-radius:999px;padding:7px 15px;font-size:.82rem;font-weight:600;color:var(--azul);display:flex;align-items:center;gap:7px}
+.pill svg{width:15px;height:15px;color:var(--teal-esc)}
+
+/* ---------- CARDS GENERIC ---------- */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:22px;margin-top:44px}
+.card{background:var(--bg-card);border:1px solid var(--linha);border-radius:var(--raio);padding:26px;transition:.25s;position:relative;overflow:hidden}
+.card:hover{transform:translateY(-4px);box-shadow:var(--sombra);border-color:transparent}
+.card .ic{width:50px;height:50px;border-radius:13px;background:linear-gradient(135deg,rgba(10,77,140,.12),rgba(18,179,198,.14));display:grid;place-items:center;margin-bottom:18px;color:var(--azul)}
+.card .ic svg{width:26px;height:26px}
+.card h3{font-size:1.12rem;margin-bottom:9px}
+.card p{color:var(--cinza);font-size:.94rem}
+.section-alt{background:linear-gradient(180deg,#fff,var(--bg))}
+
+/* chips grid for exams/diseases */
+.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:40px}
+.chip{background:var(--bg-card);border:1px solid var(--linha);border-radius:14px;padding:16px 18px;display:flex;gap:13px;align-items:flex-start;transition:.2s}
+.chip:hover{border-color:var(--teal);box-shadow:var(--sombra-sm)}
+.chip .dot{width:9px;height:9px;border-radius:50%;background:var(--teal);margin-top:7px;flex:none}
+.chip b{font-family:'Manrope';font-size:.95rem;color:var(--azul-esc);display:block}
+.chip small{color:var(--cinza);font-size:.83rem;line-height:1.45}
+
+/* ---------- LENTES ---------- */
+.lentes{background:linear-gradient(120deg,var(--azul-esc),var(--azul));color:#fff;border-radius:26px;padding:52px;display:grid;grid-template-columns:1fr 1fr;gap:44px;align-items:center}
+.lentes h2{color:#fff}
+.lentes p{color:#cfe2f2;margin-top:14px}
+.lentes-list{display:grid;gap:14px}
+.lentes-list .li{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:16px 18px}
+.lentes-list b{font-family:'Manrope';color:#8fe3ee;display:block;font-size:.98rem}
+.lentes-list small{color:#c4dcef;font-size:.85rem}
+
+/* ---------- CONVENIOS ---------- */
+.conv-tools{display:flex;gap:14px;margin-top:34px;flex-wrap:wrap;align-items:center}
+.conv-search{flex:1;min-width:240px;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--linha);border-radius:12px;padding:12px 16px}
+.conv-search input{border:none;outline:none;font-size:.95rem;width:100%;font-family:inherit}
+.conv-search svg{width:18px;height:18px;color:var(--cinza-cl);flex:none}
+.conv-count{font-size:.85rem;color:var(--cinza);font-weight:600}
+.conv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-top:22px}
+.conv{background:#fff;border:1px solid var(--linha);border-radius:11px;padding:12px 15px;font-size:.88rem;font-weight:500;color:#33475b;display:flex;align-items:center;gap:9px}
+.conv::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--teal);flex:none}
+.conv.hide{display:none}
+
+/* ---------- UNIDADES ---------- */
+.units{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:44px}
+.unit{background:var(--bg-card);border:1px solid var(--linha);border-radius:var(--raio);overflow:hidden;box-shadow:var(--sombra-sm)}
+.unit .map{height:150px;background:linear-gradient(120deg,#0a4d8c,#12b3c6);position:relative;display:grid;place-items:center;color:#fff}
+.unit .map svg{width:40px;height:40px;opacity:.9}
+.unit-body{padding:26px}
+.unit-body h3{font-size:1.2rem;margin-bottom:4px}
+.unit-body .sub{color:var(--teal-esc);font-weight:600;font-size:.9rem;margin-bottom:14px}
+.unit-body address{font-style:normal;color:var(--cinza);font-size:.95rem;margin-bottom:18px}
+.unit-body .btn{width:100%;justify-content:center}
+
+/* ---------- CONTATO ---------- */
+.contato{background:var(--azul-prof);color:#fff}
+.contato .section-title{color:#fff}
+.contato-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:44px}
+.contact-item{display:flex;gap:16px;align-items:flex-start;padding:18px 0;border-bottom:1px solid rgba(255,255,255,.1)}
+.contact-item .ci{width:46px;height:46px;border-radius:12px;background:rgba(255,255,255,.09);display:grid;place-items:center;flex:none;color:#8fe3ee}
+.contact-item .ci svg{width:22px;height:22px}
+.contact-item b{font-family:'Manrope';display:block;color:#fff}
+.contact-item a,.contact-item span{color:#b9d2e8;font-size:.95rem}
+.contact-item a:hover{color:#8fe3ee}
+.contato .cta-box{background:linear-gradient(135deg,var(--azul),var(--teal-esc));border-radius:20px;padding:38px;text-align:center}
+.contato .cta-box h3{color:#fff;font-size:1.5rem;margin-bottom:10px}
+.contato .cta-box p{color:#dceaf6;margin-bottom:24px}
+.contato .cta-box .btn{margin:6px}
+
+/* ---------- FOOTER ---------- */
+footer{background:#03152a;color:#8ba7c0;padding:52px 0 26px;font-size:.9rem}
+.foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px;padding-bottom:34px;border-bottom:1px solid rgba(255,255,255,.08)}
+footer h4{color:#fff;font-size:.95rem;margin-bottom:16px;letter-spacing:.03em}
+footer a{display:block;color:#8ba7c0;padding:5px 0;transition:.2s}
+footer a:hover{color:#8fe3ee}
+.foot-brand p{margin-top:14px;max-width:300px}
+.foot-social{display:flex;gap:12px;margin-top:18px}
+.foot-social a{width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.07);display:grid;place-items:center;padding:0}
+.foot-social a:hover{background:var(--teal-esc)}
+.foot-social svg{width:19px;height:19px;color:#fff}
+.foot-bottom{padding-top:22px;text-align:center;font-size:.82rem;color:#5f7d99}
+
+/* ---------- WHATSAPP FLOAT ---------- */
+.wa-float{position:fixed;bottom:24px;right:24px;width:58px;height:58px;border-radius:50%;background:#25d366;display:grid;place-items:center;box-shadow:0 8px 30px rgba(37,211,102,.5);z-index:60;transition:.2s;animation:pulse 2.4s infinite}
+.wa-float:hover{transform:scale(1.08)}
+.wa-float svg{width:30px;height:30px;color:#fff}
+@keyframes pulse{0%{box-shadow:0 8px 30px rgba(37,211,102,.5),0 0 0 0 rgba(37,211,102,.4)}70%{box-shadow:0 8px 30px rgba(37,211,102,.5),0 0 0 16px rgba(37,211,102,0)}100%{box-shadow:0 8px 30px rgba(37,211,102,.5),0 0 0 0 rgba(37,211,102,0)}}
+
+/* reveal */
+.reveal{opacity:0;transform:translateY(24px);transition:.7s cubic-bezier(.2,.7,.3,1)}
+.reveal.in{opacity:1;transform:none}
+
+/* ---------- RESPONSIVE ---------- */
+@media(max-width:900px){
+  .menu,.nav-cta .btn-ghost{display:none}
+  .burger{display:flex}
+  .hero .container,.sobre-grid,.lentes,.contato-grid,.units,.foot-grid,.doctor-card{grid-template-columns:1fr}
+  .doctor-card{gap:24px;text-align:center}
+  .doctor-info b{margin-top:6px}
+  .hero-visual{max-width:360px;margin:0 auto;order:-1}
+  .lentes{padding:34px}
+  .foot-grid{gap:28px}
+  section{padding:60px 0}
+  .mobile-menu.open{display:flex}
+}
+.mobile-menu{display:none;flex-direction:column;position:fixed;inset:0;top:0;background:#fff;z-index:100;padding:28px;gap:6px}
+.mobile-menu.open{display:flex}
+.mobile-menu .close{align-self:flex-end;background:none;border:none;font-size:1.8rem;cursor:pointer;color:var(--azul-esc)}
+.mobile-menu a{font-family:'Manrope';font-weight:600;font-size:1.15rem;padding:14px 8px;border-bottom:1px solid var(--linha);color:var(--azul-esc)}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="container">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    Horário de atendimento: segunda a sexta, das 08h às 18h
+  </div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="container nav">
+    <a href="#home" class="brand">
+      <img class="brand-logo" src="/img/iobb-logo.webp" width="357" height="87" alt="Instituto de Olhos Bruno Borges">
+    </a>
+    <nav class="menu">
+      <a href="#sobre">Sobre</a>
+      <a href="#cirurgias">Cirurgias</a>
+      <a href="#exames">Exames</a>
+      <a href="#doencas">Doenças Oculares</a>
+      <a href="#lentes">Lentes</a>
+      <a href="#convenios">Convênios</a>
+      <a href="#unidades">Unidades</a>
+    </nav>
+    <div class="nav-cta">
+      <a href="#contato" class="btn btn-ghost">Contato</a>
+      <a href="https://api.whatsapp.com/send?phone=5561984060001" class="btn btn-primary" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v3M16 2v3M3 9h18M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg>
+        Agendar
+      </a>
+      <button class="burger" onclick="document.getElementById('mm').classList.add('open')" aria-label="Menu"><span></span><span></span><span></span></button>
+    </div>
+  </div>
+</header>
+
+<!-- MOBILE MENU -->
+<div class="mobile-menu" id="mm">
+  <button class="close" onclick="document.getElementById('mm').classList.remove('open')">&times;</button>
+  <a href="#sobre" onclick="closeMM()">Sobre</a>
+  <a href="#cirurgias" onclick="closeMM()">Cirurgias</a>
+  <a href="#exames" onclick="closeMM()">Exames</a>
+  <a href="#doencas" onclick="closeMM()">Doenças Oculares</a>
+  <a href="#lentes" onclick="closeMM()">Lentes de Contato</a>
+  <a href="#convenios" onclick="closeMM()">Convênios</a>
+  <a href="#unidades" onclick="closeMM()">Unidades</a>
+  <a href="#contato" onclick="closeMM()">Contato</a>
+</div>
+
+<!-- HERO -->
+<section class="hero" id="home">
+  <div class="container">
+    <div>
+      <h1>Cuidar da sua visão com <em>tecnologia e proximidade</em></h1>
+      <p>Referência em oftalmologia em Brasília. Conciliamos atendimento personalizado e equipamentos de última geração para o diagnóstico e a correção completa dos problemas relacionados à visão.</p>
+      <div class="hero-actions">
+        <a href="https://api.whatsapp.com/send?phone=5561984060001" class="btn btn-wa" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1012 2zm0 18a8 8 0 01-4.1-1.1l-.3-.2-2.8.8.8-2.8-.2-.3A8 8 0 1112 20zm4.4-5.9c-.2-.1-1.4-.7-1.6-.8s-.4-.1-.5.1-.6.8-.8 1-.3.2-.5.1a6.5 6.5 0 01-1.9-1.2 7.3 7.3 0 01-1.4-1.7c-.1-.2 0-.4.1-.5l.4-.4.2-.4v-.4l-.7-1.8c-.2-.5-.4-.4-.5-.4h-.5a1 1 0 00-.7.3 2.8 2.8 0 00-.9 2.1 5 5 0 001 2.6 11.3 11.3 0 004.4 3.9c1.6.6 1.9.5 2.3.5a2.5 2.5 0 001.6-1.2 2 2 0 00.2-1.2c-.1-.1-.3-.2-.5-.3z"/></svg>
+          Falar no WhatsApp
+        </a>
+        <a href="#unidades" class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.4)">Nossas unidades</a>
+      </div>
+      <div class="hero-stats">
+        <div><span>2</span><small>unidades em Brasília</small></div>
+        <div><span>+40</span><small>convênios atendidos</small></div>
+        <div><span>+25</span><small>exames especializados</small></div>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="iris"></div>
+    </div>
+  </div>
+  <div class="hero-wave">
+    <svg viewBox="0 0 1440 60" preserveAspectRatio="none"><path fill="#f5f8fb" d="M0 40c240-40 480-40 720-20s480 40 720 0v40H0z"/></svg>
+  </div>
+</section>
+
+<!-- SOBRE -->
+<section id="sobre">
+  <div class="container sobre-grid">
+    <div class="reveal">
+      <span class="eyebrow">Sobre o IOBB</span>
+      <h2 class="section-title">Excelência em oftalmologia, com atendimento humano</h2>
+      <p class="section-lead">Referência em oftalmologia em Brasília, o IOBB une atendimento personalizado e tecnologia de ponta para o diagnóstico e a correção completa dos problemas de visão, sempre com conforto e acolhimento.</p>
+      <div class="pill-row">
+        <span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Tecnologia de ponta</span>
+        <span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Atendimento individualizado</span>
+        <span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Corpo clínico qualificado</span>
+      </div>
+    </div>
+    <div class="reveal clinic-figure">
+      <span class="clinic-label">Nossa estrutura</span>
+      <img src="/img/iobb-sala-exames.webp" width="577" height="760" alt="Sala de exames do IOBB" class="clinic-photo">
+    </div>
+  </div>
+</section>
+
+<!-- MEDICO -->
+<section id="medico" class="section-alt">
+  <div class="container">
+    <div class="center reveal" style="max-width:640px">
+      <span class="eyebrow">Responsável técnico</span>
+      <h2 class="section-title">Conheça o Dr. Bruno Borges</h2>
+      <p class="section-lead center">Direção médica e clínica do Instituto de Olhos Bruno Borges.</p>
+    </div>
+    <div class="doctor-card reveal">
+      <img src="/img/escleral-dr-bruno.webp" width="607" height="580" alt="Dr. Bruno Borges" class="doctor-photo">
+      <div class="doctor-info">
+        <b>Dr. Bruno Borges</b>
+        <span class="doc-cred">Médico Oftalmologista &nbsp;·&nbsp; CRM-DF 17877 &nbsp;·&nbsp; RQE 9314</span>
+        <ul class="cv-list">
+          <li>Graduação em Medicina pela Universidade Federal de Minas Gerais (UFMG)</li>
+          <li>Residência em Oftalmologia no Hospital das Clínicas da UFMG</li>
+          <li>Fellow em Córnea, Catarata e Cirurgia Refrativa no Hospital das Clínicas da UFMG</li>
+          <li>Membro do Conselho Brasileiro de Oftalmologia (CBO)</li>
+          <li>Membro da Sociedade Brasileira de Catarata e Cirurgia Refrativa</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CIRURGIAS -->
+<section id="cirurgias" class="section-alt">
+  <div class="container">
+    <div class="center reveal" style="max-width:640px">
+      <span class="eyebrow">Cirurgias</span>
+      <h2 class="section-title">Procedimentos cirúrgicos</h2>
+      <p class="section-lead center">Cirurgias modernas realizadas com equipamentos de tecnologia avançada e acompanhamento especializado em todas as etapas.</p>
+    </div>
+    <div class="cards">
+      <div class="card reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3>Cirurgia de Catarata</h3>
+        <p>Remoção do cristalino opaco e substituição por lente intraocular transparente (facectomia com implante de LIO), melhorando a passagem da luz para o interior do olho.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12s3-7 9-7 9 7 9 7-3 7-9 7-9-7-9-7z"/><circle cx="12" cy="12" r="2.5"/></svg></div>
+        <h3>Cirurgia Refrativa</h3>
+        <p>Correção de miopia, astigmatismo e hipermetropia com excimer laser, nas modalidades Lasik e PRK.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 010 16"/></svg></div>
+        <h3>Implante de Anel de Ferrara</h3>
+        <p>Implante de dispositivo intracorneano para correção das irregularidades da córnea, especialmente no ceratocone.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M3 12h18" /><circle cx="12" cy="12" r="9"/></svg></div>
+        <h3>Crosslinking</h3>
+        <p>Tratamento que aumenta a resistência da córnea para prevenir a progressão do ceratocone.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- EXAMES -->
+<section id="exames">
+  <div class="container">
+    <div class="center reveal" style="max-width:640px">
+      <span class="eyebrow">Exames</span>
+      <h2 class="section-title">Exames diagnósticos</h2>
+      <p class="section-lead center">Estrutura completa de exames com equipamentos de alta tecnologia para diagnóstico preciso e acompanhamento das principais condições oculares.</p>
+    </div>
+    <div class="chips" id="exames-grid"></div>
+  </div>
+</section>
+
+<!-- DOENÇAS -->
+<section id="doencas" class="section-alt">
+  <div class="container">
+    <div class="center reveal" style="max-width:640px">
+      <span class="eyebrow">Doenças Oculares</span>
+      <h2 class="section-title">Condições que tratamos</h2>
+      <p class="section-lead center">Diagnóstico e tratamento das principais doenças oculares, da catarata ao glaucoma, com acompanhamento contínuo.</p>
+    </div>
+    <div class="chips" id="doencas-grid"></div>
+  </div>
+</section>
+
+<!-- LENTES -->
+<section id="lentes">
+  <div class="container">
+    <div class="lentes reveal">
+      <div>
+        <span class="eyebrow" style="color:#8fe3ee">Lentes de Contato</span>
+        <h2 class="section-title" style="color:#fff">Adaptação especializada de lentes de contato</h2>
+        <p>As lentes de contato corrigem miopia, astigmatismo, hipermetropia e presbiopia — e, em casos como o ceratocone, trazem melhora significativa. Fazemos o teste de adaptação completo para selecionar a lente ideal, com curvatura, diâmetro, grau e material próprios para cada caso, sempre com acompanhamento médico.</p>
+      </div>
+      <div class="lentes-list">
+        <div class="li"><b>Gelatinosas</b><small>Esféricas, tóricas, bifocais e multifocais — descartáveis ou de uso prolongado.</small></div>
+        <div class="li"><b>Rígidas</b><small>Para altos graus de astigmatismo e irregularidades da córnea.</small></div>
+        <div class="li"><b>Multicurvas (Rose K2)</b><small>Geometria personalizada para o ceratocone, com máxima oxigenação.</small></div>
+        <div class="li"><b>Esclerais (Esclera / Esclera SG)</b><small>Para córneas irregulares e ceratocone, com conforto e alta qualidade óptica.</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONVENIOS -->
+<section id="convenios" class="section-alt">
+  <div class="container">
+    <div class="center reveal" style="max-width:640px">
+      <span class="eyebrow">Convênios</span>
+      <h2 class="section-title">Convênios atendidos</h2>
+      <p class="section-lead center">Atendemos os principais planos de saúde. Use a busca abaixo para encontrar o seu — em caso de dúvida, fale conosco pelo WhatsApp.</p>
+    </div>
+    <div class="conv-tools reveal">
+      <label class="conv-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <input type="text" id="convSearch" placeholder="Buscar convênio (ex.: Unimed, Saúde Caixa, Cassi...)">
+      </label>
+      <span class="conv-count" id="convCount"></span>
+    </div>
+    <div class="conv-grid" id="conv-grid"></div>
+  </div>
+</section>
+
+<!-- UNIDADES -->
+<section id="unidades">
+  <div class="container">
+    <div class="center reveal" style="max-width:640px">
+      <span class="eyebrow">Onde estamos</span>
+      <h2 class="section-title">Nossas unidades</h2>
+      <p class="section-lead center">Duas unidades em Brasília para melhor atendê-lo, de segunda a sexta, das 08h às 18h.</p>
+    </div>
+    <div class="units">
+      <div class="unit reveal">
+        <div class="map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+        <div class="unit-body">
+          <h3>Unidade Asa Norte</h3>
+          <div class="sub">Shopping Conjunto Nacional</div>
+          <address>SDN Conjunto A, Sala 6017 (Torre Verde)<br>Shopping Conjunto Nacional<br>Asa Norte, Brasília – DF</address>
+          <a class="btn btn-ghost" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=Shopping+Conjunto+Nacional+Asa+Norte+Brasilia">Ver no mapa</a>
+        </div>
+      </div>
+      <div class="unit reveal">
+        <div class="map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+        <div class="unit-body">
+          <h3>Unidade Águas Claras</h3>
+          <div class="sub">Taguatinga Shopping</div>
+          <address>QS 1, Lote 40 – Taguatinga Shopping<br>Sala 615 (Torre B)<br>Águas Claras, Brasília – DF</address>
+          <a class="btn btn-ghost" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=Taguatinga+Shopping+Brasilia">Ver no mapa</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTATO -->
+<section id="contato" class="contato">
+  <div class="container">
+    <div class="center reveal" style="max-width:640px">
+      <span class="eyebrow">Contato</span>
+      <h2 class="section-title">Fale com o IOBB</h2>
+      <p class="section-lead center" style="color:#b9d2e8">Agende sua consulta ou tire suas dúvidas. Retornamos o mais breve possível.</p>
+    </div>
+    <div class="contato-grid">
+      <div class="reveal">
+        <div class="contact-item">
+          <div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3 19.5 19.5 0 01-6-6 19.8 19.8 0 01-3-8.6A2 2 0 014.1 2h3a2 2 0 012 1.7c.1 1 .4 1.9.7 2.8a2 2 0 01-.5 2.1L8.1 9.9a16 16 0 006 6l1.3-1.2a2 2 0 012.1-.5c.9.3 1.8.6 2.8.7a2 2 0 011.8 2z"/></svg></div>
+          <div><b>Telefone / Agendamento</b><a href="tel:+556130336605">(61) 3033-6605</a></div>
+        </div>
+        <div class="contact-item">
+          <div class="ci"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1012 2zm4.4 12.1c-.2-.1-1.4-.7-1.6-.8s-.4-.1-.5.1-.6.8-.8 1-.3.2-.5.1a6.5 6.5 0 01-1.9-1.2 7.3 7.3 0 01-1.4-1.7c-.1-.2 0-.4.1-.5l.4-.4.2-.4v-.4l-.7-1.8c-.2-.5-.4-.4-.5-.4h-.5a1 1 0 00-.7.3 2.8 2.8 0 00-.9 2.1 5 5 0 001 2.6 11.3 11.3 0 004.4 3.9c1.6.6 1.9.5 2.3.5a2.5 2.5 0 001.6-1.2 2 2 0 00.2-1.2c-.1-.1-.3-.2-.5-.3z"/></svg></div>
+          <div><b>WhatsApp</b><a href="https://api.whatsapp.com/send?phone=5561984060001" target="_blank" rel="noopener">(61) 98406-0001</a></div>
+        </div>
+        <div class="contact-item">
+          <div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></div>
+          <div><b>E-mail</b><a href="mailto:adm@iobb.com.br">adm@iobb.com.br</a></div>
+        </div>
+        <div class="contact-item">
+          <div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+          <div><b>Horário de atendimento</b><span>Segunda a sexta · 08h às 18h</span></div>
+        </div>
+      </div>
+      <div class="cta-box reveal">
+        <h3>Agende sua consulta</h3>
+        <p>O jeito mais rápido de marcar é pelo WhatsApp. Nossa equipe está pronta para atender você.</p>
+        <a href="https://api.whatsapp.com/send?phone=5561984060001" class="btn btn-wa" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1012 2z"/></svg>
+          Agendar pelo WhatsApp
+        </a>
+        <a href="tel:+556130336605" class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.5)">Ligar agora</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <div class="brand"><span class="logo" style="box-shadow:inset 0 0 0 5px #03152a,0 0 0 2px #8fe3ee"></span><span class="brand-txt"><strong style="color:#fff">Instituto de Olhos</strong><span>Bruno Borges</span></span></div>
+        <p>Referência de qualidade e profissionalismo em oftalmologia em Brasília. Tecnologia e atendimento humano para cuidar da sua visão.</p>
+        <div class="foot-social">
+          <a href="https://www.instagram.com/brunoborgesoftalmo/" target="_blank" rel="noopener" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></a>
+          <a href="https://pt-br.facebook.com/iobrunoborges/" target="_blank" rel="noopener" aria-label="Facebook"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 9h3V6h-3c-2 0-3 1-3 3v2H9v3h2v7h3v-7h2.5l.5-3H14V9z"/></svg></a>
+        </div>
+      </div>
+      <div>
+        <h4>Especialidades</h4>
+        <a href="#cirurgias">Cirurgias</a>
+        <a href="#exames">Exames</a>
+        <a href="#doencas">Doenças Oculares</a>
+        <a href="#lentes">Lentes de Contato</a>
+        <a href="#convenios">Convênios</a>
+      </div>
+      <div>
+        <h4>Unidades</h4>
+        <a href="#unidades">Asa Norte · Conjunto Nacional</a>
+        <a href="#unidades">Águas Claras · Taguatinga Shopping</a>
+        <h4 style="margin-top:20px">Contato</h4>
+        <a href="tel:+556130336605">(61) 3033-6605</a>
+        <a href="mailto:adm@iobb.com.br">adm@iobb.com.br</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      © <span id="ano"></span> Instituto de Olhos Bruno Borges · Responsável técnico: Dr. Bruno Borges · CRM-DF 17877 · RQE 9314
+    </div>
+  </div>
+</footer>
+
+<a class="wa-float" href="https://api.whatsapp.com/send?phone=5561984060001" target="_blank" rel="noopener" aria-label="WhatsApp">
+  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1012 2zm0 18a8 8 0 01-4.1-1.1l-.3-.2-2.8.8.8-2.8-.2-.3A8 8 0 1112 20zm4.4-5.9c-.2-.1-1.4-.7-1.6-.8s-.4-.1-.5.1-.6.8-.8 1-.3.2-.5.1a6.5 6.5 0 01-1.9-1.2 7.3 7.3 0 01-1.4-1.7c-.1-.2 0-.4.1-.5l.4-.4.2-.4v-.4l-.7-1.8c-.2-.5-.4-.4-.5-.4h-.5a1 1 0 00-.7.3 2.8 2.8 0 00-.9 2.1 5 5 0 001 2.6 11.3 11.3 0 004.4 3.9c1.6.6 1.9.5 2.3.5a2.5 2.5 0 001.6-1.2 2 2 0 00.2-1.2c-.1-.1-.3-.2-.5-.3z"/></svg>
+</a>
+
+<script>
+function closeMM(){document.getElementById('mm').classList.remove('open')}
+document.getElementById('ano').textContent = new Date().getFullYear();
+
+// Exames
+const exames = [
+  ["Pentacam HR (Tomografia de Córnea)","Avaliação de córnea, câmara anterior, íris e cristalino em alta resolução."],
+  ["Paquimetria","Mede a espessura corneana; pré-operatório de refrativa e estudos de glaucoma."],
+  ["Tonometria","Medição da pressão interna do olho; prevenção e acompanhamento de glaucoma."],
+  ["Topografia de Córnea","Estudo da superfície do olho; distorções como ceratocone e astigmatismo."],
+  ["Retinografia","Documentação fotográfica das estruturas do fundo de olho."],
+  ["Microscopia Especular","Análise das células do endotélio da córnea (formato, tamanho e número)."],
+  ["Campimetria Visual Computadorizada","Estuda a visão central e periférica, detectando áreas sem visão."],
+  ["Teste de Sobrecarga Hídrica","Medição seriada da pressão intraocular após sobrecarga hídrica."],
+  ["Mapeamento de Retina","Visão detalhada de toda a superfície da retina."],
+  ["Curva Diária de Pressão","Medição da pressão intraocular em diferentes horários do dia."],
+  ["Gonioscopia","Avalia o ângulo da câmara anterior, íris e cristalino."],
+  ["Teste de Lente de Contato","Exames com lentes de prova para selecionar a lente ideal."],
+  ["Visão Cromática (Ishihara)","Analisa a percepção de cores do paciente."],
+  ["Estereopsia (Titmus)","Avalia a visão de profundidade em 3D."]
+];
+document.getElementById('exames-grid').innerHTML = exames.map(e=>
+  `<div class="chip reveal"><span class="dot"></span><div><b>${e[0]}</b><small>${e[1]}</small></div></div>`).join('');
+
+// Doenças
+const doencas = [
+  ["Catarata","Opacificação do cristalino, com diminuição progressiva da visão."],
+  ["Ceratocone","Encurvamento e afinamento progressivos da córnea."],
+  ["Glaucoma","Aumento da pressão ocular que lesiona o nervo óptico."],
+  ["Miopia","Boa visão de perto e visão borrada para longe."],
+  ["Hipermetropia","Dificuldade de enxergar objetos próximos."],
+  ["Astigmatismo","Córnea assimétrica que causa visão distorcida ou borrada."],
+  ["Presbiopia","A 'vista cansada' — perda de foco para perto, comum após os 40."],
+  ["Conjuntivite","Inflamação da conjuntiva (alérgica, viral ou bacteriana)."],
+  ["Blefarite","Inflamação das margens das pálpebras, com coceira e ardor."],
+  ["Hordéolo","Protuberância vermelha e dolorosa na borda da pálpebra (terçol)."],
+  ["Olho Seco","Lubrificação inadequada da superfície dos olhos."],
+  ["Pterígio","Crescimento benigno de tecido sobre a córnea."]
+];
+document.getElementById('doencas-grid').innerHTML = doencas.map(d=>
+  `<div class="chip reveal"><span class="dot"></span><div><b>${d[0]}</b><small>${d[1]}</small></div></div>`).join('');
+
+// Convênios
+const convenios = ["AMHPDF","AFEB Brasal","AFFEGO","ASETE","ASFUB","BACEN","BBB Saúde","Care Plus","Casembrapa","CAEME-GO","CAMED","CAESAN","CASEC","Central Nacional Unimed","CTI","CONAB","Eletronorte","Embratel","E-Vida","FACEB","FAPES (BNDES)","FASCAL","FioSaúde (Fioprev)","Furnas","Gama Saúde","INAS-DF","Infraero","IRB","Irmãos Gravia","Life Empresarial","Luminar Saúde","Mapfre Saúde","MPDFT","MPF","MPM","MPT","Notre Dame","PAME","Plan-Assiste","PMDF","Proasa","Saúde Caixa","SERPRO","SIS Senado","STF-Med","STJ","STM","TJDFT","TST Saúde","TRE","TRF","TRT","Unafisco","Unibanco - Tempo Saúde","Unimed Central Nacional","Unimed Planalto","Unimed Intercâmbio","Universal Assistance"];
+const cg = document.getElementById('conv-grid');
+const cc = document.getElementById('convCount');
+function renderConv(f=""){
+  const q = f.trim().toLowerCase();
+  let vis=0;
+  cg.innerHTML = convenios.map(c=>{
+    const hide = q && !c.toLowerCase().includes(q);
+    if(!hide) vis++;
+    return `<div class="conv${hide?' hide':''}">${c}</div>`;
+  }).join('');
+  cc.textContent = `${vis} convênio${vis!==1?'s':''}`;
+}
+renderConv();
+document.getElementById('convSearch').addEventListener('input', e=>renderConv(e.target.value));
+
+// Reveal on scroll
+const io = new IntersectionObserver((entries)=>{
+  entries.forEach(en=>{ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }});
+},{threshold:.12});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+</script>
+<script>/* IOBB_GCLID */(function(){function a(){try{var p=new URLSearchParams(location.search),i=[];if(p.get('gclid'))i.push('g:'+p.get('gclid'));if(p.get('wbraid'))i.push('wb:'+p.get('wbraid'));if(p.get('gbraid'))i.push('gb:'+p.get('gbraid'));if(!i.length)return;var t=' ['+i.join('|')+']';document.querySelectorAll('a[href*="wa.me"],a[href*="api.whatsapp.com"]').forEach(function(x){var h=x.getAttribute('href')||'';if(h.indexOf('%5Bg%3A')>-1||h.indexOf('%5Bg:')>-1||h.indexOf('[g:')>-1)return;if(h.indexOf('text=')>-1)x.setAttribute('href',h.replace(/(text=[^&]*)/,'$1'+encodeURIComponent(t)));else x.setAttribute('href',h+(h.indexOf('?')>-1?'&':'?')+'text='+encodeURIComponent(t.trim()))})}catch(e){}}if(document.readyState!=='loading')a();else document.addEventListener('DOMContentLoaded',a);window.addEventListener('load',function(){setTimeout(a,1500)})})();</script>
+<script>/* IOBB_BEACON */(function(){try{var p=new URLSearchParams(location.search);var g=p.get('gclid'),wb=p.get('wbraid'),gb=p.get('gbraid');if(!g&&!wb&&!gb)return;var key='iobb_hit_'+(g||wb||gb);if(sessionStorage.getItem(key))return;sessionStorage.setItem(key,'1');var tema=(location.pathname.split('/').filter(Boolean)[0]||'home');var u='https://iobb-ana-webhook.onrender.com/lp/hit?tema='+encodeURIComponent(tema)+(g?'&g='+encodeURIComponent(g):'')+(wb?'&wb='+encodeURIComponent(wb):'')+(gb?'&gb='+encodeURIComponent(gb):'');(new Image()).src=u;}catch(e){}})();</script>
+</body>
+</html>
