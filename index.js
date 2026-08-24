@@ -1539,6 +1539,40 @@ function instrucaoOfertaReal(motivo) {
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
+// ===== DESFAZ AGENDAMENTO QUANDO O CONVÊNIO É RECUSADO DEPOIS ==============
+// A carteirinha quase sempre chega DEPOIS do agendamento: a Ana marca com o plano
+// que o paciente disse, lê o cartão em seguida e descobre que é outro — regional,
+// ou fora da lista. Quando isso acontece ela recusa certo, mas a consulta que ela
+// mesma acabou de marcar FICA NA AGENDA, com um convênio que não podemos cobrar.
+// Regra do Dr. Bruno (24/08/2026): "a Ana deveria ter tirado ela da agenda quando
+// houve a negativa".
+// Conservador de propósito — só desfaz o que ELA marcou NESTA conversa e cujo
+// convênio gravado reprova em convenioAtendido(). Agendamento da equipe, ou
+// anterior à conversa, não é tocado: pode ter tido o intercâmbio verificado.
+const RE_RECUSOU_CONVENIO = /n[ãa]o (está|consta|é um)[^.!?\n]{0,45}(entre os )?conv[êe]nios? (que )?atend|n[ãa]o atendemos esse conv|n[ãa]o trabalhamos com esse conv|regional de outra (cidade|regi)|precisamos verificar antes se o plano/i;
+async function desfazerAgendamentoComConvenioRecusado(reply, from, conversationId) {
+  try {
+    if (!RE_RECUSOU_CONVENIO.test(reply)) return null;
+    const meus = await agendamentosDoPaciente(from);
+    const alvos = (meus || []).filter(a =>
+      String(a.conversation_id || "") === String(conversationId) &&
+      a.convenio && !/^particular$/i.test(String(a.convenio).trim()) &&
+      !convenioAtendido(a.convenio));
+    if (!alvos.length) return null;
+    for (const a of alvos) {
+      const r = await cancelarAgendamento(a.id);
+      if (!r.ok) { console.error("[ConvênioRecusado] Falha ao desfazer:", a.id); continue; }
+      console.warn(`[ConvênioRecusado] ❌ Desfeito ${a.inicio} (${a.unidade}) — convênio "${a.convenio}" não é atendido.`);
+      await registrarErro("agendamento_desfeito_convenio", `${a.convenio} | ${a.inicio} ${a.unidade}`,
+        { conversationId, telefone: from }).catch(() => {});
+      await espelharParaSecretaria("[Agendamento desfeito]",
+        `♻️ *VAGA LIBERADA — convênio não atendido*\n👤 ${a.paciente_nome || from}\n📱 ${from}\n🕐 ${fmtDataHoraBR(a.inicio)} — ${a.unidade}\n💳 ${a.convenio}\nA Ana havia marcado antes de ler a carteirinha. Se o intercâmbio for confirmado, remarquem.`).catch(() => {});
+    }
+    await marcarPendenciaEquipe(conversationId, "action").catch(() => {});
+    return alvos.length;
+  } catch (e) { console.error("[ConvênioRecusado] falhou:", e.message); return null; }
+}
+
 // ===== TRAVA: ANUNCIOU AGENDAMENTO SEM AGENDAR ============================
 // O espelho da trava de cancelamento — e o erro mais caro que existe, porque o
 // paciente organiza o dia e VEM.
@@ -5471,6 +5505,10 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         }
       }
     }
+
+    // A Ana recusou o convênio nesta mensagem? Então a consulta que ELA marcou nesta
+    // conversa com esse convênio não pode ficar de pé. Nunca lança.
+    await desfazerAgendamentoComConvenioRecusado(reply, from, conversation.id).catch(() => {});
 
     // CARTEIRINHA lida/informada → anexa à ficha do agendamento (depois do [AGENDAR],
     // para o agendamento da MESMA mensagem já existir). Nunca lança.
