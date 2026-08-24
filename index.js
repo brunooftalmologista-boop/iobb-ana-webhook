@@ -1539,6 +1539,50 @@ function instrucaoOfertaReal(motivo) {
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
+// ===== TRAVA: ANUNCIOU AGENDAMENTO SEM AGENDAR ============================
+// O espelho da trava de cancelamento — e o erro mais caro que existe, porque o
+// paciente organiza o dia e VEM.
+// Caso André do Carmo Machado (24/08/2026): às 09h42 ela ofereceu 11h20 de hoje,
+// ele aceitou, mandou a carteirinha, e às 09h52 ela escreveu "Confirmo o
+// agendamento para hoje, 24/08, às 11h20, no Conjunto Nacional" — com endereço e
+// tudo. NADA foi gravado. Nenhuma trava pegou, nenhuma correção saiu, e ninguém
+// soube até o Dr. Bruno perceber. A equipe lançou o paciente na mão às 11h11.
+// Duas causas possíveis, ambas cobertas aqui: ela não emitiu o bloco [AGENDAR],
+// ou emitiu com `inicio` ausente/inválido — e nesse caso processarAgendarDaAna
+// falhava em SILÊNCIO (console.error e return, sem avisar paciente nem equipe).
+const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendamento (est[áa]|foi) confirmad|(consulta|hor[áa]rio)[^.!?\n]{0,40}(est[áa]|foi) (agendad|confirmad|marcad|reservad)|(reservei|deixei reservad|est[áa] reservad)/i;
+const RE_AGENDA_NAO_CONTA = /\?|\bse\b|caso |posso agendar|gostaria de agendar|para agendar|vou agendar|quer que eu agende|deseja agendar|precisa (ser )?agendad|n[aã]o (foi|ficou|est[áa]) (agendad|confirmad|reservad)|\[PREAGENDAMENTO\]|equipe (vai |ir[áa] )?(agendar|confirmar)/i;
+function anunciouAgendamentoSemAgendar(reply, slots, meusAgendamentos) {
+  const limpo = extrairAgendar(reply).limpo;
+  if (!RE_ANUNCIOU_AGENDAMENTO.test(limpo)) return null;
+  if (RE_AGENDA_NAO_CONTA.test(limpo)) return null;
+  // Está apenas LEMBRANDO ao paciente uma consulta que ele já tem? Não é anúncio.
+  const ddmm = (d) => new Date(d).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
+  const hhmm = (d) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
+  const semMd = String(limpo).replace(/[*_~`]/g, "");
+  for (const a of (meusAgendamentos || [])) {
+    const h = hhmm(a.inicio).replace(":", "h");
+    if (semMd.includes(ddmm(a.inicio)) && (semMd.includes(h) || semMd.includes(hhmm(a.inicio)))) return null;
+  }
+  // Anunciou. O bloco saiu, com início válido?
+  const regs = extrairAgendar(reply).registros || [];
+  const validos = regs.filter(r => {
+    const t = new Date(String(r.inicio || "").trim()).getTime();
+    return !isNaN(t) && String(r.unidade || "").trim();
+  });
+  if (!validos.length) {
+    return regs.length
+      ? "anunciou o agendamento mas o bloco [AGENDAR] veio sem a unidade ou com o [inicio:] inválido — nada seria gravado"
+      : "anunciou o agendamento ao paciente mas NÃO emitiu o bloco [AGENDAR] — nada seria gravado";
+  }
+  // E o horário anunciado é uma vaga que existe? (agendarEmVagaOcupada cuida do resto)
+  return null;
+}
+function instrucaoAgendarDeVerdade(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Dizer ao paciente que está agendado sem emitir o bloco é o pior erro que existe: ele organiza o dia, VEM à clínica, e não há consulta nenhuma no sistema — a recepção descobre com ele na frente. Reescreva a MESMA mensagem, com o mesmo tom, e emita o bloco [AGENDAR] copiando o token [inicio:...] EXATO do horário na lista de vagas, com a unidade escrita por extenso. Se por qualquer motivo você não puder emitir o bloco, então NÃO diga que está agendado: ofereça o horário e espere o paciente aceitar.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
 // ===== TRAVA: PROMETEU E NÃO EXECUTOU =====================================
 // A resposta AFIRMA que cancelou (ou que vai cancelar) mas não traz [CANCELAR]
 // suficiente para o que prometeu. Todas as outras travas conferem o que a Ana
@@ -1728,6 +1772,14 @@ function resumoDaFicha(registros, cartRegistro, messages) {
       : /^particular$/i.test(conv) ? (ehConsulta ? "Particular — R$ 200,00" : "Particular")
       : `Convênio ${conv}${numCart ? ` — carteirinha ${numCart}` : ""}`;
     if (quando && jaResumido(`📅 ${quando}`)) continue;   // já conferido nesta conversa
+    // 🚨 SEM DATA = AGENDAMENTO QUEBRADO. Não existe ficha legítima com "📅 —": se o
+    // [inicio:] não virou data válida, o agendamento NÃO foi gravado, e imprimir um
+    // traço entrega ao paciente uma confirmação de uma consulta que não existe.
+    // Foi exatamente o que o André do Carmo Machado recebeu em 24/08/2026.
+    if (!quando) {
+      console.error("[Ficha] Registro SEM DATA VÁLIDA — ficha suprimida:", JSON.stringify(r).slice(0, 200));
+      return "";
+    }
     linhas.push([
       `👤 ${v(r.nome) || "—"}`,
       `🎂 Nascimento: ${v(r.nascimento) || "—"}`,
@@ -2221,9 +2273,28 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
       else if (un.includes("conjunto") || un.includes("asa norte")) unidade = "Conjunto Nacional";
     }
     const inicioRaw = limpo(registro.inicio);
-    if (!unidade || !inicioRaw) { console.error("[Agendar] Bloco sem unidade/inicio:", JSON.stringify(registro)); return { ok: false }; }
+    if (!unidade || !inicioRaw) {
+      // ⚠️ NUNCA falhe em silêncio aqui. Até 24/08/2026 este caminho só escrevia no
+      // log do servidor — e o paciente ficava com a mensagem "agendado" na mão, sem
+      // consulta nenhuma no sistema (caso André do Carmo Machado). A trava
+      // anunciouAgendamentoSemAgendar agora barra antes de enviar, mas se algo
+      // escapar, a equipe PRECISA saber a tempo de consertar.
+      console.error("[Agendar] Bloco sem unidade/inicio:", JSON.stringify(registro));
+      await registrarErro("agendar_bloco_invalido", `sem unidade/inicio | ${JSON.stringify(registro).slice(0,300)}`,
+        { conversationId, telefone: from }).catch(() => {});
+      await espelharParaSecretaria("[Agendamento FALHOU]",
+        `🚨 *AGENDAMENTO NÃO FOI GRAVADO*\n📱 ${from}\nA Ana anunciou o agendamento ao paciente, mas o registro veio incompleto e NADA entrou na agenda.\n👉 Confiram a conversa no painel e lancem o horário na mão.`).catch(() => {});
+      return { ok: false };
+    }
     let ini = new Date(inicioRaw);
-    if (isNaN(ini.getTime())) { console.error("[Agendar] inicio inválido:", inicioRaw); return { ok: false }; }
+    if (isNaN(ini.getTime())) {
+      console.error("[Agendar] inicio inválido:", inicioRaw);
+      await registrarErro("agendar_bloco_invalido", `inicio inválido: ${inicioRaw}`,
+        { conversationId, telefone: from }).catch(() => {});
+      await espelharParaSecretaria("[Agendamento FALHOU]",
+        `🚨 *AGENDAMENTO NÃO FOI GRAVADO*\n📱 ${from}\nA Ana anunciou o agendamento, mas a data/hora do registro veio inválida e NADA entrou na agenda.\n👉 Confiram a conversa no painel e lancem o horário na mão.`).catch(() => {});
+      return { ok: false };
+    }
     let fim = new Date(ini.getTime() + SLOT_MIN * 60000);
     const nome = limpo(registro.nome) || patient?.name || null;
     const telefone = limpo(registro.telefone) || patient?.phone || from || null;
@@ -5073,17 +5144,19 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const ofertaFalsa = etapaDeOferta ? ofertaInexistente(reply, slotsVigentes, meusAgendamentos) : null;
       // Pediu a ficha em conta-gotas (um dado por mensagem).
       const agendouOcupado = etapaDeOferta ? null : agendarEmVagaOcupada(reply, slotsVigentes, meusAgendamentos);
+      const anunciouSemAgendar = anunciouAgendamentoSemAgendar(reply, slotsVigentes, meusAgendamentos);
       const fichaCedo = etapaDeOferta ? fichaAntesDoHorario(reply, messages, slotsVigentes) : null;
       const contaGotas = (etapaDeOferta && !fichaCedo) ? fichaEmContaGotas(reply, messages) : null;
       const cancPrevia = extrairCancelar(reply);
       const cancelouSoNaFala = prometeuCancelarSemBloco(reply, cancPrevia.limpo, cancPrevia.registros, meusAgendamentos);
-      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado) {
-        const motivo = agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar) {
+        const motivo = anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          agendouOcupado ? "agendar_em_vaga_ocupada"
+          anunciouSemAgendar ? "anunciou_sem_agendar"
+            : agendouOcupado ? "agendar_em_vaga_ocupada"
             : ofertaFalsa ? "ofereceu_vaga_inexistente"
             : fichaCedo ? "ficha_antes_do_horario"
             : contaGotas ? "ficha_em_conta_gotas"
@@ -5127,7 +5200,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
-            { type: "text", text: dynVolatil + (agendouOcupado ? instrucaoAgendarVagaLivre(agendouOcupado)
+            { type: "text", text: dynVolatil + (anunciouSemAgendar ? instrucaoAgendarDeVerdade(anunciouSemAgendar)
+              : agendouOcupado ? instrucaoAgendarVagaLivre(agendouOcupado)
               : ofertaFalsa ? instrucaoOfertaReal(ofertaFalsa)
               : fichaCedo ? instrucaoHorarioPrimeiro(fichaCedo)
               : contaGotas ? instrucaoFichaDeUmaVez()
