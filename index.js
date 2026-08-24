@@ -187,6 +187,9 @@ AGENDAMENTO NO MESMO DIA — REGRA ATUAL (Dr. Bruno, 21/08/2026): agendamos no M
 Se o paciente de um dos 5 planos acima PERGUNTAR por que precisa de antecedência (só explique se ele perguntar): diga que esse plano específico exige a verificação prévia de cobertura junto à operadora antes da consulta, e ofereça o horário mais próximo disponível. Nunca dê a entender que o convênio "vale menos" ou que estamos priorizando o particular.
 Cirurgias cobertas por convênio: nunca cite o valor particular de uma cirurgia COBERTA pelo convênio (ex.: catarata) para quem tem convênio atendido — a cobertura e a autorização são confirmadas pela equipe. (A cirurgia refrativa é eletiva e SEMPRE particular; seus valores podem ser informados normalmente — ver a seção de refrativa.)
 
+🚫 NUNCA CITE UM CONVÊNIO DE MEMÓRIA. Os únicos nomes que você pode apresentar como atendidos são os da lista abaixo — copiados dela, não lembrados. É PROIBIDO "dar exemplos" de planos que você acha que a clínica aceita.
+❓ QUANDO O PACIENTE PERGUNTA GENERICAMENTE "quais planos vocês aceitam?": NÃO recite a lista (são mais de 50 nomes, e a mensagem fica ilegível). Devolva a pergunta, que é mais rápido para os dois: "Trabalhamos com vários convênios. Qual é o seu? Confirmo na hora se atendemos." Só se ele insistir em ver exemplos, cite 4 ou 5 nomes COPIADOS da lista.
+⚠️ Caso real (24/08/2026): perguntada "vocês aceitam algum plano?", você respondeu "trabalhamos com diversos convênios. Alguns exemplos: Unimed, Bradesco Saúde, Notre Dame, Amil, Pró-Saúde, Plan-Assiste". BRADESCO e AMIL não são atendidos — você os inventou. Três mensagens antes, na mesma conversa, você tinha recusado a SulAmérica corretamente. Dizer que atendemos um plano que não atendemos é PIOR que negar: o paciente vem confiante, perde o dia e ouve o não na recepção.
 LISTA DE CONVÊNIOS ATENDIDOS:
 AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBRAPA, CAEME-GO, CAMED, CAESAN, CASEC (CODEVASF), CTI, CONAB, ELETRONORTE, EMBRATEL, E-VIDA (hoje LUMINAR SAÚDE), FACEB, FAPES (BNDES), FASCAL, FIOSAÚDE (FIOPREV), FURNAS, GAMA SAÚDE, INFRAERO, IRB, IRMÃOS GRAVIA, LIFE EMPRESARIAL, MAPFRE SAÚDE, MPDFT, MPF, MPM, MPT, NOTRE DAME, PAME, PLAN-ASSISTE, PROASA, PRÓ-SAÚDE (CÂMARA DOS DEPUTADOS), PRÓ-SOCIAL, SAÚDE CAIXA, SERPRO, SIS SENADO, STF-MED, STJ, STM, TJDFT, TST SAÚDE, T.R.E., TRF, TRT, UNAFISCO, UNIBANCO - TEMPO SAUDE, UNIMED CENTRAL NACIONAL, UNIMED PLANALTO, UNIMED INTERCÂMBIO, SEGUROS UNIMED (também escrita "UNIMED SEGUROS"), UNIVERSAL ASSISTENCE.
 ⚠️ UNIMED — A REGRA TEM DOIS LADOS. As modalidades ATENDIDAS são: **Unimed Central Nacional (também escrita "Unimed Nacional" ou "CNU"), Unimed Planalto, Unimed Intercâmbio e Seguros Unimed / Unimed Seguros**.
@@ -1536,6 +1539,51 @@ function ofertaInexistente(reply, slots, meusAgendamentos) {
 }
 function instrucaoOfertaReal(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Esse horário está OCUPADO — oferecê-lo faz o paciente dar todos os dados, ouvir "agendado" e só então descobrir que não existe. É o pior erro que você pode cometer, e o paciente não volta. Reescreva oferecendo UM horário COPIADO DA LISTA de vagas livres, o mais próximo do que ele pediu. Se o que ele pediu não existir, DIGA ISSO com franqueza e ofereça o mais próximo que existe (ex.: "Às 17h não tenho vaga nessa sexta; o mais próximo é às 16h20 — serve para você?"). Horário que não está na lista NÃO EXISTE, por mais que pareça razoável.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
+// ===== TRAVA: CITOU COMO ATENDIDO UM CONVÊNIO QUE NÃO ATENDEMOS ============
+// 24/08/2026: perguntada "vocês aceitam algum plano?", a Ana respondeu "trabalhamos
+// com diversos convênios. Alguns exemplos: Unimed, **Bradesco Saúde**, Notre Dame,
+// **Amil**, Pró-Saúde, Plan-Assiste". Bradesco e Amil NÃO são atendidos — ela
+// improvisou de memória em vez de usar a lista do prompt, e três mensagens antes
+// tinha recusado a SulAmérica corretamente. O paciente vem e ouve não na recepção.
+// (O Bradesco chegou a ser removido do SITE em julho pelo mesmo motivo.)
+// Lista curada das operadoras grandes que NÃO atendemos e que aparecem nesse tipo
+// de improviso. Não uso "qualquer nome não reconhecido" de propósito: o prompt
+// manda NÃO negar plano de nome parcial/duvidoso, e uma trava agressiva
+// reintroduziria a negativa indevida que já custou paciente em 11/08.
+const OPERADORAS_FORA = [
+  "amil", "bradesco", "sulamerica", "sul america", "golden cross", "goldencross",
+  "porto seguro", "hapvida", "intermedica", "assefaz", "iases", "inas", "sesc",
+  "cassi", "geap", "postal saude", "petrobras", "omint", "allianz", "seguros unimed nacional",
+  "quality", "quallity", "qualyty", "gdf saude", "interlife", "prevent senior",
+];
+// ⚠️ Tudo aqui opera no texto NORMALIZADO (minúsculo, SEM acento) — comparar com
+// padrões acentuados aqui não casa nunca, e foi assim que a 1ª versão desta trava
+// deixou passar "a SulAmerica nao e um convenio que atendemos".
+const RE_CONTEXTO_ACEITA = /(atendemos|trabalhamos com|aceitamos|convenios? atendidos|planos? atendidos|convenios? que atendemos)/i;
+const RE_NEGACAO = /nao (atendemos|trabalhamos|aceitamos|esta|estao|consta|constam|e um|e nosso|faz parte)|fora da (nossa )?lista|nao conveniad|infelizmente nao/i;
+function citouConvenioForaComoAtendido(reply) {
+  const t = String(reply).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (!RE_CONTEXTO_ACEITA.test(t)) return null;
+  const achou = [];
+  for (const op of OPERADORAS_FORA) {
+    let k = t.indexOf(op);
+    while (k !== -1) {
+      // A citação está sendo NEGADA? Olhamos a janela em volta do nome — a negação
+      // pode vir antes ("nao atendemos a Amil") ou depois ("a Amil nao esta na lista").
+      const antes = t.slice(Math.max(0, k - 90), k);
+      const depois = t.slice(k + op.length, k + op.length + 90);
+      if (!RE_NEGACAO.test(antes) && !RE_NEGACAO.test(depois)) { achou.push(op); break; }
+      k = t.indexOf(op, k + 1);
+    }
+  }
+  if (!achou.length) return null;
+  return `apresentou como atendido(s) o(s) convenio(s) que NAO atendemos: ${[...new Set(achou)].join(", ")}`;
+}
+function instrucaoConvenioReal(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Isso é PIOR que negar um convênio: o paciente vem confiante e ouve o "não" na recepção, com o dia perdido. NUNCA improvise nomes de convênio de memória — a única lista válida é a de "LISTA DE CONVÊNIOS ATENDIDOS" que está no seu contexto. Reescreva SEM citar nenhum plano que não esteja nessa lista. Se o paciente perguntou genericamente quais planos são aceitos, o melhor caminho é NÃO recitar a lista inteira: pergunte qual é o plano dele e confirme — "Trabalhamos com vários convênios. Qual é o seu? Confirmo na hora se atendemos." Se ele insistir em ver exemplos, cite APENAS nomes copiados da lista do seu contexto.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
@@ -5180,17 +5228,19 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       // Pediu a ficha em conta-gotas (um dado por mensagem).
       const agendouOcupado = etapaDeOferta ? null : agendarEmVagaOcupada(reply, slotsVigentes, meusAgendamentos);
       const anunciouSemAgendar = anunciouAgendamentoSemAgendar(reply, slotsVigentes, meusAgendamentos);
+      const convenioInventado = citouConvenioForaComoAtendido(reply);
       const fichaCedo = etapaDeOferta ? fichaAntesDoHorario(reply, messages, slotsVigentes) : null;
       const contaGotas = (etapaDeOferta && !fichaCedo) ? fichaEmContaGotas(reply, messages) : null;
       const cancPrevia = extrairCancelar(reply);
       const cancelouSoNaFala = prometeuCancelarSemBloco(reply, cancPrevia.limpo, cancPrevia.registros, meusAgendamentos);
-      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar) {
-        const motivo = anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          anunciouSemAgendar ? "anunciou_sem_agendar"
+          convenioInventado ? "convenio_inventado"
+            : anunciouSemAgendar ? "anunciou_sem_agendar"
             : agendouOcupado ? "agendar_em_vaga_ocupada"
             : ofertaFalsa ? "ofereceu_vaga_inexistente"
             : fichaCedo ? "ficha_antes_do_horario"
@@ -5235,7 +5285,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
-            { type: "text", text: dynVolatil + (anunciouSemAgendar ? instrucaoAgendarDeVerdade(anunciouSemAgendar)
+            { type: "text", text: dynVolatil + (convenioInventado ? instrucaoConvenioReal(convenioInventado)
+              : anunciouSemAgendar ? instrucaoAgendarDeVerdade(anunciouSemAgendar)
               : agendouOcupado ? instrucaoAgendarVagaLivre(agendouOcupado)
               : ofertaFalsa ? instrucaoOfertaReal(ofertaFalsa)
               : fichaCedo ? instrucaoHorarioPrimeiro(fichaCedo)
