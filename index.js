@@ -173,6 +173,7 @@ NOMES QUE **NÃO** SÃO CONVÊNIO ATENDIDO (negue de primeira, sem rodeio)
 A regra de "não negar por nome parecido" existe para não perder plano que atendemos — ela NÃO vale para os nomes abaixo, que já foram verificados. Nestes, NÃO pergunte o nome completo, NÃO diga "não encontrei esse nome exato" nem "pode ser que eu o conheça por outro nome": isso deixa o paciente esperando por um "sim" que não vem e ele desiste no meio. Vá direto ao caminho de convênio não atendido (particular R$ 200,00 + nota fiscal para reembolso) e ofereça um horário na mesma mensagem.
 - QUALITY / QUALLITY (qualquer grafia: "Quality", "Quallity", "Qualyty", "Quality Saúde"): NÃO atendemos.
 - SULAMÉRICA (qualquer grafia ou produto: "SulAmérica", "Sul América", "SulAmérica Saúde"): NÃO atendemos, em variação NENHUMA — nunca foi atendida. Não confunda com nenhum plano da lista.
+- **BRADESCO SAÚDE · AMIL · CASSI · ASSEFAZ · GEAP · GDF SAÚDE (INAS-DF / IASES-DF) · SESC · PORTO SEGURO · HAPVIDA**: NÃO atendemos nenhum deles, em nenhuma variação ou produto (confirmado pelo Dr. Bruno em 25/08/2026). São os planos que mais nos procuram sem serem atendidos — juntos, quase 180 perguntas em dois meses. Negue de primeira, com cordialidade e sem rodeio, e SIGA no mesmo fôlego para o particular (R$ 200,00) com nota fiscal para reembolso + um horário concreto. Não pergunte o nome completo nem diga "vou verificar": esses já foram verificados.
 ⚠️ NÃO confunda com QUALICORP, que é outra coisa: a Qualicorp NÃO é um plano, é uma ADMINISTRADORA que vende planos de várias operadoras (Amil, Bradesco, SulAmérica, Unimed e outras). Se o paciente disser "Qualicorp", não negue nem confirme: pergunte de qual OPERADORA é o plano dele e compare ESSA operadora com a lista.
 
 Regras gerais (valem para qualquer nome da lista):
@@ -1553,34 +1554,32 @@ function instrucaoOfertaReal(motivo) {
 // de improviso. Não uso "qualquer nome não reconhecido" de propósito: o prompt
 // manda NÃO negar plano de nome parcial/duvidoso, e uma trava agressiva
 // reintroduziria a negativa indevida que já custou paciente em 11/08.
-const OPERADORAS_FORA = [
-  "amil", "bradesco", "sulamerica", "sul america", "golden cross", "goldencross",
-  "porto seguro", "hapvida", "intermedica", "assefaz", "iases", "inas", "sesc",
-  "cassi", "geap", "postal saude", "petrobras", "omint", "allianz", "seguros unimed nacional",
-  "quality", "quallity", "qualyty", "gdf saude", "interlife", "prevent senior",
-];
-// ⚠️ Tudo aqui opera no texto NORMALIZADO (minúsculo, SEM acento) — comparar com
-// padrões acentuados aqui não casa nunca, e foi assim que a 1ª versão desta trava
-// deixou passar "a SulAmerica nao e um convenio que atendemos".
+// A referência é a LISTA DOS ATENDIDOS, não uma lista de rejeitados (Dr. Bruno,
+// 25/08: "tem uma lista enorme de planos que não atendemos, mas o foco é nos que
+// atendemos"). A 1ª versão desta trava usava uma lista curada de operadoras fora
+// do credenciamento — e lista de rejeitados é infinita: sempre falta uma, e a que
+// falta é a que a Ana vai inventar. Agora todo nome que ela APRESENTA COMO
+// ATENDIDO é conferido em convenioAtendido(), que lê a lista do próprio prompt.
 const RE_CONTEXTO_ACEITA = /(atendemos|trabalhamos com|aceitamos|convenios? atendidos|planos? atendidos|convenios? que atendemos)/i;
 const RE_NEGACAO = /nao (atendemos|trabalhamos|aceitamos|esta|estao|consta|constam|e um|e nosso|faz parte)|fora da (nossa )?lista|nao conveniad|infelizmente nao/i;
+// Palavras que aparecem nessas frases e NÃO são nome de plano.
+const RUIDO_LISTA = /^(e|ou|de|do|da|dos|das|o|a|os|as|um|uma|com|para|entre outros|entre outras|diversos|diversas|varios|varias|convenios?|planos?|saude|outros|outras|etc|alguns exemplos|exemplos|sim|tambem|nossa lista|a lista)$/i;
 function citouConvenioForaComoAtendido(reply) {
-  const t = String(reply).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (!RE_CONTEXTO_ACEITA.test(t)) return null;
-  const achou = [];
-  for (const op of OPERADORAS_FORA) {
-    let k = t.indexOf(op);
-    while (k !== -1) {
-      // A citação está sendo NEGADA? Olhamos a janela em volta do nome — a negação
-      // pode vir antes ("nao atendemos a Amil") ou depois ("a Amil nao esta na lista").
-      const antes = t.slice(Math.max(0, k - 90), k);
-      const depois = t.slice(k + op.length, k + op.length + 90);
-      if (!RE_NEGACAO.test(antes) && !RE_NEGACAO.test(depois)) { achou.push(op); break; }
-      k = t.indexOf(op, k + 1);
-    }
+  const bruto = String(reply);
+  const t = bruto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (!RE_CONTEXTO_ACEITA.test(t) || RE_NEGACAO.test(t)) return null;
+  // Só olhamos ENUMERAÇÕES: "atendemos X, Y e Z" / "alguns exemplos: X, Y, Z".
+  const m = bruto.match(/(?:exemplos?\s*:|conv[êe]nios?\s*:|atendemos|trabalhamos com|aceitamos)([^.!?\n]{10,300})/i);
+  if (!m) return null;
+  const fora = [];
+  for (let frag of m[1].split(/[,;•]| e (?=[A-ZÀ-Ú])/)) {
+    frag = frag.replace(/\([^)]*\)/g, " ").replace(/[*_"']/g, " ").trim().replace(/^[-–—\s]+|[-–—\s]+$/g, "");
+    if (frag.length < 3 || RUIDO_LISTA.test(frag)) continue;
+    if (!/[A-ZÀ-Ú]/.test(frag)) continue;                    // nome de plano vem capitalizado
+    if (!convenioAtendido(frag)) fora.push(frag);
   }
-  if (!achou.length) return null;
-  return `apresentou como atendido(s) o(s) convenio(s) que NAO atendemos: ${[...new Set(achou)].join(", ")}`;
+  if (!fora.length) return null;
+  return `apresentou como atendido(s) plano(s) que NÃO estão na lista: ${[...new Set(fora)].join(", ")}`;
 }
 function instrucaoConvenioReal(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Isso é PIOR que negar um convênio: o paciente vem confiante e ouve o "não" na recepção, com o dia perdido. NUNCA improvise nomes de convênio de memória — a única lista válida é a de "LISTA DE CONVÊNIOS ATENDIDOS" que está no seu contexto. Reescreva SEM citar nenhum plano que não esteja nessa lista. Se o paciente perguntou genericamente quais planos são aceitos, o melhor caminho é NÃO recitar a lista inteira: pergunte qual é o plano dele e confirme — "Trabalhamos com vários convênios. Qual é o seu? Confirmo na hora se atendemos." Se ele insistir em ver exemplos, cite APENAS nomes copiados da lista do seu contexto.
@@ -1751,7 +1750,19 @@ const CONVENIOS_ATENDIDOS = (() => {
   }
   return [...new Set(alt)];
 })();
-const CONVENIOS_NAO_ATENDIDOS = ["quality", "quallity", "qualyty", "sulamerica", "sul america", "sulamérica"];
+// Planos NÃO atendidos com MUITA procura (Dr. Bruno, 25/08/2026). Não é tentativa
+// de listar tudo que não atendemos — isso é infinito; a referência do que ACEITAMOS
+// continua sendo a LISTA DE CONVÊNIOS ATENDIDOS. Estes entram porque aparecem toda
+// semana: 180 perguntas em 2 meses, medidas nas conversas reais. Com o nome escrito,
+// a Ana nega na hora e já emenda o particular, em vez de hesitar ou inventar.
+// ⚠️ Conferido: nenhum destes é pedaço de um plano atendido (senão negaria convênio bom).
+const CONVENIOS_NAO_ATENDIDOS = [
+  "quality", "quallity", "qualyty",
+  "sulamerica", "sul america", "sulamérica",
+  "bradesco", "amil", "cassi", "assefaz", "geap",
+  "gdf saude", "gdf saúde", "sesc", "porto seguro", "hapvida",
+  "iases", "inas",
+];
 // Casar é DE PROPÓSITO generoso (substring nos dois sentidos): um falso positivo
 // deixa passar um agendamento; um falso negativo trava um agendamento legítimo.
 function convenioAtendido(nome) {

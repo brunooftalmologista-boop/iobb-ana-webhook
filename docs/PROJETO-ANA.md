@@ -178,8 +178,12 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
   Seguros Unimed/Unimed Seguros. Sub-plano no cartão (PME, Ideal, Enfermaria…) não
   muda nada. **Regional de outra cidade/estado (João Pessoa, Fortaleza, Amparo…) NÃO
   se marca direto** — recado para a equipe verificar intercâmbio + oferecer particular.
-- **Nunca atendidos:** Quality/Quallity/Qualyty e **SulAmérica** (nenhuma variação,
-  nunca foi).
+- **Nunca atendidos** (confirmado pelo Dr. Bruno em 25/08, escolhidos por VOLUME DE
+  PROCURA medido nas conversas — ~180 perguntas em 2 meses): Quality/Quallity/Qualyty,
+  **SulAmérica, Bradesco, Amil, CASSI, ASSEFAZ, GEAP, GDF Saúde (INAS-DF/IASES-DF),
+  SESC, Porto Seguro, Hapvida**. Não é lista exaustiva — o que define o que ACEITAMOS
+  é a lista de atendidos; estes estão escritos só para a Ana negar rápido e seguir
+  para o particular. Servem também de **negativa no Google Ads**.
 - Plan-Assiste cobre MPF/MPDFT/MPM/MPT (e MPU). Qualicorp é administradora →
   perguntar qual a operadora. Nome parcial/duvidoso: não negar — confirmar.
 - Carteirinha: pedir por cortesia ao concluir (foto ou número), NUNCA travar o
