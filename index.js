@@ -1632,11 +1632,22 @@ async function desfazerAgendamentoComConvenioRecusado(reply, from, conversationI
 // ou emitiu com `inicio` ausente/inválido — e nesse caso processarAgendarDaAna
 // falhava em SILÊNCIO (console.error e return, sem avisar paciente nem equipe).
 const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendamento (est[áa]|foi) confirmad|(consulta|hor[áa]rio)[^.!?\n]{0,40}(est[áa]|foi) (agendad|confirmad|marcad|reservad)|(reservei|deixei reservad|est[áa] reservad)/i;
-const RE_AGENDA_NAO_CONTA = /\?|\bse\b|caso |posso agendar|gostaria de agendar|para agendar|vou agendar|quer que eu agende|deseja agendar|precisa (ser )?agendad|n[aã]o (foi|ficou|est[áa]) (agendad|confirmad|reservad)|\[PREAGENDAMENTO\]|equipe (vai |ir[áa] )?(agendar|confirmar)/i;
+// ⚠️ As exclusões valem SÓ na frase do anúncio, nunca na mensagem inteira.
+// A 1ª versão desta trava excluía qualquer mensagem contendo "?", "se" ou "caso"
+// — e TODA confirmação da Ana termina com "**Se** você usa lente de contato..." e
+// "**Caso** surja algum imprevisto...". Resultado: a trava se anulava em quase
+// toda confirmação real e nunca disparou. Só passou no meu teste porque escrevi o
+// texto do teste à mão, sem as frases padrão (mesmo erro do filtro de cortesia).
+// Custo: o paciente Isve ouviu "consulta agendada para hoje às 15h20" e não havia
+// nada na agenda — o [inicio:] veio entre < > e o bloco foi descartado.
+const RE_AGENDA_NAO_CONTA = /posso agendar|gostaria de agendar|para agendar|vou agendar|quer que eu agende|deseja agendar|precisa (ser )?agendad|n[aã]o (foi|ficou|est[áa]) (agendad|confirmad|reservad)|se (precisar|quiser|desejar)|caso (queira|precise|deseje)/i;
 function anunciouAgendamentoSemAgendar(reply, slots, meusAgendamentos) {
   const limpo = extrairAgendar(reply).limpo;
   if (!RE_ANUNCIOU_AGENDAMENTO.test(limpo)) return null;
-  if (RE_AGENDA_NAO_CONTA.test(limpo)) return null;
+  if (/\[PREAGENDAMENTO\]|equipe (vai |ir[áa] )?(agendar|confirmar o hor)/i.test(limpo)) return null;
+  // A frase que ANUNCIA é a que decide — não a mensagem toda.
+  const fraseAnuncio = limpo.split(/(?<=[.!?\n])/).find(f => RE_ANUNCIOU_AGENDAMENTO.test(f)) || "";
+  if (RE_AGENDA_NAO_CONTA.test(fraseAnuncio)) return null;
   // Está apenas LEMBRANDO ao paciente uma consulta que ele já tem? Não é anúncio.
   const ddmm = (d) => new Date(d).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
   const hhmm = (d) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
@@ -1678,11 +1689,15 @@ const RE_AFIRMA_CANCELOU = /\b(cancelad[ao]s?|desmarcad[ao]s?)\b|\bcancelei\b|\b
 // condicional, explicação de processo, negativa ("não pode ser cancelada aqui") e
 // — importante — cancelamento que fica com a EQUIPE. Cobrar bloco nesses casos
 // puniria justamente a resposta certa dos agendamentos "alteração só pela equipe".
-const RE_CANCEL_NAO_CONTA = /\?|\bse\b|caso |gostaria de cancelar|deseja cancelar|quer cancelar|para cancelar|pol[íi]tica de cancelamento|taxa de cancelamento|posso cancelar|precisar cancelar|n[aã]o (pode|posso|consigo|d[áa]) (ser )?(para )?cancel|cancelad[ao]s? (pela|pelo|junto)|(equipe|recep[çc][aã]o|secret[áa]ri\w+) (vai |ir[áa] )?(cancel|confirmar[áa]? o cancel)|deve ser (feito|cancelad)/i;
+// Mesma correção da trava de agendamento (25/08): "?"/"se"/"caso" soltos anulavam
+// a trava em mensagens legítimas. Agora a exclusão é específica e checada só na
+// frase que afirma o cancelamento.
+const RE_CANCEL_NAO_CONTA = /gostaria de cancelar|deseja cancelar|quer cancelar|para cancelar|pol[íi]tica de cancelamento|taxa de cancelamento|posso cancelar|precisar cancelar|n[aã]o (pode|posso|consigo|d[áa]) (ser )?(para )?cancel|cancelad[ao]s? (pela|pelo|junto)|(equipe|recep[çc][aã]o|secret[áa]ri\w+) (vai |ir[áa] )?(cancel|confirmar[áa]? o cancel)|deve ser (feito|cancelad)/i;
 function prometeuCancelarSemBloco(replyBruto, textoLimpo, registrosCancelar, agendamentosAtivos) {
   const n = Array.isArray(registrosCancelar) ? registrosCancelar.length : 0;
   if (!RE_AFIRMA_CANCELOU.test(textoLimpo)) return null;
-  if (RE_CANCEL_NAO_CONTA.test(textoLimpo)) return null;     // pergunta/condicional/explicação
+  const fraseCancel = String(textoLimpo).split(/(?<=[.!?\n])/).find(x => RE_AFIRMA_CANCELOU.test(x)) || "";
+  if (RE_CANCEL_NAO_CONTA.test(fraseCancel) || /\?/.test(fraseCancel)) return null;
   // Quantos ela prometeu? "os dois"/"ambos" = 2; senão, 1.
   const plural = /\b(os dois|as duas|ambos|ambas|os seus dois|seus dois)\b/i.test(textoLimpo)
     || /\bhor[áa]rios\b[^.!?]{0,30}\bcancelad/i.test(textoLimpo)
@@ -2709,7 +2724,15 @@ async function processarCarteirinhaDaAna({ registro, from, conversationId }) {
 
 async function processarCancelarDaAna({ registro, from, conversationId }) {
   try {
-    const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
+    // A Ana às vezes copia o formato do EXEMPLO do prompt e manda o valor entre
+    // < >, como o espaço-reservado: "inicio: <2026-08-25T15:20:00-03:00>". Isso
+    // fazia new Date() devolver Invalid Date e o agendamento morria (paciente Isve,
+    // 25/08 — ouviu "consulta agendada para hoje às 15h20" e não havia nada).
+    // Aqui a gente tira <>, aspas e crases antes de interpretar qualquer campo.
+    const limpo = (v) => {
+      const t = String(v ?? "").trim().replace(/^[<"'`\[]+|[>"'`\]]+$/g, "").trim();
+      return (t && t !== "-") ? t : null;
+    };
     const inicioRaw = limpo(registro.inicio);
     if (!inicioRaw) { console.error("[Cancelar] Bloco sem inicio."); return { ok: false }; }
     const ini = new Date(inicioRaw);
