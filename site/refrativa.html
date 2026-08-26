@@ -501,25 +501,22 @@ footer a{color:#8fe3ee}
     </div>
     <div class="conv-grid" id="convGrid">
         <span>AMHPDF</span>
-        <span>AFEB</span>
-        <span>BRASAL</span>
+        <span>AFEB BRASAL</span>
         <span>AFFEGO</span>
         <span>ASETE</span>
         <span>ASFUB</span>
         <span>BACEN</span>
-        <span>BB SAÚDE</span>
         <span>CARE PLUS</span>
         <span>CASEMBRAPA</span>
         <span>CAEME – GO</span>
         <span>CAMED</span>
         <span>CAESAN</span>
-        <span>CASEC</span>
-        <span>CENTRAL NACIONAL UNIMED</span>
+        <span>CASEC (CODEVASF)</span>
         <span>CTI</span>
         <span>CONAB</span>
         <span>ELETRONORTE</span>
         <span>EMBRATEL</span>
-        <span>E-VIDA</span>
+        <span>E-VIDA (hoje LUMINAR SAÚDE)</span>
         <span>FACEB</span>
         <span>FAPES (BNDES)</span>
         <span>FASCAL</span>
@@ -529,7 +526,6 @@ footer a{color:#8fe3ee}
         <span>IRB</span>
         <span>IRMÃOS GRAVIA</span>
         <span>LIFE EMPRESARIAL</span>
-        <span>LUMINAR SAÚDE</span>
         <span>MAPFRE SAÚDE</span>
         <span>MPDFT</span>
         <span>MPF</span>
@@ -538,8 +534,9 @@ footer a{color:#8fe3ee}
         <span>NOTRE DAME</span>
         <span>PAME</span>
         <span>PLAN-ASSISTE</span>
-        
         <span>PROASA</span>
+        <span>PRÓ-SAÚDE (Câmara dos Deputados)</span>
+        <span>PRÓ-SOCIAL</span>
         <span>SAÚDE CAIXA</span>
         <span>SERPRO</span>
         <span>SIS SENADO</span>
@@ -555,7 +552,8 @@ footer a{color:#8fe3ee}
         <span>UNIMED CENTRAL NACIONAL</span>
         <span>UNIMED PLANALTO</span>
         <span>UNIMED INTERCÂMBIO</span>
-        <span>UNIVERSAL ASSISTENCE</span>
+        <span>SEGUROS UNIMED</span>
+        <span>UNIVERSAL ASSISTANCE</span>
     </div>
     <p class="conv-note">Não encontrou o seu? Fale com a gente pelo WhatsApp — a lista é atualizada com frequência.</p>
   </div>
@@ -733,6 +731,6 @@ document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 <script>/* IOBB_BEACON */(function(){try{var p=new URLSearchParams(location.search);var g=p.get('gclid'),wb=p.get('wbraid'),gb=p.get('gbraid');if(!g&&!wb&&!gb)return;var key='iobb_hit_'+(g||wb||gb);if(sessionStorage.getItem(key))return;sessionStorage.setItem(key,'1');var tema=(location.pathname.split('/').filter(Boolean)[0]||'home');var u='https://iobb-ana-webhook.onrender.com/lp/hit?tema='+encodeURIComponent(tema)+(g?'&g='+encodeURIComponent(g):'')+(wb?'&wb='+encodeURIComponent(wb):'')+(gb?'&gb='+encodeURIComponent(gb):'');(new Image()).src=u;}catch(e){}})();</script>
 <script>/* IOBB_SRC */(function(){try{var p=new URLSearchParams(location.search);var s=(p.get('src')||'').toLowerCase().replace(/[^a-z0-9]/g,'');if(!s)return;var tema=(location.pathname.split('/').filter(Boolean)[0]||'home');try{var k='iobb_src_'+s+'_'+tema;if(!sessionStorage.getItem(k)){sessionStorage.setItem(k,'1');(new Image()).src='https://iobb-ana-webhook.onrender.com/lp/hit?tema='+encodeURIComponent(tema)+'&src='+encodeURIComponent(s);}}catch(e){}function a(){try{var t=' [src:'+s+']';document.querySelectorAll('a[href*="wa.me"],a[href*="api.whatsapp.com"]').forEach(function(x){var h=x.getAttribute('href')||'';if(h.indexOf('%5Bsrc%3A')>-1||h.indexOf('[src:')>-1)return;if(h.indexOf('text=')>-1)x.setAttribute('href',h.replace(/(text=[^&]*)/,'$1'+encodeURIComponent(t)));else x.setAttribute('href',h+(h.indexOf('?')>-1?'&':'?')+'text='+encodeURIComponent(t.trim()))})}catch(e){}}if(document.readyState!=='loading')a();else document.addEventListener('DOMContentLoaded',a);window.addEventListener('load',function(){setTimeout(a,1500)});}catch(e){}})();</script>
 
-<script>function filtraConv(q){ q=(q||'').toLowerCase().trim(); document.querySelectorAll('#convGrid span').forEach(s=>{ s.style.display = s.textContent.toLowerCase().includes(q) ? '' : 'none'; }); }</script>
+<script>function filtraConv(q){ var norm=function(t){return (t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim()}; var n=norm(q); document.querySelectorAll('#convGrid span').forEach(s=>{ s.style.display = norm(s.textContent).includes(n) ? '' : 'none'; }); }</script>
 </body>
 </html>

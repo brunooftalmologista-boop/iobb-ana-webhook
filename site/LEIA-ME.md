@@ -16,4 +16,10 @@ O essencial:
 
 Para gerar a entrega:
 
-    cd site && zip -qr -X ../IOBB_site.zip . -x '.*' -x '__MACOSX*'
+    cd site && zip -qr -X ../IOBB_site.zip . -x '.*' -x '__MACOSX*' -x 'LEIA-ME.md'
+
+⚠️ **Este espelho já divergiu do ar duas vezes** (26/08/2026): tinha PMDF, que o site
+publicado não tem, e lhe faltava um bloco inteiro de cartões de área na `/asa-norte` e
+na `/aguas-claras`. Antes de gerar zip, **compare o texto visível de cada página contra
+o ar** (o roteiro está no agente `site-landings`) — publicar este diretório sem conferir
+apaga do site o que só existe lá.

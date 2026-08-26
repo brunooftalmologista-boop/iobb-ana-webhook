@@ -300,25 +300,22 @@ footer a{color:#8fe3ee}
     </div>
     <div class="conv-grid" id="convGrid">
         <span>AMHPDF</span>
-        <span>AFEB</span>
-        <span>BRASAL</span>
+        <span>AFEB BRASAL</span>
         <span>AFFEGO</span>
         <span>ASETE</span>
         <span>ASFUB</span>
         <span>BACEN</span>
-        <span>BB SAÚDE</span>
         <span>CARE PLUS</span>
         <span>CASEMBRAPA</span>
         <span>CAEME – GO</span>
         <span>CAMED</span>
         <span>CAESAN</span>
-        <span>CASEC</span>
-        <span>CENTRAL NACIONAL UNIMED</span>
+        <span>CASEC (CODEVASF)</span>
         <span>CTI</span>
         <span>CONAB</span>
         <span>ELETRONORTE</span>
         <span>EMBRATEL</span>
-        <span>E-VIDA</span>
+        <span>E-VIDA (hoje LUMINAR SAÚDE)</span>
         <span>FACEB</span>
         <span>FAPES (BNDES)</span>
         <span>FASCAL</span>
@@ -328,7 +325,6 @@ footer a{color:#8fe3ee}
         <span>IRB</span>
         <span>IRMÃOS GRAVIA</span>
         <span>LIFE EMPRESARIAL</span>
-        <span>LUMINAR SAÚDE</span>
         <span>MAPFRE SAÚDE</span>
         <span>MPDFT</span>
         <span>MPF</span>
@@ -337,8 +333,9 @@ footer a{color:#8fe3ee}
         <span>NOTRE DAME</span>
         <span>PAME</span>
         <span>PLAN-ASSISTE</span>
-        
         <span>PROASA</span>
+        <span>PRÓ-SAÚDE (Câmara dos Deputados)</span>
+        <span>PRÓ-SOCIAL</span>
         <span>SAÚDE CAIXA</span>
         <span>SERPRO</span>
         <span>SIS SENADO</span>
@@ -354,7 +351,8 @@ footer a{color:#8fe3ee}
         <span>UNIMED CENTRAL NACIONAL</span>
         <span>UNIMED PLANALTO</span>
         <span>UNIMED INTERCÂMBIO</span>
-        <span>UNIVERSAL ASSISTENCE</span>
+        <span>SEGUROS UNIMED</span>
+        <span>UNIVERSAL ASSISTANCE</span>
     </div>
     <p class="conv-note">Não encontrou o seu? Fale com a gente pelo WhatsApp — a lista é atualizada com frequência.</p>
   </div>
@@ -429,9 +427,10 @@ footer a{color:#8fe3ee}
 const io = new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.12});
 document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 function filtraConv(q){
-  q=(q||'').toLowerCase().trim();
+  var norm=function(t){return (t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim()};
+  var n=norm(q);
   document.querySelectorAll('#convGrid span').forEach(s=>{
-    s.style.display = s.textContent.toLowerCase().includes(q) ? '' : 'none';
+    s.style.display = norm(s.textContent).includes(n) ? '' : 'none';
   });
 }
 </script>
