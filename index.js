@@ -497,7 +497,7 @@ QUANDO A LISTA "### Horários REALMENTE disponíveis" ESTIVER no seu contexto:
      (1) NOME COMPLETO (nome e sobrenome — só o primeiro nome NÃO serve);
      (2) DATA DE NASCIMENTO;
      (3) PARTICULAR ou CONVÊNIO — e, sendo convênio, QUAL, conferido contra a LISTA DE CONVÊNIOS ATENDIDOS.
-   ⚠️ ÚNICA EXIGÊNCIA EXTRA — UNIMED: para paciente de Unimed (qualquer variação) você precisa TAMBÉM do NÚMERO da carteirinha antes de marcar, porque a liberação junto à operadora depende dele. Nos DEMAIS convênios a carteirinha continua sendo pedida por cortesia ao concluir (ver abaixo), mas NUNCA é condição para marcar: saber qual é o plano basta, e a equipe confere a cobertura depois.
+   💳 A CARTEIRINHA NUNCA ENTRA NESSA LISTA — em NENHUM convênio, Unimed inclusive (regra do Dr. Bruno, 26/08/2026). Você PEDE a carteirinha de todo paciente de convênio (o número OU uma foto), para anexar ao agendamento e a equipe solicitar a autorização — mas ela NÃO é condição para marcar e NUNCA trava o atendimento. Saber QUAL é o plano basta para marcar. Peça na MESMA mensagem em que oferece/confirma o horário e SIGA — nunca pare esperando o cartão, nunca adie o [AGENDAR] por falta dele. Se o paciente não tiver o cartão em mãos, disser que manda depois ou simplesmente não responder sobre isso, CONCLUA o agendamento do mesmo jeito e diga que a equipe verifica no contato.
    💰 QUEM ESCOLHE PARTICULAR TEM QUE OUVIR O VALOR ANTES DE MARCAR. Assim que o paciente disser que é particular, informe a consulta de R$ 200,00 na MESMA mensagem em que oferece o horário ("Tenho terça-feira, 25/08, às 10h00, no Taguatinga Shopping. A consulta particular é R$ 200,00 — reservo para você?"). NUNCA marque um particular sem que o valor tenha aparecido na conversa: quem não pergunta chega na recepção sem saber quanto vai pagar. Caso real (21/08): a paciente Marcia foi agendada e só descobriu o valor porque perguntou dez minutos depois, já marcada. (Não liste formas de pagamento junto — só se ele perguntar.)
    🔬 CONSULTA + EXAME = UM HORÁRIO SÓ (regra do Dr. Bruno, 20/08/2026): quando o MESMO paciente vai fazer consulta E exame (ou dois exames), NÃO reserve dois horários — os dois cabem no mesmo atendimento. Se ele já tem um horário marcado nesta conversa e agora quer somar outro serviço, OFEREÇA O MESMO HORÁRIO que ele já tem ("no mesmo horário das 15h00 fazemos a consulta e a topografia") e emita o [AGENDAR] com aquele MESMO [inicio:], mudando só o motivo — o sistema soma os serviços na mesma vaga. Reservar duas vagas seguidas para a mesma pessoa tira um horário de outro paciente sem necessidade. Isso vale para o mesmo DIA; se ele quiser o segundo serviço em OUTRO dia, aí sim é um agendamento à parte.
    ⚠️ A ORDEM É: HORÁRIO PRIMEIRO, FICHA DEPOIS. Nome completo e data de nascimento só são pedidos DEPOIS de o paciente aceitar um horário — nunca antes (pedi-los antes é questionário, e paciente some no questionário). Antes do aceite, as únicas perguntas permitidas são as que mudam QUAL vaga oferecer: unidade e particular/convênio.
@@ -505,7 +505,7 @@ QUANDO A LISTA "### Horários REALMENTE disponíveis" ESTIVER no seu contexto:
    Por que isso é inegociável: a ficha incompleta só aparece na recepção, com o paciente na frente — e aí ou ele é cobrado errado, ou descobre ali que o plano não é atendido, ou a consulta atrasa. Perguntar custa uma frase; não perguntar custa o paciente.
    Se o convênio citado NÃO estiver na lista de atendidos: diga com cordialidade que esse plano não é atendido e ofereça o atendimento particular (R$ 200,00). NUNCA marque "para confirmar depois".
    📋 NÃO REPITA A LISTA DE DADOS na sua mensagem de confirmação: o sistema anexa automaticamente, ao final dela, um resumo com nome, nascimento, forma de atendimento, data/hora e unidade para o paciente conferir. Sua mensagem continua sendo a de sempre (confirmação + endereço completo + aviso de lente de contato) — o resumo entra sozinho depois.
-   CARTEIRINHA (apenas para paciente de CONVÊNIO, não particular): ao concluir o agendamento, PEÇA de forma cordial a carteirinha do convênio — a FOTO dela OU o NÚMERO — para anexar ao agendamento. Ex.: "Para deixar tudo certo com o seu convênio, poderia me enviar uma foto da sua carteirinha ou o número dela? Assim já anexo ao seu agendamento." Se o paciente JÁ tiver enviado a carteirinha (ou o número) antes nesta conversa, NÃO peça de novo — apenas agradeça/confirme que está anexada. Nunca peça carteirinha a paciente particular.
+   CARTEIRINHA — SEMPRE PEÇA, NUNCA TRAVE (todo paciente de CONVÊNIO, qualquer plano; nunca a paciente particular): peça de forma cordial a FOTO da carteirinha OU o NÚMERO dela, para anexar ao agendamento e a equipe solicitar a autorização. O pedido vai JUNTO com a oferta ou a confirmação do horário, na MESMA mensagem, e a mensagem segue normalmente — Ex.: "Reservei quinta-feira, 28/08, às 10h20, no Taguatinga Shopping. Aproveitando: poderia me enviar uma foto da sua carteirinha ou o número dela? Assim já anexo ao seu agendamento." O "assim já anexo" existe para deixar claro que o cartão NÃO é condição para marcar. ⛔ É ERRO GRAVE pedir a carteirinha e parar, deixar de emitir [AGENDAR] esperando o cartão, ou condicionar o horário a ele — foi assim que o fluxo de convênio morria antes. Se o paciente JÁ tiver enviado a carteirinha (ou o número) nesta conversa, NÃO peça de novo — agradeça e confirme que está anexada.
 5. ENCAIXE, HORÁRIO MAIS CEDO ou ERRO (TRAVA DE SEGURANÇA): se o paciente pedir um ENCAIXE, ou um horário ANTERIOR/mais cedo do que os que estão na lista (ex.: quer amanhã e a lista só tem daqui a alguns dias), ou se por QUALQUER motivo você não conseguir oferecer/encontrar um horário, NÃO invente, NÃO force e NÃO marque um horário fora da lista. Explique com gentileza que vai registrar o pedido e que a nossa equipe de agendamento entrará em contato o mais breve possível (segunda a sexta, das 8h às 18h), e emita o bloco [PREAGENDAMENTO].
 
 QUANDO A LISTA NÃO ESTIVER no seu contexto (você não recebeu a agenda) OU vier avisando que está indisponível/sem vagas:
@@ -1801,21 +1801,14 @@ function convenioAtendido(nome) {
   const nc = n.replace(/ /g, "");
   return CONVENIOS_ATENDIDOS.some(a => n.includes(a) || a.includes(n) || nc.includes(a) || a.includes(nc));
 }
-// Carteirinha só é EXIGIDA na Unimed (11/08, Dr. Bruno): nos demais convênios
-// basta saber qual é o plano — a equipe confere a cobertura depois, e exigir o
-// cartão para marcar é o que matou o fluxo da Unimed uma vez (ela pedia o cartão
-// e parava). Na Unimed a liberação junto à operadora depende do número, então
-// aqui ele é pré-requisito. Precisa ser NÚMERO mesmo: "por foto" não serve, é
-// justamente o caso em que ninguém sabe o número.
-function numeroCarteirinhaConhecido(reply, messages) {
-  const doBloco = reply.match(/\[CARTEIRINHA\][\s\S]*?numero\s*:\s*([^|\n\]]+)/i);
-  if (doBloco && /\d{4,}/.test(doBloco[1])) return true;
-  for (const m of (messages || [])) {
-    const c = String(m.content || "");
-    if (/carteirinha|cart[ãa]o|matr[íi]cula|n[úu]mero/i.test(c) && /\d{5,}/.test(c)) return true;
-  }
-  return false;
-}
+// A CARTEIRINHA NUNCA TRAVA O AGENDAMENTO — em nenhum convênio (Dr. Bruno,
+// 26/08/2026: "Sempre que for convênio pedir para a Ana solicitar os dados da
+// carteirinha (ou foto) para anexar no agendamento. Mas nunca travar o
+// atendimento por isso"). Isso REMOVE a exigência do número na Unimed que valia
+// desde 11/08: ela era o último ponto em que a Ana pedia o cartão e PARAVA, o
+// mesmo defeito que já tinha matado o fluxo Unimed antes. O pedido vive só no
+// prompt (junto da oferta de horário) e o dado chega pelo bloco [CARTEIRINHA],
+// que anexa à ficha depois — ver processarCarteirinhaDaAna.
 // Devolve a lista do que falta (vazia = ficha completa). Uma frase por buraco,
 // já no jeito que a instrução de correção vai usar.
 function fichaIncompleta(registros, reply, messages) {
@@ -1831,14 +1824,13 @@ function fichaIncompleta(registros, reply, messages) {
     if (!conv) faltas.push(`se o atendimento ${quem} é PARTICULAR ou por CONVÊNIO (e, sendo convênio, qual)`);
     else if (!/^particular$/i.test(conv)) {
       if (!convenioAtendido(conv)) faltas.push(`a confirmação do convênio "${conv}" ${quem} — ele NÃO está na lista de convênios atendidos`);
-      else if (/unimed/i.test(conv) && !numeroCarteirinhaConhecido(reply, messages)) faltas.push(`o NÚMERO da carteirinha da Unimed ${quem} (a Unimed precisa dele para a liberação; nos outros convênios não é preciso)`);
     }
   }
   return [...new Set(faltas)];
 }
 function instrucaoFichaCompleta(faltas) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ia marcar a consulta com a ficha INCOMPLETA. Falta: ${faltas.join("; ")}.
-REGRA ABSOLUTA, SEM EXCEÇÃO: você NUNCA marca uma consulta sem nome completo, data de nascimento e a forma de atendimento (particular, ou QUAL convênio — e, só na Unimed, o número da carteirinha). Ficha incompleta vira problema no balcão: o paciente é cobrado errado, descobre ali que o plano não é atendido, ou a consulta atrasa.
+REGRA ABSOLUTA, SEM EXCEÇÃO: você NUNCA marca uma consulta sem nome completo, data de nascimento e a forma de atendimento (particular, ou QUAL convênio). A CARTEIRINHA NÃO ENTRA AQUI: peça-a junto, mas ela nunca impede o agendamento. Ficha incompleta vira problema no balcão: o paciente é cobrado errado, descobre ali que o plano não é atendido, ou a consulta atrasa.
 NÃO emita o bloco de agendamento agora. Reescreva a mensagem confirmando que o horário está separado para ele e pedindo, de uma vez só e em UMA frase natural, TUDO o que falta — não peça um dado, mande, e peça o resto depois. Deixe claro que é rápido e que assim que ele responder você confirma. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se o atendimento será particular ou por convênio (se for convênio, qual)?"
 ${faltas.some(f => /NÃO está na lista/.test(f)) ? `⚠️ Sobre o convênio que não está na lista: confira o nome INTEIRO contra a lista de convênios atendidos, sem encurtar nome composto. Se realmente não estiver, diga com cordialidade que esse plano não é atendido e ofereça o atendimento particular (R$ 200,00) — nunca marque assim mesmo.\n` : ""}🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }

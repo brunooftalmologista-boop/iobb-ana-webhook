@@ -134,9 +134,10 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
 
 **Agendamento**
 - Ficha obrigatória para marcar: **nome completo + data de nascimento + particular ou
-  convênio (qual)**. Unimed exige também o **número** da carteirinha (foto ilegível não
-  basta). Trava no código impede `[AGENDAR]` sem isso, e a confirmação enviada ao
-  paciente traz os dados gravados para ele conferir.
+  convênio (qual)** — só isso. Trava no código impede `[AGENDAR]` sem esses três, e a
+  confirmação enviada ao paciente traz os dados gravados para ele conferir.
+  **A carteirinha NÃO é condição para marcar em nenhum convênio** (26/08/2026): sempre
+  pedida, nunca travando.
 - Um horário por vez na oferta (nunca "cardápio") — exceção: N pacientes = N horários
   (família no mesmo WhatsApp; o lembrete/confirmação também tratam o grupo junto).
 - Idade mínima **8 anos, categórico**. Não encaminhar para fora; só registrar pedido
@@ -186,9 +187,13 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
   para o particular. Servem também de **negativa no Google Ads**.
 - Plan-Assiste cobre MPF/MPDFT/MPM/MPT (e MPU). Qualicorp é administradora →
   perguntar qual a operadora. Nome parcial/duvidoso: não negar — confirmar.
-- Carteirinha: pedir por cortesia ao concluir (foto ou número), NUNCA travar o
-  agendamento por ela — exceto o número no caso Unimed. Se o paciente manda o cartão
-  perguntando "vocês atendem?", a Ana LÊ na hora e responde do que está impresso.
+- Carteirinha: **sempre pedir** (foto ou número) a todo paciente de convênio, para
+  anexar ao agendamento e a equipe solicitar a autorização — e **NUNCA travar o
+  atendimento por ela**, em nenhum plano, Unimed inclusive (Dr. Bruno, 26/08/2026;
+  removeu a última exceção, que era o número da Unimed). O pedido vai na mesma
+  mensagem da oferta/confirmação do horário; sem resposta, marca do mesmo jeito.
+  Se o paciente manda o cartão perguntando "vocês atendem?", a Ana LÊ na hora e
+  responde do que está impresso.
 - Proibido voltar atrás numa aceitação já comunicada (salvo não-atendido/regional).
 - Cirurgia refrativa é sempre particular. Cirurgia coberta pelo convênio (ex.:
   catarata): não citar o valor particular a quem tem o convênio.
