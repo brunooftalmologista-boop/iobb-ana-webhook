@@ -2412,9 +2412,14 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     try {
       const brtTime = (d) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
       const brtDate = (d) => new Date(d).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-      const horas = [...String(replyTexto || "").matchAll(/(\d{1,2})\s*[h:]\s*(\d{2})\b/g)]
-        .map(m => `${m[1].padStart(2, "0")}:${m[2]}`)
-        .filter(t => { const [h, mm] = t.split(":").map(Number); return h < 24 && mm < 60; });
+      // ⚠️ USA horariosOferecidos, não uma regex local. A versão anterior exigia os
+      // MINUTOS (/(\d{1,2})[h:](\d{2})/) e por isso não enxergava "às 11h" — a forma
+      // mais natural de escrever hora cheia. Caso Ronaldo Pereira Cabral (26/08): a
+      // prosa dizia "sexta-feira, 28/08, às 11h" três vezes, o token trazia 11:20, a
+      // trava não comparou nada e a ficha saiu com 11h20. Ele confirmou sem notar.
+      // horariosOferecidos já trata hora cheia, ignora faixas ("das 8h às 18h") e
+      // "24h antes", e tira o markdown do negrito.
+      const horas = horariosOferecidos(replyTexto || "");
       const distintos = [...new Set(horas)];
       const tokenTime = brtTime(ini);
       if (distintos.length === 1 && distintos[0] !== tokenTime) {
