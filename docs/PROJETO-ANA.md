@@ -169,22 +169,29 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
   AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBRAPA,
   CAEME-GO, CAMED, CAESAN, CASEC (CODEVASF), CTI, CONAB, ELETRONORTE, EMBRATEL,
   E-VIDA (hoje LUMINAR SAÚDE), FACEB, FAPES (BNDES), FASCAL, FIOSAÚDE (FIOPREV),
-  FURNAS, GAMA SAÚDE, INFRAERO, IRB, IRMÃOS GRAVIA, LIFE EMPRESARIAL, MAPFRE SAÚDE,
+  FURNAS, INFRAERO, IRB, IRMÃOS GRAVIA, LIFE EMPRESARIAL, MAPFRE SAÚDE,
   MPDFT, MPF, MPM, MPT, NOTRE DAME, PAME, PLAN-ASSISTE, PROASA, PRÓ-SAÚDE (CÂMARA DOS
-  DEPUTADOS), PRÓ-SOCIAL, SAÚDE CAIXA, SERPRO, SIS SENADO, STF-MED, STJ, STM, TJDFT,
+  DEPUTADOS), PRÓ-SOCIAL, SAÚDE CAIXA, SERPRO, SIS SENADO, STF-MED, STM, TJDFT,
   TST SAÚDE, T.R.E., TRF, TRT, UNAFISCO, UNIBANCO-TEMPO SAÚDE, UNIMED (ver regra),
   UNIVERSAL ASSISTENCE.
-- **Unimed por produto** (regra de 14/08, substitui a "toda Unimed" de 11/08):
-  atendidas = Central Nacional (= "Unimed Nacional"/CNU), Planalto, Intercâmbio e
-  Seguros Unimed/Unimed Seguros. Sub-plano no cartão (PME, Ideal, Enfermaria…) não
-  muda nada. **Regional de outra cidade/estado (João Pessoa, Fortaleza, Amparo…) NÃO
-  se marca direto** — recado para a equipe verificar intercâmbio + oferecer particular.
+- **UNIMED: TODAS são atendidas** (Dr. Bruno, 25/08/2026 — revoga a regra "por produto"
+  de 14/08, que eu tinha inventado e que custou 5 agendamentos). Central Nacional
+  (= "Unimed Nacional"/CNU), Planalto, Intercâmbio, Seguros Unimed **e as REGIONAIS de
+  qualquer cidade/estado** (Curitiba, Uberlândia, Fesp, João Pessoa, Fortaleza…).
+  Sub-plano no cartão (PME, Ideal, Enfermaria…) não muda nada. Agenda direto; a
+  carteirinha serve para a EQUIPE pedir a guia, nunca para decidir se marca.
 - **Nunca atendidos** (confirmado pelo Dr. Bruno em 25/08, escolhidos por VOLUME DE
   PROCURA medido nas conversas — ~180 perguntas em 2 meses): Quality/Quallity/Qualyty,
   **SulAmérica, Bradesco, Amil, CASSI, ASSEFAZ, GEAP, GDF Saúde (INAS-DF/IASES-DF),
   SESC, Porto Seguro, Hapvida**. Não é lista exaustiva — o que define o que ACEITAMOS
   é a lista de atendidos; estes estão escritos só para a Ana negar rápido e seguir
   para o particular. Servem também de **negativa no Google Ads**.
+- **STJ e GAMA SAÚDE saíram dos atendidos em 26/08/2026** (Dr. Bruno). Caso diferente
+  dos de cima: estes estavam ERRADAMENTE listados como atendidos no prompt, no painel,
+  na agenda, no site e nas landings desde o início — ou seja, a clínica anunciava dois
+  planos que não atende. Removidos dos cinco lugares e acrescentados aos não atendidos.
+  ⚠️ Os demais tribunais **continuam atendidos**: STF-MED, STM, TST Saúde, TJDFT, TRF,
+  TRT, T.R.E., SIS Senado. Só o STJ saiu. "Gama" é o PLANO, não a cidade do DF.
 - Plan-Assiste cobre MPF/MPDFT/MPM/MPT (e MPU). Qualicorp é administradora →
   perguntar qual a operadora. Nome parcial/duvidoso: não negar — confirmar.
 - Carteirinha: **sempre pedir** (foto ou número) a todo paciente de convênio, para
