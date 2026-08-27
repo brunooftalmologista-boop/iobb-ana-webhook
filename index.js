@@ -174,7 +174,7 @@ A regra de "não negar por nome parecido" existe para não perder plano que aten
 - QUALITY / QUALLITY (qualquer grafia: "Quality", "Quallity", "Qualyty", "Quality Saúde"): NÃO atendemos.
 - SULAMÉRICA (qualquer grafia ou produto: "SulAmérica", "Sul América", "SulAmérica Saúde"): NÃO atendemos, em variação NENHUMA — nunca foi atendida. Não confunda com nenhum plano da lista.
 - **BRADESCO SAÚDE · AMIL · CASSI · ASSEFAZ · GEAP · GDF SAÚDE (INAS-DF / IASES-DF) · SESC · PORTO SEGURO · HAPVIDA**: NÃO atendemos nenhum deles, em nenhuma variação ou produto (confirmado pelo Dr. Bruno em 25/08/2026). São os planos que mais nos procuram sem serem atendidos — juntos, quase 180 perguntas em dois meses. Negue de primeira, com cordialidade e sem rodeio, e SIGA no mesmo fôlego para o particular (R$ 200,00) com nota fiscal para reembolso + um horário concreto. Não pergunte o nome completo nem diga "vou verificar": esses já foram verificados.
-- **STJ · GAMA SAÚDE**: NÃO atendemos (Dr. Bruno, 26/08/2026). ⚠️ Estes dois exigem cuidado extra porque, por ERRO NOSSO, apareciam como atendidos no site e em material antigo — então o paciente pode chegar dizendo "vi que vocês atendem". Não discuta e não culpe ninguém: peça desculpas em UMA frase ("essa informação estava desatualizada, me desculpe"), diga que o plano não é atendido e ofereça o particular (R$ 200,00, com nota fiscal para reembolso) já com um horário concreto na mesma mensagem.
+- **STJ · GAMA SAÚDE · PMDF** (a PMDF é a Polícia Militar do DF): NÃO atendemos (Dr. Bruno, 26/08/2026). ⚠️ Estes três exigem cuidado extra porque, por ERRO NOSSO, apareciam como atendidos no site e em material antigo — então o paciente pode chegar dizendo "vi que vocês atendem". Não discuta e não culpe ninguém: peça desculpas em UMA frase ("essa informação estava desatualizada, me desculpe"), diga que o plano não é atendido e ofereça o particular (R$ 200,00, com nota fiscal para reembolso) já com um horário concreto na mesma mensagem.
   🚫 NÃO CONFUNDA — os OUTROS tribunais CONTINUAM ATENDIDOS: **STF-MED, STM, TST SAÚDE, TJDFT, TRF, TRT, T.R.E., SIS SENADO, MPF, MPDFT, MPM, MPT** são todos atendidos normalmente. Só o **STJ** saiu. Negar um deles por parecença é erro grave.
   🚫 "GAMA" aqui é o PLANO Gama Saúde — não tem nada a ver com o GAMA, cidade do DF. Paciente perguntando se atendemos alguém que mora no Gama não é pergunta de convênio.
 ⚠️ NÃO confunda com QUALICORP, que é outra coisa: a Qualicorp NÃO é um plano, é uma ADMINISTRADORA que vende planos de várias operadoras (Amil, Bradesco, SulAmérica, Unimed e outras). Se o paciente disser "Qualicorp", não negue nem confirme: pergunte de qual OPERADORA é o plano dele e compare ESSA operadora com a lista.
@@ -1783,10 +1783,12 @@ const CONVENIOS_NAO_ATENDIDOS = [
   "bradesco", "amil", "cassi", "assefaz", "geap",
   "gdf saude", "gdf saúde", "sesc", "porto seguro", "hapvida",
   "iases", "inas",
-  // 26/08/2026 — Dr. Bruno: STJ e Gama Saúde NÃO são atendidos. Estes dois são
-  // diferentes dos de cima: estavam ERRADAMENTE na lista de ATENDIDOS (prompt,
-  // painel, agenda, site e landings) desde o começo. Saíram de lá e entraram aqui.
-  "stj", "gama",
+  // 26/08/2026 — Dr. Bruno: STJ, Gama Saúde e PMDF NÃO são atendidos. Estes três são
+  // diferentes dos de cima: estavam ERRADAMENTE anunciados como atendidos (prompt,
+  // painel, agenda, site e/ou landings) desde o começo. Saíram de lá e entraram aqui.
+  // O PMDF nunca esteve na lista da Ana — só nas landings, o que é pior: o anúncio
+  // trazia o paciente e a Ana não sabia o que responder.
+  "stj", "gama", "pmdf",
 ];
 // Casar é DE PROPÓSITO generoso (substring nos dois sentidos): um falso positivo
 // deixa passar um agendamento; um falso negativo trava um agendamento legítimo.
