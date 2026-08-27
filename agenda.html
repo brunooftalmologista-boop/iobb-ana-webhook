@@ -294,6 +294,23 @@
     <h3 id="agdet-titulo">Detalhes do agendamento</h3>
     <p id="agdet-quando"></p>
     <div id="agdet-body"></div>
+    <!-- Edição dos dados do agendamento (nunca do dia/hora: isso é Remarcar) -->
+    <div id="agdet-form" style="display:none">
+      <div id="agdet-form-paciente">
+        <label>Nome do paciente</label>
+        <input id="agdet-e-nome" autocomplete="off">
+        <label>Telefone <span style="font-weight:400;color:#6b7b8c">— sem ele não há confirmação da véspera</span></label>
+        <input id="agdet-e-tel" placeholder="Ex.: 61 98406-0001" inputmode="tel" autocomplete="off">
+        <label>Convênio <span style="font-weight:400;color:#6b7b8c">— vazio = Particular</span></label>
+        <input id="agdet-e-conv" list="agdet-conv-lista" autocomplete="off">
+        <datalist id="agdet-conv-lista"></datalist>
+      </div>
+      <label>Motivo</label>
+      <input id="agdet-e-motivo" autocomplete="off">
+      <label>Observações</label>
+      <textarea id="agdet-e-obs" rows="2" autocomplete="off"></textarea>
+      <div id="agdet-e-erro" style="color:#d33;font-size:13px;margin-top:8px;display:none"></div>
+    </div>
     <div id="agdet-presenca" style="margin-top:14px;padding-top:12px;border-top:1px solid #e3e9ef">
       <div style="font-size:13px;font-weight:700;margin-bottom:8px">Comparecimento</div>
       <div id="agdet-presenca-estado" style="font-size:13px;margin-bottom:8px"></div>
@@ -305,8 +322,11 @@
     </div>
     <div class="pmodal-actions">
       <button class="pbtn ghost" id="agdet-ficha">📋 Copiar ficha</button>
+      <button class="pbtn ghost" id="agdet-editar">✏️ Editar dados</button>
       <button class="pbtn ghost" id="agdet-remarcar">🔄 Remarcar</button>
       <button class="pbtn ghost" id="agdet-cancelar">Cancelar agendamento</button>
+      <button class="pbtn ghost" id="agdet-voltar" style="display:none">Voltar</button>
+      <button class="pbtn primary" id="agdet-salvar" style="display:none">Salvar</button>
       <button class="pbtn primary" id="agdet-fechar">Fechar</button>
     </div>
   </div>
@@ -393,6 +413,10 @@ function fone(t){
   if(!t) return '';
   let d = String(t).replace(/\D/g,'');
   if(d.startsWith('55')) d = d.slice(2);
+  // Separar o final em 4 dígitos é o que torna o número legível para quem vai
+  // digitar ou conferir: "(61) 984060001" obriga a contar dígito por dígito.
+  if(d.length===11) return '('+d.slice(0,2)+') '+d.slice(2,7)+'-'+d.slice(7);
+  if(d.length===10) return '('+d.slice(0,2)+') '+d.slice(2,6)+'-'+d.slice(6);
   if(d.length>=10) return '('+d.slice(0,2)+') '+d.slice(2);
   return d;
 }
@@ -610,6 +634,7 @@ function openAgDetails(id){
   const a=(agBooked||[]).find(x=>String(x.id)===String(id));
   if(!a) return;
   agDetId=id;
+  sairModoEdicao();          // reabrir o modal sempre começa em modo leitura
   const d=new Date(a.inicio);
   $('#agdet-quando').textContent=a.unidade+' — '+d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'})+' às '+d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
   const linha=(rot,val)=> `<div class="det-row"><span class="det-k">${rot}</span><span class="det-v">${val?esc(val):'—'}</span></div>`;
@@ -675,6 +700,69 @@ async function setPresenca(v){
     agRefresh();
   }catch(e){ if(String(e.message)!=='401') toast('Falha de conexão.'); }
 }
+// ----- EDITAR OS DADOS DE UM AGENDAMENTO -----------------------------------------
+// Corrige nome, telefone, convênio, motivo e observação SEM cancelar e refazer —
+// que era a única saída antes e deixava a vaga livre para outra pessoa no meio
+// do caminho. Dia e hora não se editam aqui: para isso existe o Remarcar, que
+// confere se o horário novo está livre.
+function sairModoEdicao(){
+  $('#agdet-form').style.display='none';
+  $('#agdet-body').style.display='';
+  $('#agdet-e-erro').style.display='none';
+  ['agdet-ficha','agdet-editar','agdet-remarcar','agdet-cancelar','agdet-fechar'].forEach(i=>$('#'+i).style.display='');
+  ['agdet-voltar','agdet-salvar'].forEach(i=>$('#'+i).style.display='none');
+}
+function entrarModoEdicao(){
+  const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
+  if(!a) return;
+  const ehBloqueio = a.origem==='bloqueio';
+  // Num bloqueio não há paciente: só motivo e observação fazem sentido.
+  $('#agdet-form-paciente').style.display = ehBloqueio ? 'none' : '';
+  if(!$('#agdet-conv-lista').options.length){
+    $('#agdet-conv-lista').innerHTML = CONVENIOS.map(c=>'<option value="'+esc(c)+'">').join('');
+  }
+  $('#agdet-e-nome').value   = a.paciente_nome||'';
+  $('#agdet-e-tel').value    = a.paciente_telefone ? fone(a.paciente_telefone) : '';
+  $('#agdet-e-conv').value   = a.convenio||'';
+  $('#agdet-e-motivo').value = a.motivo||'';
+  $('#agdet-e-obs').value    = a.observacoes||'';
+  $('#agdet-body').style.display='none';
+  $('#agdet-presenca').style.display='none';
+  $('#agdet-form').style.display='block';
+  $('#agdet-titulo').textContent = ehBloqueio ? 'Editar bloqueio' : 'Editar agendamento';
+  ['agdet-ficha','agdet-editar','agdet-remarcar','agdet-cancelar','agdet-fechar'].forEach(i=>$('#'+i).style.display='none');
+  ['agdet-voltar','agdet-salvar'].forEach(i=>$('#'+i).style.display='');
+  if(!ehBloqueio) $('#agdet-e-nome').focus(); else $('#agdet-e-motivo').focus();
+}
+async function salvarEdicao(){
+  const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
+  if(!a) return;
+  const ehBloqueio = a.origem==='bloqueio';
+  const body = { motivo:$('#agdet-e-motivo').value.trim(), observacoes:$('#agdet-e-obs').value.trim() };
+  if(!ehBloqueio){
+    body.nome=$('#agdet-e-nome').value.trim();
+    body.telefone=$('#agdet-e-tel').value.trim();
+    body.convenio=$('#agdet-e-conv').value.trim();
+    if(!body.nome){ const e=$('#agdet-e-erro'); e.textContent='O nome do paciente não pode ficar vazio.'; e.style.display='block'; return; }
+  }
+  $('#agdet-salvar').disabled=true;
+  try{
+    const r=await api('/api/agenda/'+agDetId+'/editar',{method:'POST',body});
+    if(!r||!r.ok){ const e=$('#agdet-e-erro'); e.textContent=(r&&r.error)||'Falha ao salvar.'; e.style.display='block'; return; }
+    // Atualiza o cache local para o modal e a grade mostrarem o novo dado sem
+    // esperar o refresh — e sem inventar: os valores vêm do que o banco gravou.
+    Object.assign(a, r.appointment||{});
+    sairModoEdicao(); openAgDetails(agDetId);
+    toast('Dados atualizados ✓');
+    if(!body.telefone && !ehBloqueio) toast('⚠️ Sem telefone — não receberá a confirmação da véspera');
+    agRefresh();
+  }catch(e){ if(String(e.message)!=='401'){ const el=$('#agdet-e-erro'); el.textContent='Falha de conexão.'; el.style.display='block'; } }
+  finally{ $('#agdet-salvar').disabled=false; }
+}
+$('#agdet-editar').onclick = entrarModoEdicao;
+$('#agdet-voltar').onclick = ()=>{ sairModoEdicao(); openAgDetails(agDetId); };
+$('#agdet-salvar').onclick = salvarEdicao;
+
 $('#agdet-veio').onclick   = ()=>setPresenca(true);
 $('#agdet-faltou').onclick = ()=>setPresenca(false);
 $('#agdet-limpar').onclick = ()=>setPresenca(null);

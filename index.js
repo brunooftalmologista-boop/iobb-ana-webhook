@@ -6890,6 +6890,76 @@ app.post("/api/agenda/:id/cancel", async (req, res) => {
   }
 });
 
+// ── EDITAR OS DADOS DE UM AGENDAMENTO ────────────────────────────────────────
+// Corrigir nome, telefone, convênio, motivo ou observação de uma consulta que
+// JÁ existe. Até 27/08/2026 a única saída era cancelar e marcar de novo — e
+// nesse meio-tempo a vaga ficava livre para outra pessoa; ou pior, o dado errado
+// ficava (nome trocado, telefone com dígito a menos, convênio em branco).
+//
+// O que este endpoint NÃO faz, de propósito:
+//   • não muda DIA/HORA nem unidade → isso é remarcar (/move), que precisa
+//     conferir se o novo horário está livre;
+//   • não muda status → isso é cancelar (/cancel).
+// Assim não existe caminho por aqui que crie overbooking.
+//
+// Campo ausente no corpo = não mexe. Campo enviado vazio = limpa (menos o nome,
+// que nunca pode ficar vazio: agendamento sem nome é o defeito que a ficha
+// obrigatória existe para evitar).
+app.post("/api/agenda/:id/editar", async (req, res) => {
+  try {
+    const { nome, telefone, convenio, motivo, observacoes } = req.body || {};
+    const { data: atual, error } = await supabase.from("appointments")
+      .select("id, status, origem, paciente_nome, paciente_telefone, convenio, motivo, observacoes")
+      .eq("id", req.params.id).single();
+    if (error || !atual) return res.status(404).json({ ok: false, error: "Agendamento não encontrado." });
+    if (atual.status === "cancelado") return res.status(400).json({ ok: false, error: "Este agendamento está cancelado — não há o que editar." });
+
+    const updates = {};
+    // Bloqueio não tem paciente: deixar editar nome/telefone/convênio de um
+    // feriado só produziria lixo na agenda. Motivo e observação, sim.
+    const ehBloqueio = atual.origem === "bloqueio";
+
+    if (nome !== undefined && !ehBloqueio) {
+      const n = String(nome || "").trim();
+      if (!n) return res.status(400).json({ ok: false, error: "O nome do paciente não pode ficar vazio." });
+      updates.paciente_nome = n;
+    }
+    if (telefone !== undefined && !ehBloqueio) {
+      const t = String(telefone || "").trim();
+      if (!t) updates.paciente_telefone = null;          // limpar é permitido…
+      else {
+        const norm = normalizePhoneBR(t);
+        // …mas número TORTO não entra: seria pior que vazio, porque o lembrete
+        // da véspera sairia para o telefone errado e ninguém perceberia.
+        if (!norm) return res.status(400).json({ ok: false, error: "Telefone inválido. Use DDD + número (ex.: 61 98406-0001)." });
+        updates.paciente_telefone = norm;
+      }
+    }
+    if (convenio !== undefined && !ehBloqueio) updates.convenio = String(convenio || "").trim() || null;
+    if (motivo !== undefined) updates.motivo = String(motivo || "").trim() || null;
+    if (observacoes !== undefined) updates.observacoes = String(observacoes || "").trim() || null;
+    if (!Object.keys(updates).length) return res.status(400).json({ ok: false, error: "Nada para alterar." });
+
+    updates.updated_at = new Date().toISOString();
+    const { data: novo, error: erroUp } = await supabase.from("appointments")
+      .update(updates).eq("id", req.params.id).select().single();
+    if (erroUp) { console.error("[Agenda] /editar falhou:", erroUp.message); return res.status(500).json({ ok: false, error: erroUp.message }); }
+
+    // Auditoria: não há coluna de "editado por", então o rastro fica no log —
+    // com o que mudou, de que valor para qual, e por quem.
+    const mudou = Object.keys(updates).filter(k => k !== "updated_at")
+      .map(k => `${k}: "${atual[k] ?? ""}" → "${updates[k] ?? ""}"`).join(" · ");
+    console.log(`[Agenda] Editado ${req.params.id} por ${req.panelUser?.email || "painel"} — ${mudou}`);
+
+    // Telefone e nome viajam no lembrete da véspera; convênio, na ficha da
+    // recepção. Nada disso mexe em horário, então o cache de vagas fica de pé.
+    res.json({ ok: true, appointment: novo });
+  } catch (e) {
+    console.error("[Agenda] /editar falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Remarca: cria o NOVO horário primeiro (se estiver livre) e só então cancela o
 // antigo. Se o novo estiver ocupado, o antigo permanece intacto (nada se perde).
 app.post("/api/agenda/:id/move", async (req, res) => {
