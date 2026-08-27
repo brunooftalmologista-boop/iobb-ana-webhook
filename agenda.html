@@ -91,6 +91,9 @@
   .ag-slot.booked{background:var(--header);cursor:pointer}
   .ag-slot.booked:hover{background:#e6e9ec}
   .ag-slot.booked small{color:var(--muted)}
+  /* Bloqueio: listrado e cinza, para não parecer paciente num relance. */
+  .ag-slot.blk,.ag-wslot.blk{background:repeating-linear-gradient(45deg,#eef1f4,#eef1f4 6px,#e4e8ec 6px,#e4e8ec 12px);color:#6b7b8c}
+  .ag-slot.blk:hover,.ag-wslot.blk:hover{background:#e0e5ea}
   .ag-hold{background:#ffe0a3;color:#8a5a00;padding:1px 6px;border-radius:6px;font-size:11px;margin-left:4px}
   .ag-cancel{width:28px;height:28px;border-radius:50%;color:#d33;font-size:14px;flex:0 0 28px;border:none;background:none;cursor:pointer}
   .ag-cancel:hover{background:rgba(221,51,51,.1)}
@@ -169,6 +172,7 @@
     </span>
     <button class="btn ghost" id="ag-today">Hoje</button>
     <button class="btn ghost" id="ag-reload" title="Atualizar">⟳</button>
+    <button class="btn ghost" id="ag-bloquear" title="Fechar horários (feriado, congresso, cirurgia…)">🚫 Bloquear</button>
   </span>
 
   <!-- controles da TRANSFERÊNCIA -->
@@ -247,7 +251,39 @@
     <div id="agbook-error" style="color:#d33;font-size:13px;margin-top:8px;display:none"></div>
     <div class="pmodal-actions">
       <button class="pbtn ghost" id="agbook-cancel">Cancelar</button>
+      <button class="pbtn ghost" id="agbook-bloquear" title="Fecha só este horário — ninguém marca nele, nem a Ana">🚫 Bloquear</button>
       <button class="pbtn primary" id="agbook-save">Marcar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bloquear horários: feriado, congresso, cirurgia, médico fora -->
+<div class="modal-bg" id="agblk-modal">
+  <div class="pmodal">
+    <h3>🚫 Bloquear horários</h3>
+    <p style="color:#6b7b8c;font-size:13px;margin:0 0 12px">Os horários fechados somem da agenda da Ana e da grade — ninguém marca neles. Para reabrir, é só clicar no horário bloqueado e liberar.</p>
+    <label>Data</label>
+    <input type="date" id="agblk-data">
+    <div id="agblk-dia" style="font-size:13px;color:#6b7b8c;margin:6px 0 10px"></div>
+    <label>Quanto fechar</label>
+    <div class="chk-group" style="margin-bottom:6px">
+      <label><input type="radio" name="agblk-tipo" value="dia" checked> O dia inteiro</label>
+      <label><input type="radio" name="agblk-tipo" value="faixa"> Só uma faixa de horário</label>
+    </div>
+    <div id="agblk-faixa" style="display:none;gap:8px;align-items:center">
+      <span style="display:flex;gap:8px;align-items:center">
+        <span style="font-size:13px;color:#6b7b8c">das</span><select id="agblk-de"></select>
+        <span style="font-size:13px;color:#6b7b8c">às</span><select id="agblk-ate"></select>
+      </span>
+      <div style="font-size:12px;color:#6b7b8c;margin-top:6px">O horário final também é fechado.</div>
+    </div>
+    <label>Motivo (aparece na grade para a equipe)</label>
+    <input id="agblk-motivo" placeholder="Ex.: Feriado · Congresso · Cirurgia" autocomplete="off">
+    <div id="agblk-error" style="color:#d33;font-size:13px;margin-top:8px;display:none"></div>
+    <div id="agblk-ok" style="color:#0a7d3c;font-size:13px;margin-top:8px;display:none"></div>
+    <div class="pmodal-actions">
+      <button class="pbtn ghost" id="agblk-cancel">Fechar</button>
+      <button class="pbtn primary" id="agblk-save">Bloquear</button>
     </div>
   </div>
 </div>
@@ -255,7 +291,7 @@
 <!-- Detalhes do agendamento (inclui comparecimento) -->
 <div class="modal-bg" id="agdet-modal">
   <div class="pmodal">
-    <h3>Detalhes do agendamento</h3>
+    <h3 id="agdet-titulo">Detalhes do agendamento</h3>
     <p id="agdet-quando"></p>
     <div id="agdet-body"></div>
     <div id="agdet-presenca" style="margin-top:14px;padding-top:12px;border-top:1px solid #e3e9ef">
@@ -490,6 +526,7 @@ function agRender(){
     const a=it.a, nome=esc(a.paciente_nome||'—');
     const hold=a.status==='reservado'?'<span class="ag-hold">reservando…</span>':'';
     const via=a.origem==='ana'?' · via Ana':'';
+    if(a.origem==='bloqueio') return `<div class="ag-slot booked blk" data-id="${a.id}" title="Horário bloqueado — clique para liberar"><div><b>${hora}</b> · 🚫 Bloqueado<br><small>${esc(a.motivo||'')}</small></div></div>`;
     return `<div class="ag-slot booked${a.origem==='ana'?' ana':''}" data-id="${a.id}" title="Ver detalhes"><div><b>${hora}</b> · ${nome} ${hold}${tagPresenca(a)}<br><small>${esc(a.convenio||'')}${via}</small></div><button class="ag-cancel" data-id="${a.id}" title="Cancelar">✕</button></div>`;
   }).join('');
 }
@@ -554,6 +591,7 @@ function agRenderWeek(days){
       if(it.type==='free') return `<button class="ag-wslot free" data-ini="${esc(it.s.inicio)}" data-unidade="${esc(unidade)}">${hora} · livre</button>`;
       const a=it.a, hold=a.status==='reservado'?'<span class="ag-hold">•</span>':'';
       const anaTag=a.origem==='ana'?'<span class="ag-anatag">Ana</span>':'';
+      if(a.origem==='bloqueio') return `<div class="ag-wslot booked blk" data-id="${a.id}" title="Horário bloqueado — clique para liberar"><b>${hora}</b> 🚫 Bloqueado</div>`;
       return `<div class="ag-wslot booked${a.origem==='ana'?' ana':''}" data-id="${a.id}" title="Ver detalhes"><b>${hora}</b> ${esc(a.paciente_nome||'—')} ${hold}${anaTag}${tagPresenca(a)}</div>`;
     }).join('') : '<div class="ag-day-empty">—</div>';
     return `<div class="ag-day"><div class="ag-day-h${ds===hojeStr?' hoje':''}">${head}<small>${esc(unidade)}</small></div>${corpo}</div>`;
@@ -575,6 +613,22 @@ function openAgDetails(id){
   const d=new Date(a.inicio);
   $('#agdet-quando').textContent=a.unidade+' — '+d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'})+' às '+d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
   const linha=(rot,val)=> `<div class="det-row"><span class="det-k">${rot}</span><span class="det-v">${val?esc(val):'—'}</span></div>`;
+  // Bloqueio não é paciente: mostrar telefone/convênio/comparecimento aqui só
+  // confunde, e "Cancelar agendamento" num feriado assusta quem clicou.
+  const ehBloqueio = a.origem==='bloqueio';
+  $('#agdet-presenca').style.display = ehBloqueio ? 'none' : '';
+  $('#agdet-ficha').style.display    = ehBloqueio ? 'none' : '';
+  $('#agdet-remarcar').style.display = ehBloqueio ? 'none' : '';
+  $('#agdet-cancelar').textContent   = ehBloqueio ? '🔓 Liberar horário' : 'Cancelar agendamento';
+  $('#agdet-titulo').textContent     = ehBloqueio ? 'Horário bloqueado' : 'Detalhes do agendamento';
+  if(ehBloqueio){
+    $('#agdet-body').innerHTML =
+      linha('Situação','🚫 Horário bloqueado — a Ana não oferece e ninguém marca nele')+
+      linha('Motivo', a.motivo)+
+      linha('Observações', a.observacoes);
+    $('#agdet-modal').classList.add('show');
+    return;
+  }
   const origem=a.origem==='ana'?'Ana (automático)':(a.origem==='secretaria'?'Secretária':(a.origem||'—'));
   const nasc=nascimentoDe(a.observacoes), cart=carteirinhaDe(a.observacoes);
   $('#agdet-body').innerHTML=
@@ -662,9 +716,12 @@ $('#agdet-remarcar').onclick = ()=>{
 };
 $('#agdet-cancelar').onclick = async ()=>{
   if(!agDetId) return;
-  if(!confirm('Cancelar este agendamento? O horário volta a ficar livre.')) return;
-  try{ await api('/api/agenda/'+agDetId+'/cancel',{method:'POST'}); toast('Agendamento cancelado.'); closeAgDetails(); agRefresh(); }
-  catch(err){ if(String(err.message)!=='401') toast('Falha ao cancelar.'); }
+  const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
+  const ehBloqueio = a && a.origem==='bloqueio';
+  if(!confirm(ehBloqueio ? 'Liberar este horário? Ele volta a aparecer para a Ana e para os pacientes.'
+                         : 'Cancelar este agendamento? O horário volta a ficar livre.')) return;
+  try{ await api('/api/agenda/'+agDetId+'/cancel',{method:'POST'}); toast(ehBloqueio?'Horário liberado ✓':'Agendamento cancelado.'); closeAgDetails(); agRefresh(); }
+  catch(err){ if(String(err.message)!=='401') toast(ehBloqueio?'Falha ao liberar.':'Falha ao cancelar.'); }
 };
 
 // ----- REMARCAR: mover o paciente sem cancelar e refazer -------------------------
@@ -739,6 +796,92 @@ async function agBookSave(){
 }
 $('#agbook-cancel').onclick=closeAgBook;
 $('#agbook-save').onclick=agBookSave;
+
+// ----- BLOQUEAR HORÁRIOS (feriado, congresso, cirurgia, médico fora) -------------
+// Quais horários EXISTEM é sempre decisão do servidor: este seletor oferece
+// 08:00–18:40 de 20 em 20 e o /bloquear cruza com a grade real da unidade.
+// Repetir a grade aqui seria o jeito garantido de esta tela divergir da Ana.
+function agBlkHoras(){
+  const out=[];
+  for(let h=8; h<=18; h++) for(let m=0;m<60;m+=20) out.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
+  return out;
+}
+function agBlkDiaLabel(){
+  const v=$('#agblk-data').value, el=$('#agblk-dia');
+  if(!v){ el.textContent=''; return; }
+  const d=new Date(v+'T12:00:00-03:00'), dow=d.getDay();
+  const uni=(dow>=1&&dow<=5)?UNIDADE_DA_COLUNA[dow-1]:null;
+  const nome=d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'});
+  el.innerHTML = uni ? nome+' — atendimento no <b>'+esc(uni)+'</b>'
+                     : nome+' — <b>sem atendimento nesse dia</b>, não há o que bloquear.';
+}
+function openAgBlock(){
+  const opts=agBlkHoras().map(h=>'<option>'+h+'</option>').join('');
+  $('#agblk-de').innerHTML=opts; $('#agblk-ate').innerHTML=opts;
+  $('#agblk-de').value='09:00'; $('#agblk-ate').value='18:40';
+  $('#agblk-data').value=(agDate||new Date()).toLocaleDateString('en-CA',{timeZone:TZ_BR});
+  $('#agblk-motivo').value='';
+  $('#agblk-error').style.display='none'; $('#agblk-ok').style.display='none';
+  document.querySelector('input[name="agblk-tipo"][value="dia"]').checked=true;
+  $('#agblk-faixa').style.display='none';
+  agBlkDiaLabel();
+  $('#agblk-modal').classList.add('show');
+}
+function closeAgBlock(){ $('#agblk-modal').classList.remove('show'); }
+function agBlkErr(m){ const el=$('#agblk-error'); el.innerHTML=m; el.style.display='block'; $('#agblk-ok').style.display='none'; }
+async function agBlkSave(){
+  const tipo=(document.querySelector('input[name="agblk-tipo"]:checked')||{}).value||'dia';
+  const body={ data:$('#agblk-data').value, motivo:$('#agblk-motivo').value.trim() };
+  if(!body.data){ agBlkErr('Escolha a data.'); return; }
+  if(tipo==='faixa'){
+    body.de=$('#agblk-de').value; body.ate=$('#agblk-ate').value;
+    if(body.ate<body.de){ agBlkErr('O horário final é anterior ao inicial.'); return; }
+  }
+  $('#agblk-save').disabled=true;
+  try{
+    const d=await api('/api/agenda/bloquear',{method:'POST',body});
+    if(!d||!d.ok){ agBlkErr((d&&d.error)||'Falha ao bloquear.'); return; }
+    // Horário com paciente NUNCA é fechado por cima — a tela precisa dizer
+    // quem ficou de fora, senão a equipe acha que o dia inteiro foi fechado.
+    const partes=[];
+    partes.push('<b>'+d.bloqueados+' horário(s) fechado(s)</b>'+(d.unidade?' no '+esc(d.unidade):''));
+    if(d.jaBloqueados) partes.push(d.jaBloqueados+' já estava(m) bloqueado(s)');
+    if(d.passados)     partes.push(d.passados+' já passou(aram) e foi(ram) ignorado(s)');
+    $('#agblk-ok').innerHTML=partes.join(' · ');
+    $('#agblk-ok').style.display='block';
+    if(d.ocupados && d.ocupados.length){
+      agBlkErr('⚠️ <b>'+d.ocupados.length+' horário(s) continuam abertos porque têm paciente marcado</b> — remarque ou cancele antes:<br>'+
+        d.ocupados.map(o=>'• '+esc(o.hora)+' — '+esc(o.nome)).join('<br>'));
+      $('#agblk-ok').style.display='block';
+    }
+    agRefresh();
+  }catch(e){ if(String(e.message)!=='401') agBlkErr('Falha de conexão.'); }
+  finally{ $('#agblk-save').disabled=false; }
+}
+$('#ag-bloquear').onclick=openAgBlock;
+$('#agblk-cancel').onclick=closeAgBlock;
+$('#agblk-save').onclick=agBlkSave;
+$('#agblk-data').onchange=agBlkDiaLabel;
+document.querySelectorAll('input[name="agblk-tipo"]').forEach(r=>{
+  r.onchange=()=>{ $('#agblk-faixa').style.display = (r.value==='faixa'&&r.checked)?'block':'none'; };
+});
+
+// Bloquear UM horário, a partir da vaga livre já clicada na grade.
+$('#agbook-bloquear').onclick=async ()=>{
+  if(!agBookIni) return;
+  const d=new Date(agBookIni);
+  const hora=d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+  const quando=d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'});
+  if(!confirm('Bloquear '+quando+' às '+hora+'?\n\nO horário some da agenda da Ana. Para reabrir, clique nele e libere.')) return;
+  $('#agbook-bloquear').disabled=true;
+  try{
+    const r=await api('/api/agenda/bloquear',{method:'POST',
+      body:{ data:d.toLocaleDateString('en-CA',{timeZone:TZ_BR}), de:hora, ate:hora, motivo:'Bloqueio de horário' }});
+    if(!r||!r.ok||!r.bloqueados){ agBookErr((r&&r.error)||'Não consegui bloquear esse horário.'); return; }
+    closeAgBook(); toast('Horário bloqueado 🚫'); agRefresh();
+  }catch(e){ if(String(e.message)!=='401') agBookErr('Falha de conexão.'); }
+  finally{ $('#agbook-bloquear').disabled=false; }
+};
 
 // navegação da grade
 $('#ag-view-dia').onclick=()=>setAgView('dia');

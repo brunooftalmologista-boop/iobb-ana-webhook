@@ -840,6 +840,45 @@ async function carregarHorariosExtras() {
   return HORARIOS_EXTRAS;
 }
 
+// Horários que a grade prevê para UM dia: a grade fixa da unidade + os extras
+// cadastrados para ESTA data. Extraído de getAvailableSlots para o bloqueio de
+// horário usar exatamente a mesma régua — se as duas listas divergirem, a
+// secretária bloqueia um horário que a Ana não oferece (ou o contrário).
+// `regra` é a entrada de AGENDA_REGRAS do dia; `dateStr` é YYYY-MM-DD.
+function horariosDaGrade(dateStr, regra) {
+  const horarios = [];
+  for (let h = regra.inicio; h < regra.fim; h++) {
+    if (h === 13) continue;                                   // almoço 13h–14h
+    for (let m = 0; m < 60; m += SLOT_MIN) {
+      if ((h === 12 || h === 17) && m === 40) continue;        // 12:40 e 17:40 bloqueados (pausa fixa)
+      horarios.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);
+    }
+  }
+  for (const ex of HORARIOS_EXTRAS) {
+    if (!ex || ex.data !== dateStr) continue;
+    // Segurança: só aceita extra da unidade que REALMENTE atende nesse dia —
+    // senão abriria vaga numa unidade onde o médico não está.
+    const uex = String(ex.unidade || "").toLowerCase();
+    const casaUnidade = (uex.includes("conjunto") && regra.nome === "Conjunto Nacional")
+                     || ((uex.includes("taguatinga") || uex.includes("aguas") || uex.includes("águas")) && regra.nome === "Taguatinga");
+    if (!casaUnidade) { console.warn(`[Agenda] Extra ignorado (${ex.data} ${ex.unidade}): nesse dia quem atende é ${regra.nome}.`); continue; }
+    for (const hhmm of (ex.horas || [])) {
+      if (/^\d{2}:\d{2}$/.test(hhmm) && !horarios.includes(hhmm)) horarios.push(hhmm);
+    }
+  }
+  horarios.sort();
+  return horarios;
+}
+// Dado um YYYY-MM-DD, devolve a regra da unidade que atende nesse dia (ou null
+// em fim de semana). Usa MEIO-DIA UTC para não escorregar de dia no fuso.
+function regraDoDia(dateStr) {
+  const [y, mo, da] = String(dateStr).split("-").map(Number);
+  if (!y || !mo || !da) return null;
+  const base = new Date(Date.UTC(y, mo - 1, da, 12, 0, 0));
+  const dowName = DOW_BR[base.getUTCDay()];
+  return Object.values(AGENDA_REGRAS).find(r => r.dias.includes(dowName)) || null;
+}
+
 function getAvailableSlots(events, unidadePref) {
   const now = new Date();
   const { ano, mes, dia } = brasiliaAgora().ymd; // hoje em Brasília (Y-M-D)
@@ -858,28 +897,7 @@ function getAvailableSlots(events, unidadePref) {
       if (p.includes("taguatinga") && regra.nome !== "Taguatinga") continue;
     }
     const dateStr = `${y}-${String(mo).padStart(2,"0")}-${String(da).padStart(2,"0")}`;
-    // Horários do dia = grade fixa + extras cadastrados para ESTA data/unidade.
-    const horariosDoDia = [];
-    for (let h = regra.inicio; h < regra.fim; h++) {
-      if (h === 13) continue;                                   // almoço 13h–14h
-      for (let m = 0; m < 60; m += SLOT_MIN) {
-        if ((h === 12 || h === 17) && m === 40) continue;        // 12:40 e 17:40 bloqueados (pausa fixa)
-        horariosDoDia.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);
-      }
-    }
-    for (const ex of HORARIOS_EXTRAS) {
-      if (!ex || ex.data !== dateStr) continue;
-      // Segurança: só aceita extra da unidade que REALMENTE atende nesse dia —
-      // senão abriria vaga numa unidade onde o médico não está.
-      const uex = String(ex.unidade || "").toLowerCase();
-      const casaUnidade = (uex.includes("conjunto") && regra.nome === "Conjunto Nacional")
-                       || ((uex.includes("taguatinga") || uex.includes("aguas") || uex.includes("águas")) && regra.nome === "Taguatinga");
-      if (!casaUnidade) { console.warn(`[Agenda] Extra ignorado (${ex.data} ${ex.unidade}): nesse dia quem atende é ${regra.nome}.`); continue; }
-      for (const hhmm of (ex.horas || [])) {
-        if (/^\d{2}:\d{2}$/.test(hhmm) && !horariosDoDia.includes(hhmm)) horariosDoDia.push(hhmm);
-      }
-    }
-    horariosDoDia.sort();
+    const horariosDoDia = horariosDaGrade(dateStr, regra);
     {
       for (const hhmm of horariosDoDia) {
         const [h, m] = hhmm.split(":").map(Number);
@@ -6618,6 +6636,96 @@ app.post("/api/agenda/book", async (req, res) => {
     res.json({ ok: true, appointment: r.appointment, aviso });
   } catch (e) {
     console.error("[Agenda] /book falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ── BLOQUEAR HORÁRIO NA AGENDA ───────────────────────────────────────────────
+// Feriado, congresso, cirurgia, médico de férias: a equipe precisa fechar
+// horários sem inventar um paciente de mentira. Até 27/08/2026 isso só existia
+// como INSERT na mão no banco — foi assim que 07/09, 12/10 e 02/11 foram
+// fechados, e cada feriado dependia de mim.
+//
+// Um bloqueio é um agendamento como outro qualquer (é o que a agenda já sabe
+// subtrair da grade), com três marcas que fazem diferença:
+//   • origem='bloqueio'      → a tela mostra como bloqueio, não como paciente;
+//   • paciente_telefone NULL → o lembrete da véspera ignora (alvosDoLembrete
+//                              exige telefone) — senão tentaria avisar "o feriado";
+//   • status='confirmado'    → 'reservado' venceria o hold e a vaga voltaria sozinha.
+//
+// Grava UMA LINHA POR HORÁRIO da grade, não um bloco único de 8h às 19h: assim
+// a grade mostra cada horário fechado e dá para liberar um sozinho (é só
+// cancelar, como qualquer agendamento).
+// NUNCA passa por cima de consulta marcada — os horários ocupados voltam na
+// resposta para a tela dizer quem precisa ser remarcado antes.
+app.post("/api/agenda/bloquear", async (req, res) => {
+  try {
+    const { data, de, ate, motivo } = req.body || {};
+    const dia = String(data || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return res.status(400).json({ ok: false, error: "Informe a data no formato AAAA-MM-DD." });
+    const regra = regraDoDia(dia);
+    if (!regra) return res.status(400).json({ ok: false, error: "Nesse dia não há atendimento (fim de semana) — não há o que bloquear." });
+
+    const hhmm = (v) => { const s = String(v || "").trim(); return /^\d{2}:\d{2}$/.test(s) ? s : null; };
+    const ini = hhmm(de), fimH = hhmm(ate);
+    if (de && !ini) return res.status(400).json({ ok: false, error: "Horário inicial inválido (use HH:MM)." });
+    if (ate && !fimH) return res.status(400).json({ ok: false, error: "Horário final inválido (use HH:MM)." });
+    if (ini && fimH && fimH < ini) return res.status(400).json({ ok: false, error: "O horário final é anterior ao inicial." });
+
+    // A régua é a MESMA da Ana: sem isso a equipe bloquearia horário que não
+    // existe na grade, ou deixaria aberto um que existe.
+    await carregarHorariosExtras();
+    const horarios = horariosDaGrade(dia, regra)
+      .filter(h => (!ini || h >= ini) && (!fimH || h <= fimH));
+    if (!horarios.length) return res.status(400).json({ ok: false, error: "Nenhum horário da agenda cai nesse intervalo." });
+
+    // Uma leitura só do dia: serve para pular o que já está ocupado E para dizer
+    // POR QUEM — que é a informação de que a tela precisa.
+    const { data: doDia, error: erroLeitura } = await supabase.from("appointments")
+      .select("inicio, paciente_nome, origem, status")
+      .neq("status", "cancelado")
+      .gte("inicio", new Date(`${dia}T00:00:00-03:00`).toISOString())
+      .lt("inicio", new Date(`${dia}T23:59:59-03:00`).toISOString());
+    if (erroLeitura) return res.status(502).json({ ok: false, error: "Não consegui ler a agenda desse dia. Tente de novo." });
+    const ocupadoEm = new Map();
+    for (const a of (doDia || [])) {
+      const h = new Date(a.inicio).toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
+      ocupadoEm.set(h, a);
+    }
+
+    const agora = Date.now();
+    const ocupados = [], bloqueados = [];
+    let jaBloqueados = 0, passados = 0;
+    for (const h of horarios) {
+      const jaTem = ocupadoEm.get(h);
+      if (jaTem) {
+        if (jaTem.origem === "bloqueio") jaBloqueados++;
+        else ocupados.push({ hora: h, nome: jaTem.paciente_nome || "(sem nome)" });
+        continue;
+      }
+      const inicioSlot = new Date(`${dia}T${h}:00-03:00`);
+      if (inicioSlot.getTime() <= agora) { passados++; continue; }
+      const r = await criarAgendamento({
+        unidade: regra.nome,
+        inicio: inicioSlot,
+        fim: new Date(inicioSlot.getTime() + SLOT_MIN * 60000),
+        status: "confirmado",
+        nome: "🚫 BLOQUEADO",
+        telefone: null,
+        motivo: String(motivo || "").trim() || "Bloqueio de agenda",
+        origem: "bloqueio",
+        criadoPor: req.panelUser?.email || null,
+      });
+      // taken = alguém marcou entre a leitura acima e agora. Raro, mas o índice
+      // único é quem tem a palavra final; aqui só reportamos.
+      if (r.taken) { ocupados.push({ hora: h, nome: "(ocupado agora há pouco)" }); continue; }
+      if (!r.ok) return res.status(500).json({ ok: false, error: r.error || "Falha ao bloquear.", bloqueados: bloqueados.length });
+      bloqueados.push(h);
+    }
+    console.log(`[Agenda] Bloqueio ${dia} ${ini || "início"}–${fimH || "fim"} (${regra.nome}): ${bloqueados.length} fechado(s), ${ocupados.length} com paciente, ${jaBloqueados} já bloqueado(s), ${passados} no passado.`);
+    res.json({ ok: true, unidade: regra.nome, bloqueados: bloqueados.length, horarios: bloqueados, ocupados, jaBloqueados, passados });
+  } catch (e) {
+    console.error("[Agenda] /bloquear falhou:", e.message);
     res.status(500).json({ ok: false, error: e.message });
   }
 });

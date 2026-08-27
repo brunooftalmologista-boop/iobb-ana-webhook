@@ -306,6 +306,15 @@ agendamentos de teste depois.
 - Marcar "agendou" (fecha conversão do Ads), encerrar/reabrir conversa.
 - Anexos dos pacientes (fotos/PDF/áudio com transcrição) ficam no chat do painel.
 
+**Na agenda (`/agenda`), além de marcar, remarcar e cancelar:**
+- **🚫 Bloquear** (botão na barra de cima) — fecha o dia inteiro ou uma faixa de
+  horário: feriado, congresso, cirurgia, médico fora. Também dá para bloquear
+  UM horário só, pelo botão que aparece ao clicar numa vaga livre.
+  O bloqueio some da agenda da Ana e da grade; para reabrir, clique nele e
+  **Liberar horário**. Horário com paciente marcado **nunca** é fechado por
+  cima — a tela lista quem precisa ser remarcado antes.
+  Feriados já bloqueados: **07/09, 12/10 e 02/11 de 2026**.
+
 ---
 
 ## 6. Como o sistema se defende (as travas)
