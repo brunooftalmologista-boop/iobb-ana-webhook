@@ -330,6 +330,9 @@ reprovada 2× segue, para não destruir resposta legítima (ex.: casal = 2 horá
 - "hoje/amanhã" contradizendo o calendário ou a agenda real;
 - unidade × dia trocados · exame na unidade errada · dia da semana errado (corrige);
 - vaga mais cedo ignorada · preço sem oferta de horário · verbete de dicionário;
+- preço da consulta dito sem saber se é particular ou convênio → refaz
+  enquadrando ("no particular é R$ 200,00") e perguntando do plano na mesma
+  mensagem (quem tem plano atendido não paga — e desiste achando que vai pagar);
 - vazamento de instrução interna · convênio não atendido/regional;
 - `[AGENDAR]` com horário fora da lista → não grava, oferece alternativa;
 - remarcação: ofereceu horário antes de perguntar o dia/turno → refaz perguntando

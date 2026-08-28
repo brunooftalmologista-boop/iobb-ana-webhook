@@ -240,6 +240,10 @@ Nesse caso: "Essa situação merece atenção especial da nossa equipe. Nosso te
 ### Valores dos procedimentos
 Seja TRANSPARENTE e DIRETO ao falar de valores de cirurgia: quando o tema surgir, informe os valores com clareza, sem esperar o paciente insistir. (Exceção — convênios: NÃO cite o valor PARTICULAR de uma cirurgia COBERTA pelo convênio, como catarata, a quem tem convênio atendido; nesse caso a equipe confirma cobertura/autorização.)
 Consulta particular: R$ 200,00
+💳 NUNCA DIGA O VALOR DA CONSULTA SEM SABER SE É PARTICULAR OU CONVÊNIO (regra do Dr. Bruno, 27/08/2026). Quem tem plano ATENDIDO não paga consulta — ouvir "a consulta é R$ 200,00" como se fosse O preço faz a pessoa achar que vai pagar e desistir antes mesmo de dizer que tem convênio. Não é para esconder o valor: é para ENQUADRAR. Duas situações:
+  (a) VOCÊ AINDA NÃO SABE e ele PERGUNTOU o preço → responda na hora, com o enquadramento e a pergunta na MESMA mensagem: "**No particular** a consulta é R$ 200,00 — e você tem convênio? Atendemos vários planos." E emende um horário concreto da lista, como sempre.
+  (b) VOCÊ AINDA NÃO SABE e ele NÃO perguntou preço → não jogue o valor na conversa. Pergunte se é particular ou por convênio (é uma das duas únicas perguntas permitidas antes de oferecer o horário) e siga.
+  Se ele JÁ disse que é particular, aí o valor é dito direto e sem rodeio, como manda a regra dos R$ 200,00 antes de marcar. Se ele JÁ disse o convênio e ele é atendido, NÃO cite o valor particular da consulta — pelo plano não há esse custo.
 ⛔ NÃO HÁ DESCONTO NO VALOR DA CONSULTA (regra do Dr. Bruno, 18/08/2026). Os R$ 200,00 são fixos: sem desconto, sem "valor social", sem condição especial para idoso, estudante, servidor, indicação, retorno de campanha, mais de um paciente da mesma família ou quem alega dificuldade financeira. É PROIBIDO: oferecer desconto por conta própria; dizer que "vai verificar com a equipe/com o Dr. Bruno se é possível um desconto"; insinuar que existe negociação; ou deixar a porta aberta com "não sei, mas pergunte na recepção". ⏱️ SÓ FALE DISSO NO TURNO EM QUE ELE PERGUNTAR, e NUNCA abrindo a mensagem. Se a pergunta de desconto foi respondida numa mensagem anterior, o assunto está ENCERRADO: não repita a negativa, não a use como abertura e não a emende em resposta a outro assunto. Caso real (18/08): o paciente perguntou de desconto às 17h14, voltou às 20h46 agradecendo e pedindo um horário mais cedo, e você começou a resposta com "O valor da consulta é R$ 200,00, e não temos condição diferente dele" — ele não tinha perguntado nada disso, a mensagem ficou fria logo depois de um agradecimento, e ele foi procurar outra clínica. Responda ao que ele acabou de perguntar.
 Quando pedirem desconto, responda com cordialidade e SEM constrangimento — não peça desculpas nem trate como problema —, diga que o valor é esse, e SIGA para o horário na MESMA mensagem (o paciente que pede desconto quase sempre continua interessado; perder o agendamento aí é o pior desfecho). Se ele tiver convênio ATENDIDO, lembre que pelo plano não há esse custo. Se tiver convênio NÃO atendido, vale a nota fiscal para reembolso. Ex.: "O valor da consulta é R$ 200,00, e não temos condição diferente dele. Se preferir, emitimos nota fiscal para você pedir reembolso ao seu plano. Consigo *quinta-feira, 20/08, às 10h20*, no Taguatinga Shopping — reservo para você?"
 Cirurgia de Catarata: R$ 5.000,00 por olho (inclui honorários + bloco cirúrgico + anestesista) — valor SÓ da cirurgia. A lente intraocular (LIO) é cobrada à parte, conforme o modelo (ver a tabela de lentes e as regras de convênio/particular na seção "Cirurgia de catarata").
@@ -1786,6 +1790,38 @@ function precoSemHorario(reply, slots) {
   if (/\d{1,2}\s*[h:]\s*\d{2}/.test(reply)) return null;        // já tem horário concreto
   if (RE_NAO_DA_PARA_MARCAR.test(reply)) return null;           // depende da equipe: não há horário a oferecer
   return "preço informado sem oferecer horário concreto";
+}
+// ===== TRAVA: PREÇO DA CONSULTA SEM SABER SE É PARTICULAR OU CONVÊNIO =====
+// Dr. Bruno, 27/08/2026: "Ana falou preço da consulta sem antes perguntar se
+// era particular ou convênio". Para quem tem plano atendido a consulta NÃO tem
+// custo — ouvir "são R$ 200,00" como se fosse O preço faz o paciente achar que
+// vai pagar, e ele some antes de dizer que tem convênio. O contrário do erro de
+// 21/08 (a Marcia foi marcada sem saber do valor): lá faltava dizer o preço a
+// quem é particular; aqui sobra dizê-lo a quem talvez nem pague.
+// A regra não é calar o preço — é ENQUADRÁ-LO: "no particular é R$ 200,00" +
+// "você tem convênio?" na mesma mensagem.
+// Só vale para o preço da CONSULTA (200). Cirurgia, lente e teste têm valor
+// particular independente de plano e são informados de forma espontânea.
+const RE_SABE_FORMA_ATENDIMENTO = /particular|conv[êe]nio|plano de sa[úu]de|unimed|carteirinha|reembolso/i;
+function precoSemSaberConvenio(reply, messages) {
+  // O valor da consulta, em qualquer grafia que ela usa: R$ 200 / R$ 200,00 / 200 reais.
+  if (!/R\$\s?200(?:[.,]00)?\b|200\s*reais/i.test(reply)) return null;
+  // Se a própria mensagem já enquadra ("no particular", "se for particular") E
+  // pergunta do convênio, está exatamente no formato certo — não trava.
+  const enquadra = /(no|em|se for|para) particular|particular[^.!?\n]{0,20}(é|custa|fica)/i.test(reply);
+  const pergunta = /(tem|possui|é por|seria por|usa)[^.!?\n]{0,30}conv[êe]nio|conv[êe]nio[^.!?\n]{0,20}\?|particular ou (por )?conv[êe]nio/i.test(reply);
+  if (enquadra && pergunta) return null;
+  // Já se sabe pela conversa? Qualquer menção anterior (dele ou dela) a
+  // particular/convênio/plano basta — inclusive a foto da carteirinha.
+  const jaSabe = (messages || []).some(m => RE_SABE_FORMA_ATENDIMENTO.test(String(m.content || "")));
+  if (jaSabe) return null;
+  return "informou o valor da consulta sem saber (nem perguntar) se o atendimento é particular ou por convênio";
+}
+function instrucaoPrecoComConvenio() {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você informou o valor da consulta sem saber se este paciente é PARTICULAR ou tem CONVÊNIO — e nem perguntou. Quem tem plano atendido não paga consulta: ouvir "R$ 200,00" como se fosse O preço faz a pessoa achar que vai pagar e desistir antes de dizer que tem convênio.
+Reescreva mantendo a transparência, mas ENQUADRANDO o valor e perguntando na MESMA mensagem: diga que **no particular** a consulta é R$ 200,00, pergunte se ele tem convênio (atendemos vários) e ofereça um horário concreto da lista — tudo junto, em três linhas no máximo. Ex.: "No particular a consulta é R$ 200,00 — e você tem convênio? Atendemos vários planos. Já consigo *quinta-feira, 03/09, às 10h20*, no Taguatinga Shopping; reservo para você?"
+🚫 Não peça desculpas, não diga que se enganou e não repita o valor duas vezes.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 function instrucaoPerguntarConvenio() {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ia marcar a consulta sem em nenhum momento perguntar se o atendimento é PARTICULAR ou por CONVÊNIO. A recepção só descobre com o paciente na frente, e aí ou ele é cobrado errado ou a consulta atrasa. NÃO emita o bloco de agendamento agora. Reescreva confirmando o horário combinado e perguntando, em UMA frase curta e natural, se será particular ou por convênio — e, sendo convênio, qual. Ex.: "Perfeito, então fica quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Só me confirma: o atendimento será particular ou por convênio?" Assim que ele responder, aí sim você marca.
@@ -5310,15 +5346,18 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const cancelouSoNaFala = prometeuCancelarSemBloco(reply, cancPrevia.limpo, cancPrevia.registros, meusAgendamentos);
       // Veio do botão REMARCAR e já jogou horário, sem perguntar dia/turno.
       // Condição determinística: o toque no botão é fato, não interpretação.
+      // Preço da consulta dito sem saber se é particular ou convênio.
+      const precoSemConvenio = precoSemSaberConvenio(reply, messages);
       const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (ofertaCegaRemarcacao || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = ofertaCegaRemarcacao || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (ofertaCegaRemarcacao || precoSemConvenio || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = ofertaCegaRemarcacao || precoSemConvenio || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
           ofertaCegaRemarcacao ? "oferta_cega_remarcacao"
+            : precoSemConvenio ? "preco_sem_saber_convenio"
             : convenioInventado ? "convenio_inventado"
             : anunciouSemAgendar ? "anunciou_sem_agendar"
             : agendouOcupado ? "agendar_em_vaga_ocupada"
@@ -5350,7 +5389,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         // voltava a perguntar do convênio em vez de fechar. Em 17/08, 10 das 21
         // respostas chegaram ao paciente sem horário mesmo depois da reescrita.
         // A âncora é exatamente o porto seguro que consertou as outras travas.
-        const travaDeHorario = !!(contradicao || maisCedo || precoSeco || ofertaFalsa || fichaCedo || agendouOcupado);
+        const travaDeHorario = !!(contradicao || maisCedo || precoSeco || precoSemConvenio || ofertaFalsa || fichaCedo || agendouOcupado);
         const ancora = (travaDeHorario && Array.isArray(slotsVigentes) && slotsVigentes.length)
           ? alternativaMaisProxima(slotsVigentes, new Date(), Date.now()) : null;
         const ancoraTxt = ancora
@@ -5366,6 +5405,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
             { type: "text", text: dynVolatil + (ofertaCegaRemarcacao ? instrucaoPerguntarPreferencia()
+              : precoSemConvenio ? instrucaoPrecoComConvenio()
               : convenioInventado ? instrucaoConvenioReal(convenioInventado)
               : anunciouSemAgendar ? instrucaoAgendarDeVerdade(anunciouSemAgendar)
               : agendouOcupado ? instrucaoAgendarVagaLivre(agendouOcupado)
