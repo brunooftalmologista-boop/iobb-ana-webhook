@@ -602,7 +602,7 @@ Ao receber um relato de sintoma agudo, NÃO faça perguntas de triagem (não per
 
 ### Remarcar, cancelar ou confirmar agendamento
 Se a seção "### Agendamentos que ESTE paciente já tem" estiver no seu contexto, você PODE informar ao paciente os agendamentos que ele já tem (data, hora, unidade) — nunca diga que "não tem acesso aos agendamentos".
-DESMARCAR e REMARCAR: você PODE desmarcar/remarcar SOMENTE os agendamentos daquela seção marcados com "você PODE cancelar/remarcar este" (são os que a própria agenda automática controla). Antes de desmarcar, CONFIRME com o paciente ("Confirma que deseja cancelar a consulta de [dia] às [hora]?"). Ao confirmar o cancelamento, emita o bloco [CANCELAR] (ver abaixo). Para REMARCAR, ofereça um novo horário disponível; ao o paciente confirmar, emita [CANCELAR] do antigo E [AGENDAR] do novo na MESMA mensagem (o sistema marca o novo e cancela o antigo, nessa ordem segura). Para agendamentos marcados "alteração só pela equipe" (ou que você não vê na seção), NÃO tente alterar: oriente a pessoa a falar com as secretárias pelo (61) 3033-6605 ou pelo WhatsApp (61) 99299-7639 (seg-sex 8h-18h) ou deixe um recado.
+DESMARCAR e REMARCAR: você PODE desmarcar/remarcar SOMENTE os agendamentos daquela seção marcados com "você PODE cancelar/remarcar este" (são os que a própria agenda automática controla). Antes de desmarcar, CONFIRME com o paciente ("Confirma que deseja cancelar a consulta de [dia] às [hora]?"). Ao confirmar o cancelamento, emita o bloco [CANCELAR] (ver abaixo). 📅 PARA REMARCAR, PERGUNTE A PREFERÊNCIA ANTES DE OFERECER (regra do Dr. Bruno, 27/08/2026). Quem pede para remarcar está dizendo que o horário que tem NÃO serve — então jogar o primeiro horário da lista, que costuma ser no MESMO dia e no MESMO turno que ele acabou de recusar, é quase sempre uma oferta inútil. Faça UMA pergunta curta e cordial: "Claro! Tem algum dia e período que fica melhor para você — manhã ou tarde?" e SÓ DEPOIS ofereça um horário da lista que caiba na resposta. Duas exceções em que você NÃO pergunta e já oferece: (a) o paciente JÁ disse a preferência ("pode ser na sexta de manhã", "só consigo à tarde") — nesse caso use o que ele disse; (b) ele disse que tanto faz / quer o mais cedo possível — aí ofereça o horário mais próximo. Se não houver vaga no dia/turno pedido, diga isso em uma linha e ofereça o mais perto daquilo (mesmo turno em outro dia, ou o outro turno no dia pedido) — nunca responda só "não tenho". Ao o paciente confirmar, emita [CANCELAR] do antigo E [AGENDAR] do novo na MESMA mensagem (o sistema marca o novo e cancela o antigo, nessa ordem segura). Para agendamentos marcados "alteração só pela equipe" (ou que você não vê na seção), NÃO tente alterar: oriente a pessoa a falar com as secretárias pelo (61) 3033-6605 ou pelo WhatsApp (61) 99299-7639 (seg-sex 8h-18h) ou deixe um recado.
 
 ### Documentos e contatos
 Atestados, laudos e relatórios são avaliados e emitidos pelo médico na consulta, conforme o caso. Se pedirem site ou redes sociais que você não conhece, não invente — ofereça o telefone (61) 3033-6605, o WhatsApp da equipe (61) 99299-7639 e o retorno da equipe.
@@ -1528,6 +1528,31 @@ function fichaAntesDoHorario(reply, messages, slots) {
 }
 function instrucaoHorarioPrimeiro(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. A ordem é HORÁRIO PRIMEIRO, ficha depois: nome e data de nascimento não mudam qual vaga existe — pedi-los antes só cria atrito e o paciente some sem nem saber se havia horário bom. Reescreva OFERECENDO desde já UM horário concreto DA LISTA (o mais próximo que atenda ao que ele pediu); se ainda não souber a unidade ou se é particular/convênio, pergunte APENAS isso na mesma mensagem, junto da oferta. Nome completo e nascimento, você pede DEPOIS que ele aceitar o horário.\n🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
+// ===== TRAVA: OFERECEU HORÁRIO NA REMARCAÇÃO SEM PERGUNTAR A PREFERÊNCIA ===
+// Dr. Bruno, 27/08/2026: "ela ofereceu no mesmo dia e no mesmo turno, pouco
+// provável que o paciente queira". Quem toca em REMARCAR está dizendo que o
+// horário que tem NÃO serve — e o primeiro horário da lista cai, quase sempre,
+// no mesmo dia e turno que ele acabou de recusar. A oferta nasce morta e o
+// paciente responde "não dá", gastando duas mensagens para voltar à estaca zero.
+// Aqui a condição é DETERMINÍSTICA (o toque no botão é um fato, não uma
+// interpretação): se veio do botão Remarcar e a resposta já traz horário, ela
+// pulou a pergunta. Por isso não pede âncora — o certo é NÃO ter horário nenhum.
+// ⚠️ Repetir ao paciente o horário que ele JÁ TEM não é oferta — é a meia linha
+// de confirmação que a própria regra pede ("sua consulta é quinta, 27/08, às
+// 14h20"). Sem esta exceção a trava disparava justamente na resposta CERTA:
+// pegou 1 dos 7 casos de teste antes de eu excluir os horários dele.
+function ofertaCegaNaRemarcacao(reply, meusAgendamentos) {
+  const hhmm = (d) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
+  const dele = new Set((meusAgendamentos || []).map(a => hhmm(a.inicio)));
+  const horas = horariosOferecidos(reply).filter(h => !dele.has(h));
+  return horas.length ? `ofereceu ${horas[0]} na remarcação sem antes perguntar o dia/turno de preferência` : null;
+}
+function instrucaoPerguntarPreferencia() {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ofereceu um horário sem antes perguntar QUANDO fica bom para o paciente. Ele acabou de pedir para REMARCAR — ou seja, já disse que o horário atual não serve. O primeiro horário da lista costuma ser no mesmo dia e no mesmo turno que ele acabou de recusar, então essa oferta quase sempre nasce morta.
+Reescreva assim: confirme em meia linha qual é a consulta que ele tem hoje (dia, hora e unidade) e pergunte, de forma curta e cordial, que DIA e que PERÍODO ficam melhores para ele — "manhã ou tarde?". 🚫 NÃO cite nenhum horário, nenhuma data e nenhuma vaga nesta mensagem: você só oferece depois que ele responder. Se ele disser que tanto faz, aí sim você oferece o mais próximo.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
 // ===== TRAVA: OFERECEU VAGA QUE NÃO EXISTE ================================
@@ -5054,7 +5079,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     if (intencaoBotao === "desmarcar") {
       dynVolatil += `\n\n### O paciente TOCOU no botão "Desmarcar" do lembrete\nO cancelamento automático NÃO foi aplicado porque há MAIS DE UMA consulta neste mesmo telefone para o mesmo dia (família no mesmo WhatsApp) — o toque não diz de QUEM é. Pergunte, em UMA frase curta e cordial, QUAL das consultas ele quer desmarcar, listando-as com nome, hora e unidade (ex.: "Você quer desmarcar a consulta da Bianca às 17h20 ou a do Luciano às 17h00?"). NÃO pergunte se ele tem certeza: a intenção de cancelar já está dada, só falta saber qual. Assim que ele indicar, emita o [CANCELAR] daquela consulta e ofereça, na mesma mensagem, remarcar para outra data — muita gente desmarca por conflito de horário, não por desistência.`;
     } else if (intencaoBotao === "remarcar") {
-      dynVolatil += `\n\n### O paciente TOCOU no botão "Remarcar" do lembrete\nEle quer trocar o horário da consulta que já tem. NÃO pergunte "como posso ajudar?" nem peça que ele explique — a intenção já está dada. Confirme em meia linha qual é a consulta atual (dia, hora e unidade) e ofereça JÁ um horário concreto da lista para substituí-la, perguntando se serve. Ao ele aceitar, faça a remarcação normalmente ([CANCELAR] do antigo + [AGENDAR] do novo).`;
+      dynVolatil += `\n\n### O paciente TOCOU no botão "Remarcar" do lembrete\nEle quer trocar o horário da consulta que já tem. NÃO pergunte "como posso ajudar?" nem peça que ele explique — a intenção já está dada. Confirme em meia linha qual é a consulta atual (dia, hora e unidade) e PERGUNTE, na mesma mensagem, qual dia e período ficam melhores para ele ("manhã ou tarde?"). 🚫 NÃO ofereça um horário concreto ainda, e MUITO MENOS o primeiro da lista: ele quase sempre cai no MESMO dia e no MESMO turno que o paciente acabou de recusar — é o horário que ele já disse que não serve. Só ofereça depois que ele indicar o dia/turno (ou se ele responder que tanto faz, aí sim ofereça o mais próximo). Ao ele aceitar, faça a remarcação normalmente ([CANCELAR] do antigo + [AGENDAR] do novo).`;
     }
 
     if (fotoDeCarteirinha) {
@@ -5283,13 +5308,18 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const contaGotas = (etapaDeOferta && !fichaCedo) ? fichaEmContaGotas(reply, messages) : null;
       const cancPrevia = extrairCancelar(reply);
       const cancelouSoNaFala = prometeuCancelarSemBloco(reply, cancPrevia.limpo, cancPrevia.registros, meusAgendamentos);
-      if (horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      // Veio do botão REMARCAR e já jogou horário, sem perguntar dia/turno.
+      // Condição determinística: o toque no botão é fato, não interpretação.
+      const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
+        ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
+      if (ofertaCegaRemarcacao || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = ofertaCegaRemarcacao || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          convenioInventado ? "convenio_inventado"
+          ofertaCegaRemarcacao ? "oferta_cega_remarcacao"
+            : convenioInventado ? "convenio_inventado"
             : anunciouSemAgendar ? "anunciou_sem_agendar"
             : agendouOcupado ? "agendar_em_vaga_ocupada"
             : ofertaFalsa ? "ofereceu_vaga_inexistente"
@@ -5335,7 +5365,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
-            { type: "text", text: dynVolatil + (convenioInventado ? instrucaoConvenioReal(convenioInventado)
+            { type: "text", text: dynVolatil + (ofertaCegaRemarcacao ? instrucaoPerguntarPreferencia()
+              : convenioInventado ? instrucaoConvenioReal(convenioInventado)
               : anunciouSemAgendar ? instrucaoAgendarDeVerdade(anunciouSemAgendar)
               : agendouOcupado ? instrucaoAgendarVagaLivre(agendouOcupado)
               : ofertaFalsa ? instrucaoOfertaReal(ofertaFalsa)

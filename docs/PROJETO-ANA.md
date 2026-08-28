@@ -332,6 +332,9 @@ reprovada 2× segue, para não destruir resposta legítima (ex.: casal = 2 horá
 - vaga mais cedo ignorada · preço sem oferta de horário · verbete de dicionário;
 - vazamento de instrução interna · convênio não atendido/regional;
 - `[AGENDAR]` com horário fora da lista → não grava, oferece alternativa;
+- remarcação: ofereceu horário antes de perguntar o dia/turno → refaz perguntando
+  (quem pede para remarcar já disse que o horário que tem não serve; repetir o
+  horário DELE não conta como oferta);
 - prosa × token divergentes → vale a PROSA (o que o paciente leu);
 - anti-duplicata e anti-overbooking (índice único no banco);
 - re-emissão de `[AGENDAR]` sem mudança → ignorada (não duplica).
