@@ -4875,6 +4875,22 @@ app.post("/webhook", async (req, res) => {
     }
     await saveMessage(conversation.id, "user", text, msg.id, media);
 
+    // DESCADASTRO DE MARKETING: para AQUI, antes da Ana. O toque em "Parar
+    // promoções" chega como texto e ela responderia oferecendo horário. Fica
+    // depois do saveMessage de propósito — o pedido tem que aparecer no painel.
+    if (pediuDescadastro(text)) {
+      const ok = await registrarDescadastro(from, {
+        nome: patient?.name || null,
+        origem: msg.type === "button" ? "botao_template" : "texto",
+      });
+      const resposta = ok
+        ? "Certo, registramos o seu pedido: não enviaremos mais mensagens de divulgação para este número. Você continua recebendo os lembretes das consultas que já tiver marcadas, e pode falar comigo quando quiser para agendar. Permaneço à disposição."
+        : FRIENDLY_FALLBACK;
+      await sendWhatsApp(from, resposta).catch(e => console.error("[OptOut] Falha ao responder:", e.message));
+      await saveMessage(conversation.id, "assistant", resposta).catch(e => console.error("[OptOut] Falha ao salvar resposta:", e.message));
+      return;
+    }
+
     // Vincula o clique de anúncio (se veio da landing) ao paciente/conversa.
     // Landing Wix: o gclid veio DENTRO da mensagem → grava um clique por-lead com
     // o tema do token fixo. Caso contrário (landing do app, que já registrou o
@@ -6879,6 +6895,36 @@ app.get("/api/agenda/export-iclinic", async (req, res) => {
   }
 });
 
+// ── DESCADASTRO DE MARKETING ────────────────────────────────────────────────
+// GET  → a lista, para subtrair da planilha ANTES de cada lote do disparo.
+// POST → registra à mão, quando o paciente pede por telefone ou no balcão (a
+// equipe não tem como tocar no botão por ele, e o pedido vale do mesmo jeito).
+// Ambas atrás do requirePanelAuth (app.use("/api", ...)).
+app.get("/api/marketing/optouts", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("marketing_optout")
+      .select("fone_chave, telefone, nome, origem, created_at").order("created_at", { ascending: false });
+    if (error) return res.status(502).json({ ok: false, error: error.message });
+    res.json({ ok: true, total: (data || []).length, descadastros: data || [] });
+  } catch (e) {
+    console.error("[OptOut] Falha ao listar:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post("/api/marketing/optouts", async (req, res) => {
+  try {
+    const telefone = String(req.body?.telefone || "").trim();
+    if (!foneChave(telefone)) return res.status(400).json({ ok: false, error: "Telefone inválido." });
+    const ok = await registrarDescadastro(telefone, { nome: req.body?.nome || null, origem: "manual" });
+    if (!ok) return res.status(502).json({ ok: false, error: "Não foi possível gravar o descadastro." });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[OptOut] Falha ao registrar:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ── COMPARECIMENTO ──────────────────────────────────────────────────────────
 // Quem marca é a recepção, no painel, quando o paciente chega (ou quando fica
 // claro que não veio). É um campo SEPARADO do status: 'confirmado' ali quer
@@ -7445,6 +7491,61 @@ async function rodarFollowUpLeads() {
 function startFollowUp() {
   setInterval(() => rodarFollowUpLeads().catch(e => console.error("[FollowUp] scheduler:", e.message)), 30 * 60 * 1000);
   console.log("[FollowUp] scheduler ativo (30 min). Envio real só com settings.followup_leads_enabled='true'.");
+}
+
+// ===== DESCADASTRO DE MARKETING (opt-out) ==================================
+// A Meta exige que mensagem de categoria MARKETING pare de chegar quando o
+// paciente pede. O botão "Parar promoções" do template de reengajamento chega
+// ao webhook como um toque (msg.type === "button") e vira TEXTO comum — sem o
+// desvio abaixo, a Ana leria "Parar promoções" e responderia oferecendo
+// horário, que é exatamente o contrário do pedido.
+// ⚠️ NÃO afeta o lembrete da véspera: aquele é UTILIDADE, o paciente tem hora
+// reservada e precisa ser avisado. Só o disparo de marketing consulta a lista.
+// Tabela: sql/marketing_optout.sql (RLS ligado, sem policies).
+const OPTOUT_RE = /^(parar|parar promocoes?|sair|descadastrar|cancelar inscricao|nao quero mais receber( mensagens| promocoes?)?|remover meu numero|me remova da lista)$/;
+
+// Casamento EXATO de propósito: "parar" isolado é pedido de descadastro, mas
+// "não quero parar o tratamento" no meio de uma frase não é — e tirar um
+// paciente da lista por engano custa o contato dele para sempre.
+function pediuDescadastro(texto) {
+  const t = String(texto || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  return !!t && OPTOUT_RE.test(t);
+}
+
+async function registrarDescadastro(telefone, { nome = null, origem = "paciente" } = {}) {
+  const chave = foneChave(telefone);
+  if (!chave) return false;
+  const { error } = await supabase.from("marketing_optout").upsert(
+    { fone_chave: chave, telefone: normalizePhoneBR(telefone) || telefone, nome, origem },
+    { onConflict: "fone_chave" });
+  if (error) { console.error("[OptOut] Falha ao gravar descadastro:", error.message); return false; }
+  console.log(`[OptOut] ${maskFone(telefone)} descadastrado de marketing (origem: ${origem}).`);
+  return true;
+}
+
+// Na dúvida, NÃO envia: se o banco falhar, devolve `true` (bloqueado). Deixar
+// de mandar uma campanha é um lembrete perdido; mandar para quem pediu para
+// parar é o número da clínica sendo denunciado por quem confia nela.
+async function descadastrado(telefone) {
+  const chave = foneChave(telefone);
+  if (!chave) return false;
+  const { data, error } = await supabase.from("marketing_optout")
+    .select("fone_chave").eq("fone_chave", chave).maybeSingle();
+  if (error) { console.error("[OptOut] Falha ao consultar descadastro — bloqueando por segurança:", error.message); return true; }
+  return !!data;
+}
+
+// ÚNICO caminho permitido para disparo de MARKETING (o reengajamento de um ano,
+// por exemplo). Chame ISTO, nunca sendWhatsAppTemplate direto: assim o
+// descadastro não depende de alguém lembrar de filtrar a lista antes do envio.
+async function enviarTemplateMarketing(to, templateName, lang = "pt_BR", bodyParams = [], quickReplies = []) {
+  if (await descadastrado(to)) {
+    console.log(`[OptOut] Envio de marketing BLOQUEADO para ${maskFone(to)} (template ${templateName}).`);
+    return { enviado: false, motivo: "descadastrado" };
+  }
+  await sendWhatsAppTemplate(to, templateName, lang, bodyParams, quickReplies);
+  return { enviado: true };
 }
 
 // ===== LEMBRETE DE CONSULTA (véspera) =======================================
