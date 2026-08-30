@@ -613,7 +613,9 @@ Atestados, laudos e relatórios são avaliados e emitidos pelo médico na consul
 
 ### Outras dúvidas comuns
 - Segunda via de receita de óculos: a receita é emitida pelo médico na consulta. Para uma segunda via, acolha e oriente a falar com a equipe pelo (61) 3033-6605 ou pelo WhatsApp (61) 99299-7639, ou deixe um recado — a equipe verifica no sistema. Não prometa emitir por conta própria.
-- Retorno (custo e prazo): as condições e o prazo de retorno dependem do caso e são confirmados pela equipe. NÃO afirme que é gratuito nem cite prazos por conta própria.
+- 🔁 RETORNO — 30 DIAS, SÓ PARA QUEM PAGOU PARTICULAR (regra do Dr. Bruno, 28/08/2026). Quem fez consulta PARTICULAR tem direito a UM retorno dentro de 30 dias contados da data da consulta, sem custo. Passados os 30 dias, é cobrada uma nova consulta (R$ 200,00) — sem exceção e sem "vou ver com a equipe". Diga isso com naturalidade e sem constrangimento, e ofereça o horário na mesma mensagem. Se o paciente estiver DENTRO do prazo, trate o retorno como qualquer agendamento (mesma ficha, mesmas travas) e registre "Retorno" no motivo. Se estiver FORA, explique em uma linha que o prazo do retorno já passou e que será uma nova consulta, e siga oferecendo horário — nunca termine a mensagem na cobrança.
+  ⚠️ Isso vale para PARTICULAR. Se a consulta anterior foi por CONVÊNIO, não afirme prazo nem gratuidade por conta própria: as regras de retorno de cada plano são confirmadas pela equipe.
+  ⚠️ Não confunda com CONFERÊNCIA DE ÓCULOS: ela NÃO é retorno, NÃO consome o retorno de 30 dias e NÃO tem prazo — o paciente pode levar os óculos para conferir quando eles ficarem prontos, seja quando for.
 - Recibo / nota fiscal para reembolso: para consultas e exames particulares, a equipe fornece o recibo/nota; oriente a confirmar os detalhes com a equipe.
 - Ótica / compra de óculos: na consulta o médico faz a prescrição (receita) dos óculos. Sobre a compra dos óculos em si, a equipe informa — NÃO afirme que temos nem que não temos ótica.
 - Atendimento online / teleconsulta: o atendimento é presencial, pois a avaliação oftalmológica depende de exames feitos no consultório. Se o paciente não puder vir agora, ofereça registrar a preferência de unidade e período para quando conseguir comparecer.
@@ -2195,6 +2197,32 @@ async function cancelarAgendamento(id) {
 // INFORMAR "você tem uma consulta em X". Alterações continuam com a equipe. Casa o
 // telefone com o `from` do WhatsApp (pega os que a própria Ana marcou; iClinic/
 // secretária podem ter outro formato de telefone e não aparecem aqui).
+// Última consulta JÁ REALIZADA deste telefone — a base da regra do retorno de 30
+// dias (Dr. Bruno, 28/08/2026). Fica separada de agendamentosDoPaciente() de
+// propósito: aquela lista alimenta as travas de cancelar/remarcar, e uma consulta
+// PASSADA entrando lá viraria "você PODE cancelar este" para algo que já aconteceu.
+// ⚠️ Só é chamada quando o paciente fala em retorno (ver RE_FALA_DE_RETORNO):
+// somar uma leitura ao banco em TODA conversa foi o que estourou a cota de egress
+// em 08/08. Quem não fala de retorno não paga por esta consulta.
+async function ultimaConsultaDoPaciente(telefone) {
+  if (!telefone) return null;
+  try {
+    const { data } = await supabase.from("appointments")
+      .select("inicio, unidade, convenio, motivo")
+      .in("paciente_telefone", fonesBR(telefone))
+      .neq("status", "cancelado")
+      .lt("inicio", new Date().toISOString())
+      .order("inicio", { ascending: false }).limit(1);
+    return (data && data[0]) || null;
+  } catch (e) { console.error("[Agenda DB] ultimaConsultaDoPaciente falhou:", e.message); return null; }
+}
+// "Retorno" é a palavra do paciente; "revisão" e "voltar" aparecem quase tanto.
+// Conservador de propósito: um falso positivo custa uma leitura no banco, um
+// falso negativo faz a Ana falar de prazo sem saber a data da consulta.
+// ⚠️ O texto vem CRU do WhatsApp, com acento — casar "ja consultei" sem acento
+// não pega "já consultei", que é como as pessoas escrevem. Por isso [áa] em tudo.
+const RE_FALA_DE_RETORNO = /\bretorn|revis[ãa]o|revisar|\bvoltar\b|nova consulta|j[áa]\s+(fui|consultei|passei|estive)|fui atendid|consultei (a[íi]|com)/i;
+
 async function agendamentosDoPaciente(telefone) {
   if (!telefone) return [];
   try {
@@ -5098,6 +5126,31 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       }
     } catch (_) {}
 
+    // ── RETORNO: a CONTA DOS 30 DIAS É DO CÓDIGO, NÃO DELA ───────────────────
+    // A Ana erra data com frequência (foi assim que ela negou dias livres em
+    // 29/07 e ofereceu 14h40 gravando 15:40). Então o código lê a última consulta,
+    // calcula os dias corridos e entrega o VEREDITO pronto — ela só comunica.
+    if (RE_FALA_DE_RETORNO.test(text || "")) {
+      try {
+        const ult = await ultimaConsultaDoPaciente(from);
+        if (ult) {
+          const dias = Math.floor((Date.now() - new Date(ult.inicio).getTime()) / 86400000);
+          const conv = String(ult.convenio || "").trim();
+          const ehParticular = /^particular$/i.test(conv);
+          const dentro = dias <= 30;
+          dynVolatil += `\n\n### A última consulta deste paciente (dado do sistema — confie NESTA conta, não na sua)\n`
+            + `- Foi em **${fmtDataHoraBR(ult.inicio)}**, no ${ult.unidade}${ult.motivo ? ` (${ult.motivo})` : ""} — forma de atendimento: **${conv || "não registrada"}**.\n`
+            + `- Isso foi há **${dias} dia(s)**.\n`
+            + (ehParticular
+                ? (dentro
+                    ? `- ✅ ELE ESTÁ DENTRO DO PRAZO DO RETORNO (30 dias, consulta particular): o retorno é SEM CUSTO. Restam ${30 - dias} dia(s). Trate como agendamento normal, com motivo "Retorno", e NÃO cite o valor de R$ 200,00.`
+                    : `- ⛔ O PRAZO DO RETORNO JÁ PASSOU (foram ${dias} dias, o limite é 30): será uma NOVA consulta, R$ 200,00. Diga isso em UMA linha, com naturalidade e sem pedir desculpas, e ofereça o horário na mesma mensagem — nunca termine a mensagem na cobrança.`)
+                : `- ⚠️ A consulta anterior NÃO foi particular${conv ? ` (foi ${conv})` : ""}. A regra dos 30 dias vale para PARTICULAR; para convênio, não afirme prazo nem gratuidade — diga que a equipe confirma as condições do plano e siga oferecendo o horário.`)
+            + `\n- 🚫 Conferência de óculos NÃO é retorno: não consome esse prazo e não tem data limite.`;
+        }
+      } catch (e) { console.error("[Retorno] Falha ao consultar última consulta (segue sem):", e.message); }
+    }
+
     // Anúncio (Click-to-WhatsApp): injeta o contexto do anúncio para a Ana abrir
     // DIRETO no tema, mesmo com mensagem genérica. A Meta só envia o referral na
     // 1ª mensagem da conversa (início vindo do anúncio).
@@ -7710,7 +7763,7 @@ function textoConferenciaOculos(agora = new Date()) {
   return "Para conferência de óculos *não precisa agendar*: o atendimento é por ordem de chegada. 😊\n\n"
     + `• *Conjunto Nacional* (Asa Norte) — segundas, quartas e sextas, a partir das 9h${rotulo(proxCN)}.\n`
     + `• *Taguatinga Shopping* (em Águas Claras) — terças e quintas, a partir das 10h${rotulo(proxTG)}.\n\n`
-    + "É só comparecer na unidade que preferir, levando os óculos e a receita. Se precisar do endereço ou de qualquer outra coisa, é só falar!";
+    + "É só comparecer na unidade que preferir, levando os óculos e a receita. *Não há prazo* — pode trazer quando os óculos ficarem prontos, e isso não usa o seu retorno. Se precisar do endereço ou de qualquer outra coisa, é só falar!";
 }
 // Detecta o pedido. Conservador: se houver sinal de OUTRO assunto junto
 // (convênio, valor, sintoma, exame, cirurgia, dado de ficha), devolve false e a

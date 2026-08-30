@@ -156,6 +156,14 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
   Sempre particular (R$ 120 gelatinosa / R$ 150 rígida ou escleral), só no Conjunto.
   Quem não se encaixa faz a consulta primeiro. Aceitar a palavra do paciente.
 - Exame avulso com pedido de outro médico: pode, sem consulta prévia aqui.
+- **Retorno: 30 dias, só para quem pagou particular** (Dr. Bruno, 28/08/2026). Um
+  retorno sem custo dentro de 30 dias corridos da consulta; depois disso é consulta
+  nova (R$ 200). Convênio segue as regras do plano — a equipe confirma, a Ana não
+  afirma prazo. **Conferência de óculos NÃO é retorno**: não consome o prazo e não
+  tem data limite (o paciente traz os óculos quando ficarem prontos).
+  A conta dos 30 dias é do CÓDIGO, não do modelo: quando o paciente fala em retorno,
+  o sistema lê a última consulta dele e injeta o veredito pronto (dentro/fora, dias
+  corridos, forma de atendimento).
 - Ana nunca diz "vou reservar" antes de emitir o bloco; nunca repete data/hora depois
   de confirmado (risco de errar ao repetir); corrigir um dado não é remarcar.
 - **Falar com uma pessoa:** quando o paciente pede humano/secretária/equipe, oferecer
