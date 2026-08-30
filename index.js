@@ -613,7 +613,8 @@ Atestados, laudos e relatórios são avaliados e emitidos pelo médico na consul
 
 ### Outras dúvidas comuns
 - Segunda via de receita de óculos: a receita é emitida pelo médico na consulta. Para uma segunda via, acolha e oriente a falar com a equipe pelo (61) 3033-6605 ou pelo WhatsApp (61) 99299-7639, ou deixe um recado — a equipe verifica no sistema. Não prometa emitir por conta própria.
-- 🔁 RETORNO — 30 DIAS, SÓ PARA QUEM PAGOU PARTICULAR (regra do Dr. Bruno, 28/08/2026). Quem fez consulta PARTICULAR tem direito a UM retorno dentro de 30 dias contados da data da consulta, sem custo. Passados os 30 dias, é cobrada uma nova consulta (R$ 200,00) — sem exceção e sem "vou ver com a equipe". Diga isso com naturalidade e sem constrangimento, e ofereça o horário na mesma mensagem. Se o paciente estiver DENTRO do prazo, trate o retorno como qualquer agendamento (mesma ficha, mesmas travas) e registre "Retorno" no motivo. Se estiver FORA, explique em uma linha que o prazo do retorno já passou e que será uma nova consulta, e siga oferecendo horário — nunca termine a mensagem na cobrança.
+- 🔁 RETORNO — 30 DIAS, SÓ PARA QUEM PAGOU PARTICULAR (regra do Dr. Bruno, 28/08/2026). Quem fez consulta PARTICULAR tem direito a UM retorno dentro de 30 dias contados da data da consulta, sem custo. Passados os 30 dias, é cobrada uma nova consulta (R$ 200,00) — sem exceção e sem "vou ver com a equipe".
+  🤐 **SÓ FALE DISSO SE O PACIENTE PERGUNTAR.** Esta regra é para você SABER RESPONDER, não para anunciar: quem só quer marcar o retorno, você marca (motivo "Retorno") e segue — sem abrir a mensagem com prazo, sem citar valor, sem explicar a regra por conta própria. Se ele perguntar ("o retorno é cobrado?", "ainda dá tempo?", "vou pagar de novo?"), responda direto, em uma linha, e ofereça o horário na mesma mensagem — nunca termine a mensagem na cobrança.
   ⚠️ Isso vale para PARTICULAR. Se a consulta anterior foi por CONVÊNIO, não afirme prazo nem gratuidade por conta própria: as regras de retorno de cada plano são confirmadas pela equipe.
   ⚠️ Não confunda com CONFERÊNCIA DE ÓCULOS: ela NÃO é retorno, NÃO consome o retorno de 30 dias e NÃO tem prazo — o paciente pode levar os óculos para conferir quando eles ficarem prontos, seja quando for.
 - Recibo / nota fiscal para reembolso: para consultas e exames particulares, a equipe fornece o recibo/nota; oriente a confirmar os detalhes com a equipe.
@@ -5143,9 +5144,10 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             + `- Isso foi há **${dias} dia(s)**.\n`
             + (ehParticular
                 ? (dentro
-                    ? `- ✅ ELE ESTÁ DENTRO DO PRAZO DO RETORNO (30 dias, consulta particular): o retorno é SEM CUSTO. Restam ${30 - dias} dia(s). Trate como agendamento normal, com motivo "Retorno", e NÃO cite o valor de R$ 200,00.`
-                    : `- ⛔ O PRAZO DO RETORNO JÁ PASSOU (foram ${dias} dias, o limite é 30): será uma NOVA consulta, R$ 200,00. Diga isso em UMA linha, com naturalidade e sem pedir desculpas, e ofereça o horário na mesma mensagem — nunca termine a mensagem na cobrança.`)
-                : `- ⚠️ A consulta anterior NÃO foi particular${conv ? ` (foi ${conv})` : ""}. A regra dos 30 dias vale para PARTICULAR; para convênio, não afirme prazo nem gratuidade — diga que a equipe confirma as condições do plano e siga oferecendo o horário.`)
+                    ? `- ✅ DENTRO DO PRAZO DO RETORNO (30 dias, consulta particular): o retorno é SEM CUSTO. Restam ${30 - dias} dia(s). Marque como agendamento normal, com motivo "Retorno".`
+                    : `- ⛔ FORA DO PRAZO (foram ${dias} dias, o limite é 30): não é mais retorno, é uma NOVA consulta (R$ 200,00).`)
+                : `- ⚠️ A consulta anterior NÃO foi particular${conv ? ` (foi ${conv})` : ""}. A regra dos 30 dias vale para PARTICULAR; para convênio não afirme prazo nem gratuidade — a equipe confirma as condições do plano.`)
+            + `\n- 🤐 ISTO É PARA VOCÊ SABER RESPONDER, NÃO PARA ANUNCIAR (regra do Dr. Bruno, 28/08/2026): **só fale de prazo, custo ou "retorno gratuito" SE O PACIENTE PERGUNTAR**. Se ele só quer marcar, marque e pronto — nada de abrir a mensagem com prazo ou valor, nada de explicar a regra por conta própria. Perguntou ("o retorno é cobrado?", "ainda estou no prazo?", "vou pagar de novo?") → responda direto, com a conta acima, em UMA linha, e emende o horário.`
             + `\n- 🚫 Conferência de óculos NÃO é retorno: não consome esse prazo e não tem data limite.`;
         }
       } catch (e) { console.error("[Retorno] Falha ao consultar última consulta (segue sem):", e.message); }
