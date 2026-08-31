@@ -4700,6 +4700,92 @@ app.post("/webhook", async (req, res) => {
         }
         return;
       }
+      // Campanha de reengajamento (revisão anual). Nada sai sozinho: cada lote é
+      // um comando explícito, para o número da clínica não levar rajada de frio.
+      const reengCmd = text.match(/^#REENGAJAR\b([\s\S]*)$/i);
+      if (reengCmd) {
+        const arg = reengCmd[1].trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+        if (arg === "CRIAR") {
+          try {
+            const r = await criarTemplateReengajamento();
+            await sendWhatsApp(from, `✅ Template *${TEMPLATE_REENGAJAR_NOME}* criado na Meta (status: ${r.status || "?"}, categoria: ${r.category || "?"}).\n\nA aprovação leva de minutos a algumas horas. Acompanhe com *#REENGAJAR*.`);
+          } catch (e) {
+            const d = e?.response?.data;
+            const msg = d ? JSON.stringify(d) : e.message;
+            await sendWhatsApp(from, /already exists|2388023|192/.test(msg)
+              ? `ℹ️ O template *${TEMPLATE_REENGAJAR_NOME}* já existe na Meta. Veja a situação com *#REENGAJAR*.`
+              : `❌ A Meta recusou a criação do template.\n\nResposta:\n${msg.slice(0, 900)}`);
+          }
+          return;
+        }
+
+        if (arg === "REPETIR") {
+          const { data, error } = await supabase.from("reengajamento")
+            .update({ status: "pendente", erro: null })
+            .eq("campanha", REENGAJAR_CAMPANHA).eq("status", "falhou").select("fone_chave");
+          await sendWhatsApp(from, error
+            ? `❌ Não consegui devolver as falhas para a fila: ${error.message}`
+            : `↩️ ${(data || []).length} paciente(s) que falharam voltaram para a fila.`);
+          return;
+        }
+
+        // TESTE vai para o SEU número, direto pelo sendWhatsAppTemplate: é você
+        // vendo o que o paciente vê, não um disparo de marketing (e por isso não
+        // consulta descadastro nem mexe na fila).
+        if (arg === "TESTE") {
+          try {
+            await sendWhatsAppTemplate(from, TEMPLATE_REENGAJAR_NOME, TEMPLATE_REENGAJAR_LANG,
+              ["Bruno", "setembro de 2025"], REENGAJAR_BOTOES);
+            await sendWhatsApp(from, "👆 É exatamente isso que o paciente recebe. Se estiver bom, mande o primeiro lote com *#REENGAJAR 50*.");
+          } catch (e) {
+            const d = e?.response?.data;
+            await sendWhatsApp(from, `❌ Não consegui enviar o teste: ${(d ? JSON.stringify(d) : e.message).slice(0, 600)}\n\nO template já está APROVADO? Confira com *#REENGAJAR*.`);
+          }
+          return;
+        }
+
+        // "#REENGAJAR 50" → dispara o lote.
+        const quantos = arg.match(/^(\d{1,3})$/);
+        if (quantos) {
+          let st = null, erroSt = null;
+          try { st = await statusTemplateReengajamento(); } catch (e) { erroSt = e?.response?.data ? JSON.stringify(e.response.data).slice(0, 300) : e.message; }
+          // Trava: sem template APROVADO, um lote de 50 vira 50 falhas seguidas.
+          if (erroSt) { await sendWhatsApp(from, `⚠️ Não consegui confirmar o template na Meta agora (${erroSt}) — não vou disparar às cegas. Tente de novo em instantes.`); return; }
+          if (!st) { await sendWhatsApp(from, `⚠️ O template *${TEMPLATE_REENGAJAR_NOME}* ainda não existe na Meta. Crie com *#REENGAJAR CRIAR*.`); return; }
+          if (st.status !== "APPROVED") { await sendWhatsApp(from, `⏳ O template ainda não foi aprovado (status: *${st.status}*). Nada foi enviado.`); return; }
+
+          await sendWhatsApp(from, `📤 Disparando o lote de ${Math.min(Number(quantos[1]), REENGAJAR_LOTE_MAX)}… te aviso ao terminar.`);
+          try {
+            const r = await dispararLoteReengajamento(quantos[1]);
+            const resumo = await resumoReengajamento().catch(() => null);
+            await sendWhatsApp(from, `✅ Lote concluído.\n\n📨 Enviados: *${r.enviados}*\n🔕 Descadastrados (pulados): ${r.descadastrados}\n📅 Já tinham consulta marcada (pulados): ${r.jaAgendados}\n❌ Falhas: ${r.falhas}${r.erros.length ? `\n\nPrimeiro erro:\n${r.erros[0].slice(0, 300)}` : ""}${resumo ? `\n\nAinda na fila: *${resumo.por.pendente || 0}*` : ""}\n\nOlhe a qualidade do número no WhatsApp Manager antes do próximo lote.${r.falhas ? "\nPara tentar as falhas de novo: *#REENGAJAR REPETIR*." : ""}`);
+          } catch (e) {
+            await sendWhatsApp(from, `❌ O lote parou com erro: ${e.message.slice(0, 500)}\n\nQuem já recebeu está marcado — *#REENGAJAR* mostra como ficou.`);
+          }
+          return;
+        }
+
+        // "#REENGAJAR" puro → situação.
+        let st = null, erroSt = null;
+        try { st = await statusTemplateReengajamento(); } catch (e) { erroSt = e?.response?.data ? JSON.stringify(e.response.data).slice(0, 300) : e.message; }
+        const situacao = erroSt ? `⚠️ não consegui consultar a Meta: ${erroSt}`
+          : !st ? "ainda não existe — crie com *#REENGAJAR CRIAR*"
+          : st.status === "APPROVED" ? "✅ APROVADO — pode disparar"
+          : `⏳ status na Meta: *${st.status}*`;
+        let fila;
+        try { fila = await resumoReengajamento(); } catch (e) {
+          await sendWhatsApp(from, `🔁 *Reengajamento* (${REENGAJAR_CAMPANHA})\n\nTemplate: ${situacao}\n\n⚠️ Não consegui ler a fila: ${e.message}`);
+          return;
+        }
+        if (!fila.total) {
+          await sendWhatsApp(from, `🔁 *Reengajamento* (${REENGAJAR_CAMPANHA})\n\nTemplate: ${situacao}\n\n⚠️ A fila está VAZIA — falta carregar a lista de pacientes na tabela *reengajamento* (sql/reengajamento.sql).`);
+          return;
+        }
+        const p = fila.por;
+        await sendWhatsApp(from, `🔁 *Reengajamento* (${REENGAJAR_CAMPANHA})\n\nTemplate: ${situacao}\n\n📋 Fila: *${fila.total}* paciente(s)\n⏳ Pendentes: *${p.pendente || 0}*\n📨 Enviados: ${p.enviado || 0}\n🔕 Descadastrados: ${p.descadastrado || 0}\n📅 Já agendados: ${p.ja_agendado || 0}\n❌ Falhas: ${p.falhou || 0}\n\n🎯 Voltaram a marcar depois de receber: *${fila.voltaram}*${fila.enviados ? ` de ${fila.enviados}` : ""}\n\nPróximo lote: *#REENGAJAR 50* · Ver o texto no seu número: *#REENGAJAR TESTE*`);
+        return;
+      }
       // Lembretes da véspera. "#LEMBRETES" (ou TESTE) lista quem receberia, sem
       // enviar nada; "#LEMBRETES CONFIRMAR" dispara agora, fora do horário.
       const lembCmd = text.match(/^#LEMBRETES\b([\s\S]*)$/i);
@@ -7546,6 +7632,132 @@ async function enviarTemplateMarketing(to, templateName, lang = "pt_BR", bodyPar
   }
   await sendWhatsAppTemplate(to, templateName, lang, bodyParams, quickReplies);
   return { enviado: true };
+}
+
+// ===== CAMPANHA DE REENGAJAMENTO (revisão anual) ===========================
+// Paciente que consultou e não voltou: a primeira safra é ago/set de 2025,
+// tirada do relatório "Paciente para retorno" do iClinic antes de a assinatura
+// acabar. Fila em sql/reengajamento.sql; o texto é um template MARKETING (não
+// Utilidade: não existe consulta marcada, é reativação).
+//
+// POR QUE EM LOTES, E NUNCA TUDO DE UMA VEZ: template de marketing para número
+// frio gera bloqueio, e bloqueio derruba a qualidade do número — o MESMO número
+// que atende os pacientes ativos. O comando manda o lote que o Dr. Bruno pedir
+// e para; entre um lote e outro dá para olhar a taxa de bloqueio no WhatsApp
+// Manager e decidir se continua.
+//
+// Comandos (admin, por WhatsApp):
+//   #REENGAJAR            → situação (template na Meta + fila + quantos voltaram)
+//   #REENGAJAR CRIAR      → cria o template na Meta (aprovação: min a horas)
+//   #REENGAJAR TESTE      → manda UMA no seu próprio número, para você ver
+//   #REENGAJAR 50         → dispara o próximo lote de 50
+//   #REENGAJAR REPETIR    → devolve as falhas para a fila
+const REENGAJAR_CAMPANHA = (readEnv("REENGAJAR_CAMPANHA") || "revisao_anual_2025").trim();
+const TEMPLATE_REENGAJAR_NOME = (readEnv("WA_REENGAJAMENTO_TEMPLATE_NAME") || "reengajamento_revisao_anual").trim();
+const TEMPLATE_REENGAJAR_LANG = (readEnv("WA_REENGAJAMENTO_TEMPLATE_LANG") || "pt_BR").trim();
+// ⚠️ Os rótulos passam pelo leitor de botões do webhook, que interpreta
+// /desmarc|cancel/ como "desmarcar" e /remarc|trocar|mudar/ como "remarcar".
+// Nenhum destes cai nessas regras — conferir antes de trocar qualquer palavra.
+const REENGAJAR_BOTOES = ["Quero agendar", "Agora não", "Parar promoções"];
+const REENGAJAR_LOTE_MAX = 100;
+const REENGAJAR_PAUSA_MS = 1200;
+
+async function criarTemplateReengajamento() {
+  const { data } = await axios.post(
+    `https://graph.facebook.com/v19.0/${WA_WABA_ID}/message_templates`,
+    {
+      name: TEMPLATE_REENGAJAR_NOME, language: TEMPLATE_REENGAJAR_LANG,
+      category: "MARKETING", allow_category_change: true,
+      components: [
+        {
+          type: "BODY",
+          text: "Olá, {{1}}! Aqui é a Ana, do Instituto de Olhos Bruno Borges. Faz um ano desde sua última consulta com o Dr. Bruno Borges, em {{2}} — a revisão anual ajuda a acompanhar a saúde dos seus olhos e a manter o grau em dia. Quer que eu veja os horários disponíveis?",
+          example: { body_text: [["Maria", "setembro de 2025"]] },
+        },
+        { type: "FOOTER", text: "Conjunto Nacional · Taguatinga Shopping" },
+        { type: "BUTTONS", buttons: REENGAJAR_BOTOES.map(t => ({ type: "QUICK_REPLY", text: t })) },
+      ],
+    },
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" }, timeout: 20000 }
+  );
+  return data;
+}
+
+async function statusTemplateReengajamento() {
+  const { data } = await axios.get(
+    `https://graph.facebook.com/v19.0/${WA_WABA_ID}/message_templates`,
+    {
+      params: { name: TEMPLATE_REENGAJAR_NOME, fields: "name,status,id,category" },
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` }, timeout: 20000,
+    }
+  );
+  return (data?.data || []).find(t => t.name === TEMPLATE_REENGAJAR_NOME) || null;
+}
+
+// O paciente pode ter marcado sozinho DEPOIS que a lista foi montada. Mandar
+// "faz um ano que você não vem" para quem tem hora na semana que vem é o tipo
+// de erro que o paciente conta para os outros. Na dúvida (falha de banco),
+// manda: perder o contato é pior que um constrangimento improvável.
+async function temConsultaFutura(telefone) {
+  const { data, error } = await supabase.from("appointments").select("id")
+    .in("paciente_telefone", fonesBR(telefone))
+    .gt("inicio", new Date().toISOString())
+    .in("status", ["reservado", "confirmado"]).limit(1);
+  if (error) { console.error("[Reengajar] Falha ao checar consulta futura:", error.message); return false; }
+  return !!(data && data.length);
+}
+
+async function resumoReengajamento() {
+  const { data, error } = await supabase.from("reengajamento")
+    .select("status, telefone, enviado_em").eq("campanha", REENGAJAR_CAMPANHA);
+  if (error) throw new Error(error.message);
+  const por = {};
+  for (const r of (data || [])) por[r.status] = (por[r.status] || 0) + 1;
+  // O que interessa de verdade: dos que receberam, quantos marcaram depois.
+  let voltaram = 0;
+  const enviados = (data || []).filter(r => r.status === "enviado" && r.enviado_em);
+  for (const r of enviados) {
+    const { data: ag } = await supabase.from("appointments").select("id")
+      .in("paciente_telefone", fonesBR(r.telefone)).gt("created_at", r.enviado_em)
+      .in("status", ["reservado", "confirmado"]).limit(1);
+    if (ag && ag.length) voltaram++;
+  }
+  return { total: (data || []).length, por, voltaram, enviados: enviados.length };
+}
+
+async function dispararLoteReengajamento(quantos) {
+  const n = Math.max(1, Math.min(Number(quantos) || 0, REENGAJAR_LOTE_MAX));
+  const { data: fila, error } = await supabase.from("reengajamento")
+    .select("fone_chave, telefone, primeiro_nome, mes_referencia")
+    .eq("campanha", REENGAJAR_CAMPANHA).eq("status", "pendente")
+    .order("ultima_consulta", { ascending: false }).limit(n);
+  if (error) throw new Error(`fila: ${error.message}`);
+
+  const r = { pedidos: n, tentados: (fila || []).length, enviados: 0, descadastrados: 0, jaAgendados: 0, falhas: 0, erros: [] };
+  for (const p of (fila || [])) {
+    let status = "enviado", erro = null;
+    try {
+      if (await temConsultaFutura(p.telefone)) { status = "ja_agendado"; r.jaAgendados++; }
+      else {
+        const env = await enviarTemplateMarketing(p.telefone, TEMPLATE_REENGAJAR_NOME, TEMPLATE_REENGAJAR_LANG,
+          [p.primeiro_nome || "tudo bem", p.mes_referencia || ""], REENGAJAR_BOTOES);
+        if (env.enviado) r.enviados++;
+        else { status = "descadastrado"; r.descadastrados++; }
+      }
+    } catch (e) {
+      status = "falhou";
+      erro = String(e?.response?.data ? JSON.stringify(e.response.data) : e.message).slice(0, 400);
+      r.falhas++;
+      if (r.erros.length < 3) r.erros.push(erro);
+      console.error(`[Reengajar] Falha em ${maskFone(p.telefone)}:`, erro);
+    }
+    await supabase.from("reengajamento")
+      .update({ status, erro, enviado_em: new Date().toISOString() })
+      .eq("campanha", REENGAJAR_CAMPANHA).eq("fone_chave", p.fone_chave);
+    // Pausa só depois de envio real: número frio em rajada é o que a Meta pune.
+    if (status === "enviado") await new Promise(s => setTimeout(s, REENGAJAR_PAUSA_MS));
+  }
+  return r;
 }
 
 // ===== LEMBRETE DE CONSULTA (véspera) =======================================
