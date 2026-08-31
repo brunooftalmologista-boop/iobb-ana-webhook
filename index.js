@@ -1928,6 +1928,7 @@ function fichaIncompleta(registros, reply, messages) {
 function instrucaoFichaCompleta(faltas) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ia marcar a consulta com a ficha INCOMPLETA. Falta: ${faltas.join("; ")}.
 REGRA ABSOLUTA, SEM EXCEÇÃO: você NUNCA marca uma consulta sem nome completo, data de nascimento e a forma de atendimento (particular, ou QUAL convênio). A CARTEIRINHA NÃO ENTRA AQUI: peça-a junto, mas ela nunca impede o agendamento. Ficha incompleta vira problema no balcão: o paciente é cobrado errado, descobre ali que o plano não é atendido, ou a consulta atrasa.
+⚠️ ANTES DE PERGUNTAR, OLHE A SEÇÃO "A FICHA DESTE PACIENTE JÁ ESTÁ NO SISTEMA", se ela existir no seu contexto: o que estiver lá você COPIA para o bloco, NÃO pergunta. Pedir de novo o nome de quem já tem ficha aqui é o que faz a pessoa desistir no meio da remarcação.
 NÃO emita o bloco de agendamento agora. Reescreva a mensagem confirmando que o horário está separado para ele e pedindo, de uma vez só e em UMA frase natural, TUDO o que falta — não peça um dado, mande, e peça o resto depois. Deixe claro que é rápido e que assim que ele responder você confirma. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se o atendimento será particular ou por convênio (se for convênio, qual)?"
 ${faltas.some(f => /NÃO está na lista/.test(f)) ? `⚠️ Sobre o convênio que não está na lista: confira o nome INTEIRO contra a lista de convênios atendidos, sem encurtar nome composto. Se realmente não estiver, diga com cordialidade que esse plano não é atendido e ofereça o atendimento particular (R$ 200,00) — nunca marque assim mesmo.\n` : ""}🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
@@ -2234,7 +2235,9 @@ async function agendamentosDoPaciente(telefone) {
   if (!telefone) return [];
   try {
     const { data } = await supabase.from("appointments")
-      .select("id, unidade, inicio, status, motivo, origem")
+      // nome/convênio/observações entram para a Ana NÃO reperguntar na
+      // remarcação o que já está na ficha (Dr. Bruno, 31/08/2026).
+      .select("id, unidade, inicio, status, motivo, origem, paciente_nome, convenio, observacoes")
       // As DUAS grafias: a Ana grava sem o 9 e a secretária com ele. Com .eq()
       // o paciente que a equipe marcou ouvia da Ana que não tinha consulta.
       .in("paciente_telefone", fonesBR(telefone))
@@ -5286,6 +5289,39 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           const podeMexer = true;
           return `- ${fmtDataHoraBR(a.inicio)} em ${a.unidade}${a.motivo ? ` (${a.motivo})` : ""} ${podeMexer ? `[inicio:${new Date(a.inicio).toISOString()}] — você PODE cancelar/remarcar este` : "— alteração só pela equipe"}`;
         }).join("\n");
+        // ── A FICHA QUE JÁ ESTÁ NO SISTEMA ────────────────────────────────
+        // 31/08/2026: numa REMARCAÇÃO a Ana escreveu "para confirmar a
+        // remarcação, preciso apenas verificar seus dados: nome completo e data
+        // de nascimento?" — a um paciente cujo nome e convênio estavam na ficha
+        // do agendamento que ela estava remarcando. Ela não via esses campos:
+        // a seção só trazia data, hora e unidade. Pedir de novo o que o sistema
+        // já sabe é o atrito que faz a pessoa desistir no meio.
+        // Pega o valor mais RECENTE não-vazio de cada campo (a ficha antiga pode
+        // ter convênio velho — por isso a Ana CONFIRMA em vez de assumir calada).
+        const ultimoNaoVazio = (campo) => {
+          for (const a of [...meusAg].reverse()) {
+            const v = String(a[campo] || "").trim();
+            if (v && v !== "-") return v;
+          }
+          return null;
+        };
+        const nomeFicha = ultimoNaoVazio("paciente_nome");
+        const convFicha = ultimoNaoVazio("convenio");
+        const nascFicha = (() => {
+          for (const a of [...meusAg].reverse()) { const n = nascimentoDeObs(a.observacoes); if (n) return n; }
+          return null;
+        })();
+        if (nomeFicha || convFicha || nascFicha) {
+          const falta = [!nomeFicha && "nome completo", !nascFicha && "data de nascimento",
+                         !convFicha && "se é particular ou convênio"].filter(Boolean);
+          dynEstavel += `\n\n### A FICHA DESTE PACIENTE JÁ ESTÁ NO SISTEMA — não pergunte de novo`
+            + (nomeFicha ? `\n- Nome: **${nomeFicha}**` : "")
+            + (nascFicha ? `\n- Nascimento: **${nascFicha}**` : "")
+            + (convFicha ? `\n- Forma de atendimento da última vez: **${convFicha}**` : "")
+            + `\n🚫 É ERRO pedir "nome completo e data de nascimento para confirmar" a quem já tem ficha aqui — esses dados estão logo acima. Numa REMARCAÇÃO, copie-os para o novo bloco [AGENDAR].`
+            + (convFicha ? `\n- O convênio pode ter mudado no meio-tempo: CONFIRME em meia linha junto da oferta ("Continua ${/^particular$/i.test(convFicha) ? "como particular" : `pelo ${convFicha}`}?") — não pergunte do zero, e não assuma calada.` : "")
+            + (falta.length ? `\n- O que realmente falta e você PRECISA pedir: **${falta.join(" e ")}**. Peça só isso, de uma vez, junto do horário.` : `\n- Não falta nada: siga direto para o horário.`);
+        }
         dynEstavel += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar. Se o paciente só quer confirmar/saber, NÃO ofereça novo horário.\nPara os marcados "você PODE cancelar/remarcar este": se o paciente pedir para DESMARCAR, confirme com ele e emita o bloco [CANCELAR] copiando o token [inicio:...] exato. Para REMARCAR, ofereça um novo horário (da lista de disponíveis), e ao confirmar emita [CANCELAR] do antigo + [AGENDAR] do novo (o sistema marca o novo e cancela o antigo). Para os agendamentos "alteração só pela equipe", oriente o (61) 3033-6605 ou o WhatsApp da equipe (61) 99299-7639 — NÃO tente cancelar você mesma.`;
       }
     } catch (_) {}
