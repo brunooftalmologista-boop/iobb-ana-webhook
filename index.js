@@ -4775,6 +4775,41 @@ app.post("/webhook", async (req, res) => {
           return;
         }
 
+        // Os botões que o paciente vê vêm do template APROVADO na Meta, não do
+        // código: mudar REENGAJAR_BOTOES aqui não tira botão nenhum da tela dele.
+        // 31/08/2026: o template já existia com 3 botões, o "Parar promoções"
+        // saiu do código e continuou aparecendo no #REENGAJAR TESTE.
+        // ATUALIZAR edita o template que já existe (volta para revisão da Meta).
+        if (arg === "ATUALIZAR") {
+          let st = null;
+          try { st = await statusTemplateReengajamento(); } catch (e) {
+            await sendWhatsApp(from, `⚠️ Não consegui consultar a Meta agora: ${(e?.response?.data ? JSON.stringify(e.response.data) : e.message).slice(0, 400)}`);
+            return;
+          }
+          if (!st) { await sendWhatsApp(from, `ℹ️ O template ainda não existe — use *#REENGAJAR CRIAR*, que já nasce com os ${REENGAJAR_BOTOES.length} botões atuais.`); return; }
+          try {
+            await atualizarTemplateReengajamento(st.id);
+            await sendWhatsApp(from, `✏️ Template *${TEMPLATE_REENGAJAR_NOME}* atualizado: agora com ${REENGAJAR_BOTOES.length} botões (${REENGAJAR_BOTOES.join(" · ")}).\n\n⏳ Toda edição volta para revisão da Meta — acompanhe com *#REENGAJAR* e só dispare quando estiver APROVADO.`);
+          } catch (e) {
+            const d = e?.response?.data;
+            await sendWhatsApp(from, `❌ A Meta recusou a edição:\n${(d ? JSON.stringify(d) : e.message).slice(0, 700)}\n\nCaminho alternativo: *#REENGAJAR APAGAR* e depois *#REENGAJAR CRIAR*.`);
+          }
+          return;
+        }
+
+        // APAGAR é o plano B: a Meta limita quantas edições um template aceita.
+        // Apagar e criar de novo sempre funciona — perde-se o histórico dele.
+        if (arg === "APAGAR") {
+          try {
+            await apagarTemplateReengajamento();
+            await sendWhatsApp(from, `🗑️ Template *${TEMPLATE_REENGAJAR_NOME}* apagado na Meta.\n\nAgora recrie com *#REENGAJAR CRIAR* — ele nasce com ${REENGAJAR_BOTOES.length} botões (${REENGAJAR_BOTOES.join(" · ")}) e entra na fila de aprovação.`);
+          } catch (e) {
+            const d = e?.response?.data;
+            await sendWhatsApp(from, `❌ Não consegui apagar: ${(d ? JSON.stringify(d) : e.message).slice(0, 700)}`);
+          }
+          return;
+        }
+
         // "#REENGAJAR 50" → dispara o lote.
         const quantos = arg.match(/^(\d{1,3})$/);
         if (quantos) {
@@ -4813,7 +4848,7 @@ app.post("/webhook", async (req, res) => {
           return;
         }
         const p = fila.por;
-        await sendWhatsApp(from, `🔁 *Reengajamento* (${REENGAJAR_CAMPANHA})\n\nTemplate: ${situacao}\n\n📋 Fila: *${fila.total}* paciente(s)\n⏳ Pendentes: *${p.pendente || 0}*\n📨 Enviados: ${p.enviado || 0}\n📴 Responderam "agora não": ${p.agora_nao || 0}\n🚫 Removidos da fila: ${p.removido || 0}\n🔕 Descadastrados: ${p.descadastrado || 0}\n📅 Já agendados: ${p.ja_agendado || 0}\n❌ Falhas: ${p.falhou || 0}\n\n🎯 Voltaram a marcar depois de receber: *${fila.voltaram}*${fila.enviados ? ` de ${fila.enviados}` : ""}\n\nPróximo lote: *#REENGAJAR 50* · Ver o texto no seu número: *#REENGAJAR TESTE*`);
+        await sendWhatsApp(from, `🔁 *Reengajamento* (${REENGAJAR_CAMPANHA})\n\nTemplate: ${situacao}\n\n📋 Fila: *${fila.total}* paciente(s)\n⏳ Pendentes: *${p.pendente || 0}*\n📨 Enviados: ${p.enviado || 0}\n📴 Responderam "agora não": ${p.agora_nao || 0}\n🚫 Removidos da fila: ${p.removido || 0}\n🔕 Descadastrados: ${p.descadastrado || 0}\n📅 Já agendados: ${p.ja_agendado || 0}\n❌ Falhas: ${p.falhou || 0}\n\n🎯 Voltaram a marcar depois de receber: *${fila.voltaram}*${fila.enviados ? ` de ${fila.enviados}` : ""}\n\nPróximo lote: *#REENGAJAR 50* · Ver no seu número: *#REENGAJAR TESTE*\nBotões atuais: ${REENGAJAR_BOTOES.join(" · ")} — se o que chega for diferente, use *#REENGAJAR ATUALIZAR*`);
         return;
       }
       // Lembretes da véspera. "#LEMBRETES" (ou TESTE) lista quem receberia, sem
@@ -7734,6 +7769,8 @@ async function enviarTemplateMarketing(to, templateName, lang = "pt_BR", bodyPar
 //   #REENGAJAR TESTE      → manda UMA no seu próprio número, para você ver
 //   #REENGAJAR 50         → dispara o próximo lote de 50
 //   #REENGAJAR REPETIR    → devolve as falhas para a fila
+//   #REENGAJAR ATUALIZAR  → reenvia os componentes (ex.: mudou botão) p/ revisão
+//   #REENGAJAR APAGAR     → apaga o template na Meta (para recriar do zero)
 const REENGAJAR_CAMPANHA = (readEnv("REENGAJAR_CAMPANHA") || "revisao_anual_2025").trim();
 const TEMPLATE_REENGAJAR_NOME = (readEnv("WA_REENGAJAMENTO_TEMPLATE_NAME") || "reengajamento_revisao_anual").trim();
 const TEMPLATE_REENGAJAR_LANG = (readEnv("WA_REENGAJAMENTO_TEMPLATE_LANG") || "pt_BR").trim();
@@ -7788,17 +7825,45 @@ async function criarTemplateReengajamento() {
     {
       name: TEMPLATE_REENGAJAR_NOME, language: TEMPLATE_REENGAJAR_LANG,
       category: "MARKETING", allow_category_change: true,
-      components: [
-        {
-          type: "BODY",
-          text: "Olá, {{1}}! Aqui é a Ana, do Instituto de Olhos Bruno Borges. Faz um ano desde sua última consulta com o Dr. Bruno Borges, em {{2}} — a revisão anual ajuda a acompanhar a saúde dos seus olhos e a manter o grau em dia. Quer que eu veja os horários disponíveis?",
-          example: { body_text: [["Maria", "setembro de 2025"]] },
-        },
-        { type: "FOOTER", text: "Conjunto Nacional · Taguatinga Shopping" },
-        { type: "BUTTONS", buttons: REENGAJAR_BOTOES.map(t => ({ type: "QUICK_REPLY", text: t })) },
-      ],
+      components: componentesTemplateReengajamento(),
     },
     { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" }, timeout: 20000 }
+  );
+  return data;
+}
+
+// Os componentes do template ficam num lugar só: criar e editar têm de mandar
+// exatamente a mesma coisa, senão o texto muda sem ninguém pedir.
+function componentesTemplateReengajamento() {
+  return [
+    {
+      type: "BODY",
+      text: "Olá, {{1}}! Aqui é a Ana, do Instituto de Olhos Bruno Borges. Faz um ano desde sua última consulta com o Dr. Bruno Borges, em {{2}} — a revisão anual ajuda a acompanhar a saúde dos seus olhos e a manter o grau em dia. Quer que eu veja os horários disponíveis?",
+      example: { body_text: [["Maria", "setembro de 2025"]] },
+    },
+    { type: "FOOTER", text: "Conjunto Nacional · Taguatinga Shopping" },
+    { type: "BUTTONS", buttons: REENGAJAR_BOTOES.map(t => ({ type: "QUICK_REPLY", text: t })) },
+  ];
+}
+
+// Edita o template que JÁ existe na Meta (o POST vai no ID dele, não na WABA).
+// Nome, idioma e categoria não se editam — só os componentes. Volta para revisão.
+async function atualizarTemplateReengajamento(templateId) {
+  if (!templateId) throw new Error("template sem id — não dá para editar");
+  const { data } = await axios.post(
+    `https://graph.facebook.com/v19.0/${templateId}`,
+    { components: componentesTemplateReengajamento() },
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" }, timeout: 20000 }
+  );
+  return data;
+}
+
+// Plano B para quando a Meta recusa a edição (há limite de edições por mês).
+async function apagarTemplateReengajamento() {
+  const { data } = await axios.delete(
+    `https://graph.facebook.com/v19.0/${WA_WABA_ID}/message_templates`,
+    { params: { name: TEMPLATE_REENGAJAR_NOME },
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` }, timeout: 20000 }
   );
   return data;
 }
