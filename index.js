@@ -4813,7 +4813,7 @@ app.post("/webhook", async (req, res) => {
           return;
         }
         const p = fila.por;
-        await sendWhatsApp(from, `🔁 *Reengajamento* (${REENGAJAR_CAMPANHA})\n\nTemplate: ${situacao}\n\n📋 Fila: *${fila.total}* paciente(s)\n⏳ Pendentes: *${p.pendente || 0}*\n📨 Enviados: ${p.enviado || 0}\n🔕 Descadastrados: ${p.descadastrado || 0}\n📅 Já agendados: ${p.ja_agendado || 0}\n❌ Falhas: ${p.falhou || 0}\n\n🎯 Voltaram a marcar depois de receber: *${fila.voltaram}*${fila.enviados ? ` de ${fila.enviados}` : ""}\n\nPróximo lote: *#REENGAJAR 50* · Ver o texto no seu número: *#REENGAJAR TESTE*`);
+        await sendWhatsApp(from, `🔁 *Reengajamento* (${REENGAJAR_CAMPANHA})\n\nTemplate: ${situacao}\n\n📋 Fila: *${fila.total}* paciente(s)\n⏳ Pendentes: *${p.pendente || 0}*\n📨 Enviados: ${p.enviado || 0}\n📴 Responderam "agora não": ${p.agora_nao || 0}\n🚫 Removidos da fila: ${p.removido || 0}\n🔕 Descadastrados: ${p.descadastrado || 0}\n📅 Já agendados: ${p.ja_agendado || 0}\n❌ Falhas: ${p.falhou || 0}\n\n🎯 Voltaram a marcar depois de receber: *${fila.voltaram}*${fila.enviados ? ` de ${fila.enviados}` : ""}\n\nPróximo lote: *#REENGAJAR 50* · Ver o texto no seu número: *#REENGAJAR TESTE*`);
         return;
       }
       // Lembretes da véspera. "#LEMBRETES" (ou TESTE) lista quem receberia, sem
@@ -5005,6 +5005,26 @@ app.post("/webhook", async (req, res) => {
       await sendWhatsApp(from, resposta).catch(e => console.error("[OptOut] Falha ao responder:", e.message));
       await saveMessage(conversation.id, "assistant", resposta).catch(e => console.error("[OptOut] Falha ao salvar resposta:", e.message));
       return;
+    }
+
+    // "AGORA NÃO" — resposta PRONTA, sem IA (Dr. Bruno, 31/08/2026). É o botão
+    // do reengajamento: a resposta nunca muda, então não faz sentido pagar uma
+    // chamada de API por ela. Mesmo princípio da conferência de óculos e da
+    // confirmação do lembrete: resposta sempre igual sai do modelo.
+    // ⚠️ Só vale para quem RECEBEU a campanha nos últimos dias — sem essa
+    // trava, um "agora não" respondendo a "reservo para você?" no meio de um
+    // agendamento receberia o texto de campanha, que ali é um não-sequitur.
+    if (ehAgoraNao(text)) {
+      const alvo = await recebeuCampanhaRecente(from);
+      if (alvo) {
+        const primeiro = (alvo.primeiro_nome || String(patient?.name || "").split(/\s+/)[0] || "").trim();
+        const resposta = `Sem problema${primeiro ? `, ${primeiro}` : ""}! 😊 Fico à disposição: quando quiser marcar a sua revisão, é só me mandar uma mensagem aqui que eu vejo os horários na hora.\n\nSe preferir falar com a equipe, o telefone é (61) 3033-6605.`;
+        await marcarAgoraNao(alvo.fone_chave);
+        await sendWhatsApp(from, resposta).catch(e => console.error("[Reengajar] Falha ao responder 'agora não':", e.message));
+        await saveMessage(conversation.id, "assistant", resposta).catch(e => console.error("[Reengajar] Falha ao salvar resposta:", e.message));
+        console.log(`[Reengajar] "Agora não" de ${maskFone(from)} respondido sem IA.`);
+        return;
+      }
     }
 
     // Vincula o clique de anúncio (se veio da landing) ao paciente/conversa.
@@ -7720,9 +7740,47 @@ const TEMPLATE_REENGAJAR_LANG = (readEnv("WA_REENGAJAMENTO_TEMPLATE_LANG") || "p
 // ⚠️ Os rótulos passam pelo leitor de botões do webhook, que interpreta
 // /desmarc|cancel/ como "desmarcar" e /remarc|trocar|mudar/ como "remarcar".
 // Nenhum destes cai nessas regras — conferir antes de trocar qualquer palavra.
-const REENGAJAR_BOTOES = ["Quero agendar", "Agora não", "Parar promoções"];
+// "Parar promoções" saiu a pedido do Dr. Bruno (31/08/2026) — ficaram dois
+// botões. ⚠️ O descadastro NÃO acabou junto: quem escrever "parar", "sair" ou
+// "não quero mais receber" continua sendo tirado da lista por pediuDescadastro().
+// O que muda é que o caminho deixa de ser um toque e passa a ser uma frase.
+const REENGAJAR_BOTOES = ["Quero agendar", "Agora não"];
 const REENGAJAR_LOTE_MAX = 100;
 const REENGAJAR_PAUSA_MS = 1200;
+
+// "Agora não" (o segundo botão do template). Casamento EXATO, como no
+// descadastro: "agora não" solto é o toque no botão; "agora não posso ir na
+// terça" é conversa e tem que chegar na Ana.
+const AGORA_NAO_RE = /^(agora nao|agora nao obrigad[ao]?|nao obrigad[ao]?|talvez depois|depois eu vejo|fica pra depois)$/;
+function ehAgoraNao(texto) {
+  const t = String(texto || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  return !!t && AGORA_NAO_RE.test(t);
+}
+// Só responde o texto pronto a quem REALMENTE recebeu a campanha há pouco.
+// 7 dias porque o template abre a janela de 24h, mas gente responde dias depois
+// (o lembrete da véspera já mostrou isso). Fora dessa janela, quem conduz é a Ana.
+async function recebeuCampanhaRecente(telefone) {
+  try {
+    const { data, error } = await supabase.from("reengajamento")
+      .select("fone_chave, primeiro_nome, status, enviado_em")
+      .eq("campanha", REENGAJAR_CAMPANHA)
+      .in("fone_chave", fonesBR(telefone).map(foneChave).filter(Boolean))
+      .in("status", ["enviado", "agora_nao"])
+      .gt("enviado_em", new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString())
+      .limit(1);
+    if (error) { console.error("[Reengajar] Falha ao checar campanha recente (segue com a Ana):", error.message); return null; }
+    return (data && data[0]) || null;
+  } catch (e) { console.error("[Reengajar] Falha ao checar campanha recente:", e.message); return null; }
+}
+// Fica registrado para a próxima safra: quem disse "agora não" não é quem
+// ignorou. Mantém enviado_em, então continua contando como enviado no resumo.
+async function marcarAgoraNao(foneChaveAlvo) {
+  const { error } = await supabase.from("reengajamento")
+    .update({ status: "agora_nao" })
+    .eq("campanha", REENGAJAR_CAMPANHA).eq("fone_chave", foneChaveAlvo);
+  if (error) console.error("[Reengajar] Falha ao marcar 'agora não':", error.message);
+}
 
 async function criarTemplateReengajamento() {
   const { data } = await axios.post(
@@ -7777,7 +7835,10 @@ async function resumoReengajamento() {
   for (const r of (data || [])) por[r.status] = (por[r.status] || 0) + 1;
   // O que interessa de verdade: dos que receberam, quantos marcaram depois.
   let voltaram = 0;
-  const enviados = (data || []).filter(r => r.status === "enviado" && r.enviado_em);
+  // 'agora_nao' TAMBÉM recebeu — só respondeu que não era o momento. Deixá-lo
+  // de fora aqui esconderia justamente a conversão mais interessante: quem disse
+  // "agora não" e voltou a marcar semanas depois.
+  const enviados = (data || []).filter(r => ["enviado", "agora_nao"].includes(r.status) && r.enviado_em);
   for (const r of enviados) {
     const { data: ag } = await supabase.from("appointments").select("id")
       .in("paciente_telefone", fonesBR(r.telefone)).gt("created_at", r.enviado_em)
