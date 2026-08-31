@@ -1807,7 +1807,11 @@ function precoSemHorario(reply, slots) {
 // Só vale para o preço da CONSULTA (200). Cirurgia, lente e teste têm valor
 // particular independente de plano e são informados de forma espontânea.
 const RE_SABE_FORMA_ATENDIMENTO = /particular|conv[êe]nio|plano de sa[úu]de|unimed|carteirinha|reembolso/i;
-function precoSemSaberConvenio(reply, messages) {
+function precoSemSaberConvenio(reply, messages, jaSabeDeOutraFonte = false) {
+  // O sistema pode SABER a forma de atendimento sem que ela apareça nas
+  // mensagens — é o caso do paciente da campanha, cujo convênio veio da fila.
+  // Sem esta porta, a trava mandaria a Ana perguntar o que já está no contexto.
+  if (jaSabeDeOutraFonte) return null;
   // O valor da consulta, em qualquer grafia que ela usa: R$ 200 / R$ 200,00 / 200 reais.
   if (!/R\$\s?200(?:[.,]00)?\b|200\s*reais/i.test(reply)) return null;
   // Se a própria mensagem já enquadra ("no particular", "se for particular") E
@@ -5285,6 +5289,39 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       }
     } catch (_) {}
 
+    // ── PACIENTE QUE VEIO DA CAMPANHA: NÃO PERGUNTE O QUE JÁ SABEMOS ─────────
+    // A fila do reengajamento tem nome completo, convênio e unidade da última
+    // consulta — só a data de nascimento não veio do iClinic. Sem isto a Ana
+    // trataria como paciente novo e pediria as TRÊS coisas a quem já se
+    // consultou aqui, que é o atrito que faz a pessoa largar a conversa.
+    // Só custa uma leitura (chave primária) e só quando o paciente está mesmo
+    // falando de agendar.
+    let campanhaSabeConvenio = false;
+    if (detectSchedulingIntent(messages) || detectUnidade(messages)) {
+      try {
+        const camp = await recebeuCampanhaRecente(from);
+        if (camp) {
+          const conv = String(camp.convenio || "").trim();
+          const ehParticular = /^particular$/i.test(conv);
+          campanhaSabeConvenio = !!conv;
+          const quando = camp.ultima_consulta
+            ? new Date(`${camp.ultima_consulta}T12:00:00-03:00`).toLocaleDateString("pt-BR", { timeZone: TZ_BR, month: "long", year: "numeric" })
+            : null;
+          dynEstavel += `\n\n### Este paciente respondeu à campanha de revisão anual — VOCÊ JÁ TEM OS DADOS DELE`
+            + `\n- Nome completo (do cadastro): **${camp.nome || "—"}**`
+            + (quando ? `\n- Última consulta aqui: ${quando}, no ${camp.unidade || "—"}.` : "")
+            + (conv ? `\n- Como foi atendido daquela vez: **${ehParticular ? "Particular" : conv}**.` : "")
+            + `\n\nCOMO USAR ISSO:`
+            + `\n- 🚫 NÃO pergunte o nome completo — você já tem. Use o do cadastro no bloco [AGENDAR]. Só troque se o próprio paciente disser outro nome (pode ser a mãe marcando para o filho).`
+            + (conv
+                ? `\n- 🚫 NÃO pergunte "é particular ou convênio?" do nada. CONFIRME em meia linha, junto da oferta do horário: "${ehParticular ? "Continua como particular?" : `Continua pelo ${conv}?`}" — e siga. Se ele disser que mudou, use o novo.`
+                : `\n- Pergunte se é particular ou por convênio (esse dado não veio no cadastro).`)
+            + `\n- ✅ O QUE REALMENTE FALTA É A DATA DE NASCIMENTO: peça só ela, na mesma mensagem em que oferece o horário. É o único dado obrigatório que não temos.`
+            + `\n- Não diga "vi que faz um ano" mais de uma vez: a mensagem da campanha já disse isso. Aqui você já está resolvendo.`;
+        }
+      } catch (e) { console.error("[Reengajar] Falha ao carregar dados da campanha (segue normal):", e.message); }
+    }
+
     // ── RETORNO: a CONTA DOS 30 DIAS É DO CÓDIGO, NÃO DELA ───────────────────
     // A Ana erra data com frequência (foi assim que ela negou dias livres em
     // 29/07 e ofereceu 14h40 gravando 15:40). Então o código lê a última consulta,
@@ -5566,7 +5603,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       // Veio do botão REMARCAR e já jogou horário, sem perguntar dia/turno.
       // Condição determinística: o toque no botão é fato, não interpretação.
       // Preço da consulta dito sem saber se é particular ou convênio.
-      const precoSemConvenio = precoSemSaberConvenio(reply, messages);
+      const precoSemConvenio = precoSemSaberConvenio(reply, messages, campanhaSabeConvenio);
       const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
       if (ofertaCegaRemarcacao || precoSemConvenio || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
@@ -7800,7 +7837,7 @@ function ehAgoraNao(texto) {
 async function recebeuCampanhaRecente(telefone) {
   try {
     const { data, error } = await supabase.from("reengajamento")
-      .select("fone_chave, primeiro_nome, status, enviado_em")
+      .select("fone_chave, nome, primeiro_nome, convenio, unidade, ultima_consulta, status, enviado_em")
       .eq("campanha", REENGAJAR_CAMPANHA)
       .in("fone_chave", fonesBR(telefone).map(foneChave).filter(Boolean))
       .in("status", ["enviado", "agora_nao"])
