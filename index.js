@@ -195,7 +195,7 @@ Cirurgias cobertas por convênio: nunca cite o valor particular de uma cirurgia 
 ❓ QUANDO O PACIENTE PERGUNTA GENERICAMENTE "quais planos vocês aceitam?": NÃO recite a lista (são mais de 50 nomes, e a mensagem fica ilegível). Devolva a pergunta, que é mais rápido para os dois: "Trabalhamos com vários convênios. Qual é o seu? Confirmo na hora se atendemos." Só se ele insistir em ver exemplos, cite 4 ou 5 nomes COPIADOS da lista.
 ⚠️ Caso real (24/08/2026): perguntada "vocês aceitam algum plano?", você respondeu "trabalhamos com diversos convênios. Alguns exemplos: Unimed, Bradesco Saúde, Notre Dame, Amil, Pró-Saúde, Plan-Assiste". BRADESCO e AMIL não são atendidos — você os inventou. Três mensagens antes, na mesma conversa, você tinha recusado a SulAmérica corretamente. Dizer que atendemos um plano que não atendemos é PIOR que negar: o paciente vem confiante, perde o dia e ouve o não na recepção.
 LISTA DE CONVÊNIOS ATENDIDOS:
-AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBRAPA, CAEME-GO, CAMED, CAESAN, CASEC (CODEVASF), CTI, CONAB, ELETRONORTE, EMBRATEL, E-VIDA (hoje LUMINAR SAÚDE), FACEB, FAPES (BNDES), FASCAL, FIOSAÚDE (FIOPREV), FURNAS, INFRAERO, IRB, IRMÃOS GRAVIA, LIFE EMPRESARIAL, MAPFRE SAÚDE, MPDFT, MPF, MPM, MPT, NOTRE DAME, PAME, PLAN-ASSISTE, PROASA, PRÓ-SAÚDE (CÂMARA DOS DEPUTADOS), PRÓ-SOCIAL, SAÚDE CAIXA, SERPRO, SIS SENADO, STF-MED, STM, TJDFT, TST SAÚDE, T.R.E., TRF, TRT, UNAFISCO, UNIBANCO - TEMPO SAUDE, UNIMED CENTRAL NACIONAL, UNIMED PLANALTO, UNIMED INTERCÂMBIO, SEGUROS UNIMED (também escrita "UNIMED SEGUROS"), UNIVERSAL ASSISTENCE.
+AMHPDF, AFEB BRASAL, AFFEGO, ASETE, ASFUB, BACEN, BBB SAÚDE, CARE PLUS, CASEMBRAPA, CAEME-GO, CAMED, CAESAN, CASEC (CODEVASF), CTI, CONAB, ELETRONORTE, EMBRATEL, E-VIDA (hoje LUMINAR SAÚDE), FACEB, FAPES (BNDES), FASCAL, FIOSAÚDE (FIOPREV), FURNAS (REAL GRANDEZA), INFRAERO, IRB, IRMÃOS GRAVIA, LIFE EMPRESARIAL, MAPFRE SAÚDE, MPDFT, MPF, MPM, MPT, NOTRE DAME, PAME, PLAN-ASSISTE, PROASA, PRÓ-SAÚDE (CÂMARA DOS DEPUTADOS), PRÓ-SOCIAL, SAÚDE CAIXA, SERPRO, SIS SENADO, STF-MED, STM, TJDFT, TST SAÚDE, T.R.E., TRF, TRT, UNAFISCO, UNIBANCO - TEMPO SAUDE, UNIMED CENTRAL NACIONAL, UNIMED PLANALTO, UNIMED INTERCÂMBIO, SEGUROS UNIMED (também escrita "UNIMED SEGUROS"), UNIVERSAL ASSISTENCE.
 ⚠️ UNIMED — A REGRA TEM DOIS LADOS. As modalidades ATENDIDAS são: **Unimed Central Nacional (também escrita "Unimed Nacional" ou "CNU"), Unimed Planalto, Unimed Intercâmbio e Seguros Unimed / Unimed Seguros**.
 - O SUB-PLANO impresso no cartão ("PME Compacto ENF", "Ideal", "Premium", "Enfermaria", "Apartamento") NÃO muda isso e NUNCA é motivo para negar — a equipe confirma a cobertura depois, com o horário já reservado. Caso real (11/08): a mãe da Laura mandou "Seguros Unimed – PME Compacto ENF", você negou dizendo "operadora diferente" e quase perdemos a consulta.
 - ✅ **ATENDEMOS UNIMED — TODAS.** Central Nacional, Planalto, Intercâmbio, Seguros Unimed e também as REGIONAIS de qualquer cidade ou estado (Curitiba, Uberlândia, Fesp, João Pessoa, Fortaleza, BH…). AGENDE NORMALMENTE, como faria com qualquer outro plano da lista. É PROIBIDO recusar, adiar, dizer que "precisa verificar antes" ou oferecer particular como alternativa por causa de o cartão ser de outra região. Peça o NÚMERO da carteirinha (ou uma foto) — mas para a EQUIPE SOLICITAR A AUTORIZAÇÃO/GUIA junto à operadora, nunca para decidir se marca. Registre o convênio como está no cartão (ex.: "Unimed Curitiba") e siga o agendamento na mesma mensagem. Regra do Dr. Bruno, 25/08/2026, substituindo a de 14/08.
@@ -4730,6 +4730,92 @@ app.post("/webhook", async (req, res) => {
         }
         return;
       }
+      // Campanha de reengajamento (revisão anual). Nada sai sozinho: cada lote é
+      // um comando explícito, para o número da clínica não levar rajada de frio.
+      const reengCmd = text.match(/^#REENGAJAR\b([\s\S]*)$/i);
+      if (reengCmd) {
+        const arg = reengCmd[1].trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+        if (arg === "CRIAR") {
+          try {
+            const r = await criarTemplateReengajamento();
+            await sendWhatsApp(from, `✅ Template *${TEMPLATE_REENGAJAR_NOME}* criado na Meta (status: ${r.status || "?"}, categoria: ${r.category || "?"}).\n\nA aprovação leva de minutos a algumas horas. Acompanhe com *#REENGAJAR*.`);
+          } catch (e) {
+            const d = e?.response?.data;
+            const msg = d ? JSON.stringify(d) : e.message;
+            await sendWhatsApp(from, /already exists|2388023|192/.test(msg)
+              ? `ℹ️ O template *${TEMPLATE_REENGAJAR_NOME}* já existe na Meta. Veja a situação com *#REENGAJAR*.`
+              : `❌ A Meta recusou a criação do template.\n\nResposta:\n${msg.slice(0, 900)}`);
+          }
+          return;
+        }
+
+        if (arg === "REPETIR") {
+          const { data, error } = await supabase.from("reengajamento")
+            .update({ status: "pendente", erro: null })
+            .eq("campanha", REENGAJAR_CAMPANHA).eq("status", "falhou").select("fone_chave");
+          await sendWhatsApp(from, error
+            ? `❌ Não consegui devolver as falhas para a fila: ${error.message}`
+            : `↩️ ${(data || []).length} paciente(s) que falharam voltaram para a fila.`);
+          return;
+        }
+
+        // TESTE vai para o SEU número, direto pelo sendWhatsAppTemplate: é você
+        // vendo o que o paciente vê, não um disparo de marketing (e por isso não
+        // consulta descadastro nem mexe na fila).
+        if (arg === "TESTE") {
+          try {
+            await sendWhatsAppTemplate(from, TEMPLATE_REENGAJAR_NOME, TEMPLATE_REENGAJAR_LANG,
+              ["Bruno", "setembro de 2025"], REENGAJAR_BOTOES);
+            await sendWhatsApp(from, "👆 É exatamente isso que o paciente recebe. Se estiver bom, mande o primeiro lote com *#REENGAJAR 50*.");
+          } catch (e) {
+            const d = e?.response?.data;
+            await sendWhatsApp(from, `❌ Não consegui enviar o teste: ${(d ? JSON.stringify(d) : e.message).slice(0, 600)}\n\nO template já está APROVADO? Confira com *#REENGAJAR*.`);
+          }
+          return;
+        }
+
+        // "#REENGAJAR 50" → dispara o lote.
+        const quantos = arg.match(/^(\d{1,3})$/);
+        if (quantos) {
+          let st = null, erroSt = null;
+          try { st = await statusTemplateReengajamento(); } catch (e) { erroSt = e?.response?.data ? JSON.stringify(e.response.data).slice(0, 300) : e.message; }
+          // Trava: sem template APROVADO, um lote de 50 vira 50 falhas seguidas.
+          if (erroSt) { await sendWhatsApp(from, `⚠️ Não consegui confirmar o template na Meta agora (${erroSt}) — não vou disparar às cegas. Tente de novo em instantes.`); return; }
+          if (!st) { await sendWhatsApp(from, `⚠️ O template *${TEMPLATE_REENGAJAR_NOME}* ainda não existe na Meta. Crie com *#REENGAJAR CRIAR*.`); return; }
+          if (st.status !== "APPROVED") { await sendWhatsApp(from, `⏳ O template ainda não foi aprovado (status: *${st.status}*). Nada foi enviado.`); return; }
+
+          await sendWhatsApp(from, `📤 Disparando o lote de ${Math.min(Number(quantos[1]), REENGAJAR_LOTE_MAX)}… te aviso ao terminar.`);
+          try {
+            const r = await dispararLoteReengajamento(quantos[1]);
+            const resumo = await resumoReengajamento().catch(() => null);
+            await sendWhatsApp(from, `✅ Lote concluído.\n\n📨 Enviados: *${r.enviados}*\n🔕 Descadastrados (pulados): ${r.descadastrados}\n📅 Já tinham consulta marcada (pulados): ${r.jaAgendados}\n❌ Falhas: ${r.falhas}${r.erros.length ? `\n\nPrimeiro erro:\n${r.erros[0].slice(0, 300)}` : ""}${resumo ? `\n\nAinda na fila: *${resumo.por.pendente || 0}*` : ""}\n\nOlhe a qualidade do número no WhatsApp Manager antes do próximo lote.${r.falhas ? "\nPara tentar as falhas de novo: *#REENGAJAR REPETIR*." : ""}`);
+          } catch (e) {
+            await sendWhatsApp(from, `❌ O lote parou com erro: ${e.message.slice(0, 500)}\n\nQuem já recebeu está marcado — *#REENGAJAR* mostra como ficou.`);
+          }
+          return;
+        }
+
+        // "#REENGAJAR" puro → situação.
+        let st = null, erroSt = null;
+        try { st = await statusTemplateReengajamento(); } catch (e) { erroSt = e?.response?.data ? JSON.stringify(e.response.data).slice(0, 300) : e.message; }
+        const situacao = erroSt ? `⚠️ não consegui consultar a Meta: ${erroSt}`
+          : !st ? "ainda não existe — crie com *#REENGAJAR CRIAR*"
+          : st.status === "APPROVED" ? "✅ APROVADO — pode disparar"
+          : `⏳ status na Meta: *${st.status}*`;
+        let fila;
+        try { fila = await resumoReengajamento(); } catch (e) {
+          await sendWhatsApp(from, `🔁 *Reengajamento* (${REENGAJAR_CAMPANHA})\n\nTemplate: ${situacao}\n\n⚠️ Não consegui ler a fila: ${e.message}`);
+          return;
+        }
+        if (!fila.total) {
+          await sendWhatsApp(from, `🔁 *Reengajamento* (${REENGAJAR_CAMPANHA})\n\nTemplate: ${situacao}\n\n⚠️ A fila está VAZIA — falta carregar a lista de pacientes na tabela *reengajamento* (sql/reengajamento.sql).`);
+          return;
+        }
+        const p = fila.por;
+        await sendWhatsApp(from, `🔁 *Reengajamento* (${REENGAJAR_CAMPANHA})\n\nTemplate: ${situacao}\n\n📋 Fila: *${fila.total}* paciente(s)\n⏳ Pendentes: *${p.pendente || 0}*\n📨 Enviados: ${p.enviado || 0}\n🔕 Descadastrados: ${p.descadastrado || 0}\n📅 Já agendados: ${p.ja_agendado || 0}\n❌ Falhas: ${p.falhou || 0}\n\n🎯 Voltaram a marcar depois de receber: *${fila.voltaram}*${fila.enviados ? ` de ${fila.enviados}` : ""}\n\nPróximo lote: *#REENGAJAR 50* · Ver o texto no seu número: *#REENGAJAR TESTE*`);
+        return;
+      }
       // Lembretes da véspera. "#LEMBRETES" (ou TESTE) lista quem receberia, sem
       // enviar nada; "#LEMBRETES CONFIRMAR" dispara agora, fora do horário.
       const lembCmd = text.match(/^#LEMBRETES\b([\s\S]*)$/i);
@@ -4904,6 +4990,22 @@ app.post("/webhook", async (req, res) => {
       return;
     }
     await saveMessage(conversation.id, "user", text, msg.id, media);
+
+    // DESCADASTRO DE MARKETING: para AQUI, antes da Ana. O toque em "Parar
+    // promoções" chega como texto e ela responderia oferecendo horário. Fica
+    // depois do saveMessage de propósito — o pedido tem que aparecer no painel.
+    if (pediuDescadastro(text)) {
+      const ok = await registrarDescadastro(from, {
+        nome: patient?.name || null,
+        origem: msg.type === "button" ? "botao_template" : "texto",
+      });
+      const resposta = ok
+        ? "Certo, registramos o seu pedido: não enviaremos mais mensagens de divulgação para este número. Você continua recebendo os lembretes das consultas que já tiver marcadas, e pode falar comigo quando quiser para agendar. Permaneço à disposição."
+        : FRIENDLY_FALLBACK;
+      await sendWhatsApp(from, resposta).catch(e => console.error("[OptOut] Falha ao responder:", e.message));
+      await saveMessage(conversation.id, "assistant", resposta).catch(e => console.error("[OptOut] Falha ao salvar resposta:", e.message));
+      return;
+    }
 
     // Vincula o clique de anúncio (se veio da landing) ao paciente/conversa.
     // Landing Wix: o gclid veio DENTRO da mensagem → grava um clique por-lead com
@@ -6941,6 +7043,36 @@ app.get("/api/agenda/export-iclinic", async (req, res) => {
   }
 });
 
+// ── DESCADASTRO DE MARKETING ────────────────────────────────────────────────
+// GET  → a lista, para subtrair da planilha ANTES de cada lote do disparo.
+// POST → registra à mão, quando o paciente pede por telefone ou no balcão (a
+// equipe não tem como tocar no botão por ele, e o pedido vale do mesmo jeito).
+// Ambas atrás do requirePanelAuth (app.use("/api", ...)).
+app.get("/api/marketing/optouts", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("marketing_optout")
+      .select("fone_chave, telefone, nome, origem, created_at").order("created_at", { ascending: false });
+    if (error) return res.status(502).json({ ok: false, error: error.message });
+    res.json({ ok: true, total: (data || []).length, descadastros: data || [] });
+  } catch (e) {
+    console.error("[OptOut] Falha ao listar:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post("/api/marketing/optouts", async (req, res) => {
+  try {
+    const telefone = String(req.body?.telefone || "").trim();
+    if (!foneChave(telefone)) return res.status(400).json({ ok: false, error: "Telefone inválido." });
+    const ok = await registrarDescadastro(telefone, { nome: req.body?.nome || null, origem: "manual" });
+    if (!ok) return res.status(502).json({ ok: false, error: "Não foi possível gravar o descadastro." });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[OptOut] Falha ao registrar:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ── COMPARECIMENTO ──────────────────────────────────────────────────────────
 // Quem marca é a recepção, no painel, quando o paciente chega (ou quando fica
 // claro que não veio). É um campo SEPARADO do status: 'confirmado' ali quer
@@ -7507,6 +7639,187 @@ async function rodarFollowUpLeads() {
 function startFollowUp() {
   setInterval(() => rodarFollowUpLeads().catch(e => console.error("[FollowUp] scheduler:", e.message)), 30 * 60 * 1000);
   console.log("[FollowUp] scheduler ativo (30 min). Envio real só com settings.followup_leads_enabled='true'.");
+}
+
+// ===== DESCADASTRO DE MARKETING (opt-out) ==================================
+// A Meta exige que mensagem de categoria MARKETING pare de chegar quando o
+// paciente pede. O botão "Parar promoções" do template de reengajamento chega
+// ao webhook como um toque (msg.type === "button") e vira TEXTO comum — sem o
+// desvio abaixo, a Ana leria "Parar promoções" e responderia oferecendo
+// horário, que é exatamente o contrário do pedido.
+// ⚠️ NÃO afeta o lembrete da véspera: aquele é UTILIDADE, o paciente tem hora
+// reservada e precisa ser avisado. Só o disparo de marketing consulta a lista.
+// Tabela: sql/marketing_optout.sql (RLS ligado, sem policies).
+const OPTOUT_RE = /^(parar|parar promocoes?|sair|descadastrar|cancelar inscricao|nao quero mais receber( mensagens| promocoes?)?|remover meu numero|me remova da lista)$/;
+
+// Casamento EXATO de propósito: "parar" isolado é pedido de descadastro, mas
+// "não quero parar o tratamento" no meio de uma frase não é — e tirar um
+// paciente da lista por engano custa o contato dele para sempre.
+function pediuDescadastro(texto) {
+  const t = String(texto || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  return !!t && OPTOUT_RE.test(t);
+}
+
+async function registrarDescadastro(telefone, { nome = null, origem = "paciente" } = {}) {
+  const chave = foneChave(telefone);
+  if (!chave) return false;
+  const { error } = await supabase.from("marketing_optout").upsert(
+    { fone_chave: chave, telefone: normalizePhoneBR(telefone) || telefone, nome, origem },
+    { onConflict: "fone_chave" });
+  if (error) { console.error("[OptOut] Falha ao gravar descadastro:", error.message); return false; }
+  console.log(`[OptOut] ${maskFone(telefone)} descadastrado de marketing (origem: ${origem}).`);
+  return true;
+}
+
+// Na dúvida, NÃO envia: se o banco falhar, devolve `true` (bloqueado). Deixar
+// de mandar uma campanha é um lembrete perdido; mandar para quem pediu para
+// parar é o número da clínica sendo denunciado por quem confia nela.
+async function descadastrado(telefone) {
+  const chave = foneChave(telefone);
+  if (!chave) return false;
+  const { data, error } = await supabase.from("marketing_optout")
+    .select("fone_chave").eq("fone_chave", chave).maybeSingle();
+  if (error) { console.error("[OptOut] Falha ao consultar descadastro — bloqueando por segurança:", error.message); return true; }
+  return !!data;
+}
+
+// ÚNICO caminho permitido para disparo de MARKETING (o reengajamento de um ano,
+// por exemplo). Chame ISTO, nunca sendWhatsAppTemplate direto: assim o
+// descadastro não depende de alguém lembrar de filtrar a lista antes do envio.
+async function enviarTemplateMarketing(to, templateName, lang = "pt_BR", bodyParams = [], quickReplies = []) {
+  if (await descadastrado(to)) {
+    console.log(`[OptOut] Envio de marketing BLOQUEADO para ${maskFone(to)} (template ${templateName}).`);
+    return { enviado: false, motivo: "descadastrado" };
+  }
+  await sendWhatsAppTemplate(to, templateName, lang, bodyParams, quickReplies);
+  return { enviado: true };
+}
+
+// ===== CAMPANHA DE REENGAJAMENTO (revisão anual) ===========================
+// Paciente que consultou e não voltou: a primeira safra é ago/set de 2025,
+// tirada do relatório "Paciente para retorno" do iClinic antes de a assinatura
+// acabar. Fila em sql/reengajamento.sql; o texto é um template MARKETING (não
+// Utilidade: não existe consulta marcada, é reativação).
+//
+// POR QUE EM LOTES, E NUNCA TUDO DE UMA VEZ: template de marketing para número
+// frio gera bloqueio, e bloqueio derruba a qualidade do número — o MESMO número
+// que atende os pacientes ativos. O comando manda o lote que o Dr. Bruno pedir
+// e para; entre um lote e outro dá para olhar a taxa de bloqueio no WhatsApp
+// Manager e decidir se continua.
+//
+// Comandos (admin, por WhatsApp):
+//   #REENGAJAR            → situação (template na Meta + fila + quantos voltaram)
+//   #REENGAJAR CRIAR      → cria o template na Meta (aprovação: min a horas)
+//   #REENGAJAR TESTE      → manda UMA no seu próprio número, para você ver
+//   #REENGAJAR 50         → dispara o próximo lote de 50
+//   #REENGAJAR REPETIR    → devolve as falhas para a fila
+const REENGAJAR_CAMPANHA = (readEnv("REENGAJAR_CAMPANHA") || "revisao_anual_2025").trim();
+const TEMPLATE_REENGAJAR_NOME = (readEnv("WA_REENGAJAMENTO_TEMPLATE_NAME") || "reengajamento_revisao_anual").trim();
+const TEMPLATE_REENGAJAR_LANG = (readEnv("WA_REENGAJAMENTO_TEMPLATE_LANG") || "pt_BR").trim();
+// ⚠️ Os rótulos passam pelo leitor de botões do webhook, que interpreta
+// /desmarc|cancel/ como "desmarcar" e /remarc|trocar|mudar/ como "remarcar".
+// Nenhum destes cai nessas regras — conferir antes de trocar qualquer palavra.
+const REENGAJAR_BOTOES = ["Quero agendar", "Agora não", "Parar promoções"];
+const REENGAJAR_LOTE_MAX = 100;
+const REENGAJAR_PAUSA_MS = 1200;
+
+async function criarTemplateReengajamento() {
+  const { data } = await axios.post(
+    `https://graph.facebook.com/v19.0/${WA_WABA_ID}/message_templates`,
+    {
+      name: TEMPLATE_REENGAJAR_NOME, language: TEMPLATE_REENGAJAR_LANG,
+      category: "MARKETING", allow_category_change: true,
+      components: [
+        {
+          type: "BODY",
+          text: "Olá, {{1}}! Aqui é a Ana, do Instituto de Olhos Bruno Borges. Faz um ano desde sua última consulta com o Dr. Bruno Borges, em {{2}} — a revisão anual ajuda a acompanhar a saúde dos seus olhos e a manter o grau em dia. Quer que eu veja os horários disponíveis?",
+          example: { body_text: [["Maria", "setembro de 2025"]] },
+        },
+        { type: "FOOTER", text: "Conjunto Nacional · Taguatinga Shopping" },
+        { type: "BUTTONS", buttons: REENGAJAR_BOTOES.map(t => ({ type: "QUICK_REPLY", text: t })) },
+      ],
+    },
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" }, timeout: 20000 }
+  );
+  return data;
+}
+
+async function statusTemplateReengajamento() {
+  const { data } = await axios.get(
+    `https://graph.facebook.com/v19.0/${WA_WABA_ID}/message_templates`,
+    {
+      params: { name: TEMPLATE_REENGAJAR_NOME, fields: "name,status,id,category" },
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` }, timeout: 20000,
+    }
+  );
+  return (data?.data || []).find(t => t.name === TEMPLATE_REENGAJAR_NOME) || null;
+}
+
+// O paciente pode ter marcado sozinho DEPOIS que a lista foi montada. Mandar
+// "faz um ano que você não vem" para quem tem hora na semana que vem é o tipo
+// de erro que o paciente conta para os outros. Na dúvida (falha de banco),
+// manda: perder o contato é pior que um constrangimento improvável.
+async function temConsultaFutura(telefone) {
+  const { data, error } = await supabase.from("appointments").select("id")
+    .in("paciente_telefone", fonesBR(telefone))
+    .gt("inicio", new Date().toISOString())
+    .in("status", ["reservado", "confirmado"]).limit(1);
+  if (error) { console.error("[Reengajar] Falha ao checar consulta futura:", error.message); return false; }
+  return !!(data && data.length);
+}
+
+async function resumoReengajamento() {
+  const { data, error } = await supabase.from("reengajamento")
+    .select("status, telefone, enviado_em").eq("campanha", REENGAJAR_CAMPANHA);
+  if (error) throw new Error(error.message);
+  const por = {};
+  for (const r of (data || [])) por[r.status] = (por[r.status] || 0) + 1;
+  // O que interessa de verdade: dos que receberam, quantos marcaram depois.
+  let voltaram = 0;
+  const enviados = (data || []).filter(r => r.status === "enviado" && r.enviado_em);
+  for (const r of enviados) {
+    const { data: ag } = await supabase.from("appointments").select("id")
+      .in("paciente_telefone", fonesBR(r.telefone)).gt("created_at", r.enviado_em)
+      .in("status", ["reservado", "confirmado"]).limit(1);
+    if (ag && ag.length) voltaram++;
+  }
+  return { total: (data || []).length, por, voltaram, enviados: enviados.length };
+}
+
+async function dispararLoteReengajamento(quantos) {
+  const n = Math.max(1, Math.min(Number(quantos) || 0, REENGAJAR_LOTE_MAX));
+  const { data: fila, error } = await supabase.from("reengajamento")
+    .select("fone_chave, telefone, primeiro_nome, mes_referencia")
+    .eq("campanha", REENGAJAR_CAMPANHA).eq("status", "pendente")
+    .order("ultima_consulta", { ascending: false }).limit(n);
+  if (error) throw new Error(`fila: ${error.message}`);
+
+  const r = { pedidos: n, tentados: (fila || []).length, enviados: 0, descadastrados: 0, jaAgendados: 0, falhas: 0, erros: [] };
+  for (const p of (fila || [])) {
+    let status = "enviado", erro = null;
+    try {
+      if (await temConsultaFutura(p.telefone)) { status = "ja_agendado"; r.jaAgendados++; }
+      else {
+        const env = await enviarTemplateMarketing(p.telefone, TEMPLATE_REENGAJAR_NOME, TEMPLATE_REENGAJAR_LANG,
+          [p.primeiro_nome || "tudo bem", p.mes_referencia || ""], REENGAJAR_BOTOES);
+        if (env.enviado) r.enviados++;
+        else { status = "descadastrado"; r.descadastrados++; }
+      }
+    } catch (e) {
+      status = "falhou";
+      erro = String(e?.response?.data ? JSON.stringify(e.response.data) : e.message).slice(0, 400);
+      r.falhas++;
+      if (r.erros.length < 3) r.erros.push(erro);
+      console.error(`[Reengajar] Falha em ${maskFone(p.telefone)}:`, erro);
+    }
+    await supabase.from("reengajamento")
+      .update({ status, erro, enviado_em: new Date().toISOString() })
+      .eq("campanha", REENGAJAR_CAMPANHA).eq("fone_chave", p.fone_chave);
+    // Pausa só depois de envio real: número frio em rajada é o que a Meta pune.
+    if (status === "enviado") await new Promise(s => setTimeout(s, REENGAJAR_PAUSA_MS));
+  }
+  return r;
 }
 
 // ===== LEMBRETE DE CONSULTA (véspera) =======================================
