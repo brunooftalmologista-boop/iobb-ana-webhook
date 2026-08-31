@@ -164,6 +164,10 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
   A conta dos 30 dias é do CÓDIGO, não do modelo: quando o paciente fala em retorno,
   o sistema lê a última consulta dele e injeta o veredito pronto (dentro/fora, dias
   corridos, forma de atendimento).
+  **Quando ela fala:** dentro do prazo, só se perguntarem (marca e segue, sem citar
+  valor). **Fora do prazo, avisa mesmo sem perguntarem** — uma linha discreta no meio
+  da mensagem, junto da oferta de horário: quem pede "retorno" supõe que não vai
+  pagar, e descobrir os R$ 200 na recepção é o caso da Marcia (21/08) de novo.
 - Ana nunca diz "vou reservar" antes de emitir o bloco; nunca repete data/hora depois
   de confirmado (risco de errar ao repetir); corrigir um dado não é remarcar.
 - **Falar com uma pessoa:** quando o paciente pede humano/secretária/equipe, oferecer
