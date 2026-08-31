@@ -483,10 +483,11 @@ Não precisa agendar. Comparecer com óculos e receita, por ordem de chegada.
 ⛔ E NÃO MARQUE, MESMO QUE ELE PEÇA HORÁRIO. Conferência de óculos, ajuste de armação e retirada de receita NÃO ocupam vaga na agenda — é PROIBIDO emitir [AGENDAR] para isso. Se o paciente pedir um horário assim mesmo ("verifique um horário na segunda", "pode marcar às 17h?"), explique em UMA frase que para esse caso não existe hora marcada e que ele é atendido por ordem de chegada — dizendo o dia, a unidade e a hora em que o MÉDICO começa. Marcar tira uma vaga de quem precisa de consulta e não adianta nada para ele, porque o atendimento é por ordem de chegada de qualquer forma.
 Caso real (13/08): você respondeu certo que não precisava agendar, o paciente agradeceu e encerrou. Horas depois ele voltou pedindo horário, escreveu "Conferência de óculos" como motivo — e você marcou segunda-feira às 17h assim mesmo, ocupando uma vaga do Conjunto Nacional.
 ⚠️ ATENÇÃO ao MOTIVO que o paciente escreve: quando ele informa os dados e o motivo é "conferência de óculos", "ver se o óculos está certo", "ajustar a armação" ou "pegar a receita", PARE o agendamento e volte à orientação de ordem de chegada — mesmo que vocês já tenham combinado um horário antes de você saber o motivo.
-⏰ DIGA O HORÁRIO DO MÉDICO, NÃO O DA RECEPÇÃO — os dois são diferentes:
+⏰ HORÁRIO DA CONFERÊNCIA DE ÓCULOS: **das 8h às 18h, com pausa para o almoço das 13h às 14h**, nos dias de cada unidade — **Conjunto Nacional** às segundas, quartas e sextas; **Taguatinga Shopping** às terças e quintas (regra do Dr. Bruno, 31/08/2026). Quem confere os óculos é a EQUIPE, então vale o horário da unidade aberta, e não a hora em que o médico começa. É PROIBIDO mandar o paciente esperar até as 9h ou as 10h para conferir óculos: ele pode resolver às 8h.
+⏰ PARA SER ATENDIDO PELO MÉDICO sem hora marcada (que é outra coisa), aí sim DIGA O HORÁRIO DO MÉDICO, NÃO O DA RECEPÇÃO — os dois são diferentes:
 - **Conjunto Nacional** (segundas, quartas e sextas): recepção abre às 8h, mas o **atendimento médico começa às 9h** e vai até as 18h.
 - **Taguatinga Shopping** (terças e quintas): recepção abre às 8h, mas o **atendimento médico começa às 10h** e vai até as 18h.
-Sempre que alguém for COMPARECER sem hora marcada — conferência de óculos, ordem de chegada, "posso passar aí?" — informe o horário do MÉDICO da unidade e do dia em questão. O "das 8h às 18h" que aparece em outras partes é o horário da RECEPÇÃO, e vale só para falar com a equipe, entregar documento ou tirar dúvida no telefone.
+Sempre que alguém for COMPARECER sem hora marcada para ser VISTO PELO MÉDICO ("posso passar aí?", "chego e espero") — informe o horário do MÉDICO da unidade e do dia em questão. (Conferência de óculos é a exceção: ali vale o 8h–18h acima.) O "das 8h às 18h" que aparece em outras partes é o horário da RECEPÇÃO, e vale só para falar com a equipe, entregar documento ou tirar dúvida no telefone.
 Caso real (10/08): a Ana disse "na quarta o atendimento é das 8h às 18h" a uma paciente que ia por ordem de chegada para conferir óculos multifocais. Na quarta é Conjunto Nacional, onde o médico começa às 9h — ela chegaria uma hora antes e esperaria à toa. Em Taguatinga o erro seria de duas horas.
 
 ### Como lidar com horários (REGRA CRÍTICA)
@@ -5146,7 +5147,7 @@ app.post("/webhook", async (req, res) => {
           if (!anaPerguntou) {
             let resposta;
             if (faq === "conferencia") {
-              resposta = textoConferenciaOculos(new Date());
+              resposta = textoConferenciaOculos(new Date(), await diasFechados());
             } else if (faq === "horario") {
               resposta = FAQ_HORARIO;
             } else {
@@ -8224,30 +8225,60 @@ const FAQ_HORARIO = "Nosso atendimento é de segunda a sexta, das 8h às 18h. �
 // citar Taguatinga. As travas não pegaram porque todas dependem de um HORÁRIO
 // citado, e aqui só se fala em DIA. Texto fixo mata o erro e ainda sai de graça.
 // Os dois "próximo dia" são calculados em código (unidadeDoDia), nunca deduzidos.
-function proximoDiaDaUnidade(unidadeNome, agora = new Date()) {
+// Dias em que a unidade está FECHADA por bloqueio (feriado, congresso). Sem
+// isto, o texto de conferência mandava o paciente "na próxima segunda" mesmo
+// quando essa segunda era 7 de Setembro — e ele encontraria a porta fechada.
+// A regra de dia-da-semana não sabe de feriado; quem sabe é a agenda.
+// Só conta como FECHADO o dia com bloqueio na maior parte da grade (12+ dos ~22
+// horários): um bloqueio de duas horas para um congresso não fecha a unidade.
+async function diasFechados(diasAFrente = 9) {
+  try {
+    const { data, error } = await supabase.from("appointments")
+      .select("inicio")
+      .eq("origem", "bloqueio").neq("status", "cancelado")
+      .gte("inicio", new Date().toISOString())
+      .lt("inicio", new Date(Date.now() + diasAFrente * 86400000).toISOString());
+    if (error) { console.error("[Agenda] Falha ao ler bloqueios (segue sem):", error.message); return new Set(); }
+    const porDia = new Map();
+    for (const a of (data || [])) {
+      const ymd = new Date(a.inicio).toLocaleDateString("en-CA", { timeZone: TZ_BR });
+      porDia.set(ymd, (porDia.get(ymd) || 0) + 1);
+    }
+    return new Set([...porDia].filter(([, n]) => n >= 12).map(([ymd]) => ymd));
+  } catch (e) { console.error("[Agenda] Falha ao ler bloqueios:", e.message); return new Set(); }
+}
+function proximoDiaDaUnidade(unidadeNome, agora = new Date(), fechados = new Set()) {
   const horaBR = Number(agora.toLocaleString("en-US", { timeZone: TZ_BR, hour: "2-digit", hour12: false }));
   for (let i = 0; i <= 8; i++) {
     const d = new Date(agora.getTime() + i * 86400000);
     if (unidadeDoDia(d) !== unidadeNome) continue;
-    // Hoje só vale se o médico ainda estiver atendendo (recepção fecha 18h).
+    if (fechados.has(d.toLocaleDateString("en-CA", { timeZone: TZ_BR }))) continue;   // feriado/bloqueio
+    // Hoje só vale se ainda dá tempo de ir (a unidade fecha às 18h).
     if (i === 0 && horaBR >= 17) continue;
     return d;
   }
   return null;
 }
-function textoConferenciaOculos(agora = new Date()) {
+function textoConferenciaOculos(agora = new Date(), fechados = new Set()) {
   const fmt = (d) => d && d.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit" });
-  const proxCN = proximoDiaDaUnidade("Conjunto Nacional", agora);
-  const proxTG = proximoDiaDaUnidade("Taguatinga", agora);
+  const proxCN = proximoDiaDaUnidade("Conjunto Nacional", agora, fechados);
+  const proxTG = proximoDiaDaUnidade("Taguatinga", agora, fechados);
   const hojeStr = agora.toLocaleDateString("pt-BR", { timeZone: TZ_BR });
   const rotulo = (d) => {
     if (!d) return "";
     const ds = d.toLocaleDateString("pt-BR", { timeZone: TZ_BR });
     return ds === hojeStr ? " — *hoje*" : ` — a próxima é ${fmt(d)}`;
   };
-  return "Para conferência de óculos *não precisa agendar*: o atendimento é por ordem de chegada. 😊\n\n"
-    + `• *Conjunto Nacional* (Asa Norte) — segundas, quartas e sextas, a partir das 9h${rotulo(proxCN)}.\n`
-    + `• *Taguatinga Shopping* (em Águas Claras) — terças e quintas, a partir das 10h${rotulo(proxTG)}.\n\n`
+  // ⏰ 8h–18h com pausa de almoço (Dr. Bruno, 31/08/2026). Antes o texto dava a
+  // hora em que o MÉDICO começa (9h no Conjunto, 10h em Taguatinga), porque a
+  // regra do prompt foi escrita pensando em quem vai ser ATENDIDO sem hora
+  // marcada. Conferência de óculos não é isso: quem confere é a equipe, e o
+  // horário é o da unidade aberta. Mandar o paciente às 9h quando ele podia
+  // resolver às 8h é uma hora de espera inventada.
+  return "Para conferência de óculos *não precisa agendar*: o atendimento é por *ordem de chegada*. 😊\n\n"
+    + `• *Conjunto Nacional* (Asa Norte) — segundas, quartas e sextas${rotulo(proxCN)}.\n`
+    + `• *Taguatinga Shopping* (em Águas Claras) — terças e quintas${rotulo(proxTG)}.\n\n`
+    + "O horário é das *8h às 18h*, com pausa para o almoço das 13h às 14h.\n\n"
     + "É só comparecer na unidade que preferir, levando os óculos e a receita. *Não há prazo* — pode trazer quando os óculos ficarem prontos, e isso não usa o seu retorno. Se precisar do endereço ou de qualquer outra coisa, é só falar!";
 }
 // Detecta o pedido. Conservador: se houver sinal de OUTRO assunto junto
