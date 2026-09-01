@@ -8924,7 +8924,83 @@ function startCobrancaRecadosScheduler() {
   console.log(`[Cobrança] Recado sem resposta humana é cobrado após ${COBRANCA_RECADO_HORAS}h (horário comercial).`);
 }
 
+// ===== MENSAGEM DE PACIENTE SEM RESPOSTA ===================================
+// Dr. Bruno, 01/09/2026, depois de uma paciente ficar 12 minutos no vácuo: um
+// áudio às 18h09 ("vou ver o dia com a minha filha… e a questão do atestado")
+// que a Ana simplesmente não respondeu, sem erro no log e sem ninguém saber.
+// Medido em 7 dias, já descontando as cortesias que ela não responde de
+// propósito: mensagem com MÍDIA fica sem resposta em 18,3% das vezes, contra
+// 2,6% do texto puro — sete vezes mais.
+// Enquanto a causa não é achada, isto garante que nenhuma mensagem morra em
+// silêncio: se o paciente falou e ninguém respondeu em SEM_RESPOSTA_MIN, a
+// equipe recebe um aviso e a conversa acende no painel.
+const SEM_RESPOSTA_MIN = (() => {
+  const v = readEnv("SEM_RESPOSTA_MIN");
+  return (v != null && v !== "" && !isNaN(Number(v))) ? Number(v) : 3;
+})();
+async function avisarMensagensSemResposta() {
+  try {
+    const limite = new Date(Date.now() - SEM_RESPOSTA_MIN * 60000).toISOString();
+    // Janela de 6h: mais que isso não é "sem resposta agora", é histórico.
+    const desde = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+    const { data: msgs, error } = await supabase.from("messages")
+      .select("id, conversation_id, role, content, timestamp, media_path")
+      .gte("timestamp", desde).lte("timestamp", limite)
+      .order("timestamp", { ascending: false }).limit(300);
+    if (error) { console.error("[SemResposta] Falha ao ler mensagens:", error.message); return; }
+
+    // A ÚLTIMA mensagem de cada conversa. Se for do paciente, ninguém respondeu.
+    const ultima = new Map();
+    for (const m of (msgs || [])) if (!ultima.has(m.conversation_id)) ultima.set(m.conversation_id, m);
+    const pendentes = [...ultima.values()].filter(m => m.role === "user");
+    if (!pendentes.length) return;
+
+    // Já avisados (persistido: reinício do Render não reavisa a mesma mensagem).
+    let avisados = new Set();
+    try {
+      const { data } = await supabase.from("settings").select("value").eq("key", "sem_resposta_avisados").maybeSingle();
+      const arr = data?.value ? JSON.parse(data.value) : [];
+      if (Array.isArray(arr)) avisados = new Set(arr);
+    } catch (_) { /* primeira execução */ }
+
+    const novos = [];
+    for (const m of pendentes) {
+      if (avisados.has(m.id)) continue;
+      const texto = String(m.content || "").trim();
+      // Cortesia é silêncio PROPOSITAL da Ana — não é mensagem perdida.
+      if (!texto || (ehCortesia(texto) && !m.media_path)) { novos.push(m.id); continue; }
+      const { data: conv } = await supabase.from("conversations")
+        .select("id, status, assigned_to, patient_id").eq("id", m.conversation_id).maybeSingle();
+      // Conversa assumida por gente: quem responde é a equipe, no tempo dela.
+      if (!conv || conv.status !== "bot" || conv.assigned_to) { novos.push(m.id); continue; }
+      const { data: pac } = conv.patient_id
+        ? await supabase.from("patients").select("phone, name").eq("id", conv.patient_id).maybeSingle()
+        : { data: null };
+      const fone = pac?.phone || "";
+      if (fone.startsWith("55619900")) { novos.push(m.id); continue; }   // número de teste
+      const min = Math.round((Date.now() - new Date(m.timestamp).getTime()) / 60000);
+      await notificarClinica(
+        `🔕 *MENSAGEM SEM RESPOSTA (${min} min)*\n👤 ${pac?.name || "paciente"}\n📱 ${fone}\n${m.media_path ? "🎧 veio como áudio/foto\n" : ""}\n💬 "${texto.slice(0, 200)}"\n\nA Ana não respondeu e a conversa está em modo automático. Alguém precisa olhar no painel.`
+      ).catch(e => console.error("[SemResposta] Falha ao avisar:", e.message));
+      await marcarPendenciaEquipe(m.conversation_id, "action").catch(() => {});
+      await registrarErro("mensagem_sem_resposta", `${min}min | ${m.media_path ? "MÍDIA | " : ""}${texto.slice(0, 160)}`,
+        { conversationId: m.conversation_id, telefone: fone }).catch(() => {});
+      console.warn(`[SemResposta] ${maskFone(fone)} há ${min} min sem resposta — equipe avisada.`);
+      novos.push(m.id);
+    }
+    if (novos.length) {
+      const guardar = [...avisados, ...novos].slice(-400);   // não deixa a chave crescer sem fim
+      await supabase.from("settings").upsert({ key: "sem_resposta_avisados", value: JSON.stringify(guardar) });
+    }
+  } catch (e) { console.error("[SemResposta] Ciclo falhou:", e.message); }
+}
+function startSemRespostaScheduler() {
+  setInterval(() => avisarMensagensSemResposta().catch(e => console.error("[SemResposta] scheduler:", e.message)), 2 * 60 * 1000);
+  console.log(`[SemResposta] Vigia ativo: avisa a equipe se um paciente ficar ${SEM_RESPOSTA_MIN} min sem resposta (env SEM_RESPOSTA_MIN).`);
+}
+
 startResumoDiarioScheduler();
+startSemRespostaScheduler();   // nenhuma mensagem de paciente morre em silêncio
 startCobrancaRecadosScheduler();
 startSyncIClinic();   // reflete o iClinic (Google Calendars) na agenda do painel
 startFollowUp();      // recuperação de leads frios (inerte até ativar no settings)
