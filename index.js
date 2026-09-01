@@ -2727,6 +2727,30 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     const vagasAtuais = await fetchSlotsDB(unidade);
     if (Array.isArray(vagasAtuais)) {
       const existe = vagasAtuais.some(s => s.start.getTime() === ini.getTime() && s.start.getTime() >= minTs);
+      // 🩹 A VAGA PODE TER SAÍDO DA LISTA POR JÁ SER DESTE PACIENTE.
+      // A checagem de idempotência acima só enxerga agendamentos com
+      // origem='ana' E o mesmo conversation_id — então o que a SECRETÁRIA marcou
+      // pelo painel é invisível para ela. Quando o paciente confirma no WhatsApp,
+      // a Ana re-emite o [AGENDAR], a vaga já não está livre (é dele!) e o
+      // paciente recebe "esse horário não está disponível, ele NÃO ficou
+      // reservado" — sobre a própria consulta, que está de pé.
+      // Caso real (01/09, Halley + Celina): a consulta foi marcada por fora, ele
+      // respondeu "Ok. Obrigado", e recebeu duas desculpas oferecendo 15h40 e
+      // 16h40 vinte minutos depois de receber a confirmação formal.
+      // Aqui a resposta certa não é pedir desculpa: está reservado, e é dele.
+      if (!existe) {
+        try {
+          const { data: jaEDele } = await supabase.from("appointments")
+            .select("id, paciente_nome")
+            .eq("unidade", unidade).eq("inicio", ini.toISOString())
+            .in("status", ["reservado", "confirmado"])
+            .in("paciente_telefone", fonesBR(telefone));
+          if (jaEDele && jaEDele.length) {
+            console.log(`[Agendar] ${ini.toISOString()} (${unidade}) já é DESTE paciente (${jaEDele[0].paciente_nome || "sem nome"}) — nada a corrigir, nada a avisar.`);
+            return { ok: true, already: true };
+          }
+        } catch (e) { console.error("[Agendar] Falha ao checar se a vaga já é do paciente (segue):", e.message); }
+      }
       if (!existe) {
         const prox = alternativaMaisProxima(vagasAtuais, ini, minTs);
         const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve para você?` : `Vou verificar outra opção e já te retorno.`;
