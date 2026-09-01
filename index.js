@@ -7776,6 +7776,10 @@ async function rodarFollowUpLeads() {
       if (ehCortesia(s)) return true;                       // "Obrigada", "Ok, obrigada", "👍"
       const n = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
       if (/^(nao|nao obrigad[oa]|nao precisa|nao vou|por enquanto nao)\b/.test(n)) return true;
+      // "Agora não" / "talvez depois" — casamento EXATO (ehAgoraNao), não prefixo:
+      // "agora não consigo esse horário, tem outro?" é paciente NEGOCIANDO, e
+      // descartá-lo perde justamente o lead que o follow-up existe para salvar.
+      if (ehAgoraNao(s)) return true;
       if (/^(confirmo|confirmado|confirmada)\b/.test(n)) return true;   // já confirmou consulta
       if (/^(so|era so|apenas|por enquanto (e|eh) so)\s+(isso|isto)\b/.test(n)) return true;   // "Só isso"
       if (/^(bom dia|boa tarde|boa noite|ola|oi)[\s!.,]*$/.test(n)) return true;  // saudação solta
@@ -7785,6 +7789,25 @@ async function rodarFollowUpLeads() {
     leads = leads.filter(l => !encerrou(l.ultima_msg));
     if (antes !== leads.length) console.log(`[FollowUp] ${antes - leads.length} de ${antes} descartado(s): o paciente já tinha encerrado.`);
     if (!leads.length) return;
+
+    // QUEM DISSE "AGORA NÃO" NA CAMPANHA FICA DE FORA (Dr. Bruno, 01/09/2026).
+    // Ele respondeu à mensagem de reengajamento dizendo que não é o momento —
+    // e aí, horas depois, receberia um "posso dar sequência ao seu atendimento?"
+    // por outro caminho. É insistir com quem acabou de recusar, e o preço disso
+    // é o paciente bloquear o número da clínica.
+    // O filtro de texto acima só olha a ÚLTIMA mensagem da conversa; aqui a
+    // memória é a fila da campanha, que não depende do que ele escreveu depois.
+    try {
+      const { data: recusaram } = await supabase.from("reengajamento")
+        .select("fone_chave").eq("status", "agora_nao");
+      const fora = new Set((recusaram || []).map(r => r.fone_chave).filter(Boolean));
+      if (fora.size) {
+        const n = leads.length;
+        leads = leads.filter(l => !fora.has(foneChave(l.phone)));
+        if (n !== leads.length) console.log(`[FollowUp] ${n - leads.length} descartado(s): disseram "agora não" na campanha de reengajamento.`);
+        if (!leads.length) return;
+      }
+    } catch (e) { console.error("[FollowUp] Falha ao ler quem recusou a campanha (segue sem o filtro):", e.message); }
     for (const lead of leads) {
       const nome = (lead.name || "").trim().split(/\s+/)[0] || "";
       const msg = `Olá${nome ? ", " + nome : ""}. Passando para saber se posso dar sequência ao seu atendimento. Se desejar, verifico um horário para a sua avaliação — fico à disposição.`;
