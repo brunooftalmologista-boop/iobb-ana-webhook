@@ -7822,13 +7822,21 @@ async function rodarFollowUpLeads() {
     // O filtro de texto acima só olha a ÚLTIMA mensagem da conversa; aqui a
     // memória é a fila da campanha, que não depende do que ele escreveu depois.
     try {
-      const { data: recusaram } = await supabase.from("reengajamento")
-        .select("fone_chave").eq("status", "agora_nao");
-      const fora = new Set((recusaram || []).map(r => r.fone_chave).filter(Boolean));
+      // 01/09, 12h33 — o filtro de "agora_nao" NÃO bastou: o Carlos respondeu à
+      // campanha em texto livre ("por questões de trabalho não consigo agora,
+      // pode me lembrar em novembro?"), continuou com status 'enviado' e recebeu
+      // três horas depois um "posso dar sequência ao seu atendimento?". Ele
+      // repetiu o pedido de novembro — três voltas dizendo a mesma coisa, que é
+      // exatamente o "parece um robô" que o Dr. Bruno viu.
+      // Quem está na campanha tem cadência PRÓPRIA e não é lead frio de anúncio:
+      // fica fora do follow-up orgânico inteiro, tenha respondido o que tiver.
+      const { data: naCampanha } = await supabase.from("reengajamento")
+        .select("fone_chave").in("status", ["enviado", "agora_nao"]);
+      const fora = new Set((naCampanha || []).map(r => r.fone_chave).filter(Boolean));
       if (fora.size) {
         const n = leads.length;
         leads = leads.filter(l => !fora.has(foneChave(l.phone)));
-        if (n !== leads.length) console.log(`[FollowUp] ${n - leads.length} descartado(s): disseram "agora não" na campanha de reengajamento.`);
+        if (n !== leads.length) console.log(`[FollowUp] ${n - leads.length} descartado(s): estão na campanha de reengajamento (cadência própria).`);
         if (!leads.length) return;
       }
     } catch (e) { console.error("[FollowUp] Falha ao ler quem recusou a campanha (segue sem o filtro):", e.message); }
