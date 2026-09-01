@@ -8941,12 +8941,16 @@ const SEM_RESPOSTA_MIN = (() => {
 async function avisarMensagensSemResposta() {
   try {
     const limite = new Date(Date.now() - SEM_RESPOSTA_MIN * 60000).toISOString();
-    // Janela de 6h: mais que isso não é "sem resposta agora", é histórico.
-    const desde = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+    // 💸 JANELA CURTA POR CAUSA DO EGRESS. O ciclo roda a cada 2 min; uma janela
+    // de 6h relia as mesmas centenas de linhas 720 vezes por dia (~1,3 GB/mês —
+    // sozinho, um quarto da cota que estourou em 08/08). Com 20 minutos, cada
+    // ciclo lê só o que é novo: o que for mais antigo já passou por aqui e está
+    // em `avisados`. A folga de 20 min cobre reinício de deploy sem perder nada.
+    const desde = new Date(Date.now() - 20 * 60000).toISOString();
     const { data: msgs, error } = await supabase.from("messages")
       .select("id, conversation_id, role, content, timestamp, media_path")
       .gte("timestamp", desde).lte("timestamp", limite)
-      .order("timestamp", { ascending: false }).limit(300);
+      .order("timestamp", { ascending: false }).limit(60);
     if (error) { console.error("[SemResposta] Falha ao ler mensagens:", error.message); return; }
 
     // A ÚLTIMA mensagem de cada conversa. Se for do paciente, ninguém respondeu.
@@ -8969,6 +8973,13 @@ async function avisarMensagensSemResposta() {
       const texto = String(m.content || "").trim();
       // Cortesia é silêncio PROPOSITAL da Ana — não é mensagem perdida.
       if (!texto || (ehCortesia(texto) && !m.media_path)) { novos.push(m.id); continue; }
+      // ⚠️ A janela curta corta as mensagens dos últimos 3 minutos — inclusive a
+      // RESPOSTA que a Ana pode ter dado. Sem esta conferência, o vigia avisaria
+      // que ninguém respondeu justamente quando ela acabou de responder.
+      const { data: respondeu } = await supabase.from("messages")
+        .select("id").eq("conversation_id", m.conversation_id)
+        .in("role", ["assistant", "human"]).gt("timestamp", m.timestamp).limit(1);
+      if (respondeu && respondeu.length) { novos.push(m.id); continue; }
       const { data: conv } = await supabase.from("conversations")
         .select("id, status, assigned_to, patient_id").eq("id", m.conversation_id).maybeSingle();
       // Conversa assumida por gente: quem responde é a equipe, no tempo dela.
