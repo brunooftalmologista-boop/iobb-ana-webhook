@@ -350,6 +350,11 @@ reprovada 2× segue, para não destruir resposta legítima (ex.: casal = 2 horá
 - remarcação: ofereceu horário antes de perguntar o dia/turno → refaz perguntando
   (quem pede para remarcar já disse que o horário que tem não serve; repetir o
   horário DELE não conta como oferta);
+- prometeu "vou registrar / a equipe entra em contato" sem emitir `[RECADO]` →
+  refaz com o bloco (em 60 dias: 142 promessas × 19 recados emitidos);
+- bairro colado na unidade errada ("Conjunto Nacional (Águas Claras)") → refaz;
+- a frase determinística de emergência sai **uma vez por conversa**: repetida,
+  vira robô (caso 01/09: quatro vezes idêntica a quem só queria entregar exames);
 - prosa × token divergentes → vale a PROSA (o que o paciente leu);
 - anti-duplicata e anti-overbooking (índice único no banco);
 - re-emissão de `[AGENDAR]` sem mudança → ignorada (não duplica).

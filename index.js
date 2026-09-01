@@ -1800,6 +1800,42 @@ function prometeuCancelarSemBloco(replyBruto, textoLimpo, registrosCancelar, age
     ? `afirmou que a consulta está cancelada mas NÃO emitiu o bloco [CANCELAR] — nada foi cancelado`
     : `prometeu cancelar ${teto} consultas e emitiu apenas ${n} bloco [CANCELAR]`;
 }
+// ===== TRAVA: PROMETEU RECADO E NÃO EMITIU O BLOCO ========================
+// Irmã da trava de cancelamento: lá era "disse que cancelou e não cancelou";
+// aqui é "disse que vai avisar a equipe e não avisou".
+// Caso real (01/09, Carlos, campanha de reengajamento): "por questões de
+// trabalho não consigo agora, pode me lembrar da revisão em novembro?" — a Ana
+// respondeu DUAS vezes "vou registrar o pedido para a equipe entrar em contato
+// em novembro" e não emitiu [RECADO] nenhuma das duas. Ele vai esperar uma
+// ligação que ninguém agendou.
+// A dimensão do buraco, medida em 60 dias: 142 respostas prometeram registrar/
+// encaminhar e só 19 recados foram emitidos no período inteiro.
+const RE_PROMETE_REGISTRO = /\b(vou|irei)\s+(registrar|anotar|repassar|encaminhar)|deixarei\s+registrad|j[áa]\s+registrei|fica\s+registrad|vou\s+deixar\s+(isso\s+)?(anotad|registrad)/i;
+// Só EXIGE recado quando o desfecho depende de alguém: a equipe retorna,
+// verifica, entra em contato. "Vou anotar" sozinho pode ser fala de cortesia.
+const RE_PROMESSA_COM_EQUIPE = /equipe|secret[áa]ri|retorn|entrar?\s+em\s+contato|verificar/i;
+// "Vou anotar seu nome / nascimento / carteirinha" é dado da FICHA, não recado —
+// e é a frase mais comum no meio de um agendamento normal.
+const RE_ANOTA_DADO_DA_FICHA = /anotar\s+(o\s+|a\s+|seu\s+|sua\s+|os\s+|as\s+)?(nome|nascimento|telefone|carteirinha|conv[êe]nio|dados?|informa)/i;
+function prometeuRecadoSemBloco(replyBruto, textoLimpo) {
+  // [AGENDAR] e [PREAGENDAMENTO] SÃO o registro daquele caso — não precisam de recado.
+  if (/\[(AGENDAR|PREAGENDAMENTO|RECADO)\]/i.test(String(replyBruto))) return null;
+  const t = String(textoLimpo || "");
+  const frase = t.split(/(?<=[.!?\n])/).find(f => RE_PROMETE_REGISTRO.test(f)) || "";
+  if (!frase) return null;
+  if (RE_ANOTA_DADO_DA_FICHA.test(frase)) return null;
+  if (!RE_PROMESSA_COM_EQUIPE.test(t)) return null;
+  return "prometeu registrar/encaminhar o pedido para a equipe, mas NÃO emitiu o bloco [RECADO] — ninguém foi avisado";
+}
+function instrucaoRecadoDeVerdade(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Para o paciente, "vou registrar" e "a equipe entra em contato" são uma promessa — e sem o bloco ela não existe: ninguém na clínica fica sabendo, e ele espera um retorno que nunca vem.
+Reescreva a MESMA mensagem (o texto para o paciente pode ficar igual) e ACRESCENTE ao final o bloco técnico:
+[RECADO]
+tipo: <retorno | duvida | urgencia | outro> | resumo: <uma linha dizendo exatamente o que a equipe precisa fazer, com nome e prazo se houver> | prioritario: <sim ou nao>
+[/RECADO]
+Se, pensando bem, NÃO havia nada a encaminhar, então tire a promessa do texto — não prometa registro que não vai existir.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
 function instrucaoCancelarDeVerdade(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. Dizer ao paciente que está cancelado sem emitir o bloco é o pior erro possível: ele vai embora tranquilo, não aparece, e a vaga fica presa até o dia — ninguém percebe. Reescreva a MESMA mensagem, com o mesmo tom, e emita UM bloco [CANCELAR] PARA CADA consulta que você está dizendo que foi cancelada, copiando o token [inicio:...] exato de cada uma, como estão na seção "### Agendamentos que ESTE paciente já tem". Se alguma delas estiver marcada "alteração só pela equipe", NÃO diga que foi cancelada: diga que a equipe vai confirmar o cancelamento e registre [RECADO]. Nunca afirme um cancelamento que você não executou.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
@@ -5692,6 +5728,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const contaGotas = (etapaDeOferta && !fichaCedo) ? fichaEmContaGotas(reply, messages) : null;
       const cancPrevia = extrairCancelar(reply);
       const cancelouSoNaFala = prometeuCancelarSemBloco(reply, cancPrevia.limpo, cancPrevia.registros, meusAgendamentos);
+      // Prometeu avisar a equipe e não emitiu [RECADO] — ninguém fica sabendo.
+      const recadoSoNaFala = prometeuRecadoSemBloco(reply, extrairRecado(reply).limpo);
       // Veio do botão REMARCAR e já jogou horário, sem perguntar dia/turno.
       // Condição determinística: o toque no botão é fato, não interpretação.
       // Preço da consulta dito sem saber se é particular ou convênio.
@@ -5700,8 +5738,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const bairroErrado = bairroTrocado(reply);
       const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (ofertaCegaRemarcacao || precoSemConvenio || bairroErrado || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = ofertaCegaRemarcacao || precoSemConvenio || bairroErrado || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (ofertaCegaRemarcacao || precoSemConvenio || bairroErrado || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = ofertaCegaRemarcacao || precoSemConvenio || bairroErrado || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
@@ -5709,6 +5747,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           ofertaCegaRemarcacao ? "oferta_cega_remarcacao"
             : precoSemConvenio ? "preco_sem_saber_convenio"
             : bairroErrado ? "bairro_trocado"
+            : recadoSoNaFala ? "prometeu_recado_sem_bloco"
             : convenioInventado ? "convenio_inventado"
             : anunciouSemAgendar ? "anunciou_sem_agendar"
             : agendouOcupado ? "agendar_em_vaga_ocupada"
@@ -5758,6 +5797,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             { type: "text", text: dynVolatil + (ofertaCegaRemarcacao ? instrucaoPerguntarPreferencia()
               : precoSemConvenio ? instrucaoPrecoComConvenio()
               : bairroErrado ? instrucaoBairroCerto(bairroErrado)
+              : recadoSoNaFala ? instrucaoRecadoDeVerdade(recadoSoNaFala)
               : convenioInventado ? instrucaoConvenioReal(convenioInventado)
               : anunciouSemAgendar ? instrucaoAgendarDeVerdade(anunciouSemAgendar)
               : agendouOcupado ? instrucaoAgendarVagaLivre(agendouOcupado)
@@ -5804,7 +5844,24 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             const aindaErrada = escalando ? null
               : (contradizHojeAmanha(reply, slotsVigentes)
                  || unidadeContradizOferta(reply, slotsVigentes));
-            if (aindaErrada) {
+            // 🔁 UMA VEZ SÓ POR CONVERSA. A frase determinística é o último
+            // recurso — e último recurso repetido vira robô.
+            // Caso real (01/09, 14h34–14h45): o paciente perguntou se podia
+            // LEVAR RESULTADOS DE EXAME à tarde (não precisa de horário nenhum).
+            // A trava julgou a resposta e o código substituiu pela frase da
+            // agenda. Ele insistiu três vezes — "Eu posso levar hoje?", "Eles
+            // estão aqui prontinhos", "Ok, obrigada" — e recebeu a MESMA frase
+            // quatro vezes. Foi o "parecendo um robô" que o Dr. Bruno viu.
+            // Se a substituição já aconteceu aqui, a resposta da Ana passa: ela
+            // pode estar certa sobre um assunto que não é marcar consulta, e uma
+            // resposta imperfeita é melhor que a mesma frase pela quinta vez.
+            const jaSubstituiu = (messages || []).slice(-6).some(m =>
+              m.role === "assistant" && /^Deixe-me confirmar direitinho a agenda|^A agenda está sem horários disponíveis no momento/.test(String(m.content || "").trim()));
+            if (aindaErrada && jaSubstituiu) {
+              console.warn(`[HorarioTrava] Reescrita ainda errada (${aindaErrada}), mas a frase determinística JÁ foi usada nesta conversa — mandando a resposta dela para não repetir.`);
+              await registrarErro("substituicao_repetida_evitada", `${aindaErrada} | ${String(novo).slice(0, 200)}`,
+                { conversationId: conversation.id, telefone: from }).catch(() => {});
+            } else if (aindaErrada) {
               const prox = (slotsVigentes || []).length
                 ? alternativaMaisProxima(slotsVigentes, new Date(), Date.now()) : null;
               reply = prox
