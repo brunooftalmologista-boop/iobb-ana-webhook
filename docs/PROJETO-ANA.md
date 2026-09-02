@@ -198,6 +198,15 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
   SESC, Porto Seguro, Hapvida**. Não é lista exaustiva — o que define o que ACEITAMOS
   é a lista de atendidos; estes estão escritos só para a Ana negar rápido e seguir
   para o particular. Servem também de **negativa no Google Ads**.
+- **Base histórica de pacientes (02/09/2026):** os relatórios "Pacientes para
+  Retorno" do iClinic (CNB + TGS, 910 páginas) foram extraídos para a tabela
+  `base_historica` — **6.347 pacientes distintos de 2019 a 2025**, com convênio,
+  unidade, procedimentos e data da última consulta. Ela é o ARQUIVO, não a fila:
+  quem dispara é `reengajamento`, e sai dali por `insert ... select` explícito,
+  uma safra por vez. 1.829 têm celular no formato antigo de 8 dígitos (coluna
+  `telefone_com9` traz a sugestão; a decisão de usar o 9 é do Dr. Bruno).
+  Arquivos de carga e instruções: `~/Downloads/base_historica_*.sql` +
+  `LEIA-ME_base_historica.txt`.
 - **STJ e GAMA SAÚDE saíram dos atendidos em 26/08/2026** (Dr. Bruno). Caso diferente
   dos de cima: estes estavam ERRADAMENTE listados como atendidos no prompt, no painel,
   na agenda, no site e nas landings desde o início — ou seja, a clínica anunciava dois
