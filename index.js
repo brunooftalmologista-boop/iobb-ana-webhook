@@ -888,11 +888,18 @@ function regraDoDia(dateStr) {
   return Object.values(AGENDA_REGRAS).find(r => r.dias.includes(dowName)) || null;
 }
 
-function getAvailableSlots(events, unidadePref) {
+// `dias` é o HORIZONTE: até onde a lista enxerga. 14 é o da ANA (a lista dela
+// entra no prompt e é regravada em cache a cada resposta — cada dia a mais custa
+// dinheiro de verdade: medido em 01/09, 28 dias sairiam +US$ 83/mês).
+// O PAINEL passa um horizonte maior porque a lista dele não vai para o modelo:
+// só é lida do banco e desenhada na tela. Sem isso a secretária não tinha onde
+// clicar para marcar em outubro — e foi assim que a consulta da Francesca
+// (16/10) foi combinada com a paciente e nunca chegou à agenda.
+function getAvailableSlots(events, unidadePref, dias = 14) {
   const now = new Date();
   const { ano, mes, dia } = brasiliaAgora().ymd; // hoje em Brasília (Y-M-D)
   const slots = [];
-  for (let d = 0; d <= 14; d++) {
+  for (let d = 0; d <= dias; d++) {
     // Âncora ao MEIO-DIA UTC do dia-alvo: some d dias sem risco de virada de dia.
     const base = new Date(Date.UTC(ano, mes - 1, dia, 12, 0, 0));
     base.setUTCDate(base.getUTCDate() + d);
@@ -1099,10 +1106,14 @@ async function fetchSlots(unidadePref) {
 // "ocupado" (start/end) para getAvailableSlots subtrair da grade. Ativo =
 // 'confirmado' OU 'reservado' (hold) ainda não vencido. `null` = falha ao ler
 // (para a Ana/painel não inventarem vaga sobre uma agenda que não carregou).
-async function fetchBusyFromDB() {
+// ⚠️ A janela daqui tem que cobrir o HORIZONTE de quem vai pedir as vagas. Se a
+// lista enxergasse 60 dias e os ocupados só 15, tudo a partir da 3ª semana
+// apareceria livre — inclusive o que já está marcado (o caso Valdecy, de agosto,
+// em escala maior). Por isso o horizonte entra aqui também, com 1 dia de folga.
+async function fetchBusyFromDB(dias = 14) {
   const now = Date.now();
   const desdeIso = new Date(now).toISOString();
-  const ateIso = new Date(now + 15 * 24 * 60 * 60 * 1000).toISOString();
+  const ateIso = new Date(now + (dias + 1) * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase.from("appointments")
     .select("unidade, inicio, fim, status, hold_expira_em")
     .neq("status", "cancelado")
@@ -1128,16 +1139,24 @@ async function fetchBusyFromDB() {
 // contra overbooking — o cache não afrouxa essa proteção.
 const cacheSlots = new Map();
 const SLOTS_TTL_MS = 10000;
+// Horizonte do PAINEL (só dele). Ajustável no Render sem deploy.
+const PAINEL_HORIZONTE_DIAS = (() => {
+  const v = readEnv("PAINEL_HORIZONTE_DIAS");
+  const n = Number(v);
+  return (v != null && v !== "" && Number.isFinite(n) && n >= 1 && n <= 120) ? n : 60;
+})();
 function invalidarCacheSlots() { cacheSlots.clear(); }
-async function fetchSlotsDB(unidadePref) {
-  const chave = String(unidadePref || "");
+async function fetchSlotsDB(unidadePref, dias = 14) {
+  // O horizonte entra na CHAVE do cache: sem isso, a lista de 60 dias do painel
+  // seria servida à Ana (e vice-versa) dentro da janela de 10s.
+  const chave = `${unidadePref || ""}|${dias}`;
   const emCache = cacheSlots.get(chave);
   if (emCache && Date.now() - emCache.ts < SLOTS_TTL_MS) return emCache.slots;
-  const events = await fetchBusyFromDB();
+  const events = await fetchBusyFromDB(dias);
   if (events === null) return null;                 // falha de leitura nunca entra no cache
   await carregarHorariosExtras();   // exceções por data (ex.: abrir 9h numa quinta)
-  const slots = getAvailableSlots(events, unidadePref);
-  console.log(`[Agenda DB] ${events.length} ocupado(s) → ${slots.length} vaga(s) nos próximos 14 dias.`);
+  const slots = getAvailableSlots(events, unidadePref, dias);
+  console.log(`[Agenda DB] ${events.length} ocupado(s) → ${slots.length} vaga(s) nos próximos ${dias} dias.`);
   cacheSlots.set(chave, { ts: Date.now(), slots });
   return slots;
 }
@@ -7000,7 +7019,11 @@ app.get("/api/diag/anexos", async (req, res) => {
 app.get("/api/agenda/slots", async (req, res) => {
   try {
     const unidade = req.query.unidade ? String(req.query.unidade) : null;
-    const slots = await fetchSlotsDB(unidade);
+    // 60 dias por padrão (Dr. Bruno, 02/09/2026) — a equipe precisa enxergar
+    // meses à frente para marcar. A Ana continua nos 14 dias dela.
+    const pedido = Number(req.query.dias);
+    const dias = Number.isFinite(pedido) ? Math.min(Math.max(pedido, 1), 120) : PAINEL_HORIZONTE_DIAS;
+    const slots = await fetchSlotsDB(unidade, dias);
     if (slots === null) return res.status(502).json({ ok: false, error: "Não foi possível ler a agenda (banco)." });
     res.json({ ok: true, vagas: slots.length, slots: slots.map(s => ({
       inicio: s.start.toISOString(), unidade: s.unidade, dia: s.dia, hora: s.hora, periodo: s.periodo,
