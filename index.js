@@ -7887,8 +7887,13 @@ async function rodarFollowUpLeads() {
       // exatamente o "parece um robô" que o Dr. Bruno viu.
       // Quem está na campanha tem cadência PRÓPRIA e não é lead frio de anúncio:
       // fica fora do follow-up orgânico inteiro, tenha respondido o que tiver.
+      // 02/09: sem filtro de status NENHUM. O Carlos mostrou por quê — ele pediu
+      // contato só em NOVEMBRO, entrou numa campanha futura com status
+      // 'pendente', e um filtro por status o deixaria de fora da proteção.
+      // Quem está na tabela de reengajamento, em qualquer campanha e em qualquer
+      // situação, tem cadência própria: o follow-up orgânico não o toca.
       const { data: naCampanha } = await supabase.from("reengajamento")
-        .select("fone_chave").in("status", ["enviado", "agora_nao"]);
+        .select("fone_chave");
       const fora = new Set((naCampanha || []).map(r => r.fone_chave).filter(Boolean));
       if (fora.size) {
         const n = leads.length;
