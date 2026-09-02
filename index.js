@@ -4978,6 +4978,138 @@ app.post("/webhook", async (req, res) => {
         await sendWhatsApp(from, `🔁 *Reengajamento* (${REENGAJAR_CAMPANHA})\n\nTemplate: ${situacao}\n\n📋 Fila: *${fila.total}* paciente(s)\n⏳ Pendentes: *${p.pendente || 0}*\n📨 Enviados: ${p.enviado || 0}\n📴 Responderam "agora não": ${p.agora_nao || 0}\n🚫 Removidos da fila: ${p.removido || 0}\n🔕 Descadastrados: ${p.descadastrado || 0}\n📅 Já agendados: ${p.ja_agendado || 0}\n❌ Falhas: ${p.falhou || 0}\n\n🎯 Voltaram a marcar depois de receber: *${fila.voltaram}*${fila.enviados ? ` de ${fila.enviados}` : ""}\n\nPróximo lote: *#REENGAJAR 50* · Ver no seu número: *#REENGAJAR TESTE*\nBotões atuais: ${REENGAJAR_BOTOES.join(" · ")} — se o que chega for diferente, use *#REENGAJAR ATUALIZAR*`);
         return;
       }
+      // ── FUNIL PÓS-CONSULTA ────────────────────────────────────────────────
+      // "#INDICACOES" (plural) = o funil. "#INDICACAO <tel> <procedimento>"
+      // (singular) = registrar uma na hora, saindo da sala, sem abrir a agenda.
+      // Vêm ANTES do #LEMBRETES só por vizinhança de assunto; não há colisão de
+      // prefixo entre os dois (INDICACOES ≠ INDICACAO a partir da 8ª letra).
+      const indsCmd = text.match(/^#INDICA[CÇ][OÕ]ES\b([\s\S]*)$/i);
+      if (indsCmd) {
+        const arg = indsCmd[1].trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (arg === "CRIAR") {
+          try {
+            const r = await criarTemplateIndicacao();
+            await sendWhatsApp(from, `✅ Template *${TEMPLATE_INDICACAO_NOME}* criado na Meta (status: ${r.status || "?"}, categoria: ${r.category || "?"}).\n\nA aprovação leva de minutos a algumas horas. Enquanto não estiver APROVADO, o toque só sai para quem escreveu nas últimas 24h — a fila espera, ninguém perde a vez.\n\nAcompanhe com *#INDICACOES*.`);
+          } catch (e) {
+            const d = e?.response?.data;
+            const msg = d ? JSON.stringify(d) : e.message;
+            await sendWhatsApp(from, /already exists|2388023|192/.test(msg)
+              ? `ℹ️ O template *${TEMPLATE_INDICACAO_NOME}* já existe na Meta. Veja a situação com *#INDICACOES*.`
+              : `❌ A Meta recusou a criação:\n${msg.slice(0, 800)}`);
+          }
+          return;
+        }
+        if (arg === "APAGAR") {
+          try {
+            await apagarTemplateIndicacao();
+            await sendWhatsApp(from, `🗑️ Template *${TEMPLATE_INDICACAO_NOME}* apagado na Meta.\n\nRecrie com *#INDICACOES CRIAR*.`);
+          } catch (e) {
+            const d = e?.response?.data;
+            await sendWhatsApp(from, `❌ Não consegui apagar: ${(d ? JSON.stringify(d) : e.message).slice(0, 600)}`);
+          }
+          return;
+        }
+        if (arg === "TESTE") {
+          // Manda no SEU número o texto EXATO que o paciente recebe. Sem isso a
+          // única forma de ver a mensagem era um paciente real recebê-la.
+          try {
+            const texto = textoToqueIndicacao("Bruno", "cirurgia refrativa (PRK)", 1);
+            await sendWhatsApp(from, texto);
+            await sendWhatsApp(from, "👆 É exatamente isto que o paciente recebe no primeiro toque (dentro das 24h; fora delas vai o template, com o mesmo teor). Se estiver bom, ligue a rotina com *#INDICACOES LIGAR*.");
+          } catch (e) {
+            await sendWhatsApp(from, `❌ Não consegui enviar o teste: ${(e?.response?.data ? JSON.stringify(e.response.data) : e.message).slice(0, 600)}`);
+          }
+          return;
+        }
+        if (arg === "LIGAR" || arg === "DESLIGAR") {
+          const val = arg === "LIGAR" ? "true" : "false";
+          const { error } = await supabase.from("settings").upsert({ key: "indicacoes_followup_enabled", value: val });
+          if (error) { await sendWhatsApp(from, `❌ Falha ao gravar: ${error.message}`); return; }
+          await sendWhatsApp(from, val === "true"
+            ? `✅ Retomada automática *LIGADA*.\n\nA partir de agora, quem tem indicação aberta recebe até ${INDICACAO_CADENCIA_DIAS.length} mensagens, nos dias ${INDICACAO_CADENCIA_DIAS.join(", ")} depois da consulta — só em dia útil, entre ${INDICACAO_HORA_INICIO}h e ${INDICACAO_HORA_FIM}h, e nunca quem já está conversando, quem tem consulta marcada ou quem pediu para parar.\n\nPara desligar: *#INDICACOES DESLIGAR*.`
+            : `⏸️ Retomada automática *DESLIGADA*. As indicações continuam sendo registradas e o funil continua no *#INDICACOES* — só ninguém recebe mensagem automática.`);
+          return;
+        }
+        // "#INDICACOES" puro → o funil.
+        try {
+          const r = await resumoIndicacoes();
+          const ativo = await indicacoesAtivo();
+          let st = null;
+          try { st = await statusTemplateIndicacao(); } catch (_) {}
+          const p = r.por || {};
+          const templateTxt = !WA_WABA_ID ? "não dá para consultar (WA_WABA_ID ausente)"
+            : !st ? "ainda não existe — crie com *#INDICACOES CRIAR*"
+            : st.status === "APPROVED" ? "✅ aprovado" : `⏳ ${st.status}`;
+          const antigas = (r.maisAntigas || []).map(i => {
+            const dias = Math.floor((Date.now() - new Date(i.created_at).getTime()) / 86400000);
+            const nome = String(i.paciente_nome || "").trim().split(/\s+/).slice(0, 2).join(" ") || maskFone(i.paciente_telefone);
+            return `· ${nome} — ${i.procedimento} (${brl(i.valor)}) — há ${dias} dia(s), ${i.toques || 0} toque(s)`;
+          }).join("\n");
+          await sendWhatsApp(from,
+            `💰 *Funil pós-consulta*\n\nRetomada automática: ${ativo ? "✅ ligada" : "⏸️ desligada (*#INDICACOES LIGAR*)"}\nTemplate do toque: ${templateTxt}\n\n`
+            + `📋 Registradas: *${r.total}*\n🟡 Em aberto: *${p.aberta || 0}*\n⏸️ "Agora não": ${p.pausada || 0}\n📅 Voltaram a marcar: ${p.retornou || 0}\n✅ Fecharam: *${p.fechada || 0}*\n🚫 Recusaram: ${p.recusada || 0}\n💨 Perdidas (sem resposta): ${p.perdida || 0}\n\n`
+            + `💵 Parado no funil: *${brl(r.emAberto)}*\n💚 Fechado: *${brl(r.fechado)}*\n\n`
+            + (antigas ? `⏳ *As mais antigas em aberto:*\n${antigas}\n\n` : "")
+            + `Registrar uma agora: *#INDICACAO 61984060001 PRK*\nRegistrar pela tela: agenda → clique na consulta → 💰 Indicação`);
+        } catch (e) {
+          await sendWhatsApp(from, `❌ Não consegui montar o funil: ${e.message.slice(0, 400)}${/does not exist|42P01/i.test(e.message) ? "\n\nA tabela ainda não existe — rode *sql/indicacoes.sql* no Supabase." : ""}`);
+        }
+        return;
+      }
+      // "#INDICACAO <telefone> <procedimento>" — registrar na saída da sala.
+      // O valor entra sozinho pela tabela de preços; para outro valor, acrescente
+      // no fim (ex.: "#INDICACAO 61984060001 catarata OD 9200").
+      const indCmd = text.match(/^#INDICA[CÇ][AÃ]O\b([\s\S]*)$/i);
+      if (indCmd) {
+        const resto = indCmd[1].trim();
+        const m = resto.match(/^(\+?\d[\d\s().-]{7,})\s+(.+)$/s);
+        if (!m) {
+          await sendWhatsApp(from, `ℹ️ Use assim:\n\n*#INDICACAO 61984060001 PRK*\n*#INDICACAO 61 98406-0001 lente escleral*\n*#INDICACAO 61984060001 catarata OD 9200*\n\n(o valor no fim é opcional — sem ele, entra o preço de tabela do procedimento)`);
+          return;
+        }
+        const tel = normalizePhoneBR(m[1]);
+        if (!tel) { await sendWhatsApp(from, "❌ Telefone inválido. Use DDD + número (ex.: 61 98406-0001)."); return; }
+        // Um número solto no FIM é valor; no meio do nome do procedimento, não
+        // ("catarata OD" continua "catarata OD").
+        let proc = m[2].trim(), valor = null;
+        const mv = proc.match(/\s(\d{3,6}(?:[.,]\d{2})?)$/);
+        if (mv) { valor = Number(mv[1].replace(/\./g, "").replace(",", ".")); proc = proc.slice(0, mv.index).trim(); }
+        // Olho no fim do texto vira campo próprio (o funil agrupa por olho).
+        let olho = null;
+        const mo = proc.match(/\s(od|oe|ao|ambos)$/i);
+        if (mo) { olho = /ambos/i.test(mo[1]) ? "AO" : mo[1].toUpperCase(); proc = proc.slice(0, mo.index).trim(); }
+        // Nome e última consulta vêm do que já existe — nada de redigitar.
+        // Consulta própria (e não ultimaConsultaDoPaciente) porque aqui
+        // precisamos do id e do nome, que aquela função não traz.
+        let nome = null, apId = null;
+        try {
+          const { data: ult } = await supabase.from("appointments")
+            .select("id, paciente_nome")
+            .in("paciente_telefone", fonesBR(tel))
+            .neq("status", "cancelado")
+            .lt("inicio", new Date().toISOString())
+            .order("inicio", { ascending: false }).limit(1);
+          if (ult && ult[0]) { nome = ult[0].paciente_nome || null; apId = ult[0].id || null; }
+        } catch (_) {}
+        const r = await criarIndicacao({
+          appointmentId: apId, telefone: tel, nome, procedimento: proc, olho, valor,
+          criadoPor: "whatsapp",
+        });
+        if (!r.ok) {
+          await sendWhatsApp(from, r.duplicada
+            ? `ℹ️ Essa indicação já estava registrada para a última consulta deste paciente. Veja o funil com *#INDICACOES*.`
+            : `❌ ${r.error}`);
+          return;
+        }
+        const i = r.indicacao;
+        const ativo = await indicacoesAtivo();
+        await sendWhatsApp(from,
+          `✅ Indicação registrada.\n\n👤 ${i.paciente_nome || maskFone(i.paciente_telefone)}\n🔎 ${i.procedimento}${i.olho ? ` (${i.olho})` : ""}\n💵 ${brl(i.valor)}\n\n`
+          + (ativo
+              ? `A Ana retoma este paciente em ${INDICACAO_CADENCIA_DIAS[0]} dia(s), se ele não voltar antes.`
+              : `⚠️ A retomada automática está DESLIGADA — isto ficou só registrado no funil. Para ligar: *#INDICACOES LIGAR*.`));
+        return;
+      }
       // Lembretes da véspera. "#LEMBRETES" (ou TESTE) lista quem receberia, sem
       // enviar nada; "#LEMBRETES CONFIRMAR" dispara agora, fora do horário.
       const lembCmd = text.match(/^#LEMBRETES\b([\s\S]*)$/i);
@@ -5185,6 +5317,19 @@ app.post("/webhook", async (req, res) => {
         await sendWhatsApp(from, resposta).catch(e => console.error("[Reengajar] Falha ao responder 'agora não':", e.message));
         await saveMessage(conversation.id, "assistant", resposta).catch(e => console.error("[Reengajar] Falha ao salvar resposta:", e.message));
         console.log(`[Reengajar] "Agora não" de ${maskFone(from)} respondido sem IA.`);
+        return;
+      }
+      // MESMO BOTÃO, OUTRO FUNIL: o "Agora não" do toque pós-consulta. Além da
+      // resposta fixa, ele TIRA o paciente da fila automática — sem isto ele
+      // receberia o próximo toque da cadência tendo acabado de dizer que não é
+      // o momento, que é exatamente o "parece um robô" do caso Carlos (01/09).
+      const pausadas = await pausarIndicacoes(from, "agora não (botão)");
+      if (pausadas) {
+        const primeiro = String(patient?.name || "").trim().split(/\s+/)[0] || "";
+        const resposta = `Sem problema${primeiro ? `, ${primeiro}` : ""}! 😊 Não vou mais escrever sobre isso. Quando quiser retomar, ou se surgir qualquer dúvida, é só me mandar uma mensagem por aqui.\n\nSe preferir falar com a equipe, o telefone é (61) 3033-6605.`;
+        await sendWhatsApp(from, resposta).catch(e => console.error("[Indicações] Falha ao responder 'agora não':", e.message));
+        await saveMessage(conversation.id, "assistant", resposta).catch(e => console.error("[Indicações] Falha ao salvar resposta:", e.message));
+        console.log(`[Indicações] "Agora não" de ${maskFone(from)}: ${pausadas} indicação(ões) pausada(s), sem IA.`);
         return;
       }
     }
@@ -5513,6 +5658,39 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         }
       } catch (e) { console.error("[Retorno] Falha ao consultar última consulta (segue sem):", e.message); }
     }
+
+    // ── O QUE O DR. BRUNO INDICOU A ESTE PACIENTE NA CONSULTA ────────────────
+    // Sem isto, o paciente que voltava para perguntar "e a cirurgia?" era
+    // tratado como quem nunca pisou aqui: a Ana pedia nome, nascimento e
+    // convênio de novo, e explicava do zero o que ele já tinha ouvido do médico.
+    // ⚠️ O VALOR REGISTRADO NA INDICAÇÃO NÃO ENTRA AQUI DE PROPÓSITO. Ele é uma
+    // estimativa para o funil (catarata, por exemplo, é gravada sem a LIO) e a
+    // Ana repetiria esse número como se fosse o preço final. A tabela de preços
+    // certa, com todas as ressalvas, já está no SYSTEM_PROMPT — é de lá que ela
+    // fala de dinheiro.
+    let indicacoesDoPaciente = [];
+    try {
+      indicacoesDoPaciente = await indicacoesVivasDoPaciente(from);
+      if (indicacoesDoPaciente.length) {
+        // O paciente escreveu: a máquina para de cutucar e quem conduz é ela.
+        await marcarRespostaEmIndicacoes(indicacoesDoPaciente.map(i => i.id));
+        const lista = indicacoesDoPaciente.map(i => {
+          const quando = new Date(i.created_at).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit", year: "numeric" });
+          return `- **${i.procedimento}**${i.olho ? ` (${i.olho})` : ""} — indicado na consulta de ${quando}.`;
+        }).join("\n");
+        dynEstavel += `\n\n### O Dr. Bruno JÁ INDICOU um procedimento a este paciente\n${lista}\n`
+          + `\nEle não é um paciente novo: já foi examinado aqui e já ouviu do médico que é candidato. Trate-o como quem está DECIDINDO, não como quem está descobrindo.\n`
+          + `\nCOMO CONDUZIR:\n`
+          + `- 🤐 NÃO ABRA A CONVERSA COM ISSO. Se ele escreveu sobre outro assunto (conferência de óculos, um horário, uma dúvida do plano), resolva o que ele pediu e pronto. Puxar a cirurgia por conta própria numa mensagem sobre outra coisa é o que faz clínica parecer vendedora — e o Dr. Bruno não quer isso. Esta seção só entra em jogo quando O PACIENTE tocar no assunto, ou quando ele estiver respondendo à nossa mensagem sobre o procedimento.\n`
+          + `- ✅ Quando ele tocar no assunto: responda a dúvida dele com o que já está no seu conhecimento (valores, formas de pagamento, como funciona o procedimento em linhas gerais, o que já está incluso). Você NÃO precisa perguntar "o que o médico falou?" — está escrito acima.\n`
+          + `- 🚫 LIMITE CLÍNICO, INEGOCIÁVEL: você NÃO avalia, NÃO confirma e NÃO revê indicação. Nada de "o senhor tem indicação para isso", "no seu caso o resultado costuma ser", "seu grau é adequado". Quem indica, mantém ou muda a conduta é o médico, na consulta. Se a dúvida for clínica ("vai voltar a miopia?", "meu caso é grave?", "quanto tempo de recuperação no meu caso?"), acolha e diga que quem responde isso com precisão é o Dr. Bruno, e ofereça o próximo passo abaixo.\n`
+          + `- 🚫 NADA DE PRESSÃO: proibido "última chance", "os valores vão subir", "restam poucas vagas", desconto ou qualquer urgência inventada. Publicidade médica não permite, e o Dr. Bruno também não.\n`
+          + `\nO PRÓXIMO PASSO CONCRETO (sempre termine oferecendo UM dos dois):\n`
+          + `- 📅 Se ele precisa ser reavaliado, quer conversar com o médico, ou está em dúvida clínica: ofereça UM horário de consulta da lista de vagas, como em qualquer agendamento.\n`
+          + `- 📞 Se ele já decidiu fazer e quer marcar a CIRURGIA ou fechar a LENTE: você NÃO marca isso — a sua agenda é de consulta, e cirurgia depende de centro cirúrgico, exames e data do médico. Diga que vai pedir para a equipe entrar em contato para acertar a data e emita o bloco [RECADO] (tipo: dúvida, resumo: quer agendar <procedimento>, já indicado em consulta). Não termine a mensagem sem um dos dois caminhos.\n`
+          + `- Se ele disser que ainda está pensando, ou que vai fazer mais para a frente: acolha sem insistir, diga que fica à disposição e ENCERRE. Não ofereça horário à força.`;
+      }
+    } catch (e) { console.error("[Indicações] Falha ao carregar as do paciente (segue sem):", e.message); }
 
     // Anúncio (Click-to-WhatsApp): injeta o contexto do anúncio para a Ana abrir
     // DIRETO no tema, mesmo com mensagem genérica. A Meta só envia o referral na
@@ -7433,6 +7611,101 @@ app.get("/api/agenda/comparecimento", async (req, res) => {
   }
 });
 
+// ── FUNIL PÓS-CONSULTA: INDICAÇÕES ──────────────────────────────────────────
+// Todas atrás do requirePanelAuth (app.use("/api", ...)). A tela é a agenda:
+// quem acabou de marcar "Compareceu" é quem sabe o que foi indicado, e é ali
+// que a informação custa dois cliques em vez de virar um bilhete no balcão.
+app.get("/api/indicacoes", async (req, res) => {
+  try {
+    // Padrão = o que precisa de gente: aberta + pausada. Quem quiser o histórico
+    // pede ?status=todas (a tela usa isso na aba "fechadas").
+    const q = String(req.query.status || "").trim().toLowerCase();
+    const status = q === "todas" ? null
+      : (q ? q.split(",").map(s => s.trim()).filter(Boolean) : ["aberta", "pausada"]);
+    let sel = supabase.from("indicacoes")
+      .select("id, appointment_id, paciente_nome, paciente_telefone, procedimento, olho, valor, status, motivo, observacoes, toques, ultimo_toque_em, proximo_toque_em, respondeu_em, created_at, criado_por")
+      .order("created_at", { ascending: false }).limit(300);
+    if (status) sel = sel.in("status", status);
+    const { data, error } = await sel;
+    if (error) {
+      if (error.code === "42P01") return res.status(503).json({ ok: false, error: "Tabela 'indicacoes' não existe — rode sql/indicacoes.sql no Supabase." });
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+    const linhas = data || [];
+    const emAberto = linhas.filter(r => ["aberta", "pausada"].includes(r.status))
+      .reduce((s, r) => s + Number(r.valor || 0), 0);
+    res.json({ ok: true, indicacoes: linhas, emAberto });
+  } catch (e) {
+    console.error("[Indicações] GET falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Registra o que foi indicado numa consulta. O telefone e o nome vêm do próprio
+// agendamento quando não são informados — quem está na tela já tem o paciente
+// aberto na frente, e redigitar telefone é onde nasce o erro do nono dígito.
+app.post("/api/indicacoes", async (req, res) => {
+  try {
+    const { appointment_id, telefone, nome, procedimento, olho, valor, observacoes } = req.body || {};
+    let tel = telefone, nom = nome;
+    if (appointment_id) {
+      const { data: ap } = await supabase.from("appointments")
+        .select("paciente_nome, paciente_telefone").eq("id", String(appointment_id)).maybeSingle();
+      if (!ap) return res.status(404).json({ ok: false, error: "Agendamento não encontrado." });
+      tel = tel || ap.paciente_telefone;
+      nom = nom || ap.paciente_nome;
+      if (!tel) return res.status(400).json({ ok: false, error: "Este agendamento não tem telefone — sem ele não há como retomar o paciente. Edite os dados primeiro." });
+    }
+    const r = await criarIndicacao({
+      appointmentId: appointment_id || null, telefone: tel, nome: nom,
+      procedimento, olho, valor, observacoes,
+      criadoPor: req.panelUser?.email || null,
+    });
+    if (!r.ok) return res.status(r.duplicada ? 409 : 400).json(r);
+    res.json({ ok: true, indicacao: r.indicacao });
+  } catch (e) {
+    console.error("[Indicações] POST falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Desfecho: fechou (fez), recusou, ou correção de valor/observação. É o que
+// transforma o funil em número confiável — sem alguém marcar "fechada", ninguém
+// sabe quanto o acompanhamento trouxe de verdade.
+app.post("/api/indicacoes/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const { status, motivo, valor, observacoes, procedimento } = req.body || {};
+    const VALIDOS = ["aberta", "pausada", "retornou", "fechada", "recusada", "perdida"];
+    const patch = {};
+    if (status !== undefined) {
+      if (!VALIDOS.includes(String(status))) return res.status(400).json({ ok: false, error: "Situação inválida." });
+      patch.status = String(status);
+      patch.fechada_em = ["fechada", "recusada", "perdida"].includes(patch.status) ? new Date().toISOString() : null;
+      // Sai da fila automática em qualquer desfecho; volta para ela ao reabrir.
+      if (patch.status === "aberta") {
+        // Reabrir NÃO reinicia a cadência: quem já levou os 4 toques volta ao
+        // funil para a equipe cuidar à mão, sem receber tudo de novo.
+        const { data: atual } = await supabase.from("indicacoes").select("created_at, toques").eq("id", id).maybeSingle();
+        patch.proximo_toque_em = atual ? proximoToqueEm(atual.created_at, atual.toques || 0) : null;
+      } else {
+        patch.proximo_toque_em = null;
+      }
+    }
+    if (motivo !== undefined) patch.motivo = motivo ? String(motivo).trim().slice(0, 300) : null;
+    if (observacoes !== undefined) patch.observacoes = observacoes ? String(observacoes).trim().slice(0, 1000) : null;
+    if (procedimento !== undefined && String(procedimento).trim()) patch.procedimento = String(procedimento).trim();
+    if (valor !== undefined) patch.valor = (valor === null || valor === "") ? null : Number(valor);
+    if (!Object.keys(patch).length) return res.status(400).json({ ok: false, error: "Nada para alterar." });
+    const { data, error } = await supabase.from("indicacoes").update(patch).eq("id", id).select("*").single();
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true, indicacao: data });
+  } catch (e) {
+    console.error("[Indicações] PATCH falhou:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.post("/api/agenda/:id/cancel", async (req, res) => {
   try {
     const r = await cancelarAgendamento(req.params.id);
@@ -8216,6 +8489,470 @@ async function dispararLoteReengajamento(quantos) {
     if (status === "enviado") await new Promise(s => setTimeout(s, REENGAJAR_PAUSA_MS));
   }
   return r;
+}
+
+// ===== FUNIL PÓS-CONSULTA (INDICAÇÕES) =====================================
+// O sistema terminava em "o paciente compareceu". O Dr. Bruno indicava uma PRK
+// de R$ 5.990 ou uma lente escleral de R$ 7.800, a equipe passava o orçamento
+// de boca, o paciente ia embora pensar — e ninguém mais sabia dele. Não havia
+// uma linha no banco sobre isso.
+//
+// POR QUE É AQUI QUE ESTÁ O DINHEIRO (agosto/2026): a agenda gira bem (336
+// consultas), mas UMA cirurgia a mais por mês vale mais que todas as vagas que
+// ainda sobram na semana. Consulta é R$ 200; PRK é R$ 5.990.
+//
+// COMO FUNCIONA:
+//   1. a consulta acontece e alguém REGISTRA o que foi indicado — pela agenda
+//      (botão no modal do agendamento) ou pelo WhatsApp (#INDICACAO);
+//   2. a rotina retoma o paciente numa cadência espaçada (2, 7, 21 e 45 dias);
+//   3. quando ele responde, quem conduz é a ANA, com o contexto da indicação
+//      injetado no prompt — ela tira dúvida e leva ao próximo passo concreto;
+//   4. marcou consulta depois disso → a máquina se cala sozinha ('retornou').
+//
+// AS TRAVAS (a lição do projeto: regra escrita não basta):
+//   · a rotina é INERTE até settings.indicacoes_followup_enabled='true';
+//   · nunca cutuca quem escreveu nas últimas 24h (a Ana já está falando com
+//     ele), quem está em modo humano, quem tem consulta marcada, quem se
+//     descadastrou, e quem recebeu a campanha de reengajamento há pouco;
+//   · só envia em horário comercial (9h-17h, dias úteis): mensagem de clínica
+//     às 22h assusta;
+//   · o próximo toque é gravado NO BANCO, então reiniciar o Render não redispara
+//     nada (mesma lição do follow-up de leads);
+//   · a Ana NUNCA marca cirurgia — a agenda é de consulta. O passo dela é tirar
+//     dúvida e ou marcar a consulta/avaliação, ou emitir [RECADO] para a equipe.
+//
+// LIMITE ÉTICO (CFM): a mensagem só diz o que é FATO — que o Dr. Bruno indicou
+// tal procedimento na consulta — e se coloca à disposição. Nada de promessa de
+// resultado, urgência inventada, desconto ou "última chance".
+//
+// Comandos (admin, por WhatsApp):
+//   #INDICACOES              → o funil: quantas abertas, quanto parado, quem esfriou
+//   #INDICACOES CRIAR        → cria o template na Meta (para o toque fora das 24h)
+//   #INDICACOES TESTE        → manda o toque no SEU número, para você ver
+//   #INDICACOES LIGAR        → liga a retomada automática (nasce desligada)
+//   #INDICACOES DESLIGAR     → desliga (o registro e o funil continuam)
+//   #INDICACOES APAGAR       → apaga o template na Meta (para recriar do zero)
+//   #INDICACAO <tel> <procedimento>  → registra uma indicação na hora
+const TEMPLATE_INDICACAO_NOME = (readEnv("WA_INDICACAO_TEMPLATE_NAME") || "pos_consulta_indicacao").trim();
+const TEMPLATE_INDICACAO_LANG = (readEnv("WA_INDICACAO_TEMPLATE_LANG") || "pt_BR").trim();
+// ⚠️ Os rótulos passam pelo leitor de botões do webhook, que interpreta
+// /desmarc|cancel/ como "desmarcar" e /remarc|trocar|mudar/ como "remarcar".
+// Nenhum destes cai nessas regras — conferir antes de trocar qualquer palavra.
+const INDICACAO_BOTOES = ["Tenho dúvidas", "Agora não"];
+// Cadência em DIAS CORRIDOS contados da indicação. Espaçada de propósito:
+// decisão de cirurgia leva semanas, e insistir toda semana faz o paciente
+// bloquear o número que também atende os pacientes ativos.
+const INDICACAO_CADENCIA_DIAS = (() => {
+  const bruto = String(readEnv("INDICACAO_CADENCIA_DIAS") || "2,7,21,45");
+  const dias = bruto.split(",").map(s => Number(String(s).trim())).filter(n => Number.isFinite(n) && n > 0);
+  return dias.length ? [...new Set(dias)].sort((a, b) => a - b) : [2, 7, 21, 45];
+})();
+const INDICACAO_LOTE_MAX = 10;          // por ciclo: cadência longa não precisa de rajada
+const INDICACAO_PAUSA_MS = 1200;
+const INDICACAO_HORA_INICIO = 9;        // não cutucar antes de a clínica abrir
+const INDICACAO_HORA_FIM = 17;          // nem depois das 17h (o lembrete sai às 17h)
+
+// Ticket esperado por procedimento — serve só para o funil mostrar quanto
+// dinheiro está parado. É um PADRÃO: quem registra pode digitar outro valor
+// (lente é por par ou unidade, catarata varia com a LIO). Preços de 15/08/2026;
+// quando mudarem no prompt da Ana, mudam aqui também.
+const INDICACAO_PRECOS = [
+  [/femto/i, 8890],
+  [/lasik/i, 7800],
+  [/(trans\s*)?prk/i, 5990],
+  [/crosslink/i, 5980],
+  [/(anel|ferrara)/i, 8700],
+  [/catarata/i, 5000],                  // procedimento; a LIO entra à parte
+  [/zen\s*rc/i, 5980],
+  [/(zenlens|esclera\s*sg|escleral)/i, 7800],
+  [/(r[íi]gida|gás|gas)\s*perme/i, 2500],
+];
+function valorDoProcedimento(nome) {
+  const s = String(nome || "");
+  for (const [re, v] of INDICACAO_PRECOS) if (re.test(s)) return v;
+  return null;
+}
+const brl = (v) => (v === null || v === undefined || v === "")
+  ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+
+// Data do enésimo toque, contada da indicação. Fora da cadência → null, e aí a
+// rotina encerra a linha (perdida se nunca respondeu).
+function proximoToqueEm(createdAt, toquesFeitos) {
+  const dias = INDICACAO_CADENCIA_DIAS[toquesFeitos];
+  if (!dias) return null;
+  return new Date(new Date(createdAt).getTime() + dias * 24 * 3600 * 1000).toISOString();
+}
+
+async function indicacoesAtivo() {
+  try {
+    const { data } = await supabase.from("settings").select("value").eq("key", "indicacoes_followup_enabled").maybeSingle();
+    return data?.value === "true";
+  } catch (_) { return false; }
+}
+
+// Registra uma indicação. Devolve {ok, indicacao, duplicada}. O valor entra
+// automático pela tabela de preços quando não vier digitado — sem isso o funil
+// mostraria "R$ 0 parado" e ninguém olharia para ele de novo.
+async function criarIndicacao({ appointmentId = null, telefone, nome = null, procedimento, olho = null, valor = null, observacoes = null, criadoPor = null }) {
+  const proc = String(procedimento || "").trim();
+  if (!proc) return { ok: false, error: "Informe o procedimento indicado." };
+  const fone = normalizePhoneBR(telefone) || String(telefone || "").trim();
+  const chave = foneChave(fone);
+  if (!chave) return { ok: false, error: "Telefone inválido — sem ele não há como retomar o paciente." };
+  const agora = new Date().toISOString();
+  const row = {
+    appointment_id: appointmentId || null,
+    fone_chave: chave,
+    paciente_telefone: fone,
+    paciente_nome: nome ? String(nome).trim() : null,
+    procedimento: proc,
+    olho: olho ? String(olho).trim().toUpperCase().slice(0, 3) : null,
+    valor: (valor === null || valor === undefined || valor === "") ? valorDoProcedimento(proc) : Number(valor),
+    observacoes: observacoes ? String(observacoes).trim() : null,
+    criado_por: criadoPor || null,
+    status: "aberta",
+    toques: 0,
+    proximo_toque_em: proximoToqueEm(agora, 0),
+  };
+  const { data, error } = await supabase.from("indicacoes").insert(row).select("*").single();
+  if (error) {
+    // 23505 = índice anti-duplicata: a mesma consulta já tem esse procedimento.
+    if (error.code === "23505") return { ok: false, duplicada: true, error: "Esta consulta já tem essa indicação registrada." };
+    if (error.code === "42P01") return { ok: false, error: "Tabela 'indicacoes' não existe — rode sql/indicacoes.sql no Supabase." };
+    console.error("[Indicações] Falha ao criar:", error.message);
+    return { ok: false, error: error.message };
+  }
+  console.log(`[Indicações] ${proc} registrada para ${maskFone(fone)} (${brl(row.valor)}).`);
+  return { ok: true, indicacao: data };
+}
+
+// As indicações VIVAS deste paciente — o que a Ana precisa saber para conduzir.
+// 'pausada' entra: se ele voltou a escrever, o "agora não" dele já passou.
+async function indicacoesVivasDoPaciente(telefone) {
+  try {
+    const chaves = fonesBR(telefone).map(foneChave).filter(Boolean);
+    if (!chaves.length) return [];
+    const { data, error } = await supabase.from("indicacoes")
+      .select("id, procedimento, olho, valor, status, created_at, observacoes")
+      .in("fone_chave", chaves).in("status", ["aberta", "pausada"])
+      .order("created_at", { ascending: false }).limit(4);
+    if (error) {
+      if (error.code !== "42P01") console.error("[Indicações] Falha ao ler as do paciente:", error.message);
+      return [];
+    }
+    return data || [];
+  } catch (e) { console.error("[Indicações] Exceção ao ler as do paciente:", e.message); return []; }
+}
+
+// O paciente respondeu: a máquina se cala e quem conduz é a Ana. Não muda o
+// status (ele continua no funil, à vista da equipe) — só marca que houve vida e
+// empurra o próximo toque, para ele não receber uma cutucada automática no meio
+// de uma conversa que já está acontecendo.
+async function marcarRespostaEmIndicacoes(ids) {
+  if (!ids || !ids.length) return;
+  const { error } = await supabase.from("indicacoes")
+    .update({ respondeu_em: new Date().toISOString(), proximo_toque_em: null })
+    .in("id", ids).is("respondeu_em", null);
+  if (error) console.error("[Indicações] Falha ao marcar resposta:", error.message);
+}
+
+// "Agora não": sai da fila automática, FICA no funil. Não é recusa — é pedido
+// de tempo, e tratar isso como "não" apaga justamente o paciente que voltaria
+// dois meses depois (o Carlos do reengajamento, 01/09, ensinou isso).
+async function pausarIndicacoes(telefone, motivo = "agora não") {
+  const chaves = fonesBR(telefone).map(foneChave).filter(Boolean);
+  if (!chaves.length) return 0;
+  const { data, error } = await supabase.from("indicacoes")
+    .update({ status: "pausada", motivo, proximo_toque_em: null })
+    .in("fone_chave", chaves).eq("status", "aberta").select("id");
+  if (error) { console.error("[Indicações] Falha ao pausar:", error.message); return 0; }
+  return (data || []).length;
+}
+
+// Quem marcou consulta DEPOIS da indicação sai da fila automática: a conversa
+// voltou a ser presencial. Roda no começo de cada ciclo, só sobre as abertas.
+async function fecharIndicacoesQueRetornaram(abertas) {
+  for (const ind of abertas) {
+    try {
+      const { data } = await supabase.from("appointments").select("id")
+        .in("paciente_telefone", fonesBR(ind.paciente_telefone))
+        .gt("created_at", ind.created_at)
+        .in("status", ["reservado", "confirmado"]).limit(1);
+      if (data && data.length) {
+        await supabase.from("indicacoes")
+          .update({ status: "retornou", proximo_toque_em: null }).eq("id", ind.id);
+        console.log(`[Indicações] ${maskFone(ind.paciente_telefone)} marcou consulta depois da indicação — fila encerrada.`);
+      }
+    } catch (e) { console.error("[Indicações] Falha ao checar retorno:", e.message); }
+  }
+}
+
+// lastInboundAt() casa o telefone por igualdade EXATA, e telefone BR tem duas
+// grafias (com e sem o nono dígito). Aqui erra para o lado seguro: tenta as
+// duas e fica com a mais recente — achar entrada demais só faz PULAR um toque;
+// não achar faria cutucar quem está conversando agora.
+async function ultimaEntradaDoPaciente(telefone) {
+  let maior = null;
+  for (const f of fonesBR(telefone)) {
+    const t = await lastInboundAt(f);          // devolve milissegundos, ou null
+    if (t && (!maior || t > maior)) maior = t;
+  }
+  return maior;
+}
+const escreveuNasUltimas24h = (ms) => !!ms && (Date.now() - ms) < 24 * 3600 * 1000;
+
+// descadastrado() erra para o lado seguro: falha de banco devolve `true`
+// ("na dúvida, não envia"). Isso é certo para DISPARAR, e errado para DECIDIR o
+// destino da linha — um timeout do Postgres tiraria do funil, para sempre, um
+// paciente que nunca pediu nada. Aqui o "não sei" é um terceiro estado: quem
+// não sabe, espera o próximo ciclo.
+async function situacaoDescadastro(telefone) {
+  const chave = foneChave(telefone);
+  if (!chave) return "nao";
+  const { data, error } = await supabase.from("marketing_optout")
+    .select("fone_chave").eq("fone_chave", chave).maybeSingle();
+  if (error) { console.error("[Indicações] Não consegui checar o descadastro (o toque espera o próximo ciclo):", error.message); return "erro"; }
+  return data ? "sim" : "nao";
+}
+
+// A conversa deste paciente está com a equipe (modo humano)? Aí quem fala é
+// gente. Duas consultas simples em vez de um join aninhado: o filtro por
+// recurso embutido do PostgREST falha calado quando a relação muda de nome.
+async function conversaEmModoHumano(telefone) {
+  try {
+    const { data: pacs } = await supabase.from("patients").select("id").in("phone", fonesBR(telefone));
+    const ids = (pacs || []).map(p => p.id);
+    if (!ids.length) return false;
+    const { data: convs } = await supabase.from("conversations")
+      .select("id, status").in("patient_id", ids).neq("status", "bot").limit(1);
+    return !!(convs && convs.length);
+  } catch (e) { console.error("[Indicações] Falha ao checar modo humano (segue):", e.message); return false; }
+}
+
+// O nome do procedimento entra no MEIO de uma frase ("o Dr. Bruno indicou X"),
+// então a inicial maiúscula da tela ficaria solta ali. Mas baixar tudo para
+// minúsculas estraga as siglas — "indicou prk" parece erro de digitação. Então
+// só a primeira letra cai, e só quando a primeira palavra não é uma sigla.
+function procedimentoNaFrase(nome) {
+  const s = String(nome || "").trim();
+  if (!s) return "o procedimento indicado";
+  const primeira = s.split(/\s+/)[0];
+  if (primeira === primeira.toUpperCase()) return s;          // PRK, LASIK, LIO…
+  return s.charAt(0).toLowerCase() + s.slice(1);
+}
+
+// O texto do toque. Fato + disposição, nada de promessa nem pressão (CFM).
+function textoToqueIndicacao(primeiroNome, procedimento, toque) {
+  const ola = `Olá${primeiroNome ? `, ${primeiroNome}` : ""}`;
+  if (toque <= 1) {
+    return `${ola}! Aqui é a Ana, do Instituto de Olhos Bruno Borges. Na sua consulta, o Dr. Bruno indicou ${procedimento}. Passei para saber se ficou alguma dúvida — sobre como é o procedimento, o valor ou o preparo — e para me colocar à disposição quando você quiser dar sequência.`;
+  }
+  return `${ola}! Aqui é a Ana, do Instituto de Olhos Bruno Borges. Continuo à disposição sobre ${procedimento}, que o Dr. Bruno indicou na sua consulta. Se quiser tirar qualquer dúvida ou ver uma data para a avaliação, é só me responder por aqui.`;
+}
+
+// Dentro da janela de 24h da Meta vai texto livre (grátis e mais natural);
+// fora dela, só template aprovado passa (erro 131047). Sem template
+// configurado, o toque NÃO é consumido — a fila espera, em vez de queimar a
+// cadência de todo mundo em silêncio.
+// `templateAprovado` vem PRONTO do ciclo: consultar a Meta uma vez por paciente
+// era uma chamada de rede por linha da fila, toda meia hora, para responder
+// sempre a mesma coisa.
+async function enviarToqueIndicacao(ind, primeiroNome, templateAprovado) {
+  const proc = procedimentoNaFrase(ind.procedimento);
+  const texto = textoToqueIndicacao(primeiroNome, proc, (ind.toques || 0) + 1);
+  if (escreveuNasUltimas24h(await ultimaEntradaDoPaciente(ind.paciente_telefone))) {
+    const waId = await sendWhatsApp(ind.paciente_telefone, texto);
+    return { enviado: true, via: "texto", texto, waId };
+  }
+  if (!templateAprovado) return { enviado: false, motivo: "sem_template" };
+  const env = await enviarTemplateMarketing(
+    ind.paciente_telefone, TEMPLATE_INDICACAO_NOME, TEMPLATE_INDICACAO_LANG,
+    [primeiroNome || "tudo bem", proc], INDICACAO_BOTOES);
+  return env.enviado ? { enviado: true, via: "template", texto } : { enviado: false, motivo: "descadastrado" };
+}
+
+async function rodarFollowUpIndicacoes() {
+  if (!(await indicacoesAtivo())) return;
+  // Horário comercial: mensagem de clínica de madrugada assusta, e o paciente
+  // acorda com ela no topo do WhatsApp sem ninguém para responder.
+  const agoraBR = brasiliaAgora();
+  const hora = Number(String(agoraBR.agora).match(/(\d{1,2}):\d{2}/)?.[1] ?? -1);
+  const dow = new Date(Date.UTC(agoraBR.ymd.ano, agoraBR.ymd.mes - 1, agoraBR.ymd.dia)).getUTCDay();
+  if (dow < 1 || dow > 5 || hora < INDICACAO_HORA_INICIO || hora >= INDICACAO_HORA_FIM) return;
+
+  try {
+    const { data: abertas, error } = await supabase.from("indicacoes")
+      .select("id, appointment_id, fone_chave, paciente_telefone, paciente_nome, procedimento, toques, created_at, proximo_toque_em")
+      .eq("status", "aberta").not("proximo_toque_em", "is", null)
+      .lte("proximo_toque_em", new Date().toISOString())
+      .order("proximo_toque_em", { ascending: true }).limit(INDICACAO_LOTE_MAX);
+    if (error) {
+      if (error.code !== "42P01") console.error("[Indicações] Fila falhou:", error.message);
+      return;
+    }
+    if (!abertas || !abertas.length) return;
+
+    // Quem já voltou sai antes de qualquer envio.
+    await fecharIndicacoesQueRetornaram(abertas);
+
+    // UMA consulta à Meta por ciclo. Sem template aprovado o toque ainda sai
+    // para quem escreveu nas últimas 24h (texto livre); os demais esperam na
+    // fila, sem gastar a cadência.
+    let templateAprovado = false;
+    try {
+      const st = await statusTemplateIndicacao();
+      templateAprovado = !!st && String(st.status).toUpperCase() === "APPROVED";
+    } catch (e) { console.error("[Indicações] Não consegui consultar o template na Meta (segue só com a janela de 24h):", e.message); }
+
+    let enviados = 0, pulados = 0;
+    for (const ind of abertas) {
+      try {
+        // Releitura: fecharIndicacoesQueRetornaram pode ter mudado esta linha.
+        const { data: atual } = await supabase.from("indicacoes")
+          .select("status").eq("id", ind.id).maybeSingle();
+        if (!atual || atual.status !== "aberta") { pulados++; continue; }
+
+        const optOut = await situacaoDescadastro(ind.paciente_telefone);
+        if (optOut === "erro") { pulados++; continue; }          // não sei: espera
+        if (optOut === "sim") {
+          await supabase.from("indicacoes").update({ status: "pausada", motivo: "descadastrado", proximo_toque_em: null }).eq("id", ind.id);
+          pulados++; continue;
+        }
+        // Consulta marcada = a equipe fala com ele pessoalmente. Não cutuca.
+        if (await temConsultaFutura(ind.paciente_telefone)) {
+          await supabase.from("indicacoes").update({ status: "retornou", proximo_toque_em: null }).eq("id", ind.id);
+          pulados++; continue;
+        }
+        // Escreveu nas últimas 24h: a Ana (ou a equipe) está com ele agora. Um
+        // toque automático no meio disso é o "parece um robô" de 01/09.
+        if (escreveuNasUltimas24h(await ultimaEntradaDoPaciente(ind.paciente_telefone))) { pulados++; continue; }
+        // Campanha de reengajamento recente: cadência própria, não empilhar.
+        if (await recebeuCampanhaRecente(ind.paciente_telefone)) { pulados++; continue; }
+        // Conversa assumida pela equipe: quem fala é gente, não a máquina.
+        if (await conversaEmModoHumano(ind.paciente_telefone)) { pulados++; continue; }
+
+        const primeiro = String(ind.paciente_nome || "").trim().split(/\s+/)[0] || "";
+        const env = await enviarToqueIndicacao(ind, primeiro, templateAprovado);
+        if (!env.enviado) {
+          if (env.motivo === "descadastrado") {
+            // Segunda rede: o disparo de marketing recusou. Não decide o destino
+            // aqui (o mesmo "na dúvida bloqueia" vale lá dentro) — só espera; o
+            // situacaoDescadastro acima é quem pausa quando tem certeza.
+            console.log(`[Indicações] Envio de marketing recusado para ${maskFone(ind.paciente_telefone)} — fila espera.`);
+          } else if (env.motivo === "sem_template") {
+            // Não consome o toque: a fila espera o template ser aprovado.
+            console.log(`[Indicações] ${maskFone(ind.paciente_telefone)} está fora da janela de 24h e o template ainda não está aprovado — fila esperando.`);
+          }
+          pulados++; continue;
+        }
+
+        const toques = (ind.toques || 0) + 1;
+        const prox = proximoToqueEm(ind.created_at, toques);
+        const fim = !prox;
+        await supabase.from("indicacoes").update({
+          toques, ultimo_toque_em: new Date().toISOString(),
+          proximo_toque_em: prox,
+          // Cadência esgotada sem nenhuma resposta = perdida. Fica registrado
+          // para a próxima safra saber quem já foi trabalhado e não deu certo.
+          ...(fim ? { status: "perdida", motivo: "cadência esgotada sem resposta" } : {}),
+        }).eq("id", ind.id);
+
+        // O toque tem que aparecer no painel: a equipe precisa ver o que o
+        // paciente recebeu antes de responder a ele.
+        try {
+          const pac = await getOrCreatePatient(ind.paciente_telefone);
+          const conv = pac ? await getOrCreateConversation(pac.id) : null;
+          if (conv) {
+            // Insert direto (e não saveMessage) para gravar event='indicacao' na
+            // mesma linha — é essa marca que distingue o toque automático de uma
+            // resposta da Ana quando alguém for auditar a conversa depois.
+            await supabase.from("messages").insert({
+              conversation_id: conv.id, role: "assistant", content: env.texto,
+              wa_message_id: env.waId || null, event: "indicacao",
+            });
+            await supabase.from("conversations").update({ last_message: env.texto, updated_at: new Date().toISOString() }).eq("id", conv.id);
+            invalidarCacheMensagens(conv.id);
+          }
+        } catch (e) { console.error("[Indicações] Falha ao espelhar o toque no painel:", e.message); }
+
+        enviados++;
+        console.log(`[Indicações] toque ${toques}/${INDICACAO_CADENCIA_DIAS.length} (${env.via}) para ${maskFone(ind.paciente_telefone)} — ${ind.procedimento}.`);
+        await new Promise(s => setTimeout(s, INDICACAO_PAUSA_MS));
+      } catch (e) {
+        console.error(`[Indicações] Falha no toque de ${maskFone(ind.paciente_telefone)}:`, e?.response?.data ? JSON.stringify(e.response.data) : e.message);
+      }
+    }
+    if (enviados || pulados) console.log(`[Indicações] ciclo: ${enviados} enviado(s), ${pulados} pulado(s).`);
+  } catch (e) { console.error("[Indicações] exceção:", e.message); }
+}
+
+function startFollowUpIndicacoes() {
+  setInterval(() => rodarFollowUpIndicacoes().catch(e => console.error("[Indicações] scheduler:", e.message)), 30 * 60 * 1000);
+  console.log(`[Indicações] scheduler ativo (30 min, cadência ${INDICACAO_CADENCIA_DIAS.join("/")} dias). Envio real só com settings.indicacoes_followup_enabled='true'.`);
+}
+
+// O funil em números — é o que responde "quanto dinheiro está parado aí".
+async function resumoIndicacoes() {
+  const { data, error } = await supabase.from("indicacoes")
+    .select("status, valor, procedimento, paciente_nome, paciente_telefone, created_at, toques, proximo_toque_em");
+  if (error) throw new Error(error.message);
+  const linhas = data || [];
+  const por = {}, valorPor = {};
+  for (const r of linhas) {
+    por[r.status] = (por[r.status] || 0) + 1;
+    valorPor[r.status] = (valorPor[r.status] || 0) + Number(r.valor || 0);
+  }
+  const abertas = linhas.filter(r => r.status === "aberta")
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  return {
+    total: linhas.length, por, valorPor,
+    emAberto: (valorPor.aberta || 0) + (valorPor.pausada || 0),
+    fechado: valorPor.fechada || 0,
+    maisAntigas: abertas.slice(0, 5),
+  };
+}
+
+// ── Template do toque fora da janela de 24h ────────────────────────────────
+function componentesTemplateIndicacao() {
+  return [
+    {
+      type: "BODY",
+      text: "Olá, {{1}}! Aqui é a Ana, do Instituto de Olhos Bruno Borges. Na sua consulta, o Dr. Bruno indicou {{2}}. Passando para saber se ficou alguma dúvida e para me colocar à disposição quando você quiser dar sequência.",
+      example: { body_text: [["Maria", "cirurgia refrativa (PRK)"]] },
+    },
+    { type: "FOOTER", text: "Conjunto Nacional · Taguatinga Shopping" },
+    { type: "BUTTONS", buttons: INDICACAO_BOTOES.map(t => ({ type: "QUICK_REPLY", text: t })) },
+  ];
+}
+async function criarTemplateIndicacao() {
+  const { data } = await axios.post(
+    `https://graph.facebook.com/v19.0/${WA_WABA_ID}/message_templates`,
+    {
+      name: TEMPLATE_INDICACAO_NOME, language: TEMPLATE_INDICACAO_LANG,
+      category: "MARKETING", allow_category_change: true,
+      components: componentesTemplateIndicacao(),
+    },
+    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" }, timeout: 20000 }
+  );
+  return data;
+}
+async function apagarTemplateIndicacao() {
+  const { data } = await axios.delete(
+    `https://graph.facebook.com/v19.0/${WA_WABA_ID}/message_templates`,
+    { params: { name: TEMPLATE_INDICACAO_NOME },
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` }, timeout: 20000 }
+  );
+  return data;
+}
+async function statusTemplateIndicacao() {
+  const { data } = await axios.get(
+    `https://graph.facebook.com/v19.0/${WA_WABA_ID}/message_templates`,
+    {
+      params: { name: TEMPLATE_INDICACAO_NOME, fields: "name,status,id,category" },
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` }, timeout: 20000,
+    }
+  );
+  return (data?.data || []).find(t => t.name === TEMPLATE_INDICACAO_NOME) || null;
 }
 
 // ===== LEMBRETE DE CONSULTA (véspera) =======================================
@@ -9064,6 +9801,7 @@ startSemRespostaScheduler();   // nenhuma mensagem de paciente morre em silênci
 startCobrancaRecadosScheduler();
 startSyncIClinic();   // reflete o iClinic (Google Calendars) na agenda do painel
 startFollowUp();      // recuperação de leads frios (inerte até ativar no settings)
+startFollowUpIndicacoes(); // funil pós-consulta (inerte até ativar no settings)
 startLembreteScheduler(); // confirmação da véspera (inerte até o template na Meta)
 startRetornoAna();        // devolve à Ana conversa que a secretária assumiu e largou
 startAuditoriaDiaria();   // relatório de manhã no WhatsApp: a quem ligar + o que falhou

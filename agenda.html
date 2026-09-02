@@ -173,6 +173,7 @@
     <button class="btn ghost" id="ag-today">Hoje</button>
     <button class="btn ghost" id="ag-reload" title="Atualizar">⟳</button>
     <button class="btn ghost" id="ag-bloquear" title="Fechar horários (feriado, congresso, cirurgia…)">🚫 Bloquear</button>
+    <button class="btn ghost" id="ag-indicacoes" title="Pacientes com procedimento indicado que ainda não decidiram">💰 Indicações</button>
   </span>
 
   <!-- controles da TRANSFERÊNCIA -->
@@ -288,6 +289,19 @@
   </div>
 </div>
 
+<!-- Funil pós-consulta: quem tem procedimento indicado e ainda não decidiu -->
+<div class="modal-bg" id="ind-modal">
+  <div class="pmodal" style="width:min(780px,96vw)">
+    <h3>💰 Funil pós-consulta</h3>
+    <p id="ind-resumo">Carregando…</p>
+    <div id="ind-lista"></div>
+    <div class="pmodal-actions">
+      <button class="pbtn ghost" id="ind-encerradas">Ver encerradas</button>
+      <button class="pbtn primary" id="ind-fechar">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Detalhes do agendamento (inclui comparecimento) -->
 <div class="modal-bg" id="agdet-modal">
   <div class="pmodal">
@@ -318,6 +332,31 @@
         <button class="pbtn ghost" id="agdet-veio">Compareceu</button>
         <button class="pbtn ghost" id="agdet-faltou">Faltou</button>
         <button class="pbtn ghost" id="agdet-limpar">Limpar</button>
+      </div>
+    </div>
+    <!-- O QUE O MÉDICO INDICOU NESTA CONSULTA.
+         Fica logo abaixo do comparecimento de propósito: quem marca "Compareceu"
+         é quem acabou de ver o paciente sair da sala, e é o único momento em que
+         alguém sabe o que foi indicado. Registrado aqui, o paciente entra na
+         retomada automática; não registrado, ele some — que era o que acontecia
+         com todo mundo antes de 02/09/2026. -->
+    <div id="agdet-indicacao" style="margin-top:14px;padding-top:12px;border-top:1px solid #e3e9ef">
+      <div style="font-size:13px;font-weight:700;margin-bottom:2px">Indicação do médico</div>
+      <div style="font-size:12.5px;color:#6b7b8c;margin-bottom:8px">Cirurgia ou lente indicada nesta consulta — é o que faz a Ana retomar o paciente depois.</div>
+      <div id="agdet-ind-lista" style="font-size:13px;margin-bottom:8px"></div>
+      <div id="agdet-ind-form" style="display:none">
+        <input id="agdet-ind-proc" list="ind-proc-lista" placeholder="Procedimento (ex.: PRK, catarata, lente escleral)" autocomplete="off">
+        <datalist id="ind-proc-lista"></datalist>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <select id="agdet-ind-olho" style="flex:0 0 120px"><option value="">Olho —</option><option>OD</option><option>OE</option><option>AO</option></select>
+          <input id="agdet-ind-valor" placeholder="Valor (opcional)" inputmode="numeric" autocomplete="off" style="flex:1">
+        </div>
+        <div id="agdet-ind-erro" style="color:#d33;font-size:13px;margin-top:8px;display:none"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="pbtn ghost" id="agdet-ind-abrir">💰 Registrar indicação</button>
+        <button class="pbtn primary" id="agdet-ind-salvar" style="display:none">Salvar</button>
+        <button class="pbtn ghost" id="agdet-ind-cancelar" style="display:none">Cancelar</button>
       </div>
     </div>
     <div class="pmodal-actions">
@@ -667,6 +706,7 @@ function openAgDetails(id){
     linha('Registrado por', origem)+
     (a.status==='reservado'?linha('Status','Reserva temporária (aguardando confirmação)'):'');
   renderPresenca(a);
+  renderIndicacaoNoDetalhe(a);
   $('#agdet-modal').classList.add('show');
 }
 function closeAgDetails(){ $('#agdet-modal').classList.remove('show'); }
@@ -700,6 +740,160 @@ async function setPresenca(v){
     agRefresh();
   }catch(e){ if(String(e.message)!=='401') toast('Falha de conexão.'); }
 }
+// ----- FUNIL PÓS-CONSULTA (INDICAÇÕES) ----------------------------------------
+// A consulta acontece, o Dr. Bruno indica uma PRK ou uma lente escleral, e até
+// 02/09/2026 isso não existia em lugar nenhum: o orçamento era passado de boca e
+// o paciente sumia. Aqui a equipe registra o que foi indicado — e é esse
+// registro que coloca o paciente na retomada automática da Ana.
+const IND_PROCEDIMENTOS = [
+  'Cirurgia refrativa (PRK/TransPRK)', 'Cirurgia refrativa (LASIK)', 'Cirurgia refrativa (Femto-LASIK)',
+  'Catarata', 'Crosslinking', 'Anel de Ferrara',
+  'Lente escleral (Esclera SG)', 'Lente escleral (ZenLens)', 'Lente Zen RC',
+  'Lente rígida gás permeável', 'Lente de contato gelatinosa',
+];
+const IND_ROTULO = { aberta:'🟡 em aberto', pausada:'⏸️ agora não', retornou:'📅 voltou a marcar',
+                     fechada:'✅ fechou', recusada:'🚫 recusou', perdida:'💨 sem resposta' };
+let INDICACOES = [];          // as vivas (aberta + pausada), para o modal do agendamento
+let indVendoTodas = false;
+
+const so8 = t => String(t||'').replace(/\D/g,'').slice(-8);
+const indBRL = v => (v===null||v===undefined||v==='') ? '—'
+  : Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
+
+async function carregarIndicacoes(){
+  try{
+    const d = await api('/api/indicacoes');
+    // Tabela ainda não criada (503): não é erro do usuário — a tela só não
+    // mostra nada, em vez de encher de toast quem nem sabe o que é migração.
+    INDICACOES = (d && d.ok && d.indicacoes) ? d.indicacoes : [];
+  }catch(e){ if(String(e.message)!=='401') INDICACOES = []; }
+}
+
+// ── dentro do modal do agendamento ──────────────────────────────────────────
+function renderIndicacaoNoDetalhe(a){
+  const box = $('#agdet-indicacao');
+  // Mesma régua do comparecimento: indicação é coisa de consulta que JÁ
+  // aconteceu. Num horário futuro o bloco só confundiria.
+  const passou = new Date(a.inicio).getTime() <= Date.now();
+  if(a.origem==='bloqueio' || !passou || !a.paciente_telefone){ box.style.display='none'; return; }
+  box.style.display='block';
+  indSairModoForm();
+  const minhas = INDICACOES.filter(i => so8(i.paciente_telefone) === so8(a.paciente_telefone));
+  $('#agdet-ind-lista').innerHTML = minhas.length
+    ? minhas.map(i => '<div style="margin-bottom:3px">• <b>'+esc(i.procedimento)+'</b>'
+        + (i.olho?' ('+esc(i.olho)+')':'') + ' — ' + indBRL(i.valor)
+        + ' <span style="color:#6b7b8c">'+ (IND_ROTULO[i.status]||esc(i.status))
+        + (i.toques?' · '+i.toques+' toque(s)':'') + '</span></div>').join('')
+    : '<span style="color:#6b7b8c">Nenhuma indicação registrada para este paciente.</span>';
+}
+function indSairModoForm(){
+  $('#agdet-ind-form').style.display='none';
+  $('#agdet-ind-erro').style.display='none';
+  $('#agdet-ind-abrir').style.display='';
+  $('#agdet-ind-salvar').style.display='none';
+  $('#agdet-ind-cancelar').style.display='none';
+}
+function indEntrarModoForm(){
+  if(!$('#ind-proc-lista').options.length){
+    $('#ind-proc-lista').innerHTML = IND_PROCEDIMENTOS.map(p=>'<option value="'+esc(p)+'">').join('');
+  }
+  $('#agdet-ind-proc').value=''; $('#agdet-ind-olho').value=''; $('#agdet-ind-valor').value='';
+  $('#agdet-ind-form').style.display='block';
+  $('#agdet-ind-abrir').style.display='none';
+  $('#agdet-ind-salvar').style.display='';
+  $('#agdet-ind-cancelar').style.display='';
+  $('#agdet-ind-proc').focus();
+}
+async function salvarIndicacao(){
+  const proc = $('#agdet-ind-proc').value.trim();
+  const err = $('#agdet-ind-erro');
+  if(!proc){ err.textContent='Escreva o que foi indicado.'; err.style.display='block'; return; }
+  const valorBruto = $('#agdet-ind-valor').value.replace(/[^\d,.]/g,'').replace(/\./g,'').replace(',','.');
+  try{
+    const d = await api('/api/indicacoes', {method:'POST', body:{
+      appointment_id: agDetId, procedimento: proc,
+      olho: $('#agdet-ind-olho').value || null,
+      valor: valorBruto ? Number(valorBruto) : undefined,
+    }});
+    if(!d || !d.ok){ err.textContent = (d&&d.error)||'Falha ao registrar.'; err.style.display='block'; return; }
+    await carregarIndicacoes();
+    const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
+    if(a) renderIndicacaoNoDetalhe(a);
+    toast('Indicação registrada 💰');
+  }catch(e){ if(String(e.message)!=='401'){ err.textContent='Falha de conexão.'; err.style.display='block'; } }
+}
+
+// ── o funil ─────────────────────────────────────────────────────────────────
+async function abrirIndicacoes(){
+  indVendoTodas=false;
+  $('#ind-modal').classList.add('show');
+  await renderFunil();
+}
+async function renderFunil(){
+  $('#ind-resumo').textContent='Carregando…';
+  $('#ind-lista').innerHTML='';
+  let d;
+  try{ d = await api('/api/indicacoes'+(indVendoTodas?'?status=todas':'')); }
+  catch(e){ if(String(e.message)!=='401') $('#ind-resumo').textContent='Falha de conexão.'; return; }
+  if(!d || !d.ok){ $('#ind-resumo').textContent = (d&&d.error) || 'Não foi possível carregar.'; return; }
+  const linhas = d.indicacoes || [];
+  if(!indVendoTodas) INDICACOES = linhas;
+  const vivas = linhas.filter(i=>['aberta','pausada'].includes(i.status));
+  const parado = vivas.reduce((s,i)=>s+Number(i.valor||0),0);
+  const fechado = linhas.filter(i=>i.status==='fechada').reduce((s,i)=>s+Number(i.valor||0),0);
+  $('#ind-resumo').innerHTML = indVendoTodas
+    ? '<b>'+linhas.length+'</b> indicação(ões) no histórico · fechado: <b>'+indBRL(fechado)+'</b>'
+    : '<b>'+vivas.length+'</b> paciente(s) com procedimento indicado e ainda sem decisão · parado no funil: <b>'+indBRL(parado)+'</b>';
+  $('#ind-encerradas').textContent = indVendoTodas ? 'Ver só as abertas' : 'Ver encerradas';
+  if(!linhas.length){
+    $('#ind-lista').innerHTML = '<div style="color:#6b7b8c;font-size:14px;padding:10px 0">'
+      + (indVendoTodas ? 'Nada registrado ainda.' : 'Nenhuma indicação em aberto. Registre pela agenda: clique numa consulta que já aconteceu → 💰 Registrar indicação.')
+      + '</div>';
+    return;
+  }
+  // Mais antiga primeiro: quem está esperando há mais tempo é quem esfria.
+  const ord = [...linhas].sort((a,b)=> new Date(a.created_at)-new Date(b.created_at));
+  $('#ind-lista').innerHTML = ord.map(i=>{
+    const dias = Math.floor((Date.now()-new Date(i.created_at).getTime())/86400000);
+    const viva = ['aberta','pausada'].includes(i.status);
+    return '<div style="border:1px solid #e3e9ef;border-radius:8px;padding:10px 12px;margin-bottom:8px">'
+      + '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">'
+      +   '<div><b>'+esc(i.paciente_nome||fone(i.paciente_telefone))+'</b>'
+      +   '<div style="font-size:13px;color:#44586b">'+esc(i.procedimento)+(i.olho?' ('+esc(i.olho)+')':'')+' · '+indBRL(i.valor)+'</div>'
+      +   '<div style="font-size:12.5px;color:#6b7b8c">'+(IND_ROTULO[i.status]||esc(i.status))
+      +     ' · há '+dias+' dia(s) · '+(i.toques||0)+' toque(s)'
+      +     (i.respondeu_em?' · respondeu':'')
+      +     (i.motivo?' · '+esc(i.motivo):'')+'</div></div>'
+      +   '<div style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">'
+      +     (viva
+              ? '<button class="pbtn ghost ind-act" data-id="'+i.id+'" data-st="fechada">✅ Fechou</button>'
+                + '<button class="pbtn ghost ind-act" data-id="'+i.id+'" data-st="recusada">🚫 Recusou</button>'
+              : '<button class="pbtn ghost ind-act" data-id="'+i.id+'" data-st="aberta">↩︎ Reabrir</button>')
+      +   '</div>'
+      + '</div></div>';
+  }).join('');
+}
+$('#ind-lista').addEventListener('click', async (e)=>{
+  const b = e.target.closest('.ind-act');
+  if(!b) return;
+  // "Fechou" é o número que o Dr. Bruno vai olhar no fim do mês; marcar errado
+  // estraga a única medida de quanto o acompanhamento trouxe. Por isso confirma.
+  const rot = {fechada:'como FECHADA (o paciente fez)', recusada:'como RECUSADA', aberta:'de volta como ABERTA'}[b.dataset.st];
+  if(!confirm('Marcar esta indicação '+rot+'?')) return;
+  try{
+    const d = await api('/api/indicacoes/'+b.dataset.id, {method:'POST', body:{status:b.dataset.st}});
+    if(!d || !d.ok){ toast((d&&d.error)||'Falha ao atualizar.'); return; }
+    toast('Atualizado ✓');
+    await renderFunil();
+  }catch(e){ if(String(e.message)!=='401') toast('Falha de conexão.'); }
+});
+$('#ag-indicacoes').onclick = abrirIndicacoes;
+$('#ind-fechar').onclick = ()=> $('#ind-modal').classList.remove('show');
+$('#ind-encerradas').onclick = async ()=>{ indVendoTodas=!indVendoTodas; await renderFunil(); };
+$('#agdet-ind-abrir').onclick = indEntrarModoForm;
+$('#agdet-ind-cancelar').onclick = indSairModoForm;
+$('#agdet-ind-salvar').onclick = salvarIndicacao;
+
 // ----- EDITAR OS DADOS DE UM AGENDAMENTO -----------------------------------------
 // Corrige nome, telefone, convênio, motivo e observação SEM cancelar e refazer —
 // que era a única saída antes e deixava a vaga livre para outra pessoa no meio
@@ -728,6 +922,7 @@ function entrarModoEdicao(){
   $('#agdet-e-obs').value    = a.observacoes||'';
   $('#agdet-body').style.display='none';
   $('#agdet-presenca').style.display='none';
+  $('#agdet-indicacao').style.display='none';
   $('#agdet-form').style.display='block';
   $('#agdet-titulo').textContent = ehBloqueio ? 'Editar bloqueio' : 'Editar agendamento';
   ['agdet-ficha','agdet-editar','agdet-remarcar','agdet-cancelar','agdet-fechar'].forEach(i=>$('#'+i).style.display='none');
@@ -1178,6 +1373,7 @@ setInterval(() => {
   mostrarApp();
   setAgView(agView);          // desenha a grade (e já dispara o carregamento)
   if(VIEW!=='grade') carregar();
+  carregarIndicacoes();       // lista pequena, lida uma vez: alimenta o modal do agendamento
 })();
 </script>
 </body>

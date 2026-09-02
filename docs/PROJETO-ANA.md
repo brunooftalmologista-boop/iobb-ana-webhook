@@ -108,6 +108,12 @@ uptime e estado das configurações principais (janela do painel, espelho, TTL).
   contato" que ninguém cobrou.
 - **Resumo diário à equipe** (`RESUMO_DIARIO_HORA`, 19h): agenda de amanhã, quem
   confirmou, quem precisa de ligação.
+- **Retomada pós-consulta** (a cada 30 min, liga/desliga em
+  `settings.indicacoes_followup_enabled`): quem tem procedimento INDICADO na
+  consulta e ainda não decidiu recebe até 4 mensagens, nos dias 2, 7, 21 e 45
+  depois da indicação — só em dia útil, entre 9h e 17h. Nunca cutuca quem
+  escreveu nas últimas 24h, quem está em modo humano, quem tem consulta marcada,
+  quem se descadastrou ou quem está na campanha de reengajamento. Ver seção 5.1.
 - **Auditoria diária** (`AUDITORIA_HORA`): varre as conversas do dia atrás de falhas.
 - **Verificação de entrega**: mensagens recusadas pela Meta (janela de 24 h) ficam
   visíveis no painel em vez de "parecer enviadas".
@@ -272,6 +278,8 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
 | `#ADSHISTORICO` (+`TESTE`/`CONFIRMAR`) | conversões retroativas |
 | `#CRIARCERATOCONE` / `#CRIARESCLERAL` / `#CRIARCATARATA` / `#CRIARCOMBINADA` (+`TESTE`/`CONFIRMAR`) | criam campanhas no Ads (nascem pausadas) |
 | `#PAUSARCERATOCONE` / `#PAUSARSEPARADAS` | pausam campanhas |
+| `#INDICACOES` (+`CRIAR`/`TESTE`/`LIGAR`/`DESLIGAR`/`APAGAR`) | funil pós-consulta: quanto está parado, quem esfriou, liga/desliga a retomada |
+| `#INDICACAO <tel> <procedimento> [olho] [valor]` | registra uma indicação na hora (ex.: `#INDICACAO 61984060001 catarata OD 9200`) |
 | `#ENVIAR <número> <msg>` / `#MSG` | manda mensagem pelo número da clínica |
 
 **Variáveis no Render** (Environment — mudam comportamento SEM deploy). As de
@@ -292,6 +300,8 @@ operação do dia a dia:
 | `ANA_ANTECEDENCIA_HORAS` | antecedência mínima de oferta | — |
 | `ANA_MARCA_SOZINHA` | Ana grava agendamento (Fase 2 da agenda) | on |
 | `ANA_MODEL` | modelo da Anthropic | claude-sonnet-4-6 |
+| `INDICACAO_CADENCIA_DIAS` | dias da retomada pós-consulta, contados da indicação | 2,7,21,45 |
+| `WA_INDICACAO_TEMPLATE_NAME` / `_LANG` | template do toque pós-consulta (fora da janela de 24h) | pos_consulta_indicacao |
 
 Técnicas (mexer só sabendo o que faz): `ANTHROPIC_KEY`, `OPENAI_KEY`, `SUPABASE_URL/KEY`,
 `WHATSAPP_TOKEN`, `PHONE_NUMBER_ID`, `VERIFY_TOKEN`, `META_APP_SECRET`, `WA_WABA_ID`,
@@ -300,7 +310,8 @@ Técnicas (mexer só sabendo o que faz): `ANTHROPIC_KEY`, `OPENAI_KEY`, `SUPABAS
 `ANA_ADMIN_PIN`.
 
 **Chaves em `settings` no Supabase** (liga/desliga sem deploy): `ai_enabled` (o #ANA
-mexe aqui) · `followup_leads_enabled` · `sync_iclinic_enabled` · `agenda_horarios_extras`.
+mexe aqui) · `followup_leads_enabled` · `indicacoes_followup_enabled` (o
+`#INDICACOES LIGAR` mexe aqui) · `sync_iclinic_enabled` · `agenda_horarios_extras`.
 
 **Se algo quebrar:**
 1. `https://iobb-ana-webhook.onrender.com/version` — o commit no ar é o esperado?
@@ -335,6 +346,46 @@ agendamentos de teste depois.
   **Liberar horário**. Horário com paciente marcado **nunca** é fechado por
   cima — a tela lista quem precisa ser remarcado antes.
   Feriados já bloqueados: **07/09, 12/10 e 02/11 de 2026**.
+
+### 5.1 O funil pós-consulta (indicações) — desde 02/09/2026
+
+Até aqui o sistema terminava em "o paciente compareceu". O que o Dr. Bruno indicava
+na consulta — uma PRK de R$ 5.990, uma lente escleral de R$ 7.800, uma catarata —
+não existia em lugar nenhum: o orçamento era passado de boca, o paciente ia embora
+pensar e ninguém mais sabia dele. **É o maior buraco de faturamento do projeto**:
+em jul+ago, 117 conversas falaram de procedimento caro e só 25 viraram agendamento,
+e uma cirurgia a mais por mês vale mais que todas as vagas que sobram na semana.
+
+**Como funciona.**
+1. A consulta acontece. Na **agenda**, ao clicar no agendamento, logo abaixo do
+   comparecimento, há **💰 Registrar indicação** (procedimento, olho, valor
+   opcional — sem valor, entra o preço de tabela). Pelo WhatsApp, saindo da sala:
+   `#INDICACAO 61984060001 PRK`.
+2. A **retomada automática** dá até 4 toques (2, 7, 21 e 45 dias), com todas as
+   travas da seção 2. Dentro da janela de 24h vai texto livre; fora dela, template.
+3. Quando o paciente responde, **quem conduz é a Ana**, com o que foi indicado
+   injetado no prompt. Ela não pergunta de novo o que já está na ficha.
+4. Quem marca consulta depois disso sai da fila sozinho (`retornou`).
+5. O botão **💰 Indicações** (barra de cima da agenda) mostra o funil e é onde a
+   equipe marca **Fechou** ou **Recusou**. `#INDICACOES` dá o mesmo pelo WhatsApp.
+
+**Limites, de propósito:**
+- A **Ana nunca marca cirurgia** — a agenda dela é de consulta. Quando o paciente
+  decide fechar, ela emite `[RECADO]` para a equipe ligar.
+- Ela **não avalia, não confirma e não revê indicação**; dúvida clínica vai para o
+  médico. Nada de promessa de resultado, urgência ou desconto (CFM).
+- O **valor registrado não vai para o prompt** (é estimativa de funil; catarata é
+  gravada sem a LIO). Ela fala de preço pela tabela do SYSTEM_PROMPT.
+- A rotina **nasce desligada**: `#INDICACOES LIGAR` depois de ver o texto com
+  `#INDICACOES TESTE`.
+
+⚠️ **Sem `sql/indicacoes.sql` rodado no Supabase, nada disso existe** — a tela some,
+os comandos avisam e a rotina não faz nada (nenhum caminho quebra).
+
+O número que importa em 90 dias: **fechadas ÷ (fechadas + recusadas + perdidas)** e
+o valor fechado. Ele só é verdadeiro se alguém marcar "Fechou" na tela — o ponto
+frágil do desenho é humano, não técnico. Detalhes e o porquê de cada trava:
+[`docs/decisoes/funil-pos-consulta-indicacoes.md`](decisoes/funil-pos-consulta-indicacoes.md).
 
 ---
 
@@ -406,6 +457,7 @@ a Meta entrega sem) — comparações usam `fonesBR()`/`foneChave()`, nunca stri
 | **13/08** | Lembrete com botões (código); cortesia sem IA; follow-up com mira estreita; conferência de óculos não ocupa vaga; medidor `api_custos` + FAQ sem IA + cache do histórico (sessões paralelas). |
 | **14/08** | Agenda lotada expõe invenção de horários → recheque da reescrita; **incidente do recheque** (destruiu 5 respostas certas de um casal) → recheque só barra mentira; Unimed por produto (João Pessoa não); SulAmérica nunca; TTL confirmado com 2 dias de fatura. |
 | **15/08** | Descoberto que a foto da carteirinha **morria no agrupamento** (texto logo depois cancelava o turno da imagem) → depósito de 3 min resolve; documento-mestre criado; docs reorganizados. |
+| **02/09** | **Funil pós-consulta**: o que o médico indica vira registro, retomada automática da Ana e número de faturamento (seção 5.1). Base histórica de 6.347 pacientes extraída dos PDFs do iClinic. |
 
 O detalhe de cada passo está nas mensagens dos ~400 commits (`git log`) e em
 `docs/decisoes/`.
