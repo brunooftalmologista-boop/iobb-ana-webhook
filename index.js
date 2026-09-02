@@ -1589,9 +1589,12 @@ function ofertaCegaNaRemarcacao(reply, meusAgendamentos) {
   const horas = horariosOferecidos(reply).filter(h => !dele.has(h));
   return horas.length ? `ofereceu ${horas[0]} na remarcação sem antes perguntar o dia/turno de preferência` : null;
 }
-function instrucaoPerguntarPreferencia() {
-  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ofereceu um horário sem antes perguntar QUANDO fica bom para o paciente. Ele acabou de pedir para REMARCAR — ou seja, já disse que o horário atual não serve. O primeiro horário da lista costuma ser no mesmo dia e no mesmo turno que ele acabou de recusar, então essa oferta quase sempre nasce morta.
-Reescreva assim: confirme em meia linha qual é a consulta que ele tem hoje (dia, hora e unidade) e pergunte, de forma curta e cordial, que DIA e que PERÍODO ficam melhores para ele — "manhã ou tarde?". 🚫 NÃO cite nenhum horário, nenhuma data e nenhuma vaga nesta mensagem: você só oferece depois que ele responder. Se ele disser que tanto faz, aí sim você oferece o mais próximo.
+function instrucaoPerguntarPreferencia(contexto = "remarcacao") {
+  const porque = contexto === "campanha"
+    ? `Ele acabou de responder "Quero agendar" à mensagem de revisão anual — faz um ano que não vem, não tem horário combinado com ninguém e você não faz ideia de quando ele pode. Jogar o primeiro horário da lista (quase sempre amanhã de manhã) é chutar.`
+    : `Ele acabou de pedir para REMARCAR — ou seja, já disse que o horário atual não serve. O primeiro horário da lista costuma ser no mesmo dia e no mesmo turno que ele acabou de recusar, então essa oferta quase sempre nasce morta.`;
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ofereceu um horário sem antes perguntar QUANDO fica bom para o paciente. ${porque}
+Reescreva assim: ${contexto === "campanha" ? "cumprimente pelo nome e pergunte, em UMA frase curta e cordial," : "confirme em meia linha qual é a consulta que ele tem hoje (dia, hora e unidade) e pergunte, de forma curta e cordial,"} que DIA e que PERÍODO ficam melhores para ele — "manhã ou tarde?". 🚫 NÃO cite nenhum horário, nenhuma data e nenhuma vaga nesta mensagem: você só oferece depois que ele responder. Se ele disser que tanto faz, aí sim você oferece o mais próximo.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
@@ -5445,7 +5448,11 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
                 ? `\n- 🚫 NÃO pergunte "é particular ou convênio?" do nada. CONFIRME em meia linha, junto da oferta do horário: "${ehParticular ? "Continua como particular?" : `Continua pelo ${conv}?`}" — e siga. Se ele disser que mudou, use o novo.`
                 : `\n- Pergunte se é particular ou por convênio (esse dado não veio no cadastro).`)
             + `\n- ✅ O QUE REALMENTE FALTA É A DATA DE NASCIMENTO: peça só ela, na mesma mensagem em que oferece o horário. É o único dado obrigatório que não temos.`
-            + `\n- Não diga "vi que faz um ano" mais de uma vez: a mensagem da campanha já disse isso. Aqui você já está resolvendo.`;
+            + `\n- Não diga "vi que faz um ano" mais de uma vez: a mensagem da campanha já disse isso. Aqui você já está resolvendo.`
+            + `\n\n📅 **PERGUNTE O DIA E O TURNO ANTES DE OFERECER HORÁRIO** (regra do Dr. Bruno, 02/09/2026 — vale para TODO paciente desta campanha).`
+            + `\n- O FUNIL AQUI É OUTRO. A regra geral do prompt — "ofereça um horário logo, não faça questionário" — existe para quem PROCUROU a clínica: essa pessoa quer marcar agora, e cada pergunta a mais é atrito. Este paciente é o contrário: ele NÃO estava procurando, foi procurado. Faz um ano que não vem, não tem data em mente e nenhuma urgência. Jogar o primeiro horário da lista (quase sempre amanhã de manhã) é chute — e chute errado gasta duas mensagens para voltar ao começo.`
+            + `\n- Então: pergunte, em UMA frase curta, que dia e que período ficam melhores ("manhã ou tarde?") — junto da confirmação do convênio, na mesma mensagem — e SÓ DEPOIS ofereça um horário concreto da lista que caiba na resposta.`
+            + `\n- 🚫 NÃO cite nenhum horário antes dessa resposta. EXCEÇÕES: se ele já disse quando pode ("pode ser sexta de manhã", "só consigo à tarde"), use o que ele disse; se disser que tanto faz ou pedir o mais cedo possível, aí ofereça o mais próximo.`;
         }
       } catch (e) { console.error("[Reengajar] Falha ao carregar dados da campanha (segue normal):", e.message); }
     }
@@ -5738,13 +5745,20 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const bairroErrado = bairroTrocado(reply);
       const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (ofertaCegaRemarcacao || precoSemConvenio || bairroErrado || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = ofertaCegaRemarcacao || precoSemConvenio || bairroErrado || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      // Mesma regra para quem TOCOU "Quero agendar" na campanha de reengajamento
+      // (Dr. Bruno, 02/09): faz um ano que não vem, não há horário combinado, e o
+      // primeiro da lista é chute. O gatilho é determinístico — o texto do botão.
+      const tocouQueroAgendar = /^\s*quero agendar\s*$/i.test(String(text || ""));
+      const ofertaCegaCampanha = (tocouQueroAgendar && etapaDeOferta && campanhaSabeConvenio)
+        ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
+      if (ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
           ofertaCegaRemarcacao ? "oferta_cega_remarcacao"
+            : ofertaCegaCampanha ? "oferta_cega_campanha"
             : precoSemConvenio ? "preco_sem_saber_convenio"
             : bairroErrado ? "bairro_trocado"
             : recadoSoNaFala ? "prometeu_recado_sem_bloco"
@@ -5794,7 +5808,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
-            { type: "text", text: dynVolatil + (ofertaCegaRemarcacao ? instrucaoPerguntarPreferencia()
+            { type: "text", text: dynVolatil + (ofertaCegaRemarcacao ? instrucaoPerguntarPreferencia("remarcacao")
+              : ofertaCegaCampanha ? instrucaoPerguntarPreferencia("campanha")
               : precoSemConvenio ? instrucaoPrecoComConvenio()
               : bairroErrado ? instrucaoBairroCerto(bairroErrado)
               : recadoSoNaFala ? instrucaoRecadoDeVerdade(recadoSoNaFala)
