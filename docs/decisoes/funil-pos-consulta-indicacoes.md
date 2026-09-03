@@ -65,12 +65,30 @@ quem já ouviu do médico que é candidato.
   caso do Carlos (01/09), que pediu contato em novembro e recebeu cutucada três
   horas depois porque o filtro olhava só a última mensagem.
 
+**CATARATA: UMA LINHA POR LIO, E O CONVÊNIO SEPARADO (Dr. Bruno, 03/09/2026).**
+As duas primeiras correções que ele fez ao desenho, e as duas eram de dinheiro:
+
+1. Eu tinha gravado catarata como **um item só, R$ 5.000** — o procedimento, sem a
+   lente. Mas a LIO vai de R$ 1.800 (monofocal) a R$ 13.200 (trifocal tórica): uma
+   catarata que vale R$ 18.200 apareceria no funil como R$ 5.000. Agora a lista tem
+   **uma opção por LIO**, cada uma com o total POR OLHO já somado, mais um
+   "LIO a definir" (R$ 5.000) para quando a lente ainda não foi escolhida.
+2. **Boa parte dos planos cobre catarata.** A indicação passou a gravar o
+   `convenio`, copiado do agendamento. Em paciente de convênio o valor nasce
+   **vazio** — a cobertura é caso a caso e a equipe é quem sabe o que sobra para o
+   paciente. O funil soma só o que o paciente paga e mostra à parte quantos casos
+   de plano estão sem valor, em vez de inventar um total grande e falso.
+   Refrativa segue sendo a exceção conhecida: sempre particular.
+
 **DUAS DECISÕES QUE PARECEM DETALHE E NÃO SÃO.**
 
-- **O valor da indicação NÃO vai para o prompt da Ana.** Ele é uma estimativa para
-  o funil (catarata é gravada em R$ 5.000, sem a LIO) e ela repetiria esse número
-  ao paciente como se fosse o preço final. A tabela de preços certa, com todas as
-  ressalvas, já está no SYSTEM_PROMPT — é de lá que ela fala de dinheiro.
+- **O valor da indicação NÃO vai para o prompt da Ana.** É estimativa de funil (a
+  lente é por par ou por unidade; a catarata pode estar sem LIO definida) e ela
+  repetiria o número ao paciente como se fosse o preço final. A tabela de preços
+  certa, com as ressalvas, já está no SYSTEM_PROMPT — é de lá que ela fala de
+  dinheiro. E quando a indicação é de um paciente de CONVÊNIO, o prompt recebe uma
+  linha extra proibindo citar valor particular: a regra da clínica já dizia isso, e
+  aqui ela precisava valer também para a conversa que a máquina começou.
 - **A Ana NÃO marca cirurgia.** A agenda dela é de consulta; cirurgia depende de
   centro cirúrgico, exames e data do médico. Quando o paciente decide fechar, ela
   emite `[RECADO]` para a equipe ligar. Deixá-la "marcar" viraria promessa de

@@ -46,9 +46,18 @@ create table if not exists public.indicacoes (
   -- agosto). O que padroniza é a tela, não o banco.
   procedimento      text not null,
   olho              text,                    -- OD | OE | AO | null
+  -- Particular ou convênio, COPIADO do agendamento (não redigitado). Existe
+  -- porque catarata é coberta por vários planos: a mesma indicação vale
+  -- R$ 18.200 para um paciente e quase nada para outro, e sem esta coluna o
+  -- funil somaria os dois como se fossem iguais. Também é o que impede alguém
+  -- de olhar a tela e citar o valor particular a quem tem plano — proibido pela
+  -- regra da clínica.
+  convenio          text,
   -- Ticket esperado. Preenchido automaticamente pela tabela de preços do
   -- código quando quem registra não digita nada — é o que faz o "#INDICACOES"
-  -- mostrar quanto dinheiro está parado no funil.
+  -- mostrar quanto dinheiro está parado no funil. Fica NULO no convênio
+  -- enquanto a regra comercial do coberto/não coberto não estiver definida:
+  -- um número errado no funil é pior que um campo vazio.
   valor             numeric,
 
   -- aberta    → indicada, ninguém decidiu ainda (a fila de retomada é esta)

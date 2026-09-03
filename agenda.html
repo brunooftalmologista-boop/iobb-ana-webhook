@@ -745,9 +745,19 @@ async function setPresenca(v){
 // 02/09/2026 isso não existia em lugar nenhum: o orçamento era passado de boca e
 // o paciente sumia. Aqui a equipe registra o que foi indicado — e é esse
 // registro que coloca o paciente na retomada automática da Ana.
+// A catarata tem UMA OPÇÃO POR LIO (Dr. Bruno, 03/09/2026). Gravar só
+// "catarata" trazia o valor do procedimento (R$ 5.000) e escondia a lente, que
+// vai de R$ 1.800 a R$ 13.200 — uma catarata de R$ 18.200 aparecia no funil
+// como R$ 5.000. Cada linha aqui já é o TOTAL POR OLHO (procedimento + LIO), e
+// os valores casam com a tabela de preços do servidor (INDICACAO_PRECOS).
 const IND_PROCEDIMENTOS = [
   'Cirurgia refrativa (PRK/TransPRK)', 'Cirurgia refrativa (LASIK)', 'Cirurgia refrativa (Femto-LASIK)',
-  'Catarata', 'Crosslinking', 'Anel de Ferrara',
+  'Cirurgia de catarata — LIO monofocal', 'Cirurgia de catarata — LIO tórica',
+  'Cirurgia de catarata — LIO Eyhance', 'Cirurgia de catarata — LIO Eyhance tórica',
+  'Cirurgia de catarata — LIO EDOF', 'Cirurgia de catarata — LIO EDOF tórica',
+  'Cirurgia de catarata — LIO trifocal', 'Cirurgia de catarata — LIO trifocal tórica',
+  'Cirurgia de catarata — LIO a definir',
+  'Crosslinking', 'Anel de Ferrara',
   'Lente escleral (Esclera SG)', 'Lente escleral (ZenLens)', 'Lente Zen RC',
   'Lente rígida gás permeável', 'Lente de contato gelatinosa',
 ];
@@ -757,6 +767,11 @@ let INDICACOES = [];          // as vivas (aberta + pausada), para o modal do ag
 let indVendoTodas = false;
 
 const so8 = t => String(t||'').replace(/\D/g,'').slice(-8);
+// Convênio ao lado do valor: catarata é coberta por boa parte dos planos, e um
+// "R$ 18.200" solto ao lado do nome de quem tem cobertura é o tipo de número
+// que alguém repete ao paciente por engano.
+const indEhConvenio = i => { const c=String(i.convenio||'').trim(); return !!c && !/^particular$/i.test(c); };
+const indPlano = i => indEhConvenio(i) ? ' <span style="color:#7a5b00;background:#fff3cd;border-radius:4px;padding:1px 6px;font-size:12px">'+esc(i.convenio)+'</span>' : '';
 const indBRL = v => (v===null||v===undefined||v==='') ? '—'
   : Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
 
@@ -781,7 +796,7 @@ function renderIndicacaoNoDetalhe(a){
   const minhas = INDICACOES.filter(i => so8(i.paciente_telefone) === so8(a.paciente_telefone));
   $('#agdet-ind-lista').innerHTML = minhas.length
     ? minhas.map(i => '<div style="margin-bottom:3px">• <b>'+esc(i.procedimento)+'</b>'
-        + (i.olho?' ('+esc(i.olho)+')':'') + ' — ' + indBRL(i.valor)
+        + (i.olho?' ('+esc(i.olho)+')':'') + ' — ' + indBRL(i.valor) + indPlano(i)
         + ' <span style="color:#6b7b8c">'+ (IND_ROTULO[i.status]||esc(i.status))
         + (i.toques?' · '+i.toques+' toque(s)':'') + '</span></div>').join('')
     : '<span style="color:#6b7b8c">Nenhuma indicação registrada para este paciente.</span>';
@@ -841,9 +856,15 @@ async function renderFunil(){
   const vivas = linhas.filter(i=>['aberta','pausada'].includes(i.status));
   const parado = vivas.reduce((s,i)=>s+Number(i.valor||0),0);
   const fechado = linhas.filter(i=>i.status==='fechada').reduce((s,i)=>s+Number(i.valor||0),0);
+  // O total soma só o que o PACIENTE paga. Em convênio o valor nasce vazio
+  // (a cobertura é caso a caso), então some-los daria um número falso — e o
+  // aviso abaixo diz quantos ainda estão sem valor, em vez de esconder.
+  const semValor = vivas.filter(i => indEhConvenio(i) && (i.valor===null||i.valor===undefined)).length;
   $('#ind-resumo').innerHTML = indVendoTodas
     ? '<b>'+linhas.length+'</b> indicação(ões) no histórico · fechado: <b>'+indBRL(fechado)+'</b>'
-    : '<b>'+vivas.length+'</b> paciente(s) com procedimento indicado e ainda sem decisão · parado no funil: <b>'+indBRL(parado)+'</b>';
+    : '<b>'+vivas.length+'</b> paciente(s) com procedimento indicado e ainda sem decisão · parado no funil: <b>'+indBRL(parado)+'</b>'
+      + '<span style="color:#6b7b8c"> (só o que o paciente paga)</span>'
+      + (semValor ? '<br><span style="color:#7a5b00">🏥 '+semValor+' de convênio sem valor informado — a cobertura é caso a caso.</span>' : '');
   $('#ind-encerradas').textContent = indVendoTodas ? 'Ver só as abertas' : 'Ver encerradas';
   if(!linhas.length){
     $('#ind-lista').innerHTML = '<div style="color:#6b7b8c;font-size:14px;padding:10px 0">'
@@ -859,7 +880,7 @@ async function renderFunil(){
     return '<div style="border:1px solid #e3e9ef;border-radius:8px;padding:10px 12px;margin-bottom:8px">'
       + '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">'
       +   '<div><b>'+esc(i.paciente_nome||fone(i.paciente_telefone))+'</b>'
-      +   '<div style="font-size:13px;color:#44586b">'+esc(i.procedimento)+(i.olho?' ('+esc(i.olho)+')':'')+' · '+indBRL(i.valor)+'</div>'
+      +   '<div style="font-size:13px;color:#44586b">'+esc(i.procedimento)+(i.olho?' ('+esc(i.olho)+')':'')+' · '+indBRL(i.valor)+indPlano(i)+'</div>'
       +   '<div style="font-size:12.5px;color:#6b7b8c">'+(IND_ROTULO[i.status]||esc(i.status))
       +     ' · há '+dias+' dia(s) · '+(i.toques||0)+' toque(s)'
       +     (i.respondeu_em?' · respondeu':'')

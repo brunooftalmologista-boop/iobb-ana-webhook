@@ -5043,12 +5043,16 @@ app.post("/webhook", async (req, res) => {
           const antigas = (r.maisAntigas || []).map(i => {
             const dias = Math.floor((Date.now() - new Date(i.created_at).getTime()) / 86400000);
             const nome = String(i.paciente_nome || "").trim().split(/\s+/).slice(0, 2).join(" ") || maskFone(i.paciente_telefone);
-            return `· ${nome} — ${i.procedimento} (${brl(i.valor)}) — há ${dias} dia(s), ${i.toques || 0} toque(s)`;
+            const cob = String(i.convenio || "").trim();
+            const plano = cob && !/^particular$/i.test(cob) ? ` · ${cob}` : "";
+            return `· ${nome} — ${i.procedimento} (${brl(i.valor)})${plano} — há ${dias} dia(s), ${i.toques || 0} toque(s)`;
           }).join("\n");
           await sendWhatsApp(from,
             `💰 *Funil pós-consulta*\n\nRetomada automática: ${ativo ? "✅ ligada" : "⏸️ desligada (*#INDICACOES LIGAR*)"}\nTemplate do toque: ${templateTxt}\n\n`
             + `📋 Registradas: *${r.total}*\n🟡 Em aberto: *${p.aberta || 0}*\n⏸️ "Agora não": ${p.pausada || 0}\n📅 Voltaram a marcar: ${p.retornou || 0}\n✅ Fecharam: *${p.fechada || 0}*\n🚫 Recusaram: ${p.recusada || 0}\n💨 Perdidas (sem resposta): ${p.perdida || 0}\n\n`
-            + `💵 Parado no funil: *${brl(r.emAberto)}*\n💚 Fechado: *${brl(r.fechado)}*\n\n`
+            + `💵 Parado no funil: *${brl(r.emAberto)}* _(só o que o paciente paga)_\n💚 Fechado: *${brl(r.fechado)}*\n`
+            + (r.porConvenio?.total ? `🏥 Por convênio: ${r.porConvenio.total} em aberto${r.porConvenio.semValor ? ` — *${r.porConvenio.semValor}* sem valor informado` : ""}\n` : "")
+            + `\n`
             + (antigas ? `⏳ *As mais antigas em aberto:*\n${antigas}\n\n` : "")
             + `Registrar uma agora: *#INDICACAO 61984060001 PRK*\nRegistrar pela tela: agenda → clique na consulta → 💰 Indicação`);
         } catch (e) {
@@ -5081,18 +5085,18 @@ app.post("/webhook", async (req, res) => {
         // Nome e última consulta vêm do que já existe — nada de redigitar.
         // Consulta própria (e não ultimaConsultaDoPaciente) porque aqui
         // precisamos do id e do nome, que aquela função não traz.
-        let nome = null, apId = null;
+        let nome = null, apId = null, convenio = null;
         try {
           const { data: ult } = await supabase.from("appointments")
-            .select("id, paciente_nome")
+            .select("id, paciente_nome, convenio")
             .in("paciente_telefone", fonesBR(tel))
             .neq("status", "cancelado")
             .lt("inicio", new Date().toISOString())
             .order("inicio", { ascending: false }).limit(1);
-          if (ult && ult[0]) { nome = ult[0].paciente_nome || null; apId = ult[0].id || null; }
+          if (ult && ult[0]) { nome = ult[0].paciente_nome || null; apId = ult[0].id || null; convenio = ult[0].convenio || null; }
         } catch (_) {}
         const r = await criarIndicacao({
-          appointmentId: apId, telefone: tel, nome, procedimento: proc, olho, valor,
+          appointmentId: apId, telefone: tel, nome, procedimento: proc, olho, valor, convenio,
           criadoPor: "whatsapp",
         });
         if (!r.ok) {
@@ -5104,7 +5108,7 @@ app.post("/webhook", async (req, res) => {
         const i = r.indicacao;
         const ativo = await indicacoesAtivo();
         await sendWhatsApp(from,
-          `✅ Indicação registrada.\n\n👤 ${i.paciente_nome || maskFone(i.paciente_telefone)}\n🔎 ${i.procedimento}${i.olho ? ` (${i.olho})` : ""}\n💵 ${brl(i.valor)}\n\n`
+          `✅ Indicação registrada.\n\n👤 ${i.paciente_nome || maskFone(i.paciente_telefone)}\n🔎 ${i.procedimento}${i.olho ? ` (${i.olho})` : ""}\n🏥 ${i.convenio && !/^particular$/i.test(i.convenio) ? i.convenio : "Particular"}\n💵 ${brl(i.valor)}${i.valor == null ? " _(convênio — informe o que o paciente paga pela tela, se houver)_" : ""}\n\n`
           + (ativo
               ? `A Ana retoma este paciente em ${INDICACAO_CADENCIA_DIAS[0]} dia(s), se ele não voltar antes.`
               : `⚠️ A retomada automática está DESLIGADA — isto ficou só registrado no funil. Para ligar: *#INDICACOES LIGAR*.`));
@@ -5676,8 +5680,18 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         await marcarRespostaEmIndicacoes(indicacoesDoPaciente.map(i => i.id));
         const lista = indicacoesDoPaciente.map(i => {
           const quando = new Date(i.created_at).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit", year: "numeric" });
-          return `- **${i.procedimento}**${i.olho ? ` (${i.olho})` : ""} — indicado na consulta de ${quando}.`;
+          const cob = String(i.convenio || "").trim();
+          const plano = cob && !/^particular$/i.test(cob) ? ` — paciente do convênio **${cob}**` : "";
+          return `- **${i.procedimento}**${i.olho ? ` (${i.olho})` : ""} — indicado na consulta de ${quando}${plano}.`;
         }).join("\n");
+        // Catarata é COBERTA por boa parte dos planos, e a regra da clínica
+        // proíbe citar o valor particular a quem tem cobertura. Sem esta linha
+        // ela pegaria os R$ 5.000 da própria tabela de preços e responderia o
+        // preço de particular a quem não vai pagar nada por isso.
+        const algumConvenio = indicacoesDoPaciente.some(i => {
+          const c = String(i.convenio || "").trim();
+          return !!c && !/^particular$/i.test(c);
+        });
         dynEstavel += `\n\n### O Dr. Bruno JÁ INDICOU um procedimento a este paciente\n${lista}\n`
           + `\nEle não é um paciente novo: já foi examinado aqui e já ouviu do médico que é candidato. Trate-o como quem está DECIDINDO, não como quem está descobrindo.\n`
           + `\nCOMO CONDUZIR:\n`
@@ -5685,6 +5699,9 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           + `- ✅ Quando ele tocar no assunto: responda a dúvida dele com o que já está no seu conhecimento (valores, formas de pagamento, como funciona o procedimento em linhas gerais, o que já está incluso). Você NÃO precisa perguntar "o que o médico falou?" — está escrito acima.\n`
           + `- 🚫 LIMITE CLÍNICO, INEGOCIÁVEL: você NÃO avalia, NÃO confirma e NÃO revê indicação. Nada de "o senhor tem indicação para isso", "no seu caso o resultado costuma ser", "seu grau é adequado". Quem indica, mantém ou muda a conduta é o médico, na consulta. Se a dúvida for clínica ("vai voltar a miopia?", "meu caso é grave?", "quanto tempo de recuperação no meu caso?"), acolha e diga que quem responde isso com precisão é o Dr. Bruno, e ofereça o próximo passo abaixo.\n`
           + `- 🚫 NADA DE PRESSÃO: proibido "última chance", "os valores vão subir", "restam poucas vagas", desconto ou qualquer urgência inventada. Publicidade médica não permite, e o Dr. Bruno também não.\n`
+          + (algumConvenio
+              ? `- 🏥 ESTE PACIENTE TEM CONVÊNIO, E ISSO MUDA O QUE VOCÊ PODE DIZER SOBRE DINHEIRO. Cirurgia coberta pelo plano (a catarata é o caso típico) **NÃO tem valor particular a ser citado a ele** — é PROIBIDO responder "a catarata é R$ 5.000" a quem tem cobertura. O que o plano cobre, o que exige autorização e o que sobra para o paciente (a lente escolhida, por exemplo) quem confirma é a EQUIPE, caso a caso. Se ele perguntar de valor, diga que a cobertura é verificada pelo plano dele e que a equipe passa os detalhes — e emita [RECADO]. Cirurgia refrativa é a exceção conhecida: é sempre particular, mesmo para quem tem plano.\n`
+              : "")
           + `\nO PRÓXIMO PASSO CONCRETO (sempre termine oferecendo UM dos dois):\n`
           + `- 📅 Se ele precisa ser reavaliado, quer conversar com o médico, ou está em dúvida clínica: ofereça UM horário de consulta da lista de vagas, como em qualquer agendamento.\n`
           + `- 📞 Se ele já decidiu fazer e quer marcar a CIRURGIA ou fechar a LENTE: você NÃO marca isso — a sua agenda é de consulta, e cirurgia depende de centro cirúrgico, exames e data do médico. Diga que vai pedir para a equipe entrar em contato para acertar a data e emita o bloco [RECADO] (tipo: dúvida, resumo: quer agendar <procedimento>, já indicado em consulta). Não termine a mensagem sem um dos dois caminhos.\n`
@@ -7623,7 +7640,7 @@ app.get("/api/indicacoes", async (req, res) => {
     const status = q === "todas" ? null
       : (q ? q.split(",").map(s => s.trim()).filter(Boolean) : ["aberta", "pausada"]);
     let sel = supabase.from("indicacoes")
-      .select("id, appointment_id, paciente_nome, paciente_telefone, procedimento, olho, valor, status, motivo, observacoes, toques, ultimo_toque_em, proximo_toque_em, respondeu_em, created_at, criado_por")
+      .select("id, appointment_id, paciente_nome, paciente_telefone, procedimento, olho, valor, convenio, status, motivo, observacoes, toques, ultimo_toque_em, proximo_toque_em, respondeu_em, created_at, criado_por")
       .order("created_at", { ascending: false }).limit(300);
     if (status) sel = sel.in("status", status);
     const { data, error } = await sel;
@@ -7646,19 +7663,20 @@ app.get("/api/indicacoes", async (req, res) => {
 // aberto na frente, e redigitar telefone é onde nasce o erro do nono dígito.
 app.post("/api/indicacoes", async (req, res) => {
   try {
-    const { appointment_id, telefone, nome, procedimento, olho, valor, observacoes } = req.body || {};
-    let tel = telefone, nom = nome;
+    const { appointment_id, telefone, nome, procedimento, olho, valor, convenio, observacoes } = req.body || {};
+    let tel = telefone, nom = nome, conv = convenio;
     if (appointment_id) {
       const { data: ap } = await supabase.from("appointments")
-        .select("paciente_nome, paciente_telefone").eq("id", String(appointment_id)).maybeSingle();
+        .select("paciente_nome, paciente_telefone, convenio").eq("id", String(appointment_id)).maybeSingle();
       if (!ap) return res.status(404).json({ ok: false, error: "Agendamento não encontrado." });
       tel = tel || ap.paciente_telefone;
       nom = nom || ap.paciente_nome;
+      conv = conv || ap.convenio;           // particular/convênio sai da ficha, não da digitação
       if (!tel) return res.status(400).json({ ok: false, error: "Este agendamento não tem telefone — sem ele não há como retomar o paciente. Edite os dados primeiro." });
     }
     const r = await criarIndicacao({
       appointmentId: appointment_id || null, telefone: tel, nome: nom,
-      procedimento, olho, valor, observacoes,
+      procedimento, olho, valor, convenio: conv, observacoes,
       criadoPor: req.panelUser?.email || null,
     });
     if (!r.ok) return res.status(r.duplicada ? 409 : 400).json(r);
@@ -8562,7 +8580,23 @@ const INDICACAO_PRECOS = [
   [/(trans\s*)?prk/i, 5990],
   [/crosslink/i, 5980],
   [/(anel|ferrara)/i, 8700],
-  [/catarata/i, 5000],                  // procedimento; a LIO entra à parte
+  // CATARATA: R$ 5.000 do procedimento + a LIO, POR OLHO. Uma linha por lente
+  // (Dr. Bruno, 03/09/2026) — gravar só "catarata" mostrava R$ 5.000 no funil
+  // para um caso que pode valer R$ 18.200, e o funil existe justamente para
+  // dizer quanto está parado.
+  // ⚠️ A ORDEM AQUI É A REGRA: quem casa primeiro vence. As TÓRICAS vêm antes
+  // das simples, senão /catarata.*edof/ engoliria "EDOF tórica" e devolveria
+  // R$ 14.800 no lugar de R$ 16.200. Aceita "torica" sem acento porque o
+  // #INDICACAO é digitado à mão no WhatsApp.
+  [/catarata.*edof.*t[óo]rica/i, 16200],
+  [/catarata.*edof/i, 14800],
+  [/catarata.*trifocal.*t[óo]rica/i, 18200],
+  [/catarata.*trifocal/i, 17000],
+  [/catarata.*eyhance.*t[óo]rica/i, 10400],
+  [/catarata.*eyhance/i, 9200],
+  [/catarata.*monofocal/i, 6800],
+  [/catarata.*t[óo]rica/i, 8600],       // tórica "pura": só depois das acima
+  [/catarata/i, 5000],                  // LIO ainda não definida: só o procedimento
   [/zen\s*rc/i, 5980],
   [/(zenlens|esclera\s*sg|escleral)/i, 7800],
   [/(r[íi]gida|gás|gas)\s*perme/i, 2500],
@@ -8593,12 +8627,19 @@ async function indicacoesAtivo() {
 // Registra uma indicação. Devolve {ok, indicacao, duplicada}. O valor entra
 // automático pela tabela de preços quando não vier digitado — sem isso o funil
 // mostraria "R$ 0 parado" e ninguém olharia para ele de novo.
-async function criarIndicacao({ appointmentId = null, telefone, nome = null, procedimento, olho = null, valor = null, observacoes = null, criadoPor = null }) {
+// `convenio` vem COPIADO do agendamento. Não é enfeite: catarata é coberta por
+// boa parte dos planos, então a MESMA indicação vale R$ 18.200 para um paciente
+// e quase nada para outro. Somar os dois no funil daria um número bonito e
+// falso — e a regra da clínica proíbe citar o valor particular a quem tem plano.
+async function criarIndicacao({ appointmentId = null, telefone, nome = null, procedimento, olho = null, valor = null, convenio = null, observacoes = null, criadoPor = null }) {
   const proc = String(procedimento || "").trim();
   if (!proc) return { ok: false, error: "Informe o procedimento indicado." };
   const fone = normalizePhoneBR(telefone) || String(telefone || "").trim();
   const chave = foneChave(fone);
   if (!chave) return { ok: false, error: "Telefone inválido — sem ele não há como retomar o paciente." };
+  // Convênio vazio ou "particular" (em qualquer grafia) = particular.
+  const conv = String(convenio || "").trim();
+  const ehConvenio = !!conv && !/^particular$/i.test(conv);
   const agora = new Date().toISOString();
   const row = {
     appointment_id: appointmentId || null,
@@ -8607,7 +8648,13 @@ async function criarIndicacao({ appointmentId = null, telefone, nome = null, pro
     paciente_nome: nome ? String(nome).trim() : null,
     procedimento: proc,
     olho: olho ? String(olho).trim().toUpperCase().slice(0, 3) : null,
-    valor: (valor === null || valor === undefined || valor === "") ? valorDoProcedimento(proc) : Number(valor),
+    convenio: conv || null,
+    // O preço automático é o PARTICULAR. Em convênio ele fica em branco até
+    // alguém digitar o que o paciente realmente paga: chutar aqui encheria o
+    // funil de dinheiro que não existe. Valor digitado à mão sempre vence.
+    valor: (valor === null || valor === undefined || valor === "")
+      ? (ehConvenio ? null : valorDoProcedimento(proc))
+      : Number(valor),
     observacoes: observacoes ? String(observacoes).trim() : null,
     criado_por: criadoPor || null,
     status: "aberta",
@@ -8622,7 +8669,7 @@ async function criarIndicacao({ appointmentId = null, telefone, nome = null, pro
     console.error("[Indicações] Falha ao criar:", error.message);
     return { ok: false, error: error.message };
   }
-  console.log(`[Indicações] ${proc} registrada para ${maskFone(fone)} (${brl(row.valor)}).`);
+  console.log(`[Indicações] ${proc} registrada para ${maskFone(fone)} — ${ehConvenio ? conv : "particular"} (${brl(row.valor)}).`);
   return { ok: true, indicacao: data };
 }
 
@@ -8894,7 +8941,7 @@ function startFollowUpIndicacoes() {
 // O funil em números — é o que responde "quanto dinheiro está parado aí".
 async function resumoIndicacoes() {
   const { data, error } = await supabase.from("indicacoes")
-    .select("status, valor, procedimento, paciente_nome, paciente_telefone, created_at, toques, proximo_toque_em");
+    .select("status, valor, convenio, procedimento, paciente_nome, paciente_telefone, created_at, toques, proximo_toque_em");
   if (error) throw new Error(error.message);
   const linhas = data || [];
   const por = {}, valorPor = {};
@@ -8902,10 +8949,16 @@ async function resumoIndicacoes() {
     por[r.status] = (por[r.status] || 0) + 1;
     valorPor[r.status] = (valorPor[r.status] || 0) + Number(r.valor || 0);
   }
+  // Convênio à parte: no particular o valor é o que o paciente paga; no plano,
+  // boa parte é coberta. Somar os dois num total só daria um número grande e
+  // mentiroso — que é pior que não ter número.
+  const ehConv = (r) => !!String(r.convenio || "").trim() && !/^particular$/i.test(String(r.convenio).trim());
+  const vivas = linhas.filter(r => ["aberta", "pausada"].includes(r.status));
+  const porConvenio = { total: vivas.filter(ehConv).length, semValor: vivas.filter(r => ehConv(r) && r.valor == null).length };
   const abertas = linhas.filter(r => r.status === "aberta")
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   return {
-    total: linhas.length, por, valorPor,
+    total: linhas.length, por, valorPor, porConvenio,
     emAberto: (valorPor.aberta || 0) + (valorPor.pausada || 0),
     fechado: valorPor.fechada || 0,
     maisAntigas: abertas.slice(0, 5),

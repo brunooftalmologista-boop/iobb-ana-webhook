@@ -374,8 +374,13 @@ e uma cirurgia a mais por mês vale mais que todas as vagas que sobram na semana
   decide fechar, ela emite `[RECADO]` para a equipe ligar.
 - Ela **não avalia, não confirma e não revê indicação**; dúvida clínica vai para o
   médico. Nada de promessa de resultado, urgência ou desconto (CFM).
-- O **valor registrado não vai para o prompt** (é estimativa de funil; catarata é
-  gravada sem a LIO). Ela fala de preço pela tabela do SYSTEM_PROMPT.
+- O **valor registrado não vai para o prompt** (é estimativa de funil). Ela fala de
+  preço pela tabela do SYSTEM_PROMPT.
+- **Catarata tem uma opção por LIO** (total por olho = R$ 5.000 + a lente), porque
+  gravar só "catarata" escondia de R$ 1.800 a R$ 13.200 de lente. E a indicação
+  grava o **convênio**, copiado do agendamento: em paciente de plano o valor nasce
+  vazio (a cobertura é caso a caso) e a Ana é proibida de citar valor particular a
+  ele. O total do funil soma só o que o paciente paga.
 - A rotina **nasce desligada**: `#INDICACOES LIGAR` depois de ver o texto com
   `#INDICACOES TESTE`.
 
