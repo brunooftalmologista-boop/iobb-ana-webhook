@@ -5050,7 +5050,7 @@ app.post("/webhook", async (req, res) => {
           await sendWhatsApp(from,
             `💰 *Funil pós-consulta*\n\nRetomada automática: ${ativo ? "✅ ligada" : "⏸️ desligada (*#INDICACOES LIGAR*)"}\nTemplate do toque: ${templateTxt}\n\n`
             + `📋 Registradas: *${r.total}*\n🟡 Em aberto: *${p.aberta || 0}*\n⏸️ "Agora não": ${p.pausada || 0}\n📅 Voltaram a marcar: ${p.retornou || 0}\n✅ Fecharam: *${p.fechada || 0}*\n🚫 Recusaram: ${p.recusada || 0}\n💨 Perdidas (sem resposta): ${p.perdida || 0}\n\n`
-            + `💵 Parado no funil: *${brl(r.emAberto)}* _(só o que o paciente paga)_\n💚 Fechado: *${brl(r.fechado)}*\n`
+            + `💵 Parado no funil: *${brl(r.emAberto)}* _(no mínimo — só o que o paciente paga, e a cirurgia sem tipo entra pelo valor mais baixo)_\n💚 Fechado: *${brl(r.fechado)}*\n`
             + (r.porConvenio?.total ? `🏥 Por convênio: ${r.porConvenio.total} em aberto${r.porConvenio.semValor ? ` — *${r.porConvenio.semValor}* sem valor informado` : ""}\n` : "")
             + `\n`
             + (antigas ? `⏳ *As mais antigas em aberto:*\n${antigas}\n\n` : "")
@@ -8580,10 +8580,11 @@ const INDICACAO_PRECOS = [
   [/(trans\s*)?prk/i, 5990],
   [/crosslink/i, 5980],
   [/(anel|ferrara)/i, 8700],
-  // CATARATA: R$ 5.000 do procedimento + a LIO, POR OLHO. Uma linha por lente
-  // (Dr. Bruno, 03/09/2026) — gravar só "catarata" mostrava R$ 5.000 no funil
-  // para um caso que pode valer R$ 18.200, e o funil existe justamente para
-  // dizer quanto está parado.
+  // A LISTA DA TELA tem só "Cirurgia refrativa" e "Cirurgia de catarata"
+  // (Dr. Bruno, 03/09/2026), mas esta tabela continua reconhecendo o tipo e a
+  // LIO: ela é um DICIONÁRIO, não um menu. Quem digitar "#INDICACAO 61… catarata
+  // trifocal" ou corrigir o texto na tela ganha o valor exato de graça; quem
+  // gravar só "cirurgia de catarata" cai no piso, mais abaixo.
   // ⚠️ A ORDEM AQUI É A REGRA: quem casa primeiro vence. As TÓRICAS vêm antes
   // das simples, senão /catarata.*edof/ engoliria "EDOF tórica" e devolveria
   // R$ 14.800 no lugar de R$ 16.200. Aceita "torica" sem acento porque o
@@ -8596,7 +8597,13 @@ const INDICACAO_PRECOS = [
   [/catarata.*eyhance/i, 9200],
   [/catarata.*monofocal/i, 6800],
   [/catarata.*t[óo]rica/i, 8600],       // tórica "pura": só depois das acima
-  [/catarata/i, 5000],                  // LIO ainda não definida: só o procedimento
+  // PISOS. Sem o tipo/LIO escrito, o valor é o MENOR possível daquela família —
+  // R$ 5.990 é a PRK (a LASIK é 7.800 e a Femto 8.890); R$ 5.000 é a catarata
+  // sem a lente. Errar para BAIXO é decisão consciente: um funil que promete
+  // menos do que existe continua útil, um que promete demais vira piada na
+  // primeira conferência.
+  [/catarata/i, 5000],
+  [/refrativ/i, 5990],                  // "Cirurgia refrativa" sem dizer a técnica
   [/zen\s*rc/i, 5980],
   [/(zenlens|esclera\s*sg|escleral)/i, 7800],
   [/(r[íi]gida|gás|gas)\s*perme/i, 2500],

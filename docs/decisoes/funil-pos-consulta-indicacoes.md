@@ -69,10 +69,21 @@ quem já ouviu do médico que é candidato.
 As duas primeiras correções que ele fez ao desenho, e as duas eram de dinheiro:
 
 1. Eu tinha gravado catarata como **um item só, R$ 5.000** — o procedimento, sem a
-   lente. Mas a LIO vai de R$ 1.800 (monofocal) a R$ 13.200 (trifocal tórica): uma
-   catarata que vale R$ 18.200 apareceria no funil como R$ 5.000. Agora a lista tem
-   **uma opção por LIO**, cada uma com o total POR OLHO já somado, mais um
-   "LIO a definir" (R$ 5.000) para quando a lente ainda não foi escolhida.
+   lente, que vai de R$ 1.800 a R$ 13.200. Cheguei a abrir a lista **por LIO**
+   (12 linhas, cada uma com o total por olho). **Ele mandou desfazer no mesmo dia**,
+   e tinha razão: quando o paciente sai da sala a técnica nem sempre está escolhida
+   (PRK ou LASIK depende da paquimetria) e a lente quase nunca está. Uma lista
+   longa num campo obrigatório não gera precisão — gera clique errado para fechar
+   a tela. **A lista final tem "Cirurgia refrativa" e "Cirurgia de catarata", sem
+   tipo e sem LIO.**
+   O valor virou um **PISO**: R$ 5.990 na refrativa (a PRK; LASIK e Femto custam
+   mais) e R$ 5.000 na catarata (sem a lente). Errar para BAIXO é escolha: um funil
+   que promete menos do que existe continua útil; um que promete demais vira piada
+   na primeira conferência. A tela e o `#INDICACOES` dizem "no mínimo".
+   A tabela de preços do servidor **continua reconhecendo o detalhe** — ela é um
+   dicionário, não um menu: quem escrever "catarata trifocal tórica" (no campo, ou
+   pelo `#INDICACAO`) ganha os R$ 18.200 exatos. A lista curta é só o caminho
+   rápido; a precisão continua disponível para quem quiser dar.
 2. **Boa parte dos planos cobre catarata.** A indicação passou a gravar o
    `convenio`, copiado do agendamento. Em paciente de convênio o valor nasce
    **vazio** — a cobertura é caso a caso e a equipe é quem sabe o que sobra para o

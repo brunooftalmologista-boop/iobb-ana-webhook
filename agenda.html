@@ -745,18 +745,17 @@ async function setPresenca(v){
 // 02/09/2026 isso não existia em lugar nenhum: o orçamento era passado de boca e
 // o paciente sumia. Aqui a equipe registra o que foi indicado — e é esse
 // registro que coloca o paciente na retomada automática da Ana.
-// A catarata tem UMA OPÇÃO POR LIO (Dr. Bruno, 03/09/2026). Gravar só
-// "catarata" trazia o valor do procedimento (R$ 5.000) e escondia a lente, que
-// vai de R$ 1.800 a R$ 13.200 — uma catarata de R$ 18.200 aparecia no funil
-// como R$ 5.000. Cada linha aqui já é o TOTAL POR OLHO (procedimento + LIO), e
-// os valores casam com a tabela de preços do servidor (INDICACAO_PRECOS).
+// UMA OPÇÃO POR CIRURGIA, SEM O TIPO NEM A LIO (Dr. Bruno, 03/09/2026 — revoga
+// a lista por LIO que eu tinha feito horas antes). O motivo é o momento do
+// registro: quando o paciente sai da sala, nem sempre a técnica está escolhida
+// (PRK ou LASIK depende da paquimetria) nem a lente está definida — e uma lista
+// de 12 linhas obriga a decidir na hora, ou a escolher errado só para fechar a
+// tela. Erro de digitação num campo obrigatório é pior que valor aproximado.
+// O TIPO EXATO CONTINUA CABENDO: quem quiser detalha no campo Valor (o número
+// real) ou digita o nome completo pelo #INDICACAO — a tabela de preços do
+// servidor reconhece "PRK", "LASIK", "Femto" e as LIOs mesmo fora desta lista.
 const IND_PROCEDIMENTOS = [
-  'Cirurgia refrativa (PRK/TransPRK)', 'Cirurgia refrativa (LASIK)', 'Cirurgia refrativa (Femto-LASIK)',
-  'Cirurgia de catarata — LIO monofocal', 'Cirurgia de catarata — LIO tórica',
-  'Cirurgia de catarata — LIO Eyhance', 'Cirurgia de catarata — LIO Eyhance tórica',
-  'Cirurgia de catarata — LIO EDOF', 'Cirurgia de catarata — LIO EDOF tórica',
-  'Cirurgia de catarata — LIO trifocal', 'Cirurgia de catarata — LIO trifocal tórica',
-  'Cirurgia de catarata — LIO a definir',
+  'Cirurgia refrativa', 'Cirurgia de catarata',
   'Crosslinking', 'Anel de Ferrara',
   'Lente escleral (Esclera SG)', 'Lente escleral (ZenLens)', 'Lente Zen RC',
   'Lente rígida gás permeável', 'Lente de contato gelatinosa',
@@ -863,7 +862,7 @@ async function renderFunil(){
   $('#ind-resumo').innerHTML = indVendoTodas
     ? '<b>'+linhas.length+'</b> indicação(ões) no histórico · fechado: <b>'+indBRL(fechado)+'</b>'
     : '<b>'+vivas.length+'</b> paciente(s) com procedimento indicado e ainda sem decisão · parado no funil: <b>'+indBRL(parado)+'</b>'
-      + '<span style="color:#6b7b8c"> (só o que o paciente paga)</span>'
+      + '<span style="color:#6b7b8c"> (no mínimo — só o que o paciente paga)</span>'
       + (semValor ? '<br><span style="color:#7a5b00">🏥 '+semValor+' de convênio sem valor informado — a cobertura é caso a caso.</span>' : '');
   $('#ind-encerradas').textContent = indVendoTodas ? 'Ver só as abertas' : 'Ver encerradas';
   if(!linhas.length){
