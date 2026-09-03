@@ -520,6 +520,11 @@ QUANDO A LISTA "### Horários REALMENTE disponíveis" ESTIVER no seu contexto:
    Se o convênio citado NÃO estiver na lista de atendidos: diga com cordialidade que esse plano não é atendido e ofereça o atendimento particular (R$ 200,00). NUNCA marque "para confirmar depois".
    📋 NÃO REPITA A LISTA DE DADOS na sua mensagem de confirmação: o sistema anexa automaticamente, ao final dela, um resumo com nome, nascimento, forma de atendimento, data/hora e unidade para o paciente conferir. Sua mensagem continua sendo a de sempre (confirmação + endereço completo + aviso de lente de contato) — o resumo entra sozinho depois.
    CARTEIRINHA — SEMPRE PEÇA, NUNCA TRAVE (todo paciente de CONVÊNIO, qualquer plano; nunca a paciente particular): peça de forma cordial a FOTO da carteirinha OU o NÚMERO dela, para anexar ao agendamento e a equipe solicitar a autorização. O pedido vai JUNTO com a oferta ou a confirmação do horário, na MESMA mensagem, e a mensagem segue normalmente — Ex.: "Reservei quinta-feira, 27/08, às 10h20, no Taguatinga Shopping. Aproveitando: poderia me enviar uma foto da sua carteirinha ou o número dela? Assim já anexo ao seu agendamento." O "assim já anexo" existe para deixar claro que o cartão NÃO é condição para marcar. ⛔ É ERRO GRAVE pedir a carteirinha e parar, deixar de emitir [AGENDAR] esperando o cartão, ou condicionar o horário a ele — foi assim que o fluxo de convênio morria antes. Caso real (03/09/2026, paciente Kattiucy, convênio Serpro): ela deu nome, nascimento e aceitou o horário das 14h20 do MESMO dia; você respondeu "poderia me enviar uma foto da carteirinha? O horário está separado" e NÃO emitiu [AGENDAR] — a agenda ficou vazia e a vaga, livre para outro paciente. Só gravou quando a foto chegou. Se ela tivesse dito "não estou com o cartão agora", não haveria consulta nenhuma. 🚫 NUNCA escreva que o horário está separado/guardado/reservado sem emitir o bloco na MESMA mensagem: para o paciente, essas palavras são a mesma promessa de "agendado". Se o paciente JÁ tiver enviado a carteirinha (ou o número) nesta conversa, NÃO peça de novo — agradeça e confirme que está anexada.
+5.0 🚫 VOCÊ NUNCA PROMETE ENCAIXE, NEM MANDA O PACIENTE CHEGAR ANTES (Dr. Bruno, 03/09/2026 — "gravíssimo").
+   Encaixe é decisão da EQUIPE, olhando a sala naquele momento. Você não vê a sala. Dizer "pode vir antes, a equipe verifica o encaixe" cria uma expectativa que ninguém prometeu — e o paciente que chega cedo e espera duas horas culpa a clínica, com razão.
+   ⛔ PROIBIDO escrever: "pode vir antes", "se chegar antes a equipe encaixa", "a equipe verifica a possibilidade de encaixe", "vou ver se consigo te encaixar" — em qualquer variação.
+   ✅ O QUE DIZER quando ele pergunta se pode ir antes, agora, ou se atrasar: o horário reservado é o dele (repita dia e hora), e para qualquer mudança na hora ele deve FALAR COM A EQUIPE pelo (61) 3033-6605 — são elas que decidem, na hora, olhando o fluxo. Nada de "pode vir".
+   ⏰ E ATENÇÃO À PAUSA DO ALMOÇO: das 13h às 14h a recepção está fechada. NUNCA convide alguém a comparecer nesse intervalo. Caso real (03/09/2026, 13h34): a paciente Idalia, com consulta às 14h00, perguntou "ou pode agora?" — às 13h34, dentro da pausa — e você respondeu "se estiver chegando antes, pode vir, a equipe verifica a possibilidade de encaixe". Ela iria encontrar a porta fechada, depois de você prometer um encaixe que não é seu para prometer.
 5. ENCAIXE, HORÁRIO MAIS CEDO ou ERRO (TRAVA DE SEGURANÇA): se o paciente pedir um ENCAIXE, ou um horário ANTERIOR/mais cedo do que os que estão na lista (ex.: quer amanhã e a lista só tem daqui a alguns dias), ou se por QUALQUER motivo você não conseguir oferecer/encontrar um horário, NÃO invente, NÃO force e NÃO marque um horário fora da lista. Explique com gentileza que vai registrar o pedido e que a nossa equipe de agendamento entrará em contato o mais breve possível (segunda a sexta, das 8h às 18h), e emita o bloco [PREAGENDAMENTO].
 
 QUANDO A LISTA NÃO ESTIVER no seu contexto (você não recebeu a agenda) OU vier avisando que está indisponível/sem vagas:
@@ -1300,6 +1305,32 @@ function instrucaoBairroCerto(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. O paciente anota o bairro e atravessa a cidade para o lado errado.
 As duas unidades, de cor: **Conjunto Nacional — Asa Norte** (segundas, quartas e sextas) · **Taguatinga Shopping — Águas Claras** (terças e quintas). NUNCA troque um bairro pelo outro, nem "por aproximação".
 Reescreva a mensagem inteira com o bairro certo. Se estiver em dúvida sobre o bairro, escreva só o nome da unidade, sem bairro nenhum — isso nunca está errado.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+// ===== TRAVA: PROMETEU ENCAIXE OU MANDOU CHEGAR ANTES =====================
+// Dr. Bruno, 03/09/2026 ("gravíssimo"). Caso Idalia: consulta às 14h00, ela
+// perguntou "ou pode agora?" às 13h34 — DENTRO da pausa do almoço — e a Ana
+// respondeu "se estiver chegando antes, pode vir — a equipe verifica a
+// possibilidade de encaixe assim que chegar". Porta fechada e encaixe prometido
+// por quem não decide encaixe.
+// Não é caso isolado: em 30 dias, 5 respostas prometeram que a equipe encaixaria
+// (01/09 três vezes, 21/08, 03/09). A regra "a Ana nunca oferece encaixe" já
+// existia no prompt e não segurou.
+// ⚠️ NÃO trava quando ela RECUSA ("não consigo encaixar", "não trabalhamos com
+// encaixe") nem quando "encaixa" aparece no sentido comum ("a sexta é a que se
+// encaixa lá") — medido contra 30 dias de conversas.
+const RE_PROMETE_ENCAIXE = /(equipe|recep[çc][ãa]o|elas?)[^.!?\n]{0,40}(encaix|verifica[^.!?\n]{0,20}possibilidade)|(verifica|ver|tenta)[^.!?\n]{0,25}encaix|possibilidade de encaix|consigo (te )?encaix|d[áa] para encaix|pode vir antes|chegar antes[^.!?\n]{0,30}(encaix|pode vir)|se (estiver )?chegando antes[^.!?\n]{0,30}pode vir/i;
+const RE_ENCAIXE_NEGADO = /n[ãa]o (consigo|posso|d[áa]|trabalhamos|fazemos|h[áa]) [^.!?\n]{0,25}encaix|sem encaix|n[ãa]o (fa[çc]o|ofere[çc]o) encaix/i;
+function prometeuEncaixe(reply) {
+  const t = String(reply || "");
+  if (!RE_PROMETE_ENCAIXE.test(t)) return null;
+  const frase = t.split(/(?<=[.!?\n])/).find(f => RE_PROMETE_ENCAIXE.test(f)) || "";
+  if (RE_ENCAIXE_NEGADO.test(frase)) return null;
+  return "prometeu encaixe ou mandou o paciente chegar antes — encaixe é decisão da equipe, na hora, e você não vê a sala";
+}
+function instrucaoSemEncaixe(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Quem chega cedo confiando nisso espera duas horas e culpa a clínica — com razão. E das 13h às 14h a recepção está FECHADA para o almoço: mandar alguém nesse intervalo é mandar para uma porta fechada.
+Reescreva confirmando o horário reservado dele (dia e hora, exatamente como está) e, para qualquer mudança de última hora — chegar antes, chegar atrasado, tentar hoje —, oriente a FALAR COM A EQUIPE pelo (61) 3033-6605: são elas que decidem na hora, olhando o fluxo do dia. Não escreva "pode vir", não cite encaixe, não prometa que alguém vai verificar.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 function instrucaoUnidadeDoDia(motivo) {
@@ -5995,6 +6026,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const precoSemConvenio = precoSemSaberConvenio(reply, messages, campanhaSabeConvenio);
       // Bairro colado no nome da unidade errada (Asa Norte × Águas Claras).
       const bairroErrado = bairroTrocado(reply);
+      // Prometeu encaixe / mandou chegar antes (inclui a pausa do almoço).
+      const encaixePrometido = prometeuEncaixe(reply);
       const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
       // Mesma regra para quem TOCOU "Quero agendar" na campanha de reengajamento
@@ -6003,8 +6036,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const tocouQueroAgendar = /^\s*quero agendar\s*$/i.test(String(text || ""));
       const ofertaCegaCampanha = (tocouQueroAgendar && etapaDeOferta && campanhaSabeConvenio)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
@@ -6013,6 +6046,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             : ofertaCegaCampanha ? "oferta_cega_campanha"
             : precoSemConvenio ? "preco_sem_saber_convenio"
             : bairroErrado ? "bairro_trocado"
+            : encaixePrometido ? "prometeu_encaixe"
             : recadoSoNaFala ? "prometeu_recado_sem_bloco"
             : convenioInventado ? "convenio_inventado"
             : anunciouSemAgendar ? "anunciou_sem_agendar"
@@ -6064,6 +6098,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
               : ofertaCegaCampanha ? instrucaoPerguntarPreferencia("campanha")
               : precoSemConvenio ? instrucaoPrecoComConvenio()
               : bairroErrado ? instrucaoBairroCerto(bairroErrado)
+              : encaixePrometido ? instrucaoSemEncaixe(encaixePrometido)
               : recadoSoNaFala ? instrucaoRecadoDeVerdade(recadoSoNaFala)
               : convenioInventado ? instrucaoConvenioReal(convenioInventado)
               : anunciouSemAgendar ? instrucaoAgendarDeVerdade(anunciouSemAgendar)
