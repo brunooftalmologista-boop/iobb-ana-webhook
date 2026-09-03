@@ -8240,8 +8240,23 @@ async function followUpAtivo() {
     return data?.value === "true";
   } catch (_) { return false; }
 }
+// Janela de envio do follow-up orgânico. Ajustável no Render sem deploy.
+const FOLLOWUP_HORA_INICIO = (() => { const v = Number(readEnv("FOLLOWUP_HORA_INICIO")); return Number.isFinite(v) ? v : 9; })();
+const FOLLOWUP_HORA_FIM    = (() => { const v = Number(readEnv("FOLLOWUP_HORA_FIM"));    return Number.isFinite(v) ? v : 18; })();
 async function rodarFollowUpLeads() {
   if (!(await followUpAtivo())) return;
+  // ⏰ SÓ EM HORÁRIO COMERCIAL, DIA ÚTIL (Dr. Bruno, 03/09/2026).
+  // O scheduler roda de 30 em 30 min, 24h por dia, e nos últimos 14 dias mandou
+  // 17 mensagens entre 22h e 7h — incluindo 02h28, 03h29 e 03h51. Paciente
+  // acordando com "posso dar sequência ao seu atendimento?" às três da manhã não
+  // responde: bloqueia e denuncia. E o número denunciado é o mesmo que atende
+  // todo mundo — o ativo que a campanha inteira depende de preservar.
+  // O follow-up de indicações já nascia com esta guarda; o orgânico, não.
+  // Nada se perde: quem vencer de madrugada continua elegível e sai pela manhã.
+  const agoraBR = brasiliaAgora();
+  const horaBR = Number(String(agoraBR.agora).match(/(\d{1,2}):\d{2}/)?.[1] ?? -1);
+  const dow = new Date(Date.UTC(agoraBR.ymd.ano, agoraBR.ymd.mes - 1, agoraBR.ymd.dia)).getUTCDay();
+  if (dow < 1 || dow > 5 || horaBR < FOLLOWUP_HORA_INICIO || horaBR >= FOLLOWUP_HORA_FIM) return;
   try {
     let { data: leads, error } = await supabase.rpc("leads_frios_followup");
     if (error) { console.error("[FollowUp] RPC falhou:", error.message); return; }
@@ -8321,7 +8336,7 @@ async function rodarFollowUpLeads() {
 }
 function startFollowUp() {
   setInterval(() => rodarFollowUpLeads().catch(e => console.error("[FollowUp] scheduler:", e.message)), 30 * 60 * 1000);
-  console.log("[FollowUp] scheduler ativo (30 min). Envio real só com settings.followup_leads_enabled='true'.");
+  console.log(`[FollowUp] scheduler ativo (30 min), envio só em dia útil das ${FOLLOWUP_HORA_INICIO}h às ${FOLLOWUP_HORA_FIM}h. Envio real só com settings.followup_leads_enabled='true'.`);
 }
 
 // ===== DESCADASTRO DE MARKETING (opt-out) ==================================
