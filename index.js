@@ -1685,14 +1685,40 @@ function citouConvenioForaComoAtendido(reply) {
   const bruto = String(reply);
   const t = bruto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (!RE_CONTEXTO_ACEITA.test(t) || RE_NEGACAO.test(t)) return null;
+  // ⚠️ A RESPOSTA PRECISA ESTAR FALANDO DE PLANO. 03/09/2026: a trava disparou 5
+  // vezes num único dia sobre a frase mais comum da casa — "Atendemos em Águas
+  // Claras, sim — nossa unidade fica no Taguatinga Shopping" —, lendo "em Águas
+  // Claras" como se fosse nome de convênio. Cada disparo custa uma reescrita e
+  // arrisca estragar uma mensagem que estava certa. "Atendemos" sozinho não
+  // significa convênio: atendemos em bairros, atendemos crianças, atendemos por
+  // ordem de chegada.
+  const falaDePlano = /(conv[êe]nio|plano|seguro|credenciad)/i.test(bruto)
+    || /(exemplos?\s*:|conv[êe]nios?\s*:)/i.test(bruto);
+  if (!falaDePlano) return null;
   // Só olhamos ENUMERAÇÕES: "atendemos X, Y e Z" / "alguns exemplos: X, Y, Z".
-  const m = bruto.match(/(?:exemplos?\s*:|conv[êe]nios?\s*:|atendemos|trabalhamos com|aceitamos)([^.!?\n]{10,300})/i);
-  if (!m) return null;
+  // ⚠️ TODAS as ocorrências, não só a primeira. O caso que deu origem a esta
+  // trava (24/08) é exatamente assim: "Trabalhamos com diversos convênios.
+  // Alguns exemplos: Unimed, Bradesco Saúde, Amil…" — o primeiro gatilho captura
+  // só "diversos convênios" e a lista inventada vem na frase SEGUINTE.
+  const trechos = [...bruto.matchAll(/(?:exemplos?\s*:|conv[êe]nios?\s*:|atendemos|trabalhamos com|aceitamos)([^.!?\n]{10,300})/gi)]
+    .map(x => x[1]);
+  if (!trechos.length) return null;
+  const m = [null, trechos.join(" , ")];
+  // Fragmento que começa por preposição/possessivo é FRASE, não nome de plano
+  // ("em Águas Claras", "no Taguatinga Shopping", "nossa unidade fica...").
+  const RE_NAO_E_NOME = /^(em|no|na|nos|nas|ao|aos|de|do|da|dos|das|aqui|nossa|nosso|pelo|pela|por|com|sem|para|apenas|somente|tamb[ée]m|sim)\b/i;
+  // Lugar não é plano. Estes aparecem toda hora nas respostas da casa.
+  const RE_LUGAR = /(aguas claras|águas claras|taguatinga|asa norte|conjunto nacional|bras[íi]lia|plano piloto|shopping)/i;
   const fora = [];
   for (let frag of m[1].split(/[,;•]| e (?=[A-ZÀ-Ú])/)) {
     frag = frag.replace(/\([^)]*\)/g, " ").replace(/[*_"']/g, " ").trim().replace(/^[-–—\s]+|[-–—\s]+$/g, "");
     if (frag.length < 3 || RUIDO_LISTA.test(frag)) continue;
     if (!/[A-ZÀ-Ú]/.test(frag)) continue;                    // nome de plano vem capitalizado
+    if (RE_NAO_E_NOME.test(frag) || RE_LUGAR.test(frag)) continue;
+    // "Particular" não é um convênio da lista — é a ausência de convênio, e é
+    // resposta certa em qualquer mensagem. Sem isto a trava reprovava a própria
+    // ficha do agendamento ("particular | motivo: Consulta").
+    if (/^particular\b/i.test(frag) || /^motivo\s*:/i.test(frag)) continue;
     if (!convenioAtendido(frag)) fora.push(frag);
   }
   if (!fora.length) return null;
