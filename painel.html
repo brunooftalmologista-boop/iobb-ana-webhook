@@ -725,11 +725,29 @@ function renderList(){
         </div>
       </div>
     </div>`;
-  }).join('') || '<div style="padding:30px;text-align:center;color:#8696a0">Nenhuma conversa.</div>';
+  }).join('') || listaVaziaHTML();
 
   el.list.querySelectorAll('.conv').forEach(n=>{
     n.onclick=()=>openConversation(n.dataset.id);
   });
+  const limpar = el.list.querySelector('#limpar-busca');
+  if(limpar) limpar.onclick = ()=>{ el.search.value=''; onBusca(); el.search.focus(); };
+}
+// Lista vazia NUNCA fica muda. 03/09/2026: o painel "parou de funcionar" para a
+// equipe — e o que havia era uma busca esquecida na caixa ("Secretaria", zero
+// resultados). A tela dizia só "Nenhuma conversa.", sem citar a busca nem como
+// desfazê-la, então parecia sistema quebrado. Quem lê tem de saber POR QUE está
+// vazio e sair dali com um clique.
+function listaVaziaHTML(){
+  const q = el.search.value.trim();
+  const box = (txt, extra='') =>
+    `<div style="padding:30px 20px;text-align:center;color:#8696a0;line-height:1.6">${txt}${extra}</div>`;
+  if(q) return box(
+    `Nenhum resultado para <b>“${esc(q)}”</b>.<br><span style="font-size:12px">A busca vale para todas as conversas, não só as desta aba.</span>`,
+    `<br><button id="limpar-busca" style="margin-top:14px;padding:8px 18px;border:0;border-radius:16px;background:#00a884;color:#fff;font-size:14px;cursor:pointer">Limpar busca e ver tudo</button>`);
+  if(currentTab==='closed') return box('Nenhuma conversa encerrada.');
+  if(el.conn.textContent==='sem conexão') return box('Sem conexão com o servidor.<br><span style="font-size:12px">A lista volta sozinha assim que a conexão voltar.</span>');
+  return box('Nenhuma conversa ativa no período.<br><span style="font-size:12px">A lista mostra os últimos dias. Use a busca para achar um paciente mais antigo.</span>');
 }
 
 // ---------- Áudio (alerta sonoro) ----------
