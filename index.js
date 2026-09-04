@@ -3409,6 +3409,25 @@ async function getOrCreatePatient(phone) {
         }
       }
     }
+    // SEGUNDO NÚMERO DO MESMO PACIENTE (04/09/2026). Caso Maurício: consultou
+    // por um número e remarcou o exame por outro — dois números REAIS, não a
+    // variação do nono dígito (essa o bloco acima já resolve). Ficaram duas
+    // fichas, e a Ana pediu nome, nascimento e carteirinha de novo a quem tinha
+    // dado tudo dois dias antes. `telefones_extra` é o que faz a fusão de duas
+    // fichas valer para o futuro: sem isso, apagar a ficha do segundo número só
+    // faz o webhook criar outra na mensagem seguinte.
+    // Falha na consulta NÃO impede o atendimento — cai no insert de sempre.
+    if (!data) {
+      try {
+        const tentativas = [phone, variantePhoneBR(phone)].filter(Boolean);
+        const { data: apelido } = await supabase.from("patients").select("*")
+          .overlaps("telefones_extra", tentativas).limit(1);
+        if (apelido && apelido.length) {
+          console.log(`[Paciente] ${maskFone(phone)} é número extra da ficha ${maskFone(apelido[0].phone)} — reaproveitando o histórico.`);
+          return apelido[0];
+        }
+      } catch (e) { console.error("[Paciente] Busca por número extra falhou (segue normal):", e.message); }
+    }
     if (!data) {
       const { data: newPatient, error: insertError } = await supabase.from("patients").insert({ phone }).select().single();
       console.log("Patient insert:", JSON.stringify(newPatient), JSON.stringify(insertError));
