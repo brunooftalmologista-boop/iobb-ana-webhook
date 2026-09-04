@@ -345,8 +345,15 @@
       <div style="font-size:12.5px;color:#6b7b8c;margin-bottom:8px">Cirurgia ou lente indicada nesta consulta — é o que faz a Ana retomar o paciente depois.</div>
       <div id="agdet-ind-lista" style="font-size:13px;margin-bottom:8px"></div>
       <div id="agdet-ind-form" style="display:none">
-        <input id="agdet-ind-proc" list="ind-proc-lista" placeholder="Procedimento (ex.: PRK, catarata, lente escleral)" autocomplete="off">
-        <datalist id="ind-proc-lista"></datalist>
+        <!-- SELECT, e não <datalist> (03/09/2026): a caixa de sugestões do
+             datalist é cortada pelo navegador — no celular ela mostra meia dúzia
+             de itens com rolagem que ninguém vê, e foi assim que os dois "Teste
+             de lente", últimos da lista, sumiram para o Dr. Bruno. Um <select>
+             mostra tudo, em qualquer aparelho, e não exige digitar nada.
+             O "Outro" preserva o texto livre: é ele que permite escrever
+             "catarata trifocal tórica" e ganhar o valor exato. -->
+        <select id="agdet-ind-proc-sel"></select>
+        <input id="agdet-ind-proc" placeholder="Escreva o procedimento" autocomplete="off" style="display:none;margin-top:8px">
         <div style="display:flex;gap:8px;margin-top:8px">
           <select id="agdet-ind-olho" style="flex:0 0 120px"><option value="">Olho —</option><option>OD</option><option>OE</option><option>AO</option></select>
           <input id="agdet-ind-valor" placeholder="Valor (opcional)" inputmode="numeric" autocomplete="off" style="flex:1">
@@ -757,9 +764,9 @@ async function setPresenca(v){
 const IND_PROCEDIMENTOS = [
   'Cirurgia refrativa', 'Cirurgia de catarata',
   'Crosslinking', 'Anel de Ferrara',
+  'Teste de lente de contato (Esclera)', 'Teste de lente de contato (Esclera Multifocal)',
   'Lente escleral (Esclera SG)', 'Lente escleral (ZenLens)', 'Lente Zen RC',
   'Lente rígida gás permeável', 'Lente de contato gelatinosa',
-  'Teste de lente de contato (Esclera)', 'Teste de lente de contato (Esclera Multifocal)',
 ];
 const IND_ROTULO = { aberta:'🟡 em aberto', pausada:'⏸️ agora não', retornou:'📅 voltou a marcar',
                      fechada:'✅ fechou', recusada:'🚫 recusou', perdida:'💨 sem resposta' };
@@ -809,20 +816,35 @@ function indSairModoForm(){
   $('#agdet-ind-cancelar').style.display='none';
 }
 function indEntrarModoForm(){
-  if(!$('#ind-proc-lista').options.length){
-    $('#ind-proc-lista').innerHTML = IND_PROCEDIMENTOS.map(p=>'<option value="'+esc(p)+'">').join('');
+  const sel = $('#agdet-ind-proc-sel');
+  if(!sel.options.length){
+    sel.innerHTML = '<option value="">Escolha o procedimento…</option>'
+      + IND_PROCEDIMENTOS.map(p=>'<option value="'+esc(p)+'">'+esc(p)+'</option>').join('')
+      + '<option value="__outro">Outro — escrever</option>';
   }
+  sel.value='';
+  $('#agdet-ind-proc').style.display='none';
   $('#agdet-ind-proc').value=''; $('#agdet-ind-olho').value=''; $('#agdet-ind-valor').value='';
   $('#agdet-ind-form').style.display='block';
   $('#agdet-ind-abrir').style.display='none';
   $('#agdet-ind-salvar').style.display='';
   $('#agdet-ind-cancelar').style.display='';
-  $('#agdet-ind-proc').focus();
+  $('#agdet-ind-proc-sel').focus();
 }
+// "Outro" revela o campo de texto; qualquer outra escolha o esconde de novo.
+$('#agdet-ind-proc-sel').onchange = function(){
+  const livre = this.value === '__outro';
+  $('#agdet-ind-proc').style.display = livre ? '' : 'none';
+  if(livre) $('#agdet-ind-proc').focus();
+};
 async function salvarIndicacao(){
-  const proc = $('#agdet-ind-proc').value.trim();
+  const escolha = $('#agdet-ind-proc-sel').value;
+  const proc = escolha === '__outro' ? $('#agdet-ind-proc').value.trim() : escolha;
   const err = $('#agdet-ind-erro');
-  if(!proc){ err.textContent='Escreva o que foi indicado.'; err.style.display='block'; return; }
+  if(!proc){
+    err.textContent = escolha === '__outro' ? 'Escreva o que foi indicado.' : 'Escolha o procedimento indicado.';
+    err.style.display='block'; return;
+  }
   const valorBruto = $('#agdet-ind-valor').value.replace(/[^\d,.]/g,'').replace(/\./g,'').replace(',','.');
   try{
     const d = await api('/api/indicacoes', {method:'POST', body:{
