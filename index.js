@@ -5659,7 +5659,13 @@ app.post("/webhook", async (req, res) => {
       }
       if (!fotoDeCarteirinha) {
         const tipoArquivo = msg.type === "image" ? "imagem" : msg.type === "document" ? "documento" : "vídeo";
-        const reply = `Recebi ${tipoArquivo === "imagem" ? "a" : "o"} ${tipoArquivo}! 😊 Vou encaminhar para nossa equipe verificar. Assim que abrir o atendimento — segunda a sexta, das 8h às 18h — elas entram em contato com você. Posso ajudar com mais alguma coisa?`;
+        // SEM HORÁRIO NA FRASE (Dr. Bruno, 04/09/2026). A versão anterior dizia
+        // "assim que abrir o atendimento — segunda a sexta, das 8h às 18h", e essa
+        // é uma frase que só serve fora do expediente: quem manda uma foto às 10h
+        // da manhã de uma quarta lê que vai esperar até abrir, com a clínica
+        // aberta. Como este texto é FIXO (não passa pela API, de propósito), ele
+        // não sabe que horas são — então não pode falar de horas.
+        const reply = `Recebi ${tipoArquivo === "imagem" ? "a" : "o"} ${tipoArquivo}! 😊 Já encaminhei para nossa equipe verificar — elas entram em contato com você assim que possível. Posso ajudar com mais alguma coisa?`;
         await sendWhatsApp(from, reply);
         await saveMessage(conversation.id, "assistant", reply);
         await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification}\n\n🤖 *Ana:*\n${reply}`);
