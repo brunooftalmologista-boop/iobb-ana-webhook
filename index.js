@@ -519,7 +519,12 @@ QUANDO A LISTA "### Horários REALMENTE disponíveis" ESTIVER no seu contexto:
    Por que isso é inegociável: a ficha incompleta só aparece na recepção, com o paciente na frente — e aí ou ele é cobrado errado, ou descobre ali que o plano não é atendido, ou a consulta atrasa. Perguntar custa uma frase; não perguntar custa o paciente.
    Se o convênio citado NÃO estiver na lista de atendidos: diga com cordialidade que esse plano não é atendido e ofereça o atendimento particular (R$ 200,00). NUNCA marque "para confirmar depois".
    📋 NÃO REPITA A LISTA DE DADOS na sua mensagem de confirmação: o sistema anexa automaticamente, ao final dela, um resumo com nome, nascimento, forma de atendimento, data/hora e unidade para o paciente conferir. Sua mensagem continua sendo a de sempre (confirmação + endereço completo + aviso de lente de contato) — o resumo entra sozinho depois.
-   CARTEIRINHA — SEMPRE PEÇA, NUNCA TRAVE (todo paciente de CONVÊNIO, qualquer plano; nunca a paciente particular): peça de forma cordial a FOTO da carteirinha OU o NÚMERO dela, para anexar ao agendamento e a equipe solicitar a autorização. O pedido vai JUNTO com a oferta ou a confirmação do horário, na MESMA mensagem, e a mensagem segue normalmente — Ex.: "Reservei quinta-feira, 27/08, às 10h20, no Taguatinga Shopping. Aproveitando: poderia me enviar uma foto da sua carteirinha ou o número dela? Assim já anexo ao seu agendamento." O "assim já anexo" existe para deixar claro que o cartão NÃO é condição para marcar. ⛔ É ERRO GRAVE pedir a carteirinha e parar, deixar de emitir [AGENDAR] esperando o cartão, ou condicionar o horário a ele — foi assim que o fluxo de convênio morria antes. Se o paciente JÁ tiver enviado a carteirinha (ou o número) nesta conversa, NÃO peça de novo — agradeça e confirme que está anexada.
+   CARTEIRINHA — SEMPRE PEÇA, NUNCA TRAVE (todo paciente de CONVÊNIO, qualquer plano; nunca a paciente particular): peça de forma cordial a FOTO da carteirinha OU o NÚMERO dela, para anexar ao agendamento e a equipe solicitar a autorização. O pedido vai JUNTO com a oferta ou a confirmação do horário, na MESMA mensagem, e a mensagem segue normalmente — Ex.: "Reservei quinta-feira, 27/08, às 10h20, no Taguatinga Shopping. Aproveitando: poderia me enviar uma foto da sua carteirinha ou o número dela? Assim já anexo ao seu agendamento." O "assim já anexo" existe para deixar claro que o cartão NÃO é condição para marcar. ⛔ É ERRO GRAVE pedir a carteirinha e parar, deixar de emitir [AGENDAR] esperando o cartão, ou condicionar o horário a ele — foi assim que o fluxo de convênio morria antes. Caso real (03/09/2026, paciente Kattiucy, convênio Serpro): ela deu nome, nascimento e aceitou o horário das 14h20 do MESMO dia; você respondeu "poderia me enviar uma foto da carteirinha? O horário está separado" e NÃO emitiu [AGENDAR] — a agenda ficou vazia e a vaga, livre para outro paciente. Só gravou quando a foto chegou. Se ela tivesse dito "não estou com o cartão agora", não haveria consulta nenhuma. 🚫 NUNCA escreva que o horário está separado/guardado/reservado sem emitir o bloco na MESMA mensagem: para o paciente, essas palavras são a mesma promessa de "agendado". Se o paciente JÁ tiver enviado a carteirinha (ou o número) nesta conversa, NÃO peça de novo — agradeça e confirme que está anexada.
+5.0 🚫 VOCÊ NUNCA PROMETE ENCAIXE, NEM MANDA O PACIENTE CHEGAR ANTES (Dr. Bruno, 03/09/2026 — "gravíssimo").
+   Encaixe é decisão da EQUIPE, olhando a sala naquele momento. Você não vê a sala. Dizer "pode vir antes, a equipe verifica o encaixe" cria uma expectativa que ninguém prometeu — e o paciente que chega cedo e espera duas horas culpa a clínica, com razão.
+   ⛔ PROIBIDO escrever: "pode vir antes", "se chegar antes a equipe encaixa", "a equipe verifica a possibilidade de encaixe", "vou ver se consigo te encaixar" — em qualquer variação.
+   ✅ O QUE DIZER quando ele pergunta se pode ir antes, agora, ou se atrasar: o horário reservado é o dele (repita dia e hora), e para qualquer mudança na hora ele deve FALAR COM A EQUIPE pelo (61) 3033-6605 — são elas que decidem, na hora, olhando o fluxo. Nada de "pode vir".
+   ⏰ E ATENÇÃO À PAUSA DO ALMOÇO: das 13h às 14h a recepção está fechada. NUNCA convide alguém a comparecer nesse intervalo. Caso real (03/09/2026, 13h34): a paciente Idalia, com consulta às 14h00, perguntou "ou pode agora?" — às 13h34, dentro da pausa — e você respondeu "se estiver chegando antes, pode vir, a equipe verifica a possibilidade de encaixe". Ela iria encontrar a porta fechada, depois de você prometer um encaixe que não é seu para prometer.
 5. ENCAIXE, HORÁRIO MAIS CEDO ou ERRO (TRAVA DE SEGURANÇA): se o paciente pedir um ENCAIXE, ou um horário ANTERIOR/mais cedo do que os que estão na lista (ex.: quer amanhã e a lista só tem daqui a alguns dias), ou se por QUALQUER motivo você não conseguir oferecer/encontrar um horário, NÃO invente, NÃO force e NÃO marque um horário fora da lista. Explique com gentileza que vai registrar o pedido e que a nossa equipe de agendamento entrará em contato o mais breve possível (segunda a sexta, das 8h às 18h), e emita o bloco [PREAGENDAMENTO].
 
 QUANDO A LISTA NÃO ESTIVER no seu contexto (você não recebeu a agenda) OU vier avisando que está indisponível/sem vagas:
@@ -1302,10 +1307,164 @@ As duas unidades, de cor: **Conjunto Nacional — Asa Norte** (segundas, quartas
 Reescreva a mensagem inteira com o bairro certo. Se estiver em dúvida sobre o bairro, escreva só o nome da unidade, sem bairro nenhum — isso nunca está errado.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
+// ===== TRAVA: PROMETEU ENCAIXE OU MANDOU CHEGAR ANTES =====================
+// Dr. Bruno, 03/09/2026 ("gravíssimo"). Caso Idalia: consulta às 14h00, ela
+// perguntou "ou pode agora?" às 13h34 — DENTRO da pausa do almoço — e a Ana
+// respondeu "se estiver chegando antes, pode vir — a equipe verifica a
+// possibilidade de encaixe assim que chegar". Porta fechada e encaixe prometido
+// por quem não decide encaixe.
+// Não é caso isolado: em 30 dias, 5 respostas prometeram que a equipe encaixaria
+// (01/09 três vezes, 21/08, 03/09). A regra "a Ana nunca oferece encaixe" já
+// existia no prompt e não segurou.
+// ⚠️ NÃO trava quando ela RECUSA ("não consigo encaixar", "não trabalhamos com
+// encaixe") nem quando "encaixa" aparece no sentido comum ("a sexta é a que se
+// encaixa lá") — medido contra 30 dias de conversas.
+const RE_PROMETE_ENCAIXE = /(equipe|recep[çc][ãa]o|elas?)[^.!?\n]{0,40}(encaix|verifica[^.!?\n]{0,20}possibilidade)|(verifica|ver|tenta)[^.!?\n]{0,25}encaix|possibilidade de encaix|consigo (te )?encaix|d[áa] para encaix|pode vir antes|chegar antes[^.!?\n]{0,30}(encaix|pode vir)|se (estiver )?chegando antes[^.!?\n]{0,30}pode vir/i;
+const RE_ENCAIXE_NEGADO = /n[ãa]o (consigo|posso|d[áa]|trabalhamos|fazemos|h[áa]) [^.!?\n]{0,25}encaix|sem encaix|n[ãa]o (fa[çc]o|ofere[çc]o) encaix/i;
+function prometeuEncaixe(reply) {
+  const t = String(reply || "");
+  if (!RE_PROMETE_ENCAIXE.test(t)) return null;
+  const frase = t.split(/(?<=[.!?\n])/).find(f => RE_PROMETE_ENCAIXE.test(f)) || "";
+  if (RE_ENCAIXE_NEGADO.test(frase)) return null;
+  return "prometeu encaixe ou mandou o paciente chegar antes — encaixe é decisão da equipe, na hora, e você não vê a sala";
+}
+function instrucaoSemEncaixe(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Quem chega cedo confiando nisso espera duas horas e culpa a clínica — com razão. E das 13h às 14h a recepção está FECHADA para o almoço: mandar alguém nesse intervalo é mandar para uma porta fechada.
+Reescreva confirmando o horário reservado dele (dia e hora, exatamente como está) e, para qualquer mudança de última hora — chegar antes, chegar atrasado, tentar hoje —, oriente a FALAR COM A EQUIPE pelo (61) 3033-6605: são elas que decidem na hora, olhando o fluxo do dia. Não escreva "pode vir", não cite encaixe, não prometa que alguém vai verificar.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
 function instrucaoUnidadeDoDia(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. O paciente iria à unidade errada e encontraria a porta fechada.
 CADA DIA PERTENCE A UMA ÚNICA UNIDADE: segunda, quarta e sexta são no Conjunto Nacional (Asa Norte); terça e quinta são no Taguatinga Shopping (Águas Claras). Não existe horário do Conjunto numa terça, nem do Taguatinga numa sexta.
 Reescreva a mensagem escolhendo, DA LISTA, um horário que seja de VERDADE da unidade que você citou — confira na própria linha da lista, que diz a unidade de cada vaga. Se a unidade citada é obrigatória (o procedimento só é feito nela) e não tem vaga hoje, ofereça o primeiro dia DELA que aparece na lista, dizendo o dia da semana e a data. NUNCA ofereça a vaga de uma unidade dizendo "nessa unidade" quando a unidade que você nomeou é outra.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
+// ===== TRAVA: PACIENTE PEDIU UMA UNIDADE, ANA OFERECEU A OUTRA =============
+// Dr. Bruno, 03/09/2026: "Paciente pediu horário na Asa Norte, Ana ofereceu
+// Taguatinga Shopping". Caso real (Virginia, 15h39): ela escreveu "Asa norte" e
+// a resposta seguinte foi "o horário mais próximo que tenho disponível é
+// quinta-feira, 03/09 às 15:40, no Taguatinga Shopping". Ela teve de repetir
+// "Prefiro na unidade do conjunto nacional (asa norte)" para ser ouvida.
+// POR QUE AS TRAVAS DE UNIDADE QUE JÁ EXISTEM NÃO PEGAM ISSO: unidadeContradizOferta
+// só julga se a vaga é do DIA certo (era — quinta é Taguatinga mesmo) e
+// bairroTrocado só olha o bairro colado no nome. Nenhuma das duas compara o que
+// a Ana ofereceu com o que o PACIENTE PEDIU. Esse é o buraco.
+// A escolha da unidade hoje é só uma ORDENAÇÃO da lista (a filtragem foi removida
+// em 12/08 porque escondia vagas) — ordenar é uma dica, e dica o modelo ignora
+// quando a pergunta interna vira "qual é o horário mais próximo?". Aqui vira fato.
+// ⚠️ NÃO trava (medido contra 30 dias de conversas):
+//   • resposta que cita AS DUAS unidades — é a oferta com alternativa, que o
+//     prompt manda fazer quando o horário cedo só existe na outra;
+//   • paciente que pediu o mais cedo / com pressa / "tanto faz";
+//   • paciente que pediu um DIA da outra unidade — o dia manda na unidade
+//     (seg/qua/sex = Conjunto; ter/qui = Taguatinga), e pedir "terça" é pedir
+//     Taguatinga mesmo tendo dito Asa Norte antes;
+//   • unidade pedida sem NENHUMA vaga na lista — aí oferecer a outra é o certo.
+// Aceite seco do paciente: depois dele, a mensagem da Ana é CONFIRMAÇÃO, não
+// oferta — e a unidade que ele pediu lá atrás já foi superada pela que ele
+// aceitou agora. Sem esta guarda a trava recusava a própria confirmação (medido:
+// 2 casos em 30 dias, ambos logo depois de "Correto" / "Pode ser").
+const RE_ACEITE_SECO = /^\s*(pode ser|pode sim|pode|sim|isso|isso mesmo|ok|okay|correto|confirmo|confirmado|fechado|perfeito|t[áa] bom|beleza|claro|serve|aceito|combinado)[\s.!,]*$/i;
+function unidadeIgnorada(reply, messages, slots, meusAgendamentos) {
+  if (!reply || !Array.isArray(slots) || !slots.length) return null;
+  const pedida = detectUnidade(messages);          // "conjunto" | "taguatinga" | null
+  if (!pedida) return null;
+  const t = String(reply);
+  const dizTag  = /taguatinga|[áa]guas claras/i.test(t);
+  const dizConj = /conjunto\s*(nacional)?|asa norte/i.test(t);
+  if (dizTag === dizConj) return null;             // as duas (deu escolha) ou nenhuma
+  const ofereceu = dizTag ? "taguatinga" : "conjunto";
+  if (ofereceu === pedida) return null;
+  if (!horariosOferecidos(t).length) return null;  // não é oferta de horário
+  const ehTag = (s) => /taguatinga|[áa]guas claras/i.test(String(s.unidade || ""));
+  if (!slots.some(s => (ehTag(s) ? "taguatinga" : "conjunto") === pedida)) return null;
+  // Já tem consulta marcada na unidade oferecida: falar dela não é ignorar o pedido.
+  if ((meusAgendamentos || []).some(a => (/taguatinga|[áa]guas claras/i.test(String(a.unidade || "")) ? "taguatinga" : "conjunto") === ofereceu)) return null;
+  const usuarios = (messages || []).filter(m => m.role === "user");
+  if (usuarios.length && RE_ACEITE_SECO.test(String(usuarios[usuarios.length - 1].content || ""))) return null;
+  // Recapitulação do que ele já aceitou ("o horário que você aceitou é...") também
+  // é confirmação, não oferta nova — mesmo quando a última mensagem dele foi a ficha.
+  if (/que\s+voc[êe]\s+(aceitou|escolheu|confirmou)|voc[êe]\s+(aceitou|escolheu)|conforme combinad|como combinamos/i.test(t)) return null;
+  const ult = (messages || []).filter(m => m.role === "user").slice(-2)
+    .map(m => String(m.content || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")).join(" ");
+  if (/mais cedo|mais proxim|o quanto antes|urgen|com pressa|assim que possiv|qualquer (uma|unidade)|tanto faz|o primeiro que/.test(ult)) return null;
+  const pediuDiaDe = /(ter[cç]a|quinta)/.test(ult) ? "taguatinga"
+                   : /(segunda|quarta|sexta)/.test(ult) ? "conjunto" : null;
+  if (pediuDiaDe === ofereceu) return null;
+  for (const rel of [["hoje", 0], ["amanha", 1]]) {
+    if (!new RegExp(`\\b${rel[0]}`).test(ult)) continue;
+    const d = new Date(Date.now() + rel[1] * 86400000);
+    const u = unidadeDoDia(d);
+    if (u && (/taguatinga/i.test(u) ? "taguatinga" : "conjunto") === ofereceu) return null;
+  }
+  const nomes = { conjunto: "Conjunto Nacional (Asa Norte)", taguatinga: "Taguatinga Shopping (Águas Claras)" };
+  return `o paciente pediu ${nomes[pedida]} e você ofereceu horário no ${nomes[ofereceu]}, sem oferecer nada na unidade que ele escolheu`;
+}
+function instrucaoUnidadeDoPaciente(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. Ele já disse onde quer ser atendido: essa parte está DECIDIDA e não se discute mais. Oferecer a outra unidade depois disso soa como se você não tivesse lido — e o paciente tem de repetir o que já falou, ou desiste.
+A unidade que ele escolheu TEM vaga na lista. Reescreva oferecendo UM único horário DELA — volte ao TOPO da lista e pegue a data mais próxima daquela unidade (lembre: segunda, quarta e sexta são do Conjunto Nacional; terça e quinta, do Taguatinga Shopping). Diga o dia da semana, a data e a hora exatamente como estão na linha da lista.
+Só cite a outra unidade se for para ACRESCENTAR uma opção na mesma frase ("...ou, se preferir, tenho tal dia no Taguatinga Shopping") — nunca no lugar da que ele pediu, e nunca sem oferecer a dele primeiro.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
+// ===== TRAVA: PEDIU DE NOVO A CARTEIRINHA QUE JÁ RECEBEU ===================
+// Dr. Bruno, 03/09/2026: "Pediu foto da carteirinha para a mesma paciente que já
+// havia enviado a foto e que ela reconheceu alguns minutos antes".
+// Caso real (Virginia, mesma conversa): 15h38 — "Identifiquei sua carteirinha,
+// Virginia. É a Unimed Serrana RJ"; 15h43 — "poderia me informar seu nome
+// completo, data de nascimento e o número da carteirinha (ou enviar uma foto
+// dela)?". Cinco minutos. Para o paciente isso é a prova de que ninguém leu o
+// que ele mandou — e depois de mandar duas vezes, ele para de mandar.
+// A regra já está escrita em DOIS lugares do prompt desde 26/08 ("Se o paciente
+// JÁ tiver enviado a carteirinha, NÃO peça de novo") e não segurou: instrução em
+// prosa não sobrevive a uma mensagem que junta três pedidos de dado.
+// Nome completo e nascimento CONTINUAM sendo pedidos — o que se corta é só o
+// terceiro item. E a carteirinha nunca travou o agendamento (regra de 26/08):
+// esta trava é sobre não pedir DUAS VEZES, não sobre exigir.
+// A trava só olha para UM sinal: a Ana ter dito, antes, que LEU o cartão — que
+// foi o caso da Virginia ("Identifiquei sua carteirinha... É a Unimed Serrana RJ").
+// "O paciente mandou uma foto" NÃO serve como sinal, e a medição contra 30 dias
+// de conversas mostrou por quê: em 9 dos casos a foto veio em PDF ou ilegível, a
+// Ana disse "não consigo visualizar" e pediu de novo — pedido CERTO, que uma
+// trava baseada em "chegou imagem" mataria.
+const RE_LEU_CARTEIRINHA = /(identifiquei|consegui ler|li)\s+(a\s+|as\s+|sua\s+|o\s+|os\s+)?(carteirinha|cart[ãa]o|seguintes informa|dados d[ao] (cart|carteir))|carteirinha\s+(recebida|identificada)\b/i;
+// O pedido tem de ser um PEDIDO. Sem esta parte a trava casava com "Recebi a foto
+// da carteirinha" e "Obrigada pelo envio da carteirinha!" — agradecimentos, não
+// pedidos — e recusava respostas perfeitas.
+const RE_ALVO_CARTEIRINHA = /carteirinha|cart[ãa]o do (plano|conv[êe]nio)|cart[ãa]o do seu/i;
+const RE_MARCA_PEDIDO = /poderia|pode me|consegue|me (envie|informe|informa|manda|mande|passe|diga)|\benvie\b|\benviar\b|\binforme\b|\bdigite\b|\bdigitar\b|preciso d|precisarei d|necessito|falta[m]?\b|me confirma/i;
+// Casos em que pedir DE NOVO é o certo — medidos nas conversas reais:
+//   (a) a imagem/PDF anterior não abriu ou não estava legível;
+//   (b) é a carteirinha de OUTRA pessoa (agendamento de casal, mãe e filho);
+//   (c) "traga a carteirinha no dia" não é pedido de envio agora.
+//   (d) a carteirinha citada como FONTE de outro dado ("o sobrenome que apareceu
+//       na carteirinha é 'do Nasci' ou há mais?" — o pedido ali é o nome, não o cartão);
+//   (e) pedido CONDICIONAL ("assim que tiver a carteirinha do Luís Felipe, envie").
+const RE_PEDIDO_LEGITIMO = /n[ãa]o consig|n[ãa]o consegui|n[ãa]o (ficou|est[áa]|saiu) leg[íi]vel|mais leg[íi]vel|\bpdf\b|n[ãa]o abriu|ilegiv|tamb[ée]m|da outra|de cada um|d[oa]s dois|d[oa]s duas|trazer|traga|leve|no dia da consulta|(apareceu|aparece|consta|veio|vi)\s+(na|no)\s+(carteirinha|cart[ãa]o)|(assim que|quando|se)\s+(voc[êe]\s+)?tiver/i;
+// Conversa de MAIS DE UM paciente (casal, mãe e filhos): a Ana lê uma carteirinha
+// e pede a do outro — pedido certo. O sinal é ela própria ter escrito no plural.
+const RE_LEU_VARIAS = /carteirinhas/i;
+function pediuCarteirinhaDeNovo(reply, messages) {
+  const t = String(reply || "");
+  const hist = Array.isArray(messages) ? messages : [];
+  const leituras = hist.filter(m => m.role === "assistant" && RE_LEU_CARTEIRINHA.test(String(m.content || "")));
+  if (!leituras.length) return null;
+  if (leituras.some(m => RE_LEU_VARIAS.test(String(m.content || "")))) return null;
+  // Frase a frase: o pedido e o alvo têm de estar na MESMA frase, senão um
+  // "obrigada pela carteirinha" numa linha casa com um "poderia me informar o
+  // nome completo?" na linha seguinte.
+  for (const f of t.split(/(?<=[.!?\n])/)) {
+    if (!RE_ALVO_CARTEIRINHA.test(f) || !RE_MARCA_PEDIDO.test(f)) continue;
+    if (RE_PEDIDO_LEGITIMO.test(f) || RE_PEDIDO_LEGITIMO.test(t)) return null;
+    return "pediu a carteirinha de novo — você mesma já disse nesta conversa que tinha lido o cartão dele";
+  }
+  return null;
+}
+function instrucaoCarteirinhaJaRecebida(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Pedir duas vezes a mesma coisa é a prova, para o paciente, de que ninguém leu o que ele mandou — e quem manda a carteirinha duas vezes não manda uma terceira.
+Reescreva a mensagem SEM pedir a carteirinha, o número dela, o cartão ou uma foto. Se precisar citá-la, é só para tranquilizar: "sua carteirinha já está anexada ao agendamento".
+⚠️ NÃO corte os outros dados: nome completo e data de nascimento continuam sendo necessários — se ainda faltarem, peça-os normalmente nesta mesma mensagem, junto do horário. O que sai é SÓ o pedido da carteirinha.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
@@ -1685,14 +1844,40 @@ function citouConvenioForaComoAtendido(reply) {
   const bruto = String(reply);
   const t = bruto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (!RE_CONTEXTO_ACEITA.test(t) || RE_NEGACAO.test(t)) return null;
+  // ⚠️ A RESPOSTA PRECISA ESTAR FALANDO DE PLANO. 03/09/2026: a trava disparou 5
+  // vezes num único dia sobre a frase mais comum da casa — "Atendemos em Águas
+  // Claras, sim — nossa unidade fica no Taguatinga Shopping" —, lendo "em Águas
+  // Claras" como se fosse nome de convênio. Cada disparo custa uma reescrita e
+  // arrisca estragar uma mensagem que estava certa. "Atendemos" sozinho não
+  // significa convênio: atendemos em bairros, atendemos crianças, atendemos por
+  // ordem de chegada.
+  const falaDePlano = /(conv[êe]nio|plano|seguro|credenciad)/i.test(bruto)
+    || /(exemplos?\s*:|conv[êe]nios?\s*:)/i.test(bruto);
+  if (!falaDePlano) return null;
   // Só olhamos ENUMERAÇÕES: "atendemos X, Y e Z" / "alguns exemplos: X, Y, Z".
-  const m = bruto.match(/(?:exemplos?\s*:|conv[êe]nios?\s*:|atendemos|trabalhamos com|aceitamos)([^.!?\n]{10,300})/i);
-  if (!m) return null;
+  // ⚠️ TODAS as ocorrências, não só a primeira. O caso que deu origem a esta
+  // trava (24/08) é exatamente assim: "Trabalhamos com diversos convênios.
+  // Alguns exemplos: Unimed, Bradesco Saúde, Amil…" — o primeiro gatilho captura
+  // só "diversos convênios" e a lista inventada vem na frase SEGUINTE.
+  const trechos = [...bruto.matchAll(/(?:exemplos?\s*:|conv[êe]nios?\s*:|atendemos|trabalhamos com|aceitamos)([^.!?\n]{10,300})/gi)]
+    .map(x => x[1]);
+  if (!trechos.length) return null;
+  const m = [null, trechos.join(" , ")];
+  // Fragmento que começa por preposição/possessivo é FRASE, não nome de plano
+  // ("em Águas Claras", "no Taguatinga Shopping", "nossa unidade fica...").
+  const RE_NAO_E_NOME = /^(em|no|na|nos|nas|ao|aos|de|do|da|dos|das|aqui|nossa|nosso|pelo|pela|por|com|sem|para|apenas|somente|tamb[ée]m|sim)\b/i;
+  // Lugar não é plano. Estes aparecem toda hora nas respostas da casa.
+  const RE_LUGAR = /(aguas claras|águas claras|taguatinga|asa norte|conjunto nacional|bras[íi]lia|plano piloto|shopping)/i;
   const fora = [];
   for (let frag of m[1].split(/[,;•]| e (?=[A-ZÀ-Ú])/)) {
     frag = frag.replace(/\([^)]*\)/g, " ").replace(/[*_"']/g, " ").trim().replace(/^[-–—\s]+|[-–—\s]+$/g, "");
     if (frag.length < 3 || RUIDO_LISTA.test(frag)) continue;
     if (!/[A-ZÀ-Ú]/.test(frag)) continue;                    // nome de plano vem capitalizado
+    if (RE_NAO_E_NOME.test(frag) || RE_LUGAR.test(frag)) continue;
+    // "Particular" não é um convênio da lista — é a ausência de convênio, e é
+    // resposta certa em qualquer mensagem. Sem isto a trava reprovava a própria
+    // ficha do agendamento ("particular | motivo: Consulta").
+    if (/^particular\b/i.test(frag) || /^motivo\s*:/i.test(frag)) continue;
     if (!convenioAtendido(frag)) fora.push(frag);
   }
   if (!fora.length) return null;
@@ -1748,7 +1933,13 @@ async function desfazerAgendamentoComConvenioRecusado(reply, from, conversationI
 // Duas causas possíveis, ambas cobertas aqui: ela não emitiu o bloco [AGENDAR],
 // ou emitiu com `inicio` ausente/inválido — e nesse caso processarAgendarDaAna
 // falhava em SILÊNCIO (console.error e return, sem avisar paciente nem equipe).
-const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendamento (est[áa]|foi) confirmad|(consulta|hor[áa]rio)[^.!?\n]{0,40}(est[áa]|foi) (agendad|confirmad|marcad|reservad)|(reservei|deixei reservad|est[áa] reservad)/i;
+// "separado", "guardado", "segurado" entraram em 03/09/2026: a Ana escreveu
+// "O horário está separado: hoje, 03/09, às 14h20" e NÃO gravou — ficou esperando
+// a foto da carteirinha, que a regra de 26/08 proíbe exigir. A paciente passou
+// dois minutos e meio achando que tinha vaga guardada, com a agenda vazia. Se ela
+// tivesse dito "não estou com o cartão agora", não haveria agendamento nenhum.
+// Para o paciente, "separei", "guardei" e "reservei" são a mesma promessa.
+const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendamento (est[áa]|foi) confirmad|(consulta|hor[áa]rio)[^.!?\n]{0,40}(est[áa]|foi) (agendad|confirmad|marcad|reservad|separad|guardad|segurad)|(reservei|separei|guardei|deixei reservad|deixei separad|est[áa] reservad|est[áa] separad)/i;
 // ⚠️ As exclusões valem SÓ na frase do anúncio, nunca na mensagem inteira.
 // A 1ª versão desta trava excluía qualquer mensagem contendo "?", "se" ou "caso"
 // — e TODA confirmação da Ana termina com "**Se** você usa lente de contato..." e
@@ -5468,7 +5659,13 @@ app.post("/webhook", async (req, res) => {
       }
       if (!fotoDeCarteirinha) {
         const tipoArquivo = msg.type === "image" ? "imagem" : msg.type === "document" ? "documento" : "vídeo";
-        const reply = `Recebi ${tipoArquivo === "imagem" ? "a" : "o"} ${tipoArquivo}! 😊 Vou encaminhar para nossa equipe verificar. Assim que abrir o atendimento — segunda a sexta, das 8h às 18h — elas entram em contato com você. Posso ajudar com mais alguma coisa?`;
+        // SEM HORÁRIO NA FRASE (Dr. Bruno, 04/09/2026). A versão anterior dizia
+        // "assim que abrir o atendimento — segunda a sexta, das 8h às 18h", e essa
+        // é uma frase que só serve fora do expediente: quem manda uma foto às 10h
+        // da manhã de uma quarta lê que vai esperar até abrir, com a clínica
+        // aberta. Como este texto é FIXO (não passa pela API, de propósito), ele
+        // não sabe que horas são — então não pode falar de horas.
+        const reply = `Recebi ${tipoArquivo === "imagem" ? "a" : "o"} ${tipoArquivo}! 😊 Já encaminhei para nossa equipe verificar — elas entram em contato com você assim que possível. Posso ajudar com mais alguma coisa?`;
         await sendWhatsApp(from, reply);
         await saveMessage(conversation.id, "assistant", reply);
         await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification}\n\n🤖 *Ana:*\n${reply}`);
@@ -5792,7 +5989,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         dynEstavel += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, 14, tagAte)}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quarta, 22/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. MODELO DO QUE SE ESPERA — esta resposta foi elogiada como exatamente o padrão certo, copie o espírito dela: "Posso verificar outras opções, sim. Se o das 9h40 na segunda, 10/08, não for conveniente, me diz o que funciona melhor para você — manhã ou tarde, algum dia de preferência — e eu indico o mais adequado." Repare no que ela faz: acolhe o pedido, NÃO despeja uma lista, relembra o horário que já está na mesa e devolve UMA pergunta objetiva que estreita a escolha. É assim que se descobre a preferência sem transformar o atendimento em cardápio. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.\n🔄 MUDOU O CRITÉRIO? VARRA A LISTA DE NOVO, DESDE O COMEÇO. Quando o paciente troca de período, de horário ou de unidade ("tem na hora do almoço?", "e de tarde?", "e no Taguatinga?"), NÃO continue a partir da data que você acabou de oferecer — volte ao TOPO da lista e ache a data MAIS PRÓXIMA que atende ao novo pedido. Caso real de 06/08: a paciente pediu manhã cedo, recebeu 14/08 às 9h20 (certo, as 9h de 10/08 e 12/08 estavam ocupadas), perguntou "tem na hora do almoço?" e recebeu 14/08 às 12h — mas 10/08 às 12h estava LIVRE. Como a conversa seguiu ancorada no 14/08, ela acabou marcando 19/08: nove dias a mais do que precisava, e a vaga de 10/08 ficou vazia. Só ofereça data mais distante quando o PACIENTE pedir ("semana que vem", um dia específico, "depois do dia X").
 🚫 HORÁRIO PROPOSTO PELO PACIENTE (regra crítica): quando o PACIENTE sugerir um horário ("consigo às 16h20", "tem às 15h?", "pode ser mais cedo, tipo 9h?"), PROCURE esse horário exato na lista acima. Se ele ESTIVER na lista, confirme normalmente. Se NÃO ESTIVER, é porque está ocupado ou não existe — então NUNCA diga "agendado", "remarcado" ou "confirmado" para ele. Responda que nesse horário não tem vaga e ofereça o mais próximo QUE ESTÁ na lista (ex.: "Às 16h20 não tenho vaga; consigo às 16h40 — pode ser?"). Confirmar um horário que não está na lista faz o paciente vir num horário ocupado por outra pessoa — é o pior erro possível.\n💰 PREÇO NUNCA ENCERRA A CONVERSA: sempre que você informar um valor de lente, cirurgia ou procedimento, a MESMA mensagem tem de terminar oferecendo um horário concreto da lista. Caso real: um paciente de lente escleral recebeu "está no valor de R$ 5.980,00 o par" e a conversa morreu ali — nenhum horário foi oferecido e ele nunca mais escreveu. Valor sem próximo passo é um beco: o paciente fica com o número na cabeça, sem nada para responder. O certo é fechar com "...e a avaliação, que define a lente ideal para a sua córnea, é R$ 200,00. Consigo *[dia] às [hora]* — quer que eu reserve?".
 🚫 NÃO PROMETA RESERVA QUE VOCÊ AINDA NÃO FEZ: enquanto faltar qualquer dado para emitir o [AGENDAR], é PROIBIDO dizer "vou já reservar", "já reservei", "está reservado" ou "vou guardar esse horário". O horário só fica reservado no instante em que você emite o bloco — antes disso ele continua livre para outra pessoa. Caso real: a Ana disse "Vou já reservar esse horário para você" e pediu o nome; o paciente não respondeu, nada foi reservado, e a vaga ficou vazia sem ninguém saber. O certo é pedir o dado deixando claro que a reserva depende dele: "Perfeito! Para eu reservar esse horário, me confirma seu nome completo e a data de nascimento?". Depois de gravar, aí sim anuncie: "Agendado para [dia] às [hora]".
-🚫 CORRIGIR UM DADO NÃO É REMARCAR: se você já marcou um horário nesta conversa e depois precisa apenas ajustar convênio, nome, nascimento ou carteirinha, NUNCA re-emita [AGENDAR] com um horário DIFERENTE — repita EXATAMENTE o mesmo [inicio:] de antes (ou apenas emita [CARTEIRINHA]). Trocar o horário por conta própria muda a consulta de lugar sem o paciente pedir, e ele aparece na hora errada. Só mude o horário quando o PACIENTE pedir para mudar.\nVale igual para REMARCAÇÃO: só anuncie a remarcação depois de escolher um horário DA LISTA. Enquanto o novo horário não for um da lista, o agendamento antigo continua valendo — não diga ao paciente que mudou.\nÚNICA EXCEÇÃO à regra do horário único: agendamento para MAIS DE UM paciente — ofereça exatamente UM horário POR paciente (N pacientes = N horários), preferindo horários em sequência no mesmo dia/unidade e dizendo qual é de quem (ver a seção "Agendamento para MAIS DE UM paciente").\nATENÇÃO — A LISTA ACIMA TEM AS DUAS UNIDADES: cada linha diz a unidade e o dia. NUNCA diga que "não há horário" numa unidade ou num dia sem antes procurar na lista inteira: pode haver vaga naquele dia em outra linha, mais abaixo. Lembre que cada dia pertence a UMA unidade (seg/qua/sex = Conjunto Nacional; ter/qui = Taguatinga), então um pedido por um DIA já define a unidade — se o paciente pedir sexta, procure as linhas de sexta (Conjunto Nacional), mesmo que ele tenha citado a outra unidade antes.\nNUNCA escreva o dia da semana de uma data por conta própria: copie o dia da semana exatamente como aparece na linha da lista (ex.: se a linha diz "sexta-feira, 31/07", nunca escreva "quinta-feira, 31/07"). Errar isso faz o paciente vir no dia errado.${horizonteTxt}${(!unidade && ANA_UNIDADE_PREFERIDA) ? `\nPREFERÊNCIA DE UNIDADE (este paciente ainda NÃO disse onde quer ser atendido): hoje temos MAIS DISPONIBILIDADE na unidade **${ANA_UNIDADE_PREFERIDA}**. Use isso de duas formas: (a) AO PERGUNTAR a preferência, acrescente essa informação verdadeira e útil — ex.: "prefere Conjunto Nacional ou Taguatinga Shopping (em Águas Claras)? No Conjunto Nacional tenho mais horários disponíveis esta semana"; (b) se VOCÊ tiver que escolher (paciente sem preferência, com pressa, ou pedindo "o horário mais próximo"), ofereça um horário do **${ANA_UNIDADE_PREFERIDA}**. LIMITES: se o paciente disser que prefere a outra unidade, ou citar bairro/região mais perto dela, ATENDA IMEDIATAMENTE, sem insistir e sem justificar a troca. NUNCA diga que a outra unidade está cheia nem invente motivo — a única coisa que você pode afirmar é que há mais horários disponíveis nesta. EXCEÇÃO IMPORTANTE: se o paciente pedir explicitamente o horário MAIS PRÓXIMO/mais cedo possível (pressa, urgência de agenda), ofereça o horário genuinamente mais próximo da lista, mesmo que seja da outra unidade — nunca empurre uma data mais distante só para preencher a unidade preferida.` : ""}`;
+🚫 CORRIGIR UM DADO NÃO É REMARCAR: se você já marcou um horário nesta conversa e depois precisa apenas ajustar convênio, nome, nascimento ou carteirinha, NUNCA re-emita [AGENDAR] com um horário DIFERENTE — repita EXATAMENTE o mesmo [inicio:] de antes (ou apenas emita [CARTEIRINHA]). Trocar o horário por conta própria muda a consulta de lugar sem o paciente pedir, e ele aparece na hora errada. Só mude o horário quando o PACIENTE pedir para mudar.\nVale igual para REMARCAÇÃO: só anuncie a remarcação depois de escolher um horário DA LISTA. Enquanto o novo horário não for um da lista, o agendamento antigo continua valendo — não diga ao paciente que mudou.\nÚNICA EXCEÇÃO à regra do horário único: agendamento para MAIS DE UM paciente — ofereça exatamente UM horário POR paciente (N pacientes = N horários), preferindo horários em sequência no mesmo dia/unidade e dizendo qual é de quem (ver a seção "Agendamento para MAIS DE UM paciente").\nATENÇÃO — A LISTA ACIMA TEM AS DUAS UNIDADES: cada linha diz a unidade e o dia. NUNCA diga que "não há horário" numa unidade ou num dia sem antes procurar na lista inteira: pode haver vaga naquele dia em outra linha, mais abaixo. Lembre que cada dia pertence a UMA unidade (seg/qua/sex = Conjunto Nacional; ter/qui = Taguatinga), então um pedido por um DIA já define a unidade — se o paciente pedir sexta, procure as linhas de sexta (Conjunto Nacional), mesmo que ele tenha citado a outra unidade antes.\nNUNCA escreva o dia da semana de uma data por conta própria: copie o dia da semana exatamente como aparece na linha da lista (ex.: se a linha diz "sexta-feira, 31/07", nunca escreva "quinta-feira, 31/07"). Errar isso faz o paciente vir no dia errado.${horizonteTxt}${unidade ? `\n📍 ESTE PACIENTE JÁ ESCOLHEU A UNIDADE: **${unidade === "conjunto" ? "Conjunto Nacional (Asa Norte)" : "Taguatinga Shopping (Águas Claras)"}**. Essa parte está DECIDIDA — o horário que você oferecer TEM de ser dessa unidade (confira a unidade na própria linha da lista). Não reformule a pergunta como "qual é o horário mais próximo?": o mais próximo da OUTRA unidade não serve, e oferecê-lo faz o paciente repetir o que já disse. Só cite a outra unidade para ACRESCENTAR uma opção na mesma frase, nunca no lugar da que ele pediu. Caso real (03/09): a paciente escreveu "Asa norte" e recebeu "o horário mais próximo que tenho disponível é quinta-feira, 03/09 às 15:40, no Taguatinga Shopping" — teve de escrever de novo "Prefiro na unidade do conjunto nacional (asa norte)".` : ""}${(!unidade && ANA_UNIDADE_PREFERIDA) ? `\nPREFERÊNCIA DE UNIDADE (este paciente ainda NÃO disse onde quer ser atendido): hoje temos MAIS DISPONIBILIDADE na unidade **${ANA_UNIDADE_PREFERIDA}**. Use isso de duas formas: (a) AO PERGUNTAR a preferência, acrescente essa informação verdadeira e útil — ex.: "prefere Conjunto Nacional ou Taguatinga Shopping (em Águas Claras)? No Conjunto Nacional tenho mais horários disponíveis esta semana"; (b) se VOCÊ tiver que escolher (paciente sem preferência, com pressa, ou pedindo "o horário mais próximo"), ofereça um horário do **${ANA_UNIDADE_PREFERIDA}**. LIMITES: se o paciente disser que prefere a outra unidade, ou citar bairro/região mais perto dela, ATENDA IMEDIATAMENTE, sem insistir e sem justificar a troca. NUNCA diga que a outra unidade está cheia nem invente motivo — a única coisa que você pode afirmar é que há mais horários disponíveis nesta. EXCEÇÃO IMPORTANTE: se o paciente pedir explicitamente o horário MAIS PRÓXIMO/mais cedo possível (pressa, urgência de agenda), ofereça o horário genuinamente mais próximo da lista, mesmo que seja da outra unidade — nunca empurre uma data mais distante só para preencher a unidade preferida.` : ""}`;
       } else {
         dynEstavel += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias em NENHUMA das duas unidades. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       }
@@ -5963,6 +6160,12 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const precoSemConvenio = precoSemSaberConvenio(reply, messages, campanhaSabeConvenio);
       // Bairro colado no nome da unidade errada (Asa Norte × Águas Claras).
       const bairroErrado = bairroTrocado(reply);
+      // Prometeu encaixe / mandou chegar antes (inclui a pausa do almoço).
+      const encaixePrometido = prometeuEncaixe(reply);
+      // Paciente pediu uma unidade e a oferta veio na outra (03/09, Virginia).
+      const unidadeDoPaciente = etapaDeOferta ? unidadeIgnorada(reply, messages, slotsVigentes, meusAgendamentos) : null;
+      // Pediu de novo a carteirinha que a paciente já mandou (03/09, Virginia).
+      const carteirinhaRepetida = pediuCarteirinhaDeNovo(reply, messages);
       const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
       // Mesma regra para quem TOCOU "Quero agendar" na campanha de reengajamento
@@ -5971,16 +6174,19 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const tocouQueroAgendar = /^\s*quero agendar\s*$/i.test(String(text || ""));
       const ofertaCegaCampanha = (tocouQueroAgendar && etapaDeOferta && campanhaSabeConvenio)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (unidadeDoPaciente || carteirinhaRepetida || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = unidadeDoPaciente || carteirinhaRepetida || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          ofertaCegaRemarcacao ? "oferta_cega_remarcacao"
+          unidadeDoPaciente ? "unidade_pedida_ignorada"
+            : carteirinhaRepetida ? "carteirinha_pedida_2x"
+            : ofertaCegaRemarcacao ? "oferta_cega_remarcacao"
             : ofertaCegaCampanha ? "oferta_cega_campanha"
             : precoSemConvenio ? "preco_sem_saber_convenio"
             : bairroErrado ? "bairro_trocado"
+            : encaixePrometido ? "prometeu_encaixe"
             : recadoSoNaFala ? "prometeu_recado_sem_bloco"
             : convenioInventado ? "convenio_inventado"
             : anunciouSemAgendar ? "anunciou_sem_agendar"
@@ -6013,9 +6219,16 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         // voltava a perguntar do convênio em vez de fechar. Em 17/08, 10 das 21
         // respostas chegaram ao paciente sem horário mesmo depois da reescrita.
         // A âncora é exatamente o porto seguro que consertou as outras travas.
-        const travaDeHorario = !!(contradicao || maisCedo || precoSeco || precoSemConvenio || ofertaFalsa || fichaCedo || agendouOcupado);
-        const ancora = (travaDeHorario && Array.isArray(slotsVigentes) && slotsVigentes.length)
-          ? alternativaMaisProxima(slotsVigentes, new Date(), Date.now()) : null;
+        const travaDeHorario = !!(unidadeDoPaciente || contradicao || maisCedo || precoSeco || precoSemConvenio || ofertaFalsa || fichaCedo || agendouOcupado);
+        // ⚠️ Na trava de UNIDADE a âncora tem de ser filtrada ANTES: a genérica
+        // devolve a vaga mais próxima no tempo, que é justamente a da unidade
+        // errada — ancorar nela mandaria a Ana repetir o erro com mais convicção.
+        const slotsAncora = (unidadeDoPaciente && Array.isArray(slotsVigentes))
+          ? slotsVigentes.filter(sl => /taguatinga|[áa]guas claras/i.test(String(sl.unidade || ""))
+              === (detectUnidade(messages) === "taguatinga"))
+          : slotsVigentes;
+        const ancora = (travaDeHorario && Array.isArray(slotsAncora) && slotsAncora.length)
+          ? alternativaMaisProxima(slotsAncora, new Date(), Date.now()) : null;
         const ancoraTxt = ancora
           ? `\n\n⚓ VAGA CONFERIDA PELO SISTEMA (real, copiada da lista): ${ancora.dia} às ${ancora.hora}, no ${ancora.unidade}. Se o paciente pediu um período/dia/unidade específico, escolha DA LISTA um horário que atenda a isso; se não tiver CERTEZA, ofereça exatamente a vaga conferida acima. Horário que não está na lista NÃO EXISTE.`
           : "";
@@ -6028,10 +6241,13 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
-            { type: "text", text: dynVolatil + (ofertaCegaRemarcacao ? instrucaoPerguntarPreferencia("remarcacao")
+            { type: "text", text: dynVolatil + (unidadeDoPaciente ? instrucaoUnidadeDoPaciente(unidadeDoPaciente)
+              : carteirinhaRepetida ? instrucaoCarteirinhaJaRecebida(carteirinhaRepetida)
+              : ofertaCegaRemarcacao ? instrucaoPerguntarPreferencia("remarcacao")
               : ofertaCegaCampanha ? instrucaoPerguntarPreferencia("campanha")
               : precoSemConvenio ? instrucaoPrecoComConvenio()
               : bairroErrado ? instrucaoBairroCerto(bairroErrado)
+              : encaixePrometido ? instrucaoSemEncaixe(encaixePrometido)
               : recadoSoNaFala ? instrucaoRecadoDeVerdade(recadoSoNaFala)
               : convenioInventado ? instrucaoConvenioReal(convenioInventado)
               : anunciouSemAgendar ? instrucaoAgendarDeVerdade(anunciouSemAgendar)
@@ -8173,8 +8389,23 @@ async function followUpAtivo() {
     return data?.value === "true";
   } catch (_) { return false; }
 }
+// Janela de envio do follow-up orgânico. Ajustável no Render sem deploy.
+const FOLLOWUP_HORA_INICIO = (() => { const v = Number(readEnv("FOLLOWUP_HORA_INICIO")); return Number.isFinite(v) ? v : 9; })();
+const FOLLOWUP_HORA_FIM    = (() => { const v = Number(readEnv("FOLLOWUP_HORA_FIM"));    return Number.isFinite(v) ? v : 18; })();
 async function rodarFollowUpLeads() {
   if (!(await followUpAtivo())) return;
+  // ⏰ SÓ EM HORÁRIO COMERCIAL, DIA ÚTIL (Dr. Bruno, 03/09/2026).
+  // O scheduler roda de 30 em 30 min, 24h por dia, e nos últimos 14 dias mandou
+  // 17 mensagens entre 22h e 7h — incluindo 02h28, 03h29 e 03h51. Paciente
+  // acordando com "posso dar sequência ao seu atendimento?" às três da manhã não
+  // responde: bloqueia e denuncia. E o número denunciado é o mesmo que atende
+  // todo mundo — o ativo que a campanha inteira depende de preservar.
+  // O follow-up de indicações já nascia com esta guarda; o orgânico, não.
+  // Nada se perde: quem vencer de madrugada continua elegível e sai pela manhã.
+  const agoraBR = brasiliaAgora();
+  const horaBR = Number(String(agoraBR.agora).match(/(\d{1,2}):\d{2}/)?.[1] ?? -1);
+  const dow = new Date(Date.UTC(agoraBR.ymd.ano, agoraBR.ymd.mes - 1, agoraBR.ymd.dia)).getUTCDay();
+  if (dow < 1 || dow > 5 || horaBR < FOLLOWUP_HORA_INICIO || horaBR >= FOLLOWUP_HORA_FIM) return;
   try {
     let { data: leads, error } = await supabase.rpc("leads_frios_followup");
     if (error) { console.error("[FollowUp] RPC falhou:", error.message); return; }
@@ -8254,7 +8485,7 @@ async function rodarFollowUpLeads() {
 }
 function startFollowUp() {
   setInterval(() => rodarFollowUpLeads().catch(e => console.error("[FollowUp] scheduler:", e.message)), 30 * 60 * 1000);
-  console.log("[FollowUp] scheduler ativo (30 min). Envio real só com settings.followup_leads_enabled='true'.");
+  console.log(`[FollowUp] scheduler ativo (30 min), envio só em dia útil das ${FOLLOWUP_HORA_INICIO}h às ${FOLLOWUP_HORA_FIM}h. Envio real só com settings.followup_leads_enabled='true'.`);
 }
 
 // ===== DESCADASTRO DE MARKETING (opt-out) ==================================

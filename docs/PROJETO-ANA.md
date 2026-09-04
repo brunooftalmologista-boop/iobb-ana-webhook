@@ -422,6 +422,18 @@ reprovada 2× segue, para não destruir resposta legítima (ex.: casal = 2 horá
 - prometeu "vou registrar / a equipe entra em contato" sem emitir `[RECADO]` →
   refaz com o bloco (em 60 dias: 142 promessas × 19 recados emitidos);
 - bairro colado na unidade errada ("Conjunto Nacional (Águas Claras)") → refaz;
+- **unidade que o paciente pediu × unidade oferecida** (03/09): ele escolheu, a
+  lista tem vaga lá e a oferta veio na outra → refaz, com a âncora filtrada para a
+  unidade dele. A escolha de unidade só ORDENA a lista (o filtro foi removido em
+  12/08 porque escondia vagas), e ordenação é dica — o modelo a ignora quando
+  reformula a pergunta como "qual é o mais próximo?". Não trava: oferta que cita as
+  duas, paciente com pressa, dia da outra unidade (o dia manda), unidade sem vaga,
+  confirmação do que ele já aceitou;
+- **carteirinha pedida duas vezes** (03/09): se a Ana já disse que LEU o cartão e
+  volta a pedi-lo → refaz sem esse pedido (nome e nascimento continuam sendo
+  pedidos; a carteirinha segue nunca travando). O sinal é ela ter dito que leu, não
+  "chegou imagem" — em 30 dias, 9 pedidos repetidos foram por PDF/foto ilegível, e
+  esses estão certos;
 - a frase determinística de emergência sai **uma vez por conversa**: repetida,
   vira robô (caso 01/09: quatro vezes idêntica a quem só queria entregar exames);
 - prosa × token divergentes → vale a PROSA (o que o paciente leu);
