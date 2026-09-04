@@ -307,7 +307,9 @@ Exame para habilitação/CNH (DETRAN): o exame oficial do DETRAN é feito em cl�
 
 ### VENDEMOS LENTE DE CONTATO — nunca diga que não
 O IOBB COMERCIALIZA lentes de contato (gelatinosas, rígidas e esclerais). NUNCA diga que "não comercializamos", "não vendemos" ou "não trabalhamos com venda de lentes" — é errado e faz a clínica perder o paciente.
-Quem já TEM receita e quer comprar: peça que ENVIE A RECEITA (foto aqui mesmo) e informe que a equipe entra em contato com o orçamento — nesse caso, como você está encaminhando para a equipe, feche a mensagem com o bloco [RECADO] (tipo: dúvida, resumo: orçamento de lente de contato, receita enviada). Não invente valor nem marca de lente gelatinosa — o orçamento depende do grau e do modelo, e quem passa é a equipe.
+⚠️ ANTES DE PEDIR QUALQUER RECEITA, VEJA SE ELE JÁ VAI CONSULTAR (regra do Dr. Bruno, 04/09/2026). Se o paciente TEM CONSULTA MARCADA — inclusive uma que acabou de ser marcada nesta conversa —, **NÃO peça a receita**. O grau vai ser refeito na consulta: orçamento montado sobre receita antiga nasce errado, e pedir o papel é dar trabalho a quem já resolveu o problema daqui a poucos dias. Nesse caso a resposta é: sim, a lente é comprada aqui mesmo; o Dr. Bruno define o grau, o modelo e os parâmetros NA CONSULTA QUE VOCÊ JÁ TEM MARCADA, e o orçamento sai logo depois — não precisa providenciar nada antes. Só peça a receita a quem NÃO vai consultar: o paciente que quer apenas repor a mesma lente e não quer avaliação.
+Caso real (04/09, Alessandra): ela tinha acabado de agendar para 09/09, perguntou "vocês encomendam lentes gelatinosas pelo consultório?" e ouviu "se você já tem receita, envie uma foto dela" — um documento que a consulta dali a cinco dias ia substituir. Ela respondeu só "?".
+Quem já TEM receita, quer comprar E NÃO vai consultar: peça que ENVIE A RECEITA (foto aqui mesmo) e informe que a equipe entra em contato com o orçamento — nesse caso, como você está encaminhando para a equipe, feche a mensagem com o bloco [RECADO] (tipo: dúvida, resumo: orçamento de lente de contato, receita enviada). Não invente valor nem marca de lente gelatinosa — o orçamento depende do grau e do modelo, e quem passa é a equipe.
 MODELO DO QUE SE ESPERA — estas duas respostas foram elogiadas como o padrão certo; copie o espírito delas:
   Paciente: "depois da consulta eu tenho que ir numa ótica pra fazer a lente?"
   Ana: "A lente é feita sob medida: o Dr. Bruno faz a adaptação e define as especificações exatas, que seguem para o laboratório. A **compra da lente é feita aqui mesmo** na clínica — não precisa ir a uma ótica. A equipe cuida de todo esse processo para você."
@@ -1405,6 +1407,52 @@ function instrucaoUnidadeDoPaciente(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. Ele já disse onde quer ser atendido: essa parte está DECIDIDA e não se discute mais. Oferecer a outra unidade depois disso soa como se você não tivesse lido — e o paciente tem de repetir o que já falou, ou desiste.
 A unidade que ele escolheu TEM vaga na lista. Reescreva oferecendo UM único horário DELA — volte ao TOPO da lista e pegue a data mais próxima daquela unidade (lembre: segunda, quarta e sexta são do Conjunto Nacional; terça e quinta, do Taguatinga Shopping). Diga o dia da semana, a data e a hora exatamente como estão na linha da lista.
 Só cite a outra unidade se for para ACRESCENTAR uma opção na mesma frase ("...ou, se preferir, tenho tal dia no Taguatinga Shopping") — nunca no lugar da que ele pediu, e nunca sem oferecer a dele primeiro.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
+// ===== TRAVA: PEDIU A RECEITA DE LENTE DE QUEM JÁ VAI CONSULTAR ============
+// Dr. Bruno, 04/09/2026. Caso Alessandra (13h51): ela acabara de agendar para
+// 09/09, perguntou "vocês encomendam lentes gelatinosas pelo consultório?" e
+// ouviu "se você já tem receita, pode enviar uma foto dela aqui mesmo".
+// A receita que ela tem vai ser SUBSTITUÍDA na consulta dali a cinco dias:
+// orçamento montado sobre grau velho nasce errado, e o pedido dá trabalho a
+// quem já resolveu o problema. Ela respondeu só "?".
+// O sinal é duro e não depende de interpretação: ele TEM consulta futura na
+// agenda. Não é opinião sobre o texto — é um fato do banco.
+// ⚠️ NÃO trava "traga a receita/os óculos no dia" (isso é a lista do que levar,
+// e está certo), nem a explicação de que a receita SAI depois da consulta.
+// A ORDEM DAS PALAVRAS VARIA MUITO ("envie a foto da receita", "se você já tem
+// uma receita, pode enviar a foto dela") — por isso não se tenta casar a frase
+// inteira: exige-se, NA MESMA FRASE, a palavra receita E uma marca de pedido.
+// A primeira versão desta trava casava só na ordem pedido→receita e deixou
+// passar exatamente a segunda mensagem do caso real.
+const RE_RECEITA_TOKEN = /receita|prescri[çc]/i;
+const RE_PEDIDO_DE_RECEITA = /envi|mand|encaminh|me\s+pass|me\s+mostr|poderia|\bpode\b|j[áa]\s+tem|voc[êe]\s+tem|possui|tiver/i;
+// Medido contra 45 dias de conversas: são estas as frases CERTAS que falam de
+// receita e não podem ser recusadas —
+//   · a lista do que levar ("traga os óculos e a receita em uso");
+//   · a conferência de óculos, que é por ordem de chegada ("basta comparecer com
+//     os óculos e a receita") — de longe a mais frequente;
+//   · o agradecimento por uma receita que o paciente JÁ mandou;
+//   · a explicação de que a receita SAI na consulta.
+const RE_RECEITA_LEGITIMA = /trag|traz|leve|levar|comparec|vir com|em m[ãa]os|no dia da consulta|ordem de chegada|confer[êe]ncia|obrigad|recebi|vejo que|confirma que|receita (sai|fica pronta|ser[áa] feita|nova|dos? [óo]culos [ée])/i;
+function pediuReceitaComConsultaMarcada(reply, meusAgendamentos) {
+  const t = String(reply || "");
+  const frase = t.split(/(?<=[.!?\n])/).find(f => RE_RECEITA_TOKEN.test(f) && RE_PEDIDO_DE_RECEITA.test(f));
+  if (!frase) return null;
+  if (RE_RECEITA_LEGITIMA.test(frase) || RE_RECEITA_LEGITIMA.test(t)) return null;
+  const agora = Date.now();
+  const futura = (meusAgendamentos || []).find(a => {
+    const ts = new Date(a.inicio).getTime();
+    return Number.isFinite(ts) && ts >= agora;
+  });
+  if (!futura) return null;
+  return `pediu a receita de lente a uma paciente que já tem consulta marcada (${fmtDataHoraBR(futura.inicio)}) — o grau vai ser refeito nessa consulta`;
+}
+function instrucaoReceitaDepoisDaConsulta(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Orçamento feito sobre receita antiga nasce errado, e pedir o papel dá trabalho a quem já resolveu o problema para daqui a poucos dias.
+Reescreva SEM pedir receita, foto de receita ou grau. O que ela precisa ouvir é: sim, a lente é comprada aqui mesmo na clínica; o Dr. Bruno define o grau, o modelo e os parâmetros NA CONSULTA QUE ELA JÁ TEM MARCADA; e o orçamento sai logo depois da avaliação. Deixe claro que ela não precisa providenciar nada antes — isso é o que a tranquiliza.
+Pode citar o dia da consulta dela, exatamente como está no seu contexto, sem recalcular nada.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
@@ -6185,6 +6233,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const unidadeDoPaciente = etapaDeOferta ? unidadeIgnorada(reply, messages, slotsVigentes, meusAgendamentos) : null;
       // Pediu de novo a carteirinha que a paciente já mandou (03/09, Virginia).
       const carteirinhaRepetida = pediuCarteirinhaDeNovo(reply, messages);
+      // Pediu receita de lente a quem já tem consulta marcada (04/09, Alessandra).
+      const receitaAntesDaConsulta = pediuReceitaComConsultaMarcada(reply, meusAgendamentos);
       const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
       // Mesma regra para quem TOCOU "Quero agendar" na campanha de reengajamento
@@ -6193,14 +6243,15 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const tocouQueroAgendar = /^\s*quero agendar\s*$/i.test(String(text || ""));
       const ofertaCegaCampanha = (tocouQueroAgendar && etapaDeOferta && campanhaSabeConvenio)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (unidadeDoPaciente || carteirinhaRepetida || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = unidadeDoPaciente || carteirinhaRepetida || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
           unidadeDoPaciente ? "unidade_pedida_ignorada"
             : carteirinhaRepetida ? "carteirinha_pedida_2x"
+            : receitaAntesDaConsulta ? "receita_antes_da_consulta"
             : ofertaCegaRemarcacao ? "oferta_cega_remarcacao"
             : ofertaCegaCampanha ? "oferta_cega_campanha"
             : precoSemConvenio ? "preco_sem_saber_convenio"
@@ -6262,6 +6313,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
             { type: "text", text: dynVolatil + (unidadeDoPaciente ? instrucaoUnidadeDoPaciente(unidadeDoPaciente)
               : carteirinhaRepetida ? instrucaoCarteirinhaJaRecebida(carteirinhaRepetida)
+              : receitaAntesDaConsulta ? instrucaoReceitaDepoisDaConsulta(receitaAntesDaConsulta)
               : ofertaCegaRemarcacao ? instrucaoPerguntarPreferencia("remarcacao")
               : ofertaCegaCampanha ? instrucaoPerguntarPreferencia("campanha")
               : precoSemConvenio ? instrucaoPrecoComConvenio()
@@ -6332,8 +6384,24 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
               await registrarErro("substituicao_repetida_evitada", `${aindaErrada} | ${String(novo).slice(0, 200)}`,
                 { conversationId: conversation.id, telefone: from }).catch(() => {});
             } else if (aindaErrada) {
-              const prox = (slotsVigentes || []).length
-                ? alternativaMaisProxima(slotsVigentes, new Date(), Date.now()) : null;
+              // A FRASE DETERMINÍSTICA TAMBÉM RESPEITA A UNIDADE PEDIDA
+              // (04/09/2026). Ela é escrita pelo CÓDIGO, depois das travas — então
+              // a trava unidadeIgnorada, que criei em 03/09, nunca a via. E ela
+              // pegava a vaga mais próxima no TEMPO, de qualquer unidade.
+              // Foi ela quem produziu os três casos que o Dr. Bruno reclamou, com
+              // o mesmo prefixo: 25/08 (pediu Águas Claras, recebeu Conjunto),
+              // 03/09 Virginia e 04/09 Alessandra (pediram Asa Norte, receberam
+              // Taguatinga). Corrigi a prosa da Ana e deixei o código errando
+              // sozinho. Se a unidade que ele pediu tem vaga, a frase sai com ela.
+              const querUnidade = detectUnidade(messages);
+              const listaFallback = (() => {
+                if (!querUnidade || !Array.isArray(slotsVigentes)) return slotsVigentes;
+                const daUnidade = slotsVigentes.filter(sl =>
+                  /taguatinga|[áa]guas claras/i.test(String(sl.unidade || "")) === (querUnidade === "taguatinga"));
+                return daUnidade.length ? daUnidade : slotsVigentes;   // sem vaga lá: melhor a outra que nada
+              })();
+              const prox = (listaFallback || []).length
+                ? alternativaMaisProxima(listaFallback, new Date(), Date.now()) : null;
               reply = prox
                 ? `Deixe-me confirmar direitinho a agenda: o horário mais próximo que tenho disponível é *${prox.dia} às ${prox.hora}*, no ${unidadeParaPaciente(prox.unidade)}. Pode ser?`
                 : `A agenda está sem horários disponíveis no momento. Posso registrar seu pedido para a nossa equipe verificar uma opção e retornar?`;
