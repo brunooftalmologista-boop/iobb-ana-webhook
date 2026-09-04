@@ -8575,6 +8575,12 @@ const INDICACAO_HORA_FIM = 17;          // nem depois das 17h (o lembrete sai à
 // (lente é por par ou unidade, catarata varia com a LIO). Preços de 15/08/2026;
 // quando mudarem no prompt da Ana, mudam aqui também.
 const INDICACAO_PRECOS = [
+  // O TESTE VEM PRIMEIRO, SEMPRE. "Teste de lente de contato (ZenLens)" não pode
+  // cair no preço da LENTE (R$ 7.800): são coisas diferentes, e o teste é o
+  // passo barato que leva à lente. Quem casa primeiro vence, então esta linha
+  // fica no topo — mover para baixo quebra em silêncio.
+  [/teste\s+de\s+lente.*gelatinos/i, 120],
+  [/teste\s+de\s+lente/i, 150],       // rígida ou escleral
   [/femto/i, 8890],
   [/lasik/i, 7800],
   [/(trans\s*)?prk/i, 5990],
@@ -8647,6 +8653,14 @@ async function criarIndicacao({ appointmentId = null, telefone, nome = null, pro
   // Convênio vazio ou "particular" (em qualquer grafia) = particular.
   const conv = String(convenio || "").trim();
   const ehConvenio = !!conv && !/^particular$/i.test(conv);
+  // ⚠️ TER PLANO NÃO SIGNIFICA QUE O PLANO PAGA. Cirurgia refrativa é sempre
+  // particular, e lente de contato (e o teste dela) é venda da clínica — nesses
+  // o paciente do convênio paga exatamente o mesmo que o particular, e zerar o
+  // valor apagaria do funil dinheiro que ele PAGA.
+  // A lista abaixo é a dos que o plano PODE cobrir; só nesses o valor nasce
+  // vazio, para a equipe informar o que sobra. Quem não estiver aqui recebe o
+  // preço de tabela normalmente. Novo procedimento coberto = incluir aqui.
+  const podeSerCoberto = /(catarata|crosslink|anel|ferrara)/i.test(proc);
   const agora = new Date().toISOString();
   const row = {
     appointment_id: appointmentId || null,
@@ -8656,11 +8670,12 @@ async function criarIndicacao({ appointmentId = null, telefone, nome = null, pro
     procedimento: proc,
     olho: olho ? String(olho).trim().toUpperCase().slice(0, 3) : null,
     convenio: conv || null,
-    // O preço automático é o PARTICULAR. Em convênio ele fica em branco até
-    // alguém digitar o que o paciente realmente paga: chutar aqui encheria o
-    // funil de dinheiro que não existe. Valor digitado à mão sempre vence.
+    // O preço automático é o PARTICULAR. Ele fica em branco só quando há
+    // convênio E o procedimento é dos que o plano pode cobrir: chutar ali
+    // encheria o funil de dinheiro que não existe. Valor digitado à mão vence
+    // sempre — inclusive para dizer o que o paciente de plano vai pagar.
     valor: (valor === null || valor === undefined || valor === "")
-      ? (ehConvenio ? null : valorDoProcedimento(proc))
+      ? ((ehConvenio && podeSerCoberto) ? null : valorDoProcedimento(proc))
       : Number(valor),
     observacoes: observacoes ? String(observacoes).trim() : null,
     criado_por: criadoPor || null,

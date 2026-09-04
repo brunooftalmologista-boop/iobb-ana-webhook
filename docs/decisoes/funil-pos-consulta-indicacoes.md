@@ -85,11 +85,23 @@ As duas primeiras correções que ele fez ao desenho, e as duas eram de dinheiro
    pelo `#INDICACAO`) ganha os R$ 18.200 exatos. A lista curta é só o caminho
    rápido; a precisão continua disponível para quem quiser dar.
 2. **Boa parte dos planos cobre catarata.** A indicação passou a gravar o
-   `convenio`, copiado do agendamento. Em paciente de convênio o valor nasce
-   **vazio** — a cobertura é caso a caso e a equipe é quem sabe o que sobra para o
-   paciente. O funil soma só o que o paciente paga e mostra à parte quantos casos
-   de plano estão sem valor, em vez de inventar um total grande e falso.
-   Refrativa segue sendo a exceção conhecida: sempre particular.
+   `convenio`, copiado do agendamento. O funil soma só o que o paciente paga e
+   mostra à parte quantos casos de plano estão sem valor, em vez de inventar um
+   total grande e falso.
+   ⚠️ **Correção do mesmo dia:** eu zerava o valor de TODO paciente de convênio,
+   e isso estava errado. Ter plano não significa que o plano paga: cirurgia
+   refrativa é sempre particular e lente de contato (com o teste) é venda da
+   clínica — nesses o paciente do convênio paga o mesmo que o particular, e zerar
+   apagava do funil dinheiro que ele PAGA. Hoje o valor só nasce vazio quando há
+   convênio **E** o procedimento é dos que o plano pode cobrir
+   (`catarata|crosslink|anel|ferrara`). O padrão é ter preço; a exceção é a
+   lista. Procedimento coberto novo entra nessa regex.
+
+3. **Teste de lente de contato entrou na lista** (Esclera e Esclera Multifocal).
+   Na tabela de preços ele vai **no topo**, antes de tudo: sem isso, "Teste de
+   lente de contato (ZenLens)" casaria com a regra da LENTE e gravaria R$ 7.800
+   num teste de R$ 150. São produtos diferentes — o teste é o passo barato que
+   leva à lente.
 
 **DUAS DECISÕES QUE PARECEM DETALHE E NÃO SÃO.**
 
