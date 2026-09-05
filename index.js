@@ -5706,6 +5706,7 @@ app.post("/webhook", async (req, res) => {
     // Unimed) e o paciente responde com uma FOTO, não dead-enda — a equipe é
     // notificada e o atendimento SEGUE para a Ana concluir o pré-agendamento.
     let fotoDeCarteirinha = false;
+    let fotoDePedidoExame = false;
     if (msg.type === "image" || msg.type === "document" || msg.type === "video") {
       // Vale para IMAGEM e DOCUMENTO: muita carteirinha chega em PDF (o app do
       // convênio exporta assim) e, quando isso só valia para imagem, o PDF caía
@@ -5722,9 +5723,24 @@ app.post("/webhook", async (req, res) => {
             && /(foto|envi|mand|anex|carteir|cart[aã]o)/.test(anasRecentes);
           const contextoConvenio = /(conv[eê]nio|unimed|carteirinha|plano de sa[uú]de)/.test(tudo);
           fotoDeCarteirinha = anaPediuCartao || contextoConvenio;
+          // PEDIDO DE EXAME (Dr. Bruno, 05/09/2026). Caso real desta manhã, 10h05:
+          // "Gostaria de saber o valor desses exames" → a Ana perguntou QUAIS →
+          // a paciente mandou a foto do pedido → e a foto caiu no texto fixo de
+          // "encaminhei para a equipe". A Ana pediu a imagem e depois não olhou
+          // para ela, com os valores na tabela dela o tempo todo.
+          // A janela é curta de propósito (6 mensagens): o gatilho é a conversa
+          // estar falando de exame E de valor/pedido AGORA — não em algum ponto
+          // do histórico. Uma consulta antiga que mencionou "exames inclusos"
+          // não pode transformar toda foto futura em pedido de exame.
+          const ultimas6 = recent.slice(-6)
+            .map(m => (m.content || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""))
+            .join(" ");
+          const falaDeExame = /\bexames?\b|gonioscopia|mapeamento|topografia|paquimetria|pentacam|retinografia|microscopia|tonometria|campimetr|curva diaria|sobrecarga/.test(ultimas6);
+          const falaDeValorOuPedido = /valor|preco|quanto (custa|fica|e|sai)|orcamento|cobran|pedido|solicitac|requisic|encaminhamento/.test(ultimas6);
+          fotoDePedidoExame = !fotoDeCarteirinha && falaDeExame && falaDeValorOuPedido;
         } catch (_) {}
       }
-      if (!fotoDeCarteirinha) {
+      if (!fotoDeCarteirinha && !fotoDePedidoExame) {
         const tipoArquivo = msg.type === "image" ? "imagem" : msg.type === "document" ? "documento" : "vídeo";
         // SEM HORÁRIO NA FRASE (Dr. Bruno, 04/09/2026). A versão anterior dizia
         // "assim que abrir o atendimento — segunda a sexta, das 8h às 18h", e essa
@@ -5738,9 +5754,10 @@ app.post("/webhook", async (req, res) => {
         await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification}\n\n🤖 *Ana:*\n${reply}`);
         return;
       }
-      // Provável carteirinha: notifica a equipe (que recebe a imagem) e NÃO retorna
+      // Provável carteirinha OU pedido de exame: notifica a equipe (que recebe a
+      // imagem) e NÃO retorna
       // — cai no fluxo normal, com uma orientação extra no prompt (ver adiante).
-      await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification} (provável carteirinha — a Ana segue o pré-agendamento)`);
+      await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification} (${fotoDeCarteirinha ? "provável carteirinha — a Ana segue o pré-agendamento" : "provável pedido de exame — a Ana vai ler os nomes e cotar"})`);
       await marcarPendenciaEquipe(conversation.id, "action");   // equipe verifica a carteirinha
     }
 
@@ -5993,6 +6010,21 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       dynVolatil += `\n\n### O paciente TOCOU no botão "Remarcar" do lembrete\nEle quer trocar o horário da consulta que já tem. NÃO pergunte "como posso ajudar?" nem peça que ele explique — a intenção já está dada. Confirme em meia linha qual é a consulta atual (dia, hora e unidade) e PERGUNTE, na mesma mensagem, qual dia e período ficam melhores para ele ("manhã ou tarde?"). 🚫 NÃO ofereça um horário concreto ainda, e MUITO MENOS o primeiro da lista: ele quase sempre cai no MESMO dia e no MESMO turno que o paciente acabou de recusar — é o horário que ele já disse que não serve. Só ofereça depois que ele indicar o dia/turno (ou se ele responder que tanto faz, aí sim ofereça o mais próximo). Ao ele aceitar, faça a remarcação normalmente ([CANCELAR] do antigo + [AGENDAR] do novo).`;
     }
 
+    if (fotoDePedidoExame) {
+      dynVolatil += `\n\n### O paciente acabou de enviar a FOTO DE UM PEDIDO DE EXAME e quer saber o VALOR
+A imagem vai anexada nesta conversa — você PODE vê-la, e é para isso que ela está aqui.
+🚫 É PROIBIDO responder "vou encaminhar para a equipe" ou "a equipe entra em contato". Caso real (05/09, 10h05): a paciente escreveu "gostaria de saber o valor desses exames", VOCÊ pediu que ela dissesse quais, ela mandou a foto do pedido — e recebeu "recebi a imagem, já encaminhei para nossa equipe". Você pediu a imagem e não olhou para ela, com os valores na sua tabela o tempo todo. A conversa morreu ali.
+O QUE FAZER:
+1. LEIA os NOMES dos exames pedidos. Só os nomes.
+2. Responda com o valor PARTICULAR de cada um, copiado da tabela de exames que você já tem, e some o total. Exame que estiver na tabela como INCLUÍDO na consulta (tonometria) — diga que não é cobrado à parte.
+3. Exame que NÃO estiver na sua tabela (campimetria/campo visual é o caso mais comum): diga com clareza que esse não é realizado aqui, para a pessoa providenciar em outro serviço. NUNCA invente valor nem prometa exame que não fazemos.
+4. Lembre que ela NÃO precisa consultar aqui antes: fazemos os exames com o pedido de qualquer médico.
+5. Se você ainda não sabe se é particular ou convênio, PERGUNTE na mesma mensagem — pelo convênio, os exames cobertos não têm custo, e informar só o valor particular faz quem tem plano desistir achando que vai pagar.
+6. Termine oferecendo um horário concreto para os exames.
+⛔ LIMITE CLÍNICO, INEGOCIÁVEL — vale aqui igual a sempre: você lê apenas os NOMES DOS EXAMES SOLICITADOS. É PROIBIDO comentar, interpretar ou opinar sobre qualquer conteúdo clínico do papel — hipótese diagnóstica, CID, achado, resultado, o motivo do pedido ou o que o médico escreveu. Nada disso entra na sua resposta. Se o papel for um RESULTADO/LAUDO de exame (e não um pedido), não o interprete: diga que quem avalia é o médico na consulta e siga para o agendamento.
+Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peça em uma frase que ela digite os nomes dos exames — sem encerrar a conversa e sem falar em encaminhamento.`;
+    }
+
     if (fotoDeCarteirinha) {
       dynVolatil += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nA imagem vai anexada nesta conversa quando disponível — ou seja, você PODE vê-la.\n🚫 NUNCA diga que vai "encaminhar a carteirinha para a equipe", que "a equipe vai verificar o cartão" ou que "a equipe entra em contato" por causa dela. A carteirinha NÃO precisa de ninguém: você lê os dados e o sistema anexa sozinho à ficha do agendamento. Falar em encaminhamento faz o paciente achar que o atendimento parou — e ele para mesmo.\nO que fazer:\n- 📖 Se o paciente mandou o cartão PERGUNTANDO se atendemos ("posso enviar para saber se vocês atendem?"): LEIA NA HORA e responda a partir do que está impresso — nunca desconverse com "a equipe verifica no sistema". Caso real (14/08): o filho mandou o cartão do pai exatamente com essa pergunta, você adiou a leitura, agendou, e só leu o cartão no fim — era uma Unimed regional — hoje atendida normalmente, mas na época a leitura tardia do cartão atrasou tudo.\n- Se for MESMO uma carteirinha/cartão de convênio: leia o NOME DO CONVÊNIO e, se estiver legível, o NÚMERO, e REGISTRE emitindo o bloco [CARTEIRINHA] (convenio + numero) ao final da mensagem — o sistema anexa à ficha. Se o fluxo for de pré-agendamento, registre TAMBÉM no bloco de pré-agendamento (convênio lido e número; se o número não estiver legível, use "carteirinha por foto"). Confirme em UMA linha qual convênio você identificou e SIGA IMEDIATAMENTE para o próximo passo do agendamento (oferecer o horário ou confirmar o que já foi combinado) — nunca termine a mensagem na carteirinha.\n- Se o arquivo for PDF ou você não conseguir enxergá-lo: NÃO diga que vai encaminhar. Peça, em uma frase, o NÚMERO da carteirinha digitado (ou uma foto do cartão) e siga o agendamento normalmente na mesma mensagem.\n- 🔎 TRANSCREVA O NOME DO CONVÊNIO INTEIRO, COMO ESTÁ IMPRESSO — e depois CONFIRA contra a lista de convênios atendidos E contra a lista dos NÃO atendidos. É PROIBIDO encurtar um nome composto até ele casar com um plano da lista. "Quality Pró-Saúde" NÃO é o "Pró-Saúde" da Câmara dos Deputados: se o cartão trouxer "Quality" (ou Quallity/Qualyty) em qualquer posição, o plano NÃO é atendido, mesmo que o resto do nome coincida com um que atendemos. Caso real (10/08): a paciente perguntou por "quality pro saúde", você distinguiu certo os dois e pediu para ela confirmar qual era — aí veio a foto do cartão, você leu apenas "Pró-Saúde" e agendou. Um convênio que não atendemos entrou na agenda, e isso só apareceria na recepção, com a criança já lá. ⚖️ MAS O CRITÉRIO É A LISTA DOS **NÃO** ATENDIDOS, NÃO A IGUALDADE EXATA. Só trate como não atendido quando o cartão trouxer um nome da lista dos NÃO atendidos (Quality/Quallity/Qualyty, SulAmérica). Fora disso, cartão que traga a MARCA de um convênio da lista é ATENDIDO, mesmo com palavras a mais: variações, sub-planos e produtos (\"Seguros Unimed\", \"Unimed Seguros\", \"PME Compacto ENF\", \"Ideal\", \"Enfermaria\", \"Apartamento\") NÃO descredenciam nada — a equipe confirma o sub-plano depois, com o horário já reservado. Unimed com nome de CIDADE no cartão (Curitiba, Uberlândia, Fesp, João Pessoa…) é ATENDIDA igual às demais: agende normalmente e registre o nome como está impresso — a equipe solicita a autorização com a carteirinha que você anotou. Exigir nome idêntico faz você NEGAR convênio que atendemos, que é o erro mais caro dos dois: o paciente vai embora achando que não é atendido aqui.\n🚫 NUNCA VOLTE ATRÁS NUMA ACEITAÇÃO. Se você já disse ao paciente que o convênio dele é atendido, é PROIBIDO reverter depois por causa do que leu no cartão — a não ser que apareça um nome da lista dos NÃO atendidos (Quality/Quallity/Qualyty, SulAmérica). Ler o cartão serve para REGISTRAR o número e o nome do plano, nunca para reabrir uma decisão já comunicada. Caso real (11/08, Laura): você disse \"O plano é Unimed — atendemos, sim\", ofereceu horário, e três mensagens depois negou o mesmo convênio e ofereceu particular com reembolso.
 - 📝 NOME COMPLETO: o documento quase sempre traz o nome INTEIRO do paciente. TRANSCREVA esse nome e use-o no campo "nome:" do [AGENDAR] e do [PREAGENDAMENTO] — não continue com só o primeiro nome nem com o apelido do WhatsApp. Caso real: você leu o documento, disse "identifiquei seu nome e data de nascimento", gravou o nascimento e ainda assim registrou só "Raquel" — a ficha chegou à recepção sem sobrenome. Se o documento não trouxer o nome e você só tiver o primeiro, PODE marcar assim mesmo (nunca atrase o agendamento por isso), mas peça o nome completo na MESMA mensagem em que confirma o horário.\n- Se estiver ilegível, peça gentilmente uma foto mais nítida — sem travar o agendamento.\n- Se a imagem NÃO for uma carteirinha: NÃO descreva o que vê e NÃO comente o conteúdo. Apenas acolha e diga que vai encaminhar à equipe.\nLIMITE ABSOLUTO (inegociável): você só lê DOCUMENTO ADMINISTRATIVO (carteirinha/cartão do plano). Se a imagem for clínica — foto de olho, exame, laudo, receita, resultado, OCT, retinografia etc. — NUNCA descreva, interprete, opine, sugira diagnóstico ou diga se está normal/alterado. Nesses casos: acolha, diga que quem avalia é o médico na consulta, e siga para o agendamento. Continuam valendo todas as regras absolutas (nunca diagnosticar, nunca interpretar exames).\nConcluído isso, CONTINUE/CONCLUA o pré-agendamento normalmente. NÃO peça a carteirinha de novo e NÃO diga apenas que "vai encaminhar" — conclua, explicando que a equipe confirma a cobertura junto com o horário.`;
@@ -6095,8 +6127,8 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // nesse caso ela está no depósito, não em `imagemRecebida`. Só recolhe se a
     // conversa está em contexto de carteirinha, e o resgate é de uso único.
     const imagemParaLer = imagemRecebida?.buffer ? imagemRecebida
-                        : (fotoDeCarteirinha ? pegarImagemPendente(from) : null);
-    if (fotoDeCarteirinha && imagemParaLer?.buffer) {
+                        : ((fotoDeCarteirinha || fotoDePedidoExame) ? pegarImagemPendente(from) : null);
+    if ((fotoDeCarteirinha || fotoDePedidoExame) && imagemParaLer?.buffer) {
       const MIMES_VISAO = ["image/jpeg", "image/png", "image/gif", "image/webp"];
       const mt = String(imagemParaLer.mimeType || "").toLowerCase().split(";")[0].trim();
       const cabe = imagemParaLer.buffer.length <= 3.5 * 1024 * 1024;
@@ -6107,7 +6139,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
           { type: "image", source: { type: "base64", media_type: mt, data: imagemParaLer.buffer.toString("base64") } },
           { type: "text", text: textoAtual || "[Imagem recebida]" },
         ];
-        console.log(`[Visão] Carteirinha anexada para leitura (${mt}, ${Math.round(imagemParaLer.buffer.length / 1024)}KB${imagemRecebida?.buffer ? "" : " — resgatada do turno anterior"}).`);
+        console.log(`[Visão] ${fotoDeCarteirinha ? "Carteirinha" : "Pedido de exame"} anexado para leitura (${mt}, ${Math.round(imagemParaLer.buffer.length / 1024)}KB${imagemRecebida?.buffer ? "" : " — resgatada do turno anterior"}).`);
       } else {
         // Sem visão: a Ana segue o fluxo tratando a carteirinha como entregue.
         console.log(`[Visão] Imagem NÃO anexada (mime=${mt || "?"}, ${Math.round((imagemParaLer.buffer.length || 0) / 1024)}KB) — fora do formato/tamanho suportado.`);
