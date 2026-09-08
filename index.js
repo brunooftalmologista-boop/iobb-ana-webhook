@@ -98,9 +98,24 @@ const PRECOS_EXAMES = [
   { nome: "Gonioscopia",            valor: 150, re: /gonioscopia/i },
   { nome: "Pentacam",               valor: 300, re: /pentacam/i, nota: "somente particular, apenas Conjunto Nacional" },
   { nome: "Teste de Sobrecarga Hídrica", valor: 380, re: /sobrecarga h[íi]drica/i, nota: "somente particular" },
+  // 08/09/2026 — varredura pedida pelo Dr. Bruno depois do erro do mapeamento:
+  // estas duas linhas do prompt tinham o MESMO formato denso que causou aquele
+  // erro. A refrativa juntava três cirurgias de R$ 6 a 9 mil numa linha só; as
+  // esclerais, TRÊS modelos com SEIS valores (par e unidade), e dois deles com
+  // preço idêntico — o arranjo mais fácil de embaralhar que existia no prompt.
+  // Nenhuma delas tinha dado erro ainda; entram aqui antes de dar.
+  { nome: "PRK / TransPRK", valor: 5990, re: /\b(trans\s*)?prk\b/i, grupo: "cirurgia" },
+  // O "lasik" de "Femto-LASIK" casaria aqui e tornaria a frase ambígua; o
+  // lookbehind deixa a Femto para a linha dela.
+  { nome: "LASIK", valor: 7800, re: /(?<!femto[-\s]?)\blasik\b/i, grupo: "cirurgia" },
+  { nome: "Femto-LASIK", valor: 8890, re: /femto/i, grupo: "cirurgia" },
+  { nome: "Esclera SG", valores: [7800, 4280], re: /esclera\s*sg/i, grupo: "lente" },
+  { nome: "ZenLens", valores: [7800, 4280], re: /zen\s*lens/i, grupo: "lente" },
+  { nome: "Zen RC", valores: [5980], re: /zen\s*rc/i, grupo: "lente" },
 ];
 const reais = (n) => `R$ ${n},00`;
 const TABELA_EXAMES_TXT = PRECOS_EXAMES
+  .filter(e => !e.grupo)
   .map(e => `- ${e.nome}: ${e.valor === null ? e.nota : reais(e.valor) + (e.nota ? ` (${e.nota})` : "")}`)
   .join("\n");
 
@@ -275,10 +290,17 @@ Consulta particular: R$ 200,00
 ⛔ NÃO HÁ DESCONTO NO VALOR DA CONSULTA (regra do Dr. Bruno, 18/08/2026). Os R$ 200,00 são fixos: sem desconto, sem "valor social", sem condição especial para idoso, estudante, servidor, indicação, retorno de campanha, mais de um paciente da mesma família ou quem alega dificuldade financeira. É PROIBIDO: oferecer desconto por conta própria; dizer que "vai verificar com a equipe/com o Dr. Bruno se é possível um desconto"; insinuar que existe negociação; ou deixar a porta aberta com "não sei, mas pergunte na recepção". ⏱️ SÓ FALE DISSO NO TURNO EM QUE ELE PERGUNTAR, e NUNCA abrindo a mensagem. Se a pergunta de desconto foi respondida numa mensagem anterior, o assunto está ENCERRADO: não repita a negativa, não a use como abertura e não a emende em resposta a outro assunto. Caso real (18/08): o paciente perguntou de desconto às 17h14, voltou às 20h46 agradecendo e pedindo um horário mais cedo, e você começou a resposta com "O valor da consulta é R$ 200,00, e não temos condição diferente dele" — ele não tinha perguntado nada disso, a mensagem ficou fria logo depois de um agradecimento, e ele foi procurar outra clínica. Responda ao que ele acabou de perguntar.
 Quando pedirem desconto, responda com cordialidade e SEM constrangimento — não peça desculpas nem trate como problema —, diga que o valor é esse, e SIGA para o horário na MESMA mensagem (o paciente que pede desconto quase sempre continua interessado; perder o agendamento aí é o pior desfecho). Se ele tiver convênio ATENDIDO, lembre que pelo plano não há esse custo. Se tiver convênio NÃO atendido, vale a nota fiscal para reembolso. Ex.: "O valor da consulta é R$ 200,00, e não temos condição diferente dele. Se preferir, emitimos nota fiscal para você pedir reembolso ao seu plano. Consigo *quinta-feira, 20/08, às 10h20*, no Taguatinga Shopping — reservo para você?"
 Cirurgia de Catarata: R$ 5.000,00 por olho (inclui honorários + bloco cirúrgico + anestesista) — valor SÓ da cirurgia. A lente intraocular (LIO) é cobrada à parte, conforme o modelo (ver a tabela de lentes e as regras de convênio/particular na seção "Cirurgia de catarata").
-Cirurgia Refrativa: PRK / TransPRK R$ 5.990,00 | LASIK R$ 7.800,00 | Femto-LASIK R$ 8.890,00 — todas em até 5x no cartão SEM JUROS. INFORME esses valores DIRETAMENTE quando o tema de cirurgia refrativa surgir (e ao abrir um atendimento vindo de anúncio de refrativa) — não espere o paciente perguntar. A técnica ideal é definida pelo Dr. Bruno na avaliação. Não competir por preço — valorize segurança, tecnologia e acompanhamento.
+Cirurgia Refrativa — UMA TÉCNICA POR LINHA, copie o valor da linha da técnica citada:
+- PRK / TransPRK: R$ 5.990,00
+- LASIK: R$ 7.800,00
+- Femto-LASIK: R$ 8.890,00
+Todas em até 5x no cartão SEM JUROS. INFORME esses valores DIRETAMENTE quando o tema de cirurgia refrativa surgir (e ao abrir um atendimento vindo de anúncio de refrativa) — não espere o paciente perguntar. A técnica ideal é definida pelo Dr. Bruno na avaliação. Não competir por preço — valorize segurança, tecnologia e acompanhamento.
 Crosslinking: R$ 5.980,00 por olho | até 5x no cartão SEM JUROS
 Anel de Ferrara (também chamado de anel intraestromal ou implante de anel corneano): R$ 8.700,00 por olho | até 5x no cartão SEM JUROS
-Lentes Esclerais (TRÊS modelos): Esclera SG R$ 7.800,00 o par / R$ 4.280,00 a unidade | ZenLens R$ 7.800,00 o par / R$ 4.280,00 a unidade (mesmo valor da Esclera SG) | Zen RC R$ 5.980,00 o par — em até 5x no cartão SEM JUROS, igual às cirurgias. INFORME o parcelamento SEMPRE que citar o valor da lente: é o item mais caro que o paciente ouve, e o preço cheio sem a condição de pagamento faz ele sumir.
+Lentes Esclerais — TRÊS modelos, UM POR LINHA. Confira em qual linha está o modelo antes de dizer o valor, e diga sempre se é PAR ou UNIDADE:
+- Esclera SG: R$ 7.800,00 o par · R$ 4.280,00 a unidade
+- ZenLens: R$ 7.800,00 o par · R$ 4.280,00 a unidade (mesmo valor da Esclera SG)
+- Zen RC: R$ 5.980,00 o par — em até 5x no cartão SEM JUROS, igual às cirurgias. INFORME o parcelamento SEMPRE que citar o valor da lente: é o item mais caro que o paciente ouve, e o preço cheio sem a condição de pagamento faz ele sumir.
 Lente Rígida Gás Permeável (lente rígida corneana, a "rígida" comum — NÃO é a escleral): a partir de R$ 2.500,00 o par. ⚠️ SÓ INFORME ESSE VALOR SE O PACIENTE PERGUNTAR (regra do Dr. Bruno, 18/08) — ao contrário da escleral e da refrativa, este preço NÃO é oferecido de forma espontânea. Perguntou, você responde na hora, com transparência e sem rodeio ("a partir de R$ 2.500,00 o par"), explicando que o valor final depende dos parâmetros definidos na adaptação. Não confunda com a lente ESCLERAL (Esclera SG / Zen RC), que tem valores próprios acima. Caso real (17/08): a paciente Iara perguntou "a lente rígida de vocês está a partir de que valor?" e recebeu apenas os valores das esclerais — não era o que ela tinha perguntado.
 Teste de Lentes: gelatinosas R$ 120,00 | rígidas/esclerais R$ 150,00 (somente particular, apenas Conjunto Nacional). O teste AVULSO — sem consulta junto — pode ser agendado para quem JÁ CONSULTOU no IOBB **ou** tem exame oftalmológico recente de até 3 meses, mesmo que de outro serviço; quem não tem nenhum dos dois faz a consulta primeiro (ver a regra completa na seção de lentes de contato). O TESTE DE LENTE É COBRADO À PARTE — NÃO está incluído na consulta. Ou seja, quem vai adaptar lente escleral/rígida paga a consulta (R$ 200,00, ou pelo convênio quando atendido) MAIS o teste de lente (R$ 150,00 para rígida/escleral). Informe os dois valores com clareza quando o tema surgir, sem esperar o paciente perguntar.
 
@@ -1449,19 +1471,36 @@ Só cite a outra unidade se for para ACRESCENTAR uma opção na mesma frase ("..
 // não é julgada: ali o número pode pertencer a outra coisa.
 function precoDeExameErrado(reply) {
   const t = String(reply || "");
-  for (const frase of t.split(/(?<=[.!?\n])/)) {
+  // ⚠️ O (?!\d) É ESSENCIAL: sem ele, o ponto de "R$ 5.990,00" é lido como fim de
+  // frase e o trecho vira "A PRK fica R$ 5." — a trava passava a comparar R$ 5
+  // com R$ 5.990 e reprovava TODA resposta certa de valor acima de mil. Os
+  // exames escapavam por acaso (o mais caro é R$ 380); cirurgia e lente, não.
+  for (const frase of t.split(/(?<=[.!?\n])(?!\d)/)) {
     // "inclui a tonometria" / "sem custo" não é cotação de preço do exame.
     if (/inclu[íi]|inclus|sem custo|n[ãa]o (é|e) cobrad|j[áa] est[áa] (no|na)/i.test(frase)) continue;
-    // Consulta/avaliação/cirurgia na mesma frase: o valor pode ser o dela.
-    if (/consulta|avalia[çc][ãa]o|cirurgi|lente/i.test(frase)) continue;
+    // "teste de lente" tem tabela própria (gelatinosa R$ 120 / rígida R$ 150) e
+    // costuma vir na mesma frase que um exame — o valor ali não é do exame.
+    if (/teste de lente/i.test(frase)) continue;
+    // "consulta"/"avaliação" na frase: o R$ 200,00 pode ser o dela, não do item.
+    if (/consulta|avalia[çc][ãa]o/i.test(frase)) continue;
     const achados = PRECOS_EXAMES.filter(e => e.re.test(frase));
     if (achados.length !== 1) continue;
+    const e = achados[0];
+    // Lente citada com PAR e UNIDADE na mesma frase: são dois preços, e a
+    // contagem de valores abaixo já cuidaria disso — mas a frase legítima
+    // "R$ 7.800 o par, ou R$ 4.280 a unidade" não pode nem ser considerada.
+    if (e.grupo === "lente" && /\bpar\b/i.test(frase) && /unidade/i.test(frase)) continue;
     const valores = [...frase.matchAll(/R\$\s*([\d.]{2,7})(?:,\d{2})?/g)]
       .map(m => Number(String(m[1]).replace(/\./g, "")))
       .filter(n => Number.isFinite(n) && n > 0);
     if (valores.length !== 1) continue;
-    const e = achados[0], v = valores[0];
+    const v = valores[0];
     if (e.valor === null) return `disse que ${e.nome} custa R$ ${v},00 — a tonometria está INCLUÍDA na consulta e não é cobrada à parte`;
+    // Itens com mais de um preço legítimo (par/unidade): basta bater com um.
+    if (Array.isArray(e.valores)) {
+      if (!e.valores.includes(v)) return `informou R$ ${v},00 para ${e.nome}, mas os valores da tabela são ${e.valores.map(reais).join(" (par) e ")} (unidade)`;
+      continue;
+    }
     if (v !== e.valor) return `informou R$ ${v},00 para ${e.nome}, mas o valor da tabela é ${reais(e.valor)}`;
   }
   return null;
