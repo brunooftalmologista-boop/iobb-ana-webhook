@@ -76,6 +76,34 @@ function supabaseKeyRole() {
 
 const ICAL_URL = "https://calendar.google.com/calendar/ical/8b9b392717790c4374966cbb68a56c819448b074f8bd7fefadd1c79303745d38%40group.calendar.google.com/public/basic.ics";
 
+// ===== TABELA DE PREÇOS DOS EXAMES — FONTE ÚNICA ==========================
+// 08/09/2026: a Ana disse "o mapeamento de retina, para pacientes particulares,
+// é R$ 180,00" — R$ 180 é a paquimetria, a topografia e a microscopia. O
+// mapeamento é R$ 300. A equipe teve de corrigir o paciente 43 minutos depois.
+// A causa é o FORMATO em que os preços estavam no prompt: uma linha só, densa,
+// com oito exames separados por "|". Num amontoado desses o modelo associa o
+// nome de um ao valor do vizinho — e no MESMO dia, noutra conversa, ela acertou
+// os R$ 300. Não é falta de informação, é ambiguidade de leitura.
+// Agora os preços moram AQUI, e o prompt é gerado desta lista, um exame por
+// linha. A mesma lista alimenta a trava que confere o valor antes de enviar,
+// então prompt e trava não podem divergir.
+const PRECOS_EXAMES = [
+  { nome: "Paquimetria",            valor: 180, re: /paquimetria/i },
+  { nome: "Topografia/Ceratoscopia", valor: 180, re: /topografia|ceratoscopia/i },
+  { nome: "Mapeamento de Retina",   valor: 300, re: /mapeamento/i },
+  { nome: "Microscopia Especular",  valor: 180, re: /microscopia/i },
+  { nome: "Tonometria",             valor: null, re: /tonometria/i, nota: "INCLUÍDA na consulta (não é cobrada à parte)" },
+  { nome: "CDPO (Curva Diária de Pressão Ocular)", valor: 380, re: /\bcdpo\b|curva di[áa]ria/i },
+  { nome: "Retinografia",           valor: 220, re: /retinografia/i },
+  { nome: "Gonioscopia",            valor: 150, re: /gonioscopia/i },
+  { nome: "Pentacam",               valor: 300, re: /pentacam/i, nota: "somente particular, apenas Conjunto Nacional" },
+  { nome: "Teste de Sobrecarga Hídrica", valor: 380, re: /sobrecarga h[íi]drica/i, nota: "somente particular" },
+];
+const reais = (n) => `R$ ${n},00`;
+const TABELA_EXAMES_TXT = PRECOS_EXAMES
+  .map(e => `- ${e.nome}: ${e.valor === null ? e.nota : reais(e.valor) + (e.nota ? ` (${e.nota})` : "")}`)
+  .join("\n");
+
 const SYSTEM_PROMPT = `Você é Ana, secretária do Instituto de Olhos Bruno Borges (IOBB), em Brasília/DF.
 Você atende pelo WhatsApp. Sua missão é acolher cada pessoa com atenção genuína, esclarecer dúvidas com clareza e ajudar a marcar a consulta — de preferência já confirmando um horário real quando a agenda estiver disponível, ou registrando um pré-agendamento quando não estiver.
 
@@ -268,10 +296,9 @@ Ao confirmar o agendamento de exame, lembre o paciente de LEVAR o pedido do méd
 Exames cobertos por convênio (paciente NÃO paga nada):
 Paquimetria, Topografia/Ceratoscopia, Mapeamento de Retina, Microscopia Especular, Tonometria, Curva Diária de Pressão Ocular CDPO, Retinografia Simples, Gonioscopia.
 
-Valores para pacientes PARTICULARES:
-Paquimetria R$ 180,00 | Topografia R$ 180,00 | Mapeamento Retina R$ 300,00 | Microscopia Especular R$ 180,00 | Tonometria: INCLUÍDA na consulta (não é cobrada à parte) | CDPO R$ 380,00 | Retinografia R$ 220,00 | Gonioscopia R$ 150,00
-
-Exames somente particular: Pentacam R$ 300,00 (apenas Conjunto Nacional) | Teste Sobrecarga Hídrica R$ 380,00
+Valores para pacientes PARTICULARES — UM EXAME POR LINHA. Copie o valor da linha do exame que o paciente citou; NUNCA pegue o valor de uma linha vizinha. Se ele perguntar por mais de um, some e diga o total.
+${TABELA_EXAMES_TXT}
+(Pentacam e Teste de Sobrecarga Hídrica são SOMENTE particular — não entram por convênio.)
 
 REGRA GLOBAL — EXAMES INCLUSOS NA CONSULTA (vale para TODOS os fluxos, sem exceção):
 A ÚNICA situação em que exames complementares estão INCLUSOS no valor da consulta é a AVALIAÇÃO DE CIRURGIA REFRATIVA (os R$ 200,00 já cobrem os exames necessários, inclusive o Pentacam).
@@ -1407,6 +1434,42 @@ function instrucaoUnidadeDoPaciente(motivo) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: ${motivo}. Ele já disse onde quer ser atendido: essa parte está DECIDIDA e não se discute mais. Oferecer a outra unidade depois disso soa como se você não tivesse lido — e o paciente tem de repetir o que já falou, ou desiste.
 A unidade que ele escolheu TEM vaga na lista. Reescreva oferecendo UM único horário DELA — volte ao TOPO da lista e pegue a data mais próxima daquela unidade (lembre: segunda, quarta e sexta são do Conjunto Nacional; terça e quinta, do Taguatinga Shopping). Diga o dia da semana, a data e a hora exatamente como estão na linha da lista.
 Só cite a outra unidade se for para ACRESCENTAR uma opção na mesma frase ("...ou, se preferir, tenho tal dia no Taguatinga Shopping") — nunca no lugar da que ele pediu, e nunca sem oferecer a dele primeiro.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
+// ===== TRAVA: VALOR DE EXAME DIFERENTE DA TABELA ===========================
+// Dr. Bruno, 08/09/2026: "Ana passou valor errado de exame". Caso real, 15h08:
+// "O mapeamento de retina, para pacientes particulares, é R$ 180,00" — é R$ 300;
+// R$ 180 é paquimetria/topografia/microscopia. A equipe corrigiu o paciente 43
+// minutos depois, pedindo desculpas.
+// Aqui o certo é comparação, não interpretação: o valor está em PRECOS_EXAMES.
+// ⚠️ Só julga quando a atribuição é INEQUÍVOCA — UM exame e UM valor na mesma
+// frase. Frase com dois exames ("topografia, mapeamento e outros são à parte")
+// ou com a consulta junto ("a avaliação é R$ 200,00 e a topografia é à parte")
+// não é julgada: ali o número pode pertencer a outra coisa.
+function precoDeExameErrado(reply) {
+  const t = String(reply || "");
+  for (const frase of t.split(/(?<=[.!?\n])/)) {
+    // "inclui a tonometria" / "sem custo" não é cotação de preço do exame.
+    if (/inclu[íi]|inclus|sem custo|n[ãa]o (é|e) cobrad|j[áa] est[áa] (no|na)/i.test(frase)) continue;
+    // Consulta/avaliação/cirurgia na mesma frase: o valor pode ser o dela.
+    if (/consulta|avalia[çc][ãa]o|cirurgi|lente/i.test(frase)) continue;
+    const achados = PRECOS_EXAMES.filter(e => e.re.test(frase));
+    if (achados.length !== 1) continue;
+    const valores = [...frase.matchAll(/R\$\s*([\d.]{2,7})(?:,\d{2})?/g)]
+      .map(m => Number(String(m[1]).replace(/\./g, "")))
+      .filter(n => Number.isFinite(n) && n > 0);
+    if (valores.length !== 1) continue;
+    const e = achados[0], v = valores[0];
+    if (e.valor === null) return `disse que ${e.nome} custa R$ ${v},00 — a tonometria está INCLUÍDA na consulta e não é cobrada à parte`;
+    if (v !== e.valor) return `informou R$ ${v},00 para ${e.nome}, mas o valor da tabela é ${reais(e.valor)}`;
+  }
+  return null;
+}
+function instrucaoPrecoDeExameCerto(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Preço errado o paciente anota, e a equipe descobre no balcão — ou tem de ligar depois pedindo desculpas, que foi o que aconteceu.
+Reescreva com o valor EXATO da tabela de exames que está no seu contexto. Cada exame tem a SUA linha: copie o número da linha do exame que o paciente citou, nunca o da linha vizinha. Se ele perguntou por mais de um exame, diga o valor de cada um e o total somado.
+Vale lembrar na mesma mensagem: pelo convênio esses exames costumam ser cobertos (só Pentacam e Sobrecarga Hídrica são sempre particulares), e não é preciso consultar aqui antes — fazemos com o pedido de qualquer médico.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
@@ -6267,6 +6330,8 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
       const carteirinhaRepetida = pediuCarteirinhaDeNovo(reply, messages);
       // Pediu receita de lente a quem já tem consulta marcada (04/09, Alessandra).
       const receitaAntesDaConsulta = pediuReceitaComConsultaMarcada(reply, meusAgendamentos);
+      // Valor de exame diferente da tabela (08/09, mapeamento cotado a R$ 180).
+      const precoExameErrado = precoDeExameErrado(reply);
       const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
       // Mesma regra para quem TOCOU "Quero agendar" na campanha de reengajamento
@@ -6275,8 +6340,8 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
       const tocouQueroAgendar = /^\s*quero agendar\s*$/i.test(String(text || ""));
       const ofertaCegaCampanha = (tocouQueroAgendar && etapaDeOferta && campanhaSabeConvenio)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
@@ -6284,6 +6349,7 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
           unidadeDoPaciente ? "unidade_pedida_ignorada"
             : carteirinhaRepetida ? "carteirinha_pedida_2x"
             : receitaAntesDaConsulta ? "receita_antes_da_consulta"
+            : precoExameErrado ? "preco_de_exame_errado"
             : ofertaCegaRemarcacao ? "oferta_cega_remarcacao"
             : ofertaCegaCampanha ? "oferta_cega_campanha"
             : precoSemConvenio ? "preco_sem_saber_convenio"
@@ -6346,6 +6412,7 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
             { type: "text", text: dynVolatil + (unidadeDoPaciente ? instrucaoUnidadeDoPaciente(unidadeDoPaciente)
               : carteirinhaRepetida ? instrucaoCarteirinhaJaRecebida(carteirinhaRepetida)
               : receitaAntesDaConsulta ? instrucaoReceitaDepoisDaConsulta(receitaAntesDaConsulta)
+              : precoExameErrado ? instrucaoPrecoDeExameCerto(precoExameErrado)
               : ofertaCegaRemarcacao ? instrucaoPerguntarPreferencia("remarcacao")
               : ofertaCegaCampanha ? instrucaoPerguntarPreferencia("campanha")
               : precoSemConvenio ? instrucaoPrecoComConvenio()
