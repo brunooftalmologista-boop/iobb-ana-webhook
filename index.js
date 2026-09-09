@@ -1476,6 +1476,18 @@ Só cite a outra unidade se for para ACRESCENTAR uma opção na mesma frase ("..
 // construção — se a Ana já leu o cartão, esta aqui não dispara.
 // ⚠️ NÃO trava: particular, convênio não atendido (aí a conversa é outra), nem
 // quem já mandou a carteirinha ou já foi perguntado alguma vez na conversa.
+// Mensagem que é SÓ agradecimento/aceite, em qualquer combinação e com qualquer
+// pontuação: "Tá bom! Obrigada!", "Obrigada.", "ok obrigado", "👍". Serve para
+// distinguir cortesia de PEDIDO — a versão anterior desta regra exigia a frase
+// inteira num único alternativo e deixava passar "Obrigada." e "Valeu!" por
+// causa do ponto final.
+// Pedido de cancelamento na mensagem do paciente. Existe para impedir que a
+// frase determinística de agenda seja usada como resposta a quem quer desmarcar.
+// ⚠️ "desmarQUE" (imperativo/subjuntivo) não casa com "desmarc" — em português
+// o c vira qu antes de e. A paciente escreveu exatamente "que desmarque minha
+// consulta", e a primeira versão desta regra deixou passar.
+const RE_PEDIU_CANCELAR = /desmarc|desmarq|cancel|n[ãa]o (vou|poderei|consigo|posso) (poder |mais )?(ir|comparecer|vir)|n[ãa]o vou poder/i;
+const RE_SO_CORTESIA = /^(?:\s*(?:ok|okay|t[áa]\s+(?:bom|bem)|beleza|certo|perfeito|combinado|muito\s+obrigad[oa]|obrigad[oa]|valeu|agradeç[oa]|de\s+nada|show|👍|🙏|😊|❤️|✅)[\s.!,]*)+$/iu;
 const RE_PEDIDO_DE_CARTEIRINHA = /(n[úu]mero|foto|imagem|c[óo]pia)\s+(d[ao]s?\s+)?(carteirinha|cart[ãa]o)|(envi|mand|encaminh|me\s+pass|me\s+inform)\w*[^.!?\n]{0,35}(carteirinha|cart[ãa]o do (plano|conv[êe]nio))/i;
 // Estas duas existiam na 1ª versão da trava carteirinha_pedida_2x e sumiram
 // quando eu a reescrevi para cortar falso positivo. Voltam aqui porque são o
@@ -2496,7 +2508,7 @@ function instrucaoUmHorario(horas) {
 // Duas checagens, ambas determinísticas:
 //  (a) "hoje"/"amanhã" colado numa data que não é a de hoje/amanhã;
 //  (b) "hoje" junto de um horário que não existe na agenda de hoje.
-function contradizHojeAmanha(texto, slots) {
+function contradizHojeAmanha(texto, slots, meusAgendamentos) {
   if (!texto) return null;
   const hoje = brasiliaAgora().ymd;
   const dd = (n) => String(n).padStart(2, "0");
@@ -2529,7 +2541,20 @@ function contradizHojeAmanha(texto, slots) {
   // consulta é hoje, às 11h20" é uma frase CERTA, e esta checagem a recusou —
   // porque compara com as vagas LIVRES, e 11h20 não estava livre exatamente por
   // ser a consulta dela. Custou uma regeneração à toa no caso Bruna (07/08).
-  const falaDeConsultaExistente = /(sua|seu)\s+(consulta|agendamento)|voc[êe]\s+(tem|est[áa])|est[áa]\s+(agendad|marcad)|vejo aqui/i.test(texto);
+  // 09/09/2026 — caso Rufina: ela pediu para DESMARCAR a consulta de hoje às
+  // 15h40 porque não estava passando bem. A Ana respondeu certo ("lamento que
+  // não esteja bem... confirma que deseja cancelar a consulta de hoje, 09/09,
+  // às 15h40?") e esta trava recusou DUAS vezes, porque 15h40 não está na lista
+  // de vagas livres — não está exatamente por ser a consulta DELA. O código
+  // então substituiu pela frase determinística e ofereceu um horário 16 minutos
+  // depois a uma paciente doente. Ela teve de escrever mais duas vezes.
+  // A guarda por PALAVRAS não pegou: ela escreveu "a consulta", não "sua".
+  // Palavra é frágil; o fato não é. Agora, se o horário citado é de um
+  // agendamento DESTE paciente, não há o que checar — e falar em cancelar já
+  // é, por definição, falar de consulta que existe.
+  const falaDeCancelamento = /cancel|desmarc|remarc/i.test(texto);
+  const falaDeConsultaExistente = falaDeCancelamento
+    || /(sua|seu|a|o)\s+(consulta|agendamento)\s+(de|do|da|em|para)?\s*hoje|(sua|seu)\s+(consulta|agendamento)|voc[êe]\s+(tem|est[áa])|est[áa]\s+(agendad|marcad)|vejo aqui/i.test(texto);
   if (/\bhoje\b/i.test(texto) && !hojeNegado && !falaDeConsultaExistente && Array.isArray(slots)) {
     const horas = horariosOferecidos(texto);
     if (horas.length) {
@@ -2537,8 +2562,12 @@ function contradizHojeAmanha(texto, slots) {
       const hojeISO = `${hoje.ano}-${dd(hoje.mes)}-${dd(hoje.dia)}`;
       const deHoje = new Set(slots.filter(s => diaBR(s.start) === hojeISO)
         .map(s => s.start.toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" })));
-      const semVaga = horas.filter(h => !deHoje.has(h));
-      if (semVaga.length === horas.length) {
+      // Horário que é do PRÓPRIO paciente não conta como inventado.
+      const dele = new Set((meusAgendamentos || [])
+        .filter(x => diaBR(new Date(x.inicio)) === hojeISO)
+        .map(x => new Date(x.inicio).toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" })));
+      const semVaga = horas.filter(h => !deHoje.has(h) && !dele.has(h));
+      if (horas.length && semVaga.length === horas.length) {
         return `"hoje" com horário que não existe na agenda de hoje (${horas.join(", ")})`;
       }
     }
@@ -3143,6 +3172,30 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
           const horaDoBloco = ini.toLocaleTimeString("pt-BR",
             { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
           const prosaTemHora = horariosOferecidos(replyTexto).includes(horaDoBloco);
+          // 🚫 CORTESIA NÃO REMARCA. O paciente disse só "Tá bom! Obrigada!" e a
+          // Ana respondeu "Por nada" — com o cartão "Confira seus dados" trazendo
+          // OUTRO horário. O cartão fez a prosa citar a hora do bloco, a trava de
+          // cima liberou, e a Laís ficou com 14h00 e 14h20 no mesmo dia (08/09).
+          // Remarcação nasce de um PEDIDO. Se a última coisa que o paciente
+          // escreveu foi um agradecimento ou um "ok", não há pedido nenhum —
+          // e o horário que vale é o que ele já aceitou.
+          let cortesia = false;
+          if (prosaTemHora && new Date(doMesmoPaciente[0].inicio).getTime() !== ini.getTime()) {
+            try {
+              const { data: ult } = await supabase.from("messages")
+                .select("content").eq("conversation_id", conversationId).eq("role", "user")
+                .order("timestamp", { ascending: false }).limit(1);
+              const txt = String(ult?.[0]?.content || "").trim();
+              cortesia = RE_SO_CORTESIA.test(txt);
+            } catch (e) { console.error("[Agendar] Não consegui ler a última mensagem do paciente:", e.message); }
+          }
+          if (cortesia) {
+            console.warn(`[Agendar] Re-emissão em mensagem de CORTESIA ignorada (${nome || "sem nome"}): bloco pedia ${ini.toISOString()}, mantido ${new Date(doMesmoPaciente[0].inicio).toISOString()}.`);
+            await registrarErro("agendar_reemissao_cortesia",
+              `paciente=${nome || "—"} mantido=${new Date(doMesmoPaciente[0].inicio).toISOString()} descartado=${ini.toISOString()}`,
+              { conversationId, telefone }).catch(() => {});
+            return { ok: true, already: true };
+          }
           if (!prosaTemHora) {
             console.warn(`[Agendar] Re-emissão IGNORADA (${nome || "sem nome"}): bloco pedia ${ini.toISOString()}, mas a mensagem não cita horário — mantido ${new Date(doMesmoPaciente[0].inicio).toISOString()}.`);
             await registrarErro("agendar_reemissao_ignorada",
@@ -3162,7 +3215,18 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
           const normMotivo = (x) => String(x || "Consulta").trim().toLowerCase()
             .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
           const mA = normMotivo(doMesmoPaciente[0].motivo), mB = normMotivo(motivo);
-          const mesmoServico = mA === mB || mA.includes(mB) || mB.includes(mA);
+          // 08/09/2026 — caso Laís: "Consulta" às 14h00 e "Avaliação de ceratocone"
+          // às 14h20, criados com 2 minutos de diferença, os DOIS mantidos. A
+          // comparação por texto viu dois serviços diferentes; são a MESMA visita
+          // — "Consulta" é só o rótulo genérico, e ninguém marca duas consultas
+          // com 20 minutos de intervalo.
+          // O caso Ronaldo (19/08), que criou esta regra, era outra coisa: um
+          // EXAME e uma CONSULTA, de propósito, em sequência. É essa distinção
+          // que importa — exame × consulta —, não a igualdade das palavras.
+          // Dois EXAMES diferentes continuam sendo agendamentos adicionais.
+          const ehExame = (m) => /paquimetria|topografia|ceratoscopia|mapeamento|microscopia|tonometria|cdpo|curva diaria|retinografia|gonioscopia|pentacam|sobrecarga|campimetr|teste de lente|exame/i.test(m);
+          const mesmoServico = mA === mB || mA.includes(mB) || mB.includes(mA)
+            || (!ehExame(mA) && !ehExame(mB));   // duas consultas/avaliações = uma visita só
           if (!mesmoServico) {
             console.log(`[Agendar] Serviço DIFERENTE na mesma conversa ("${mA}" x "${mB}") — agendamento adicional, NÃO cancelo o anterior.`);
           } else {
@@ -6377,7 +6441,7 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
       const etapaDeOferta = !/\[(AGENDAR|PREAGENDAMENTO)\]/i.test(reply);
       const horas = etapaDeOferta ? horariosOferecidos(reply) : [];
       const vazouInstrucao = RE_VAZOU_INSTRUCAO.test(reply);
-      const contradicao = contradizHojeAmanha(reply, slotsVigentes);
+      const contradicao = contradizHojeAmanha(reply, slotsVigentes, meusAgendamentos);
       const virouVerbete = RE_VERBETE.test(reply);
       const precoSeco = precoSemHorario(reply, slotsVigentes);
       // FICHA INCOMPLETA. 5 casos em 4 dias desde que passei a registrar
@@ -6575,7 +6639,7 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
             // Aqui só entra o que é MENTIRA sobre a agenda.
             const escalando = /3033-6605|99299[-\s.]?7639|equipe[^.!?]{0,25}em contato|repassar (sua|a) solicita|peço desculpas pelo transtorno/i.test(reply);
             const aindaErrada = escalando ? null
-              : (contradizHojeAmanha(reply, slotsVigentes)
+              : (contradizHojeAmanha(reply, slotsVigentes, meusAgendamentos)
                  || unidadeContradizOferta(reply, slotsVigentes));
             // 🔁 UMA VEZ SÓ POR CONVERSA. A frase determinística é o último
             // recurso — e último recurso repetido vira robô.
@@ -6593,6 +6657,19 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
             if (aindaErrada && jaSubstituiu) {
               console.warn(`[HorarioTrava] Reescrita ainda errada (${aindaErrada}), mas a frase determinística JÁ foi usada nesta conversa — mandando a resposta dela para não repetir.`);
               await registrarErro("substituicao_repetida_evitada", `${aindaErrada} | ${String(novo).slice(0, 200)}`,
+                { conversationId: conversation.id, telefone: from }).catch(() => {});
+            } else if (aindaErrada && RE_PEDIU_CANCELAR.test(String(text || ""))) {
+              // 🚫 QUEM PEDIU PARA DESMARCAR NÃO RECEBE OFERTA DE HORÁRIO.
+              // Caso Rufina (09/09): "peço que desmarque minha consulta de hoje,
+              // não estou passando bem" → "o horário mais próximo que tenho é
+              // hoje às 12:00. Pode ser?", 16 minutos depois. A frase
+              // determinística oferece a vaga mais próxima SEMPRE, porque nasceu
+              // para conversas de agendamento — e aqui foi aplicada a um pedido
+              // de cancelamento. É a mesma cegueira de 01/09, quando ela foi
+              // usada com quem só queria entregar exames.
+              // Resposta imperfeita da Ana é melhor que uma oferta ofensiva.
+              console.warn(`[HorarioTrava] Reescrita ainda errada (${aindaErrada}), mas o paciente pediu para DESMARCAR — não substituo por oferta de horário.`);
+              await registrarErro("substituicao_evitada_cancelamento", `${aindaErrada} | ${String(novo).slice(0, 200)}`,
                 { conversationId: conversation.id, telefone: from }).catch(() => {});
             } else if (aindaErrada) {
               // A FRASE DETERMINÍSTICA TAMBÉM RESPEITA A UNIDADE PEDIDA
