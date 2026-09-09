@@ -6530,7 +6530,21 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
               : virouVerbete ? instrucaoSemVerbete()
               : semFormaPagamento ? instrucaoFichaCompleta(faltasFicha)
               : precoSeco ? instrucaoPrecoComHorario()
-              : instrucaoUmHorario(horas)) + ancoraTxt },
+              : instrucaoUmHorario(horas))
+              // QUANDO DUAS TRAVAS PEGAM A MESMA RESPOSTA, só a primeira da
+              // cadeia vira instrução — e o recheque da reescrita só re-roda
+              // duas travas antigas (hoje/amanhã e unidade×dia). Ou seja: a
+              // segunda saía sem correção nenhuma.
+              // Isso importa porque a do cartão é a MAIS frequente das novas
+              // (26% dos agendamentos de convênio) e é a ÚLTIMA das cinco —
+              // perdia para qualquer outra. Medido em teste: "pede receita de
+              // lente E esquece o cartão" dispara as duas, e o cartão sumia.
+              // A instrução dela é puramente ADITIVA ("mantenha tudo, acrescente
+              // o pedido"), então compõe com qualquer outra sem conflito — por
+              // isso é a única que vai junto em vez de esperar a próxima volta.
+              + ((semPedirCarteirinha && motivo !== semPedirCarteirinha)
+                  ? instrucaoPedirCarteirinha(semPedirCarteirinha) : "")
+              + ancoraTxt },
           ],
           messages: apiMessages,
         }, { origem: "reescrita" });
