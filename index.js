@@ -1459,6 +1459,58 @@ Só cite a outra unidade se for para ACRESCENTAR uma opção na mesma frase ("..
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
+// ===== TRAVA: MARCOU CONVÊNIO SEM NUNCA PEDIR A CARTEIRINHA ================
+// Dr. Bruno, 08/09/2026: "Ana esquecendo de pedir foto ou dados da carteirinha
+// para pacientes com convênio".
+// Medido em 30 dias — 137 agendamentos de convênio feitos pela Ana:
+//    80 (58%) com a carteirinha anexada à ficha
+//    20 (15%) ela pediu e o paciente não mandou  ← certo, não se insiste
+//    28 (20%) ela só citou a carteirinha no "traga no dia da consulta"
+//     8 (6%)  nunca mencionou
+// Ou seja: em 36 de 137 (26%) ela NÃO PEDIU. Os 28 são os mais enganosos —
+// "lembre-se de trazer documento com foto e a carteirinha do convênio" parece
+// que resolveu, mas é a lista do que levar, não um pedido de enviar agora. Sem
+// o número, a equipe não solicita a autorização antes da consulta.
+// É o espelho da trava carteirinha_pedida_2x: uma impede pedir de novo o que já
+// veio; esta impede marcar sem ter pedido uma vez. As duas se excluem por
+// construção — se a Ana já leu o cartão, esta aqui não dispara.
+// ⚠️ NÃO trava: particular, convênio não atendido (aí a conversa é outra), nem
+// quem já mandou a carteirinha ou já foi perguntado alguma vez na conversa.
+const RE_PEDIDO_DE_CARTEIRINHA = /(n[úu]mero|foto|imagem|c[óo]pia)\s+(d[ao]s?\s+)?(carteirinha|cart[ãa]o)|(envi|mand|encaminh|me\s+pass|me\s+inform)\w*[^.!?\n]{0,35}(carteirinha|cart[ãa]o do (plano|conv[êe]nio))/i;
+// Estas duas existiam na 1ª versão da trava carteirinha_pedida_2x e sumiram
+// quando eu a reescrevi para cortar falso positivo. Voltam aqui porque são o
+// sinal de "o cartão já chegou por imagem" — sem elas esta trava referenciava
+// nome inexistente e morria no catch, calada.
+const RE_IMAGEM_RECEBIDA = /\[(imagem|foto|documento|arquivo)[^\]]{0,20}recebid/i;
+const RE_CONTEXTO_CONVENIO = /conv[êe]nio|unimed|carteirinha|plano de sa[úu]de/i;
+function esqueceuPedirCarteirinha(reply, messages, registros) {
+  const comConvenio = (registros || []).some(r => {
+    const c = String(r.convenio || "").trim();
+    return c && c !== "-" && !/^particular$/i.test(c) && convenioAtendido(c);
+  });
+  if (!comConvenio) return null;
+  const t = String(reply || "");
+  // A própria mensagem já pede? Então está certa.
+  if (RE_PEDIDO_DE_CARTEIRINHA.test(t)) return null;
+  const hist = Array.isArray(messages) ? messages : [];
+  // Já pediu em algum momento da conversa — pedir uma vez basta, e insistir é
+  // justamente o erro oposto (caso Virginia, 03/09).
+  if (hist.some(m => m.role === "assistant" && RE_PEDIDO_DE_CARTEIRINHA.test(String(m.content || "")))) return null;
+  // Já tem o cartão: leu a foto, ou o paciente mandou imagem em contexto de convênio.
+  if (hist.some(m => m.role === "assistant" && RE_LEU_CARTEIRINHA.test(String(m.content || "")))) return null;
+  const tudo = hist.map(m => String(m.content || "")).join(" ");
+  if (RE_CONTEXTO_CONVENIO.test(tudo)
+      && hist.some(m => m.role === "user" && RE_IMAGEM_RECEBIDA.test(String(m.content || "")))) return null;
+  return "vai marcar uma consulta por CONVÊNIO sem nunca ter pedido a carteirinha nesta conversa";
+}
+function instrucaoPedirCarteirinha(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. É com o número da carteirinha que a equipe solicita a autorização ANTES da consulta; sem ele, isso vira corrida no balcão no dia.
+Reescreva a MESMA mensagem — mantendo o horário e o bloco de agendamento exatamente como estão — e acrescente, em UMA frase natural, o pedido da carteirinha: o número OU uma foto dela. Ex.: "Aproveitando: poderia me enviar uma foto da sua carteirinha ou o número dela? Assim já anexo ao seu agendamento."
+⚠️ O "assim já anexo" existe para deixar claro que o cartão NÃO é condição para marcar. É PROIBIDO condicionar o horário a ele, adiar o agendamento por causa dele ou dizer que o horário está "separado" esperando o cartão. O agendamento sai agora, o cartão vem quando vier.
+⚠️ Não confunda com a lista do que levar no dia ("traga documento e carteirinha"): isso não é pedir. O pedido é para ele ENVIAR aqui, agora.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
 // ===== TRAVA: VALOR DE EXAME DIFERENTE DA TABELA ===========================
 // Dr. Bruno, 08/09/2026: "Ana passou valor errado de exame". Caso real, 15h08:
 // "O mapeamento de retina, para pacientes particulares, é R$ 180,00" — é R$ 300;
@@ -6371,6 +6423,11 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
       const receitaAntesDaConsulta = pediuReceitaComConsultaMarcada(reply, meusAgendamentos);
       // Valor de exame diferente da tabela (08/09, mapeamento cotado a R$ 180).
       const precoExameErrado = precoDeExameErrado(reply);
+      // Marcou convênio sem nunca pedir a carteirinha (08/09).
+      let semPedirCarteirinha = null;
+      try {
+        semPedirCarteirinha = esqueceuPedirCarteirinha(reply, messages, extrairAgendar(reply).registros);
+      } catch (e) { console.error("[Carteirinha] Checagem falhou (segue sem travar):", e.message); }
       const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
       // Mesma regra para quem TOCOU "Quero agendar" na campanha de reengajamento
@@ -6379,8 +6436,8 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
       const tocouQueroAgendar = /^\s*quero agendar\s*$/i.test(String(text || ""));
       const ofertaCegaCampanha = (tocouQueroAgendar && etapaDeOferta && campanhaSabeConvenio)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || semPedirCarteirinha || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || semPedirCarteirinha || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
@@ -6389,6 +6446,7 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
             : carteirinhaRepetida ? "carteirinha_pedida_2x"
             : receitaAntesDaConsulta ? "receita_antes_da_consulta"
             : precoExameErrado ? "preco_de_exame_errado"
+            : semPedirCarteirinha ? "agendou_convenio_sem_pedir_carteirinha"
             : ofertaCegaRemarcacao ? "oferta_cega_remarcacao"
             : ofertaCegaCampanha ? "oferta_cega_campanha"
             : precoSemConvenio ? "preco_sem_saber_convenio"
@@ -6452,6 +6510,7 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
               : carteirinhaRepetida ? instrucaoCarteirinhaJaRecebida(carteirinhaRepetida)
               : receitaAntesDaConsulta ? instrucaoReceitaDepoisDaConsulta(receitaAntesDaConsulta)
               : precoExameErrado ? instrucaoPrecoDeExameCerto(precoExameErrado)
+              : semPedirCarteirinha ? instrucaoPedirCarteirinha(semPedirCarteirinha)
               : ofertaCegaRemarcacao ? instrucaoPerguntarPreferencia("remarcacao")
               : ofertaCegaCampanha ? instrucaoPerguntarPreferencia("campanha")
               : precoSemConvenio ? instrucaoPrecoComConvenio()
