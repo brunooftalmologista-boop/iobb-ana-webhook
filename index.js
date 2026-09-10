@@ -6049,7 +6049,15 @@ app.post("/webhook", async (req, res) => {
             .map(m => (m.content || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""))
             .join(" ");
           const falaDeExame = /\bexames?\b|gonioscopia|mapeamento|topografia|paquimetria|pentacam|retinografia|microscopia|tonometria|campimetr|curva diaria|sobrecarga/.test(ultimas6);
-          const falaDeValorOuPedido = /valor|preco|quanto (custa|fica|e|sai)|orcamento|cobran|pedido|solicitac|requisic|encaminhamento/.test(ultimas6);
+          // ⚠️ A 1ª versão exigia VALOR ou PEDIDO, e isso era estreito demais.
+          // Caso Marcia (10/09/2026, 09h58): "Para concurso público e eles
+          // EXIGIRAM alguns exames. Parecer Oftalmológico com acuidade visual
+          // pela tabela de Snellen... Faz?" + foto do edital → caiu no texto
+          // fixo, porque ela não escreveu "valor" nem "pedido".
+          // Quem manda a foto de um exame quer saber se FAZEMOS, quanto CUSTA ou
+          // as duas coisas. Qualquer uma das três justifica olhar a imagem — e a
+          // instrução que acompanha já proíbe interpretar conteúdo clínico.
+          const falaDeValorOuPedido = /valor|preco|quanto (custa|fica|e|sai)|orcamento|cobran|pedido|solicitac|requisic|encaminhamento|exigi|exige|pedi[uram]|faz(em)?\b|realiza|atende[ms]?\b|voces? (fazem|tem|realizam)|edital|concurso|laudo|parecer|admissional/.test(ultimas6);
           fotoDePedidoExame = !fotoDeCarteirinha && falaDeExame && falaDeValorOuPedido;
         } catch (_) {}
       }
