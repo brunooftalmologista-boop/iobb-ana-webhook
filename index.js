@@ -2169,7 +2169,18 @@ async function desfazerAgendamentoComConvenioRecusado(reply, from, conversationI
 // dois minutos e meio achando que tinha vaga guardada, com a agenda vazia. Se ela
 // tivesse dito "não estou com o cartão agora", não haveria agendamento nenhum.
 // Para o paciente, "separei", "guardei" e "reservei" são a mesma promessa.
-const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendamento (est[áa]|foi) confirmad|(consulta|hor[áa]rio)[^.!?\n]{0,40}(est[áa]|foi) (agendad|confirmad|marcad|reservad|separad|guardad|segurad)|(reservei|separei|guardei|deixei reservad|deixei separad|est[áa] reservad|est[áa] separad)/i;
+// ⏳ O TEMPO DO VERBO IMPORTA — e foi por ele que a trava vazou duas vezes.
+// A lista pegava "deixEI reservado" (passado) e "ESTÁ reservado", mas não
+// "já DEIXO o horário reservado" (presente) nem "VOU reservar" (futuro). Para
+// o paciente, os quatro são a mesma promessa.
+// Caso Soraya (10/09/2026, 15h26): "Enquanto isso, já deixo o horário de
+// sexta-feira, 11/09, às 17h00 reservado no Conjunto Nacional" — sem bloco
+// nenhum. Dois minutos depois: "confirmo o agendamento para 17h00". O horário
+// tinha sido ocupado pela secretária no meio do caminho, e a paciente recebeu
+// "peço desculpas, esse horário NÃO ficou reservado" sobre algo que nunca
+// existiu. Antes disso, de manhã, o mesmo já acontecera com o 16h40.
+// É o mesmo padrão do caso Kattiucy (03/09), agora com o verbo no presente.
+const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendamento (est[áa]|foi) confirmad|(consulta|hor[áa]rio)[^.!?\n]{0,40}(est[áa]|foi) (agendad|confirmad|marcad|reservad|separad|guardad|segurad)|(reservei|separei|guardei|deixei reservad|deixei separad|est[áa] reservad|est[áa] separad)|(j[áa] )?deixo[^.!?\n]{0,60}(reservad|separad|guardad)|vou (j[áa] )?(reservar|separar|guardar|deixar reservad|deixar separad)|(fica|ficar[áa]) (reservad|separad|guardad)|j[áa] (reservo|separo|guardo)/i;
 // ⚠️ As exclusões valem SÓ na frase do anúncio, nunca na mensagem inteira.
 // A 1ª versão desta trava excluía qualquer mensagem contendo "?", "se" ou "caso"
 // — e TODA confirmação da Ana termina com "**Se** você usa lente de contato..." e
@@ -2178,7 +2189,10 @@ const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendame
 // texto do teste à mão, sem as frases padrão (mesmo erro do filtro de cortesia).
 // Custo: o paciente Isve ouviu "consulta agendada para hoje às 15h20" e não havia
 // nada na agenda — o [inicio:] veio entre < > e o bloco foi descartado.
-const RE_AGENDA_NAO_CONTA = /posso agendar|gostaria de agendar|para agendar|vou agendar|quer que eu agende|deseja agendar|precisa (ser )?agendad|n[aã]o (foi|ficou|est[áa]) (agendad|confirmad|reservad)|se (precisar|quiser|desejar)|caso (queira|precise|deseje)/i;
+// As formas CONDICIONAIS e as PERGUNTAS continuam livres: "para eu reservar
+// esse horário, me confirma o nome completo?" é justamente a frase certa que o
+// prompt manda usar, e "reservo para você?" é uma oferta, não uma promessa.
+const RE_AGENDA_NAO_CONTA = /posso agendar|gostaria de agendar|para agendar|vou agendar|quer que eu agende|deseja agendar|precisa (ser )?agendad|n[aã]o (foi|ficou|est[áa]) (agendad|confirmad|reservad)|se (precisar|quiser|desejar)|caso (queira|precise|deseje)|para (eu |que eu )?(reservar|separar|guardar)|quer que eu (reserve|separe|guarde)|posso (reservar|separar|guardar)|(reservo|separo|guardo)[^.!?\n]{0,30}\?/i;
 function anunciouAgendamentoSemAgendar(reply, slots, meusAgendamentos) {
   const limpo = extrairAgendar(reply).limpo;
   if (!RE_ANUNCIOU_AGENDAMENTO.test(limpo)) return null;
