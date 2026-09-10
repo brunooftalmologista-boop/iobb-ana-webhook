@@ -1859,19 +1859,35 @@ function instrucaoSemVerbete() {
 // mais tarde do que podia, e a vaga de 10/08 ficou vazia.
 // Quando o paciente MUDA o critério, a varredura tem que recomeçar da data mais
 // próxima. Aqui checamos o resultado: existe o MESMO horário antes?
-function existeVagaMaisCedo(reply, slots, pedidoPaciente) {
+const DIAS_SEMANA_RE = { segunda: 1, terca: 2, quarta: 3, quinta: 4, sexta: 5 };
+const DOW_EN = { monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sunday: 0 };
+const dowDoSlot = (d) => DOW_EN[d.toLocaleDateString("en-US", { timeZone: TZ_BR, weekday: "long" }).toLowerCase()] ?? -1;
+function existeVagaMaisCedo(reply, slots, pedidoPaciente, messages) {
   if (!Array.isArray(slots) || !slots.length) return null;
   // Se o paciente amarrou a data (dia da semana, data, "semana que vem"), a
-  // oferta mais distante é o que ele pediu — não é erro. Olhamos só a ÚLTIMA
-  // mensagem dele: é a que define o critério do turno.
+  // oferta mais distante é o que ele pediu — não é erro.
   if (/(\d{2}\/\d{2}|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|semana que vem|pr[óo]xima semana|semana seguinte|depois d|a partir d|m[êe]s que vem)/i
       .test(String(pedidoPaciente || ""))) return null;
+  // ⚠️ O DIA PEDIDO SOBREVIVE À MUDANÇA DE TURNO (09/09/2026, caso Lidiane).
+  // Ela escreveu "gostaria de uma agenda pra SEXTA-FEIRA" e, duas mensagens
+  // depois, "tem horário à tarde?". A guarda acima só lia a ÚLTIMA mensagem —
+  // que já não citava o dia — então a trava recusou a oferta CERTA de sexta às
+  // 16h porque a quinta às 16h estava livre. A reescrita, empurrada a achar
+  // algo mais cedo, respondeu com TRÊS horários numa lista (16h00, 16h20,
+  // 16h40) — e foi essa a "vários horários ao mesmo tempo" que o Dr. Bruno viu.
+  // Mudar de turno não desfaz o dia escolhido. Se a oferta cai num dia que ele
+  // pediu nas últimas mensagens, está certa por definição.
+  const ultimas = (messages || []).filter(m => m.role === "user").slice(-3)
+    .map(m => String(m.content || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")).join(" ");
+  const diasPedidos = new Set(Object.entries(DIAS_SEMANA_RE)
+    .filter(([nome]) => new RegExp(`\\b${nome}`).test(ultimas)).map(([, n]) => n));
   const hhmm = (d) => d.toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
   for (const m of String(reply).matchAll(/(\d{2})\/(\d{2})(?!\/?\d)[^.\n]{0,25}?[àa]s\s+(\d{1,2})\s*(?:h|:)\s*(\d{2})?/gi)) {
     const alvo = `${String(m[3]).padStart(2, "0")}:${m[4] || "00"}`;
     const ofertado = slots.find(s => hhmm(s.start) === alvo &&
       s.start.toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" }) === `${m[1]}/${m[2]}`);
     if (!ofertado) continue;                       // horário citado não é da lista; outra trava cuida
+    if (diasPedidos.size && diasPedidos.has(dowDoSlot(ofertado.start))) continue;   // é o dia que ele pediu
     const maisCedo = slots.filter(s => hhmm(s.start) === alvo && s.start < ofertado.start)
       .sort((a, b) => a.start - b.start)[0];
     if (maisCedo) {
@@ -6455,7 +6471,7 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
         faltasFicha = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
         if (faltasFicha.length) semFormaPagamento = `ficha incompleta: falta ${faltasFicha.join("; ")}`;
       } catch (e) { console.error("[Ficha] Checagem falhou (segue sem travar):", e.message); }
-      const maisCedo = existeVagaMaisCedo(reply, slotsVigentes, text);
+      const maisCedo = existeVagaMaisCedo(reply, slotsVigentes, text, messages);
       const unidadeErrada = unidadeContradizOferta(reply, slotsVigentes);
       // Prometeu cancelar e não emitiu o bloco (ou emitiu menos que prometeu).
       // Ofereceu vaga que NÃO está livre. Só na etapa de OFERTA: na mensagem de
