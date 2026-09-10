@@ -1558,13 +1558,6 @@ function esqueceuPedirCarteirinha(reply, messages, registros) {
       && hist.some(m => m.role === "user" && RE_IMAGEM_RECEBIDA.test(String(m.content || "")))) return null;
   return "vai marcar uma consulta por CONVÊNIO sem nunca ter pedido a carteirinha nesta conversa";
 }
-function instrucaoPedirCarteirinha(motivo) {
-  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. É com o número da carteirinha que a equipe solicita a autorização ANTES da consulta; sem ele, isso vira corrida no balcão no dia.
-Reescreva a MESMA mensagem — mantendo o horário e o bloco de agendamento exatamente como estão — e acrescente, em UMA frase natural, o pedido da carteirinha: o número OU uma foto dela. Ex.: "Aproveitando: poderia me enviar uma foto da sua carteirinha ou o número dela? Assim já anexo ao seu agendamento."
-⚠️ O "assim já anexo" existe para deixar claro que o cartão NÃO é condição para marcar. É PROIBIDO condicionar o horário a ele, adiar o agendamento por causa dele ou dizer que o horário está "separado" esperando o cartão. O agendamento sai agora, o cartão vem quando vier.
-⚠️ Não confunda com a lista do que levar no dia ("traga documento e carteirinha"): isso não é pedir. O pedido é para ele ENVIAR aqui, agora.
-🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
-}
 
 // ===== TRAVA: VALOR DE EXAME DIFERENTE DA TABELA ===========================
 // Dr. Bruno, 08/09/2026: "Ana passou valor errado de exame". Caso real, 15h08:
@@ -6595,11 +6588,6 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       const receitaAntesDaConsulta = pediuReceitaComConsultaMarcada(reply, meusAgendamentos);
       // Valor de exame diferente da tabela (08/09, mapeamento cotado a R$ 180).
       const precoExameErrado = precoDeExameErrado(reply);
-      // Marcou convênio sem nunca pedir a carteirinha (08/09).
-      let semPedirCarteirinha = null;
-      try {
-        semPedirCarteirinha = esqueceuPedirCarteirinha(reply, messages, extrairAgendar(reply).registros);
-      } catch (e) { console.error("[Carteirinha] Checagem falhou (segue sem travar):", e.message); }
       const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
       // Mesma regra para quem TOCOU "Quero agendar" na campanha de reengajamento
@@ -6608,8 +6596,8 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       const tocouQueroAgendar = /^\s*quero agendar\s*$/i.test(String(text || ""));
       const ofertaCegaCampanha = (tocouQueroAgendar && etapaDeOferta && campanhaSabeConvenio)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || semPedirCarteirinha || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || semPedirCarteirinha || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
@@ -6618,7 +6606,6 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
             : carteirinhaRepetida ? "carteirinha_pedida_2x"
             : receitaAntesDaConsulta ? "receita_antes_da_consulta"
             : precoExameErrado ? "preco_de_exame_errado"
-            : semPedirCarteirinha ? "agendou_convenio_sem_pedir_carteirinha"
             : ofertaCegaRemarcacao ? "oferta_cega_remarcacao"
             : ofertaCegaCampanha ? "oferta_cega_campanha"
             : precoSemConvenio ? "preco_sem_saber_convenio"
@@ -6682,7 +6669,6 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
               : carteirinhaRepetida ? instrucaoCarteirinhaJaRecebida(carteirinhaRepetida)
               : receitaAntesDaConsulta ? instrucaoReceitaDepoisDaConsulta(receitaAntesDaConsulta)
               : precoExameErrado ? instrucaoPrecoDeExameCerto(precoExameErrado)
-              : semPedirCarteirinha ? instrucaoPedirCarteirinha(semPedirCarteirinha)
               : ofertaCegaRemarcacao ? instrucaoPerguntarPreferencia("remarcacao")
               : ofertaCegaCampanha ? instrucaoPerguntarPreferencia("campanha")
               : precoSemConvenio ? instrucaoPrecoComConvenio()
@@ -6714,8 +6700,6 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
               // A instrução dela é puramente ADITIVA ("mantenha tudo, acrescente
               // o pedido"), então compõe com qualquer outra sem conflito — por
               // isso é a única que vai junto em vez de esperar a próxima volta.
-              + ((semPedirCarteirinha && motivo !== semPedirCarteirinha)
-                  ? instrucaoPedirCarteirinha(semPedirCarteirinha) : "")
               + ancoraTxt },
           ],
           messages: apiMessages,
@@ -6924,6 +6908,29 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
         reply = rev.texto;
       }
     } catch (e) { console.error("[DataTrava] falhou (mensagem segue original):", e.message); }
+
+    // 💳 O PEDIDO DA CARTEIRINHA É ACRESCENTADO, NÃO REESCRITO (10/09/2026).
+    // Subi esta trava hoje como as outras — recusando a resposta e mandando a Ana
+    // reescrever. Deu errado no mesmo dia, caso Alan (55 9900-3441, 17h07): a
+    // resposta dela era CLARA ("amanhã às 16h não tenho vaga; o que temos na
+    // sexta é 10h40"), a trava recusou por faltar o pedido do cartão, e a
+    // reescrita devolveu "o mais próximo na parte da TARDE é às 10h40 — que na
+    // verdade é de manhã", perdendo o bloco [AGENDAR] junto. O paciente ficou
+    // sem agendamento e com uma frase que se contradiz sozinha.
+    // A lição: pedir a carteirinha é ACRÉSCIMO de uma frase fixa, não um problema
+    // de redação. Reescrever a resposta inteira por causa de uma linha é apostar
+    // o texto todo — e hoje se perdeu a aposta.
+    // Aqui embaixo o agendamento JÁ FOI GRAVADO e o bloco técnico já saiu do
+    // texto: anexar a frase não pode quebrar nada.
+    try {
+      const faltaCartao = esqueceuPedirCarteirinha(reply, messages, ag.registros);
+      if (faltaCartao) {
+        reply += "\n\nAproveitando: poderia me enviar uma foto da sua carteirinha ou o número dela? Assim já anexo ao seu agendamento — o horário já está garantido.";
+        console.log("[Carteirinha] Pedido acrescentado à resposta (sem reescrita).");
+        await registrarErro("carteirinha_pedido_acrescentado", String(faltaCartao).slice(0, 200),
+          { conversationId: conversation.id, telefone: from }).catch(() => {});
+      }
+    } catch (e) { console.error("[Carteirinha] Acréscimo falhou (mensagem segue):", e.message); }
 
     // CONFERÊNCIA DOS DADOS na própria mensagem de confirmação (11/08). Montada
     // pelo SISTEMA a partir do que vai ser gravado — não do que a Ana lembrou de
