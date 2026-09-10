@@ -1459,6 +1459,49 @@ Só cite a outra unidade se for para ACRESCENTAR uma opção na mesma frase ("..
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
+// ===== AVISO PRÉVIO: A VAGA QUE ELA OFERECEU ANTES JÁ FOI OCUPADA =========
+// Dr. Bruno, 10/09/2026: "a Ana parece não enxergar os horários agendados pela
+// secretária e depois conserta".
+// A medição desmentiu a parte da secretária — nos 16 casos de 60 dias, a vaga já
+// estava ocupada há UM DIA, em média (só 1 em menos de 30 min), e 9 das 13 donas
+// eram de pacientes marcados pela própria Ana. Cache não explica nada disso: ele
+// dura 10 segundos e é limpo quando o painel grava.
+// O que acontece de verdade é ANCORAGEM: a Ana cita um horário, o paciente some,
+// volta horas depois e diz "pode ser aquele das 14h40" — e ela repete o horário
+// da MEMÓRIA DA CONVERSA, sem reler a lista. A lista está certa; ela não olha.
+// Hoje isso só é pego DEPOIS, pela trava ofereceu_vaga_inexistente, que custa uma
+// reescrita (US$ 0,022) e às vezes deixa o paciente ver o pedido de desculpas —
+// foi o que a Soraya recebeu em 10/09.
+// Aqui o código confere ANTES e conta o fato à Ana. Não há leitura nova no banco
+// (a lista já foi buscada neste turno) e a linha só entra quando há conflito.
+const RE_ACEITE_DE_HORARIO = /\b(pode ser|pode sim|isso mesmo|esse mesmo|aquele|esse hor[áa]rio|confirmo|fechado|serve|vamos nesse|t[áa] bom|ok)\b/i;
+function vagaCitadaJaOcupada(messages, slots, meusAgendamentos, textoPaciente) {
+  if (!Array.isArray(slots) || !slots.length) return null;
+  const txt = String(textoPaciente || "");
+  // Só quando ele ACEITA algo (ou repete um horário) — não em toda mensagem.
+  if (!RE_ACEITE_DE_HORARIO.test(txt) && !/\d{1,2}\s*[h:]\s*\d{2}/.test(txt)) return null;
+  // Último horário COM DATA que a Ana ofereceu nesta conversa.
+  const anteriores = (messages || []).filter(m => m.role === "assistant").slice(-8).reverse();
+  for (const m of anteriores) {
+    const t = String(m.content || "");
+    const horas = horariosOferecidos(t);
+    if (!horas.length) continue;
+    const md = t.match(/\b(\d{2})\/(\d{2})(?!\/?\d)\b/);
+    if (!md) return null;                       // sem data não dá para conferir
+    const alvoDia = `${md[1]}/${md[2]}`, alvoHora = horas[0];
+    const comoDia = (d) => d.toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
+    const comoHora = (d) => d.toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
+    // Ainda livre? Então não há nada a avisar.
+    if (slots.some(s => comoDia(s.start) === alvoDia && comoHora(s.start) === alvoHora)) return null;
+    // É a consulta DELE? Também não é conflito — é dele mesmo.
+    if ((meusAgendamentos || []).some(a => comoDia(new Date(a.inicio)) === alvoDia
+        && comoHora(new Date(a.inicio)) === alvoHora)) return null;
+    const alt = alternativaMaisProxima(slots, new Date(), Date.now());
+    return { dia: alvoDia, hora: alvoHora, alternativa: alt };
+  }
+  return null;
+}
+
 // ===== TRAVA: MARCOU CONVÊNIO SEM NUNCA PEDIR A CARTEIRINHA ================
 // Dr. Bruno, 08/09/2026: "Ana esquecendo de pedir foto ou dados da carteirinha
 // para pacientes com convênio".
@@ -6366,6 +6409,17 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
+
+    // ⏱️ A VAGA CITADA ANTES AINDA EXISTE? (10/09/2026 — ver vagaCitadaJaOcupada)
+    // Barato: a lista já está em memória e a linha só entra quando há conflito.
+    try {
+      const ocupada = vagaCitadaJaOcupada(messages, slotsVigentes, meusAgendamentos, text);
+      if (ocupada) {
+        dynVolatil += `\n\n⏱️ ATENÇÃO — O HORÁRIO QUE VOCÊ OFERECEU ANTES NESTA CONVERSA (${ocupada.dia} às ${ocupada.hora}) JÁ FOI OCUPADO por outra pessoa desde então. Ele NÃO está mais na sua lista de vagas.
+Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA linha, sem drama e sem pedir desculpas em excesso, que ele acabou de ser preenchido${ocupada.alternativa ? `, e ofereça na mesma mensagem: **${ocupada.alternativa.dia} às ${ocupada.alternativa.hora}**, no ${ocupada.alternativa.unidade}` : ", e ofereça o mais próximo da sua lista"}. O paciente não tem culpa da demora — trate como uma troca simples, não como um problema.`;
+        console.log(`[Agenda] Vaga citada antes (${ocupada.dia} ${ocupada.hora}) já ocupada — avisando a Ana ANTES de responder.`);
+      }
+    } catch (e) { console.error("[Agenda] Checagem da vaga citada falhou (segue normal):", e.message); }
 
     // Versão concatenada dos dois blocos, para os caminhos que NÃO usam cache
     // (degrau de erro 400 e reescritas da trava) — conteúdo idêntico ao que a
