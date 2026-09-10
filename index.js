@@ -3000,7 +3000,21 @@ function extrairAgendar(reply) {
       const idx = par.indexOf(":");                   // 1º ":" — preserva o ISO do inicio (que tem ":")
       if (idx === -1) continue;
       const chave = par.slice(0, idx).trim().toLowerCase().replace(/^-+\s*/, "");
-      const valor = par.slice(idx + 1).trim();
+      // 🧹 TIRA OS < > DO MODELO. O gabarito do bloco no prompt escreve os campos
+      // como <copie o valor EXATO do [inicio:...]>, e às vezes a Ana devolve o
+      // valor CERTO ainda embrulhado nos sinais: "inicio: <2026-08-25T15:20:00-03:00>".
+      // O parser guardava os < > junto, new Date() dava Invalid Date, e o
+      // agendamento era descartado DEPOIS de a mensagem já ter saído — o paciente
+      // ia à clínica sem estar na lista.
+      // Caso Isve (25/08/2026): data correta, perdida só pela formatação; ele foi
+      // orientado a comparecer às 15h20 daquele mesmo dia. Caso Marina (10/09):
+      // aqui veio o texto do gabarito de verdade, e a limpeza não salva — mas
+      // agora a trava de "anunciou sem agendar" pega, porque o campo fica vazio.
+      // Só limpa quando os sinais ENVOLVEM o valor inteiro: um "<" solto no meio
+      // de um motivo ("dor < 3 dias") continua intocado.
+      let valor = par.slice(idx + 1).trim();
+      const semSinais = valor.replace(/^<+\s*|\s*>+$/g, "").trim();
+      if (/^<[\s\S]*>$/.test(valor) && semSinais) valor = semSinais;
       if (chave) campos[chave] = valor;
     }
     return Object.keys(campos).length ? campos : null;
