@@ -2180,7 +2180,17 @@ async function desfazerAgendamentoComConvenioRecusado(reply, from, conversationI
 // "peço desculpas, esse horário NÃO ficou reservado" sobre algo que nunca
 // existiu. Antes disso, de manhã, o mesmo já acontecera com o 16h40.
 // É o mesmo padrão do caso Kattiucy (03/09), agora com o verbo no presente.
-const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendamento (est[áa]|foi) confirmad|(consulta|hor[áa]rio)[^.!?\n]{0,40}(est[áa]|foi) (agendad|confirmad|marcad|reservad|separad|guardad|segurad)|(reservei|separei|guardei|deixei reservad|deixei separad|est[áa] reservad|est[áa] separad)|(j[áa] )?deixo[^.!?\n]{0,60}(reservad|separad|guardad)|vou (j[áa] )?(reservar|separar|guardar|deixar reservad|deixar separad)|(fica|ficar[áa]) (reservad|separad|guardad)|j[áa] (reservo|separo|guardo)/i;
+// ⚠️ "Agendamento confirmado:" — a forma MAIS natural de anunciar — não casava.
+// A lista exigia "agendamento ESTÁ/FOI confirmado", e a Ana escreve o particípio
+// solto, em título: "Agendamento confirmado:\n\n**Marina Rodrigues Brasil**\n📅
+// Sexta-feira, 11/09/2026, às 15h40". Caso Marina (10/09/2026, 14h45): o bloco
+// [AGENDAR] saiu com o TEXTO DO MODELO no lugar do horário ("<copie o valor
+// EXATO do [inicio:...]>"), nada foi gravado, e a paciente saiu da conversa
+// certa de que estava marcada para o dia seguinte. Só apareceu porque o
+// Dr. Bruno foi olhar a agenda.
+// Esta trava existe exatamente para isso — anunciar sem gravar — e ficou de
+// fora por uma conjugação.
+const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendamento (est[áa]|foi )?confirmad|agendamento (realizad|feito|efetuad)|(consulta|hor[áa]rio)[^.!?\n]{0,40}(est[áa]|foi) (agendad|confirmad|marcad|reservad|separad|guardad|segurad)|(reservei|separei|guardei|deixei reservad|deixei separad|est[áa] reservad|est[áa] separad)|(j[áa] )?deixo[^.!?\n]{0,60}(reservad|separad|guardad)|vou (j[áa] )?(reservar|separar|guardar|deixar reservad|deixar separad)|(fica|ficar[áa]) (reservad|separad|guardad)|j[áa] (reservo|separo|guardo)/i;
 // ⚠️ As exclusões valem SÓ na frase do anúncio, nunca na mensagem inteira.
 // A 1ª versão desta trava excluía qualquer mensagem contendo "?", "se" ou "caso"
 // — e TODA confirmação da Ana termina com "**Se** você usa lente de contato..." e
