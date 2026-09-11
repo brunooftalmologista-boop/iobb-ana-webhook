@@ -1475,6 +1475,28 @@ Só cite a outra unidade se for para ACRESCENTAR uma opção na mesma frase ("..
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
+// ===== TRAVA: "ATÉ AMANHÃ" PARA UM DIA EM QUE A CLÍNICA NÃO ABRE ==========
+// Dr. Bruno, 11/09/2026. Caso 44 9916-6200: na QUINTA a paciente disse "levo os
+// óculos lá amanhã" e a Ana respondeu "Até amanhã!" — certo, amanhã era sexta.
+// Na SEXTA ela perguntou "qual o andar?" (ia naquele momento) e ouviu de novo
+// "Até amanhã!", duas vezes. Amanhã é sábado: a clínica não abre.
+// A Ana copiou a despedida do dia anterior sem notar que o dia virou.
+// contradizHojeAmanha() não pega isto: ela exige uma DATA citada ao lado da
+// palavra ("amanhã, 12/09"), e aqui é um "até amanhã" solto, sem data.
+// Aqui o critério é do calendário, não do texto: se amanhã não tem atendimento,
+// a despedida está errada — não importa como a frase foi escrita.
+const RE_DESPEDIDA_AMANHA = /at[ée]\s+amanh[ãa]|nos vemos amanh[ãa]|te espero amanh[ãa]|espero (voc[êe]|a senhora|o senhor) amanh[ãa]|amanh[ãa]\s+ent[ãa]o/i;
+function despedidaParaDiaFechado(reply, amanhaFechado) {
+  if (!amanhaFechado) return null;
+  if (!RE_DESPEDIDA_AMANHA.test(String(reply || ""))) return null;
+  return "se despediu com \"até amanhã\", mas amanhã a clínica NÃO abre";
+}
+function instrucaoDiaFechado(motivo, amanhaNome) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo} (amanhã é ${amanhaNome}). Quem lê isso pode aparecer na porta fechada, com os óculos na mão, depois de atravessar a cidade.
+Reescreva mantendo TODO o resto da mensagem igual e trocando só a despedida. Se o paciente disse que vem HOJE, diga "até logo" ou "te espero hoje". Se ele falou de outro dia, cite o DIA DA SEMANA e a data ("até segunda-feira, 14/09"). Na dúvida sobre quando ele vem, use uma despedida neutra ("fico à disposição", "qualquer coisa é só chamar") — nunca "até amanhã".
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
+}
+
 // ===== AVISO PRÉVIO: A VAGA QUE ELA OFERECEU ANTES JÁ FOI OCUPADA =========
 // Dr. Bruno, 10/09/2026: "a Ana parece não enxergar os horários agendados pela
 // secretária e depois conserta".
@@ -6677,6 +6699,24 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       const carteirinhaRepetida = pediuCarteirinhaDeNovo(reply, messages);
       // Pediu receita de lente a quem já tem consulta marcada (04/09, Alessandra).
       const receitaAntesDaConsulta = pediuReceitaComConsultaMarcada(reply, meusAgendamentos);
+      // Amanhã tem atendimento? Fim de semana é certo; feriado se vê pelo bloqueio.
+      // Só consulta o banco quando a resposta realmente se despede com "amanhã".
+      let despedidaFechada = null;
+      try {
+        if (RE_DESPEDIDA_AMANHA.test(String(reply || ""))) {
+          const amanha = new Date(Date.now() + 24 * 3600 * 1000);
+          let fechado = unidadeDoDia(amanha) === null;          // sábado/domingo
+          if (!fechado) {
+            const d0 = new Date(amanha); d0.setHours(0, 0, 0, 0);
+            const d1 = new Date(d0.getTime() + 24 * 3600 * 1000);
+            const { data: bloq } = await supabase.from("appointments")
+              .select("id").eq("origem", "bloqueio")
+              .gte("inicio", d0.toISOString()).lt("inicio", d1.toISOString()).limit(1);
+            fechado = !!(bloq && bloq.length);                  // feriado bloqueado
+          }
+          despedidaFechada = despedidaParaDiaFechado(reply, fechado);
+        }
+      } catch (e) { console.error("[Despedida] Checagem de amanhã falhou (segue):", e.message); }
       // Valor de exame diferente da tabela (08/09, mapeamento cotado a R$ 180).
       const precoExameErrado = precoDeExameErrado(reply);
       const ofertaCegaRemarcacao = (intencaoBotao === "remarcar" && etapaDeOferta)
@@ -6687,13 +6727,14 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       const tocouQueroAgendar = /^\s*quero agendar\s*$/i.test(String(text || ""));
       const ofertaCegaCampanha = (tocouQueroAgendar && etapaDeOferta && campanhaSabeConvenio)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          unidadeDoPaciente ? "unidade_pedida_ignorada"
+          despedidaFechada ? "despedida_dia_fechado"
+            : unidadeDoPaciente ? "unidade_pedida_ignorada"
             : carteirinhaRepetida ? "carteirinha_pedida_2x"
             : receitaAntesDaConsulta ? "receita_antes_da_consulta"
             : precoExameErrado ? "preco_de_exame_errado"
@@ -6756,7 +6797,9 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
-            { type: "text", text: dynVolatil + (unidadeDoPaciente ? instrucaoUnidadeDoPaciente(unidadeDoPaciente)
+            { type: "text", text: dynVolatil + (despedidaFechada
+              ? instrucaoDiaFechado(despedidaFechada, new Date(Date.now() + 864e5).toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit" }))
+              : unidadeDoPaciente ? instrucaoUnidadeDoPaciente(unidadeDoPaciente)
               : carteirinhaRepetida ? instrucaoCarteirinhaJaRecebida(carteirinhaRepetida)
               : receitaAntesDaConsulta ? instrucaoReceitaDepoisDaConsulta(receitaAntesDaConsulta)
               : precoExameErrado ? instrucaoPrecoDeExameCerto(precoExameErrado)
