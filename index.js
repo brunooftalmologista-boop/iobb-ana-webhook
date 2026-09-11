@@ -189,6 +189,9 @@ Regras do bloco:
 - NUNCA mencione, cite ou explique esse bloco ao paciente — ele é removido automaticamente antes do envio.
 
 ### Regras absolutas
+🚫 NUNCA AFIRME O QUE O DR. BRUNO INDICOU se isso não estiver escrito, com todas as letras, na seção "O Dr. Bruno JÁ INDICOU isto a este paciente" do seu contexto — ou não tiver sido dito pelo PRÓPRIO paciente nesta conversa. É PROIBIDO deduzir a conduta a partir de palavras soltas no histórico.
+Caso real (11/09/2026, Jéssica): ela escreveu só "sobre o teste de lentes". A palavra "escleral" aparecia apenas no texto PADRÃO de suspensão de lentes que a equipe manda a todo mundo ("sendo rígida ou escleral, 48 horas sem uso"). Você juntou as duas e afirmou: "o Dr. Bruno indicou o teste de lente escleral para você na consulta de 09/09". Acertou por coincidência — a indicação era essa mesmo. Se fosse lente rígida, ou se não houvesse indicação nenhuma, a paciente teria ouvido da clínica que o médico indicou algo que ele não indicou.
+O certo quando você não tem o dado: PERGUNTE em meia linha ("qual lente o Dr. Bruno indicou para você?") ou fale de forma neutra ("sobre o teste de lente"), e siga para o horário. Perguntar custa uma frase; afirmar errado custa a confiança na clínica inteira.
 - Nunca diagnostique por mensagem
 - Nunca interprete exames
 - Nunca prescreva medicamentos ou colírios
@@ -2852,6 +2855,30 @@ async function agendamentosDoPaciente(telefone) {
       .order("inicio", { ascending: true }).limit(5);
     return data || [];
   } catch (e) { console.error("[Agenda DB] agendamentosDoPaciente falhou:", e.message); return []; }
+}
+
+// INDICAÇÕES ABERTAS DO PACIENTE — o funil pós-consulta, visível para a Ana.
+// Dr. Bruno, 11/09/2026: "não reconheceu do funil pós-consulta?". Não: até aqui
+// a tabela `indicacoes` era lida só pelo painel, pelo scheduler de retomada e
+// pelo comando #INDICACAO. A Ana nunca a via.
+// Caso Jéssica (63 8475-3445): a secretária registrou em 09/09 "Teste de lente
+// de contato (Esclera), R$ 150, JÉSSICA CARVALHO VIRGINIO". Dois dias depois a
+// paciente voltou para marcar exatamente esse teste — e a Ana pediu o nome
+// completo dela. O dado estava a uma consulta de distância.
+// Traz nome (que alimenta a ficha), procedimento, valor e quando foi indicado.
+async function indicacoesDoPaciente(telefone) {
+  if (!telefone) return [];
+  try {
+    const { data } = await supabase.from("indicacoes")
+      .select("procedimento, olho, valor, convenio, status, created_at, paciente_nome")
+      .in("paciente_telefone", fonesBR(telefone))
+      .in("status", ["aberta", "pausada"])
+      .order("created_at", { ascending: false }).limit(4);
+    return data || [];
+  } catch (e) {
+    if (e?.code !== "42P01") console.error("[Indicações] Leitura para a Ana falhou:", e.message);
+    return [];
+  }
 }
 
 // FICHA HISTÓRICA — para a Ana NÃO reperguntar nome/nascimento a quem já veio.
@@ -6182,9 +6209,26 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       meusAgendamentos = meusAg;
       // A ficha olha futuro E passado; a lista de "agendamentos que ele tem"
       // continua só com os futuros, que são os que ela pode cancelar/remarcar.
-      const paraFicha = [...(await fichaHistoricaDoPaciente(from)), ...meusAg];
+      const minhasIndicacoes = await indicacoesDoPaciente(from);
+      // O nome do funil também serve de ficha — vem primeiro na ordem porque a
+      // lista é lida do mais antigo para o mais novo (o último não-vazio vence).
+      const paraFicha = [...minhasIndicacoes.slice().reverse(),
+                         ...(await fichaHistoricaDoPaciente(from)), ...meusAg];
       // ⚠️ A CONDIÇÃO É paraFicha, NÃO meusAg. Quem acabou de consultar não tem
       // agendamento futuro — e é justamente quem não pode ser perguntado de novo.
+      if (minhasIndicacoes.length) {
+        const fmtBRL = (v) => (v === null || v === undefined) ? null
+          : `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+        const linhasInd = minhasIndicacoes.map(i => {
+          const quando = new Date(i.created_at).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
+          const val = (i.convenio && !/^particular$/i.test(i.convenio)) ? null : fmtBRL(i.valor);
+          return `- **${i.procedimento}**${i.olho ? ` (${i.olho})` : ""} — indicado em ${quando}${val ? ` · ${val} no particular` : ""}${i.status === "pausada" ? " · ele pediu para deixar para depois" : ""}`;
+        }).join("\n");
+        dynEstavel += `\n\n### O Dr. Bruno JÁ INDICOU isto a este paciente (funil pós-consulta)\n${linhasInd}
+Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele já ouviu do médico o que precisa fazer. Se ele escrever sobre esse assunto, trate como continuação — "sobre o teste que o Dr. Bruno indicou, consigo [dia] às [hora]" — e não como se fosse a primeira vez.
+⛔ LIMITE: isto é registro ADMINISTRATIVO do que foi indicado, não prontuário. NÃO explique por que foi indicado, não comente o caso clínico, não diga se é urgente e não sugira conduta. Quem explica é o Dr. Bruno, na consulta.
+⚠️ Se o paciente NÃO tocar no assunto, você também não precisa puxar — mas, se ele estiver agendando algo relacionado, use o que está aqui em vez de perguntar de novo.${minhasIndicacoes.some(i => i.status === "pausada") ? "\n📌 Indicação PAUSADA quer dizer que ele já disse que deixaria para depois: não insista." : ""}`;
+      }
       if (paraFicha.length) {
         const linhas = meusAg.map(a => {
           // 19/08/2026: o iClinic acabou — a agenda da Ana é a ÚNICA. Toda
