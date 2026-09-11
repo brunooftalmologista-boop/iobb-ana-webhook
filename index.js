@@ -2854,6 +2854,27 @@ async function agendamentosDoPaciente(telefone) {
   } catch (e) { console.error("[Agenda DB] agendamentosDoPaciente falhou:", e.message); return []; }
 }
 
+// FICHA HISTÓRICA — para a Ana NÃO reperguntar nome/nascimento a quem já veio.
+// Caso Jéssica (11/09/2026, 63 8475-3445): consultou em 09/09, voltou dois dias
+// depois para marcar o teste de lente, e a Ana pediu nome completo e data de
+// nascimento de novo. O motivo: agendamentosDoPaciente() só enxerga de 2 horas
+// atrás em diante — é o certo para CANCELAR e REMARCAR (ninguém desmarca
+// consulta que já passou), mas erra para a ficha. Quem acabou de consultar é
+// justamente quem tem ficha e não tem agendamento futuro.
+// Aqui olhamos para TRÁS: os últimos agendamentos dele, cancelados inclusive —
+// um cancelamento não apaga o nome nem o nascimento da pessoa.
+async function fichaHistoricaDoPaciente(telefone) {
+  if (!telefone) return [];
+  try {
+    const { data } = await supabase.from("appointments")
+      .select("inicio, paciente_nome, convenio, observacoes")
+      .in("paciente_telefone", fonesBR(telefone))
+      .lt("inicio", new Date(Date.now() - 2 * 3600 * 1000).toISOString())
+      .order("inicio", { ascending: true }).limit(5);
+    return data || [];
+  } catch (e) { console.error("[Agenda DB] fichaHistoricaDoPaciente falhou:", e.message); return []; }
+}
+
 // Colunas de comparecimento (sql/comparecimento.sql). Ficam num select separado
 // para o painel NÃO quebrar caso a migração ainda não tenha rodado: se o Postgres
 // recusar por coluna inexistente, refazemos a consulta sem elas e a agenda
@@ -6159,7 +6180,12 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     try {
       const meusAg = await agendamentosDoPaciente(from);
       meusAgendamentos = meusAg;
-      if (meusAg.length) {
+      // A ficha olha futuro E passado; a lista de "agendamentos que ele tem"
+      // continua só com os futuros, que são os que ela pode cancelar/remarcar.
+      const paraFicha = [...(await fichaHistoricaDoPaciente(from)), ...meusAg];
+      // ⚠️ A CONDIÇÃO É paraFicha, NÃO meusAg. Quem acabou de consultar não tem
+      // agendamento futuro — e é justamente quem não pode ser perguntado de novo.
+      if (paraFicha.length) {
         const linhas = meusAg.map(a => {
           // 19/08/2026: o iClinic acabou — a agenda da Ana é a ÚNICA. Toda
           // consulta encontrada pelo telefone do paciente é gerível por ela
@@ -6177,7 +6203,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         // Pega o valor mais RECENTE não-vazio de cada campo (a ficha antiga pode
         // ter convênio velho — por isso a Ana CONFIRMA em vez de assumir calada).
         const ultimoNaoVazio = (campo) => {
-          for (const a of [...meusAg].reverse()) {
+          for (const a of [...paraFicha].reverse()) {
             const v = String(a[campo] || "").trim();
             if (v && v !== "-") return v;
           }
@@ -6186,7 +6212,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
         const nomeFicha = ultimoNaoVazio("paciente_nome");
         const convFicha = ultimoNaoVazio("convenio");
         const nascFicha = (() => {
-          for (const a of [...meusAg].reverse()) { const n = nascimentoDeObs(a.observacoes); if (n) return n; }
+          for (const a of [...paraFicha].reverse()) { const n = nascimentoDeObs(a.observacoes); if (n) return n; }
           return null;
         })();
         if (nomeFicha || convFicha || nascFicha) {
@@ -6200,7 +6226,7 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
             + (convFicha ? `\n- O convênio pode ter mudado no meio-tempo: CONFIRME em meia linha junto da oferta ("Continua ${/^particular$/i.test(convFicha) ? "como particular" : `pelo ${convFicha}`}?") — não pergunte do zero, e não assuma calada.` : "")
             + (falta.length ? `\n- O que realmente falta e você PRECISA pedir: **${falta.join(" e ")}**. Peça só isso, de uma vez, junto do horário.` : `\n- Não falta nada: siga direto para o horário.`);
         }
-        dynEstavel += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar. Se o paciente só quer confirmar/saber, NÃO ofereça novo horário.\nPara os marcados "você PODE cancelar/remarcar este": se o paciente pedir para DESMARCAR, confirme com ele e emita o bloco [CANCELAR] copiando o token [inicio:...] exato. Para REMARCAR, ofereça um novo horário (da lista de disponíveis), e ao confirmar emita [CANCELAR] do antigo + [AGENDAR] do novo (o sistema marca o novo e cancela o antigo). Para os agendamentos "alteração só pela equipe", oriente o (61) 3033-6605 ou o WhatsApp da equipe (61) 99299-7639 — NÃO tente cancelar você mesma.`;
+        if (meusAg.length) dynEstavel += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar. Se o paciente só quer confirmar/saber, NÃO ofereça novo horário.\nPara os marcados "você PODE cancelar/remarcar este": se o paciente pedir para DESMARCAR, confirme com ele e emita o bloco [CANCELAR] copiando o token [inicio:...] exato. Para REMARCAR, ofereça um novo horário (da lista de disponíveis), e ao confirmar emita [CANCELAR] do antigo + [AGENDAR] do novo (o sistema marca o novo e cancela o antigo). Para os agendamentos "alteração só pela equipe", oriente o (61) 3033-6605 ou o WhatsApp da equipe (61) 99299-7639 — NÃO tente cancelar você mesma.`;
       }
     } catch (_) {}
 
