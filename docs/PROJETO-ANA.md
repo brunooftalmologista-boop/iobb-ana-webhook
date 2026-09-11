@@ -398,6 +398,25 @@ frágil do desenho é humano, não técnico. Detalhes e o porquê de cada trava:
 
 ---
 
+## 5b. Quem é o Dr. Bruno (redação única — Ana, site e landings)
+
+**Médico oftalmologista subespecialista em CERATOCONE, CIRURGIA REFRATIVA e CATARATA.** Fellowship em córnea pela UFMG/HC-UFMG. CRM-DF 17877 · RQE 9314.
+
+Decidido em 10/09/2026. Antes disso não havia seção nenhuma sobre ele no prompt da Ana, e o site dizia só "subespecialista em córnea" — **córnea é a formação, não o resumo do que ele faz**. Em 27/07 a Ana chegou a responder a um paciente que ele era "oftalmologista geral, sem título específico"; ele procurava exatamente um especialista.
+
+Onde está, e como cada um sobe:
+| Onde | Caminho | Sobe por |
+|---|---|---|
+| Ana | seção "QUEM É O DR. BRUNO" no `SYSTEM_PROMPT` | `git push` (commit c1819a8) |
+| Landings | `landings/*.html` → `iobb.com.br/lp/*` | `git push` (commit 4b6ff2d) |
+| Site | zip do Cloudflare → `iobb.com.br` | **zip, pelo Dr. Bruno** (v16, publicado 10/09/2026) |
+
+Proibido na Ana: "oftalmologista geral", "não temos especialista com título" e "subespecialista em córnea" como resumo. Ele atende oftalmologia geral também — a subespecialidade não exclui a rotina. E NÃO é especialista em glaucoma: fazemos os exames de acompanhamento, não a cirurgia.
+
+Nas páginas de ceratocone e escleral os títulos usam "Subespecialista em ceratocone" — é o termo que o paciente daquela página procura.
+
+---
+
 ## 6. Como o sistema se defende (as travas)
 
 Lição central do projeto: **regra escrita no prompt não basta.** Toda regra crítica
