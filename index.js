@@ -6139,8 +6139,20 @@ app.post("/webhook", async (req, res) => {
           fotoDePedidoExame = !fotoDeCarteirinha && falaDeExame && falaDeValorOuPedido;
         } catch (_) {}
       }
-      if (!fotoDeCarteirinha && !fotoDePedidoExame) {
-        const tipoArquivo = msg.type === "image" ? "imagem" : msg.type === "document" ? "documento" : "vídeo";
+      // 👁️ OLHAR É O PADRÃO (Dr. Bruno, 11/09/2026: "Ana não está lendo imagens").
+      // Antes havia dois portões estreitos — carteirinha e pedido de exame — e
+      // tudo que não passasse por eles morria no texto fixo: 51 das 257 imagens
+      // dos últimos 30 dias (20%). O caso de hoje (61 9156-7305, 15h31) mostra
+      // por que remendar por palavra-chave não fecha isso: o paciente tinha
+      // consulta confirmada, mandou a foto e não escreveu NADA junto. Nenhuma
+      // lista de palavras ia adivinhar.
+      // Agora imagem e documento SEMPRE vão para a Ana, que decide o que é ao
+      // ver. O limite clínico não afrouxa — ele fica na instrução, e é o mesmo
+      // de sempre: ela lê documento administrativo, e sobre imagem clínica não
+      // descreve, não interpreta e não opina.
+      // VÍDEO continua no texto fixo: não há como lê-lo.
+      if (msg.type === "video") {
+        const tipoArquivo = "vídeo";
         // SEM HORÁRIO NA FRASE (Dr. Bruno, 04/09/2026). A versão anterior dizia
         // "assim que abrir o atendimento — segunda a sexta, das 8h às 18h", e essa
         // é uma frase que só serve fora do expediente: quem manda uma foto às 10h
@@ -6153,10 +6165,9 @@ app.post("/webhook", async (req, res) => {
         await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification}\n\n🤖 *Ana:*\n${reply}`);
         return;
       }
-      // Provável carteirinha OU pedido de exame: notifica a equipe (que recebe a
-      // imagem) e NÃO retorna
+      // Notifica a equipe (que recebe a imagem) e NÃO retorna
       // — cai no fluxo normal, com uma orientação extra no prompt (ver adiante).
-      await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification} (${fotoDeCarteirinha ? "provável carteirinha — a Ana segue o pré-agendamento" : "provável pedido de exame — a Ana vai ler os nomes e cotar"})`);
+      await notificarClinica(`👤 *${patient.name || from}:*\n${mediaNotification} (${fotoDeCarteirinha ? "provável carteirinha — a Ana segue o pré-agendamento" : fotoDePedidoExame ? "provável pedido de exame — a Ana vai ler os nomes e cotar" : "a Ana vai olhar e responder"})`);
       await marcarPendenciaEquipe(conversation.id, "action");   // equipe verifica a carteirinha
     }
 
@@ -6431,6 +6442,22 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
       dynVolatil += `\n\n### O paciente TOCOU no botão "Remarcar" do lembrete\nEle quer trocar o horário da consulta que já tem. NÃO pergunte "como posso ajudar?" nem peça que ele explique — a intenção já está dada. Confirme em meia linha qual é a consulta atual (dia, hora e unidade) e PERGUNTE, na mesma mensagem, qual dia e período ficam melhores para ele ("manhã ou tarde?"). 🚫 NÃO ofereça um horário concreto ainda, e MUITO MENOS o primeiro da lista: ele quase sempre cai no MESMO dia e no MESMO turno que o paciente acabou de recusar — é o horário que ele já disse que não serve. Só ofereça depois que ele indicar o dia/turno (ou se ele responder que tanto faz, aí sim ofereça o mais próximo). Ao ele aceitar, faça a remarcação normalmente ([CANCELAR] do antigo + [AGENDAR] do novo).`;
     }
 
+    // Imagem sem contexto nenhum: a Ana olha e decide. Vale para o caso mais
+    // comum de todos — o paciente que manda a foto sem escrever nada junto.
+    if (imagemRecebida?.buffer && !fotoDeCarteirinha && !fotoDePedidoExame) {
+      dynVolatil += `\n\n### O paciente acabou de enviar uma IMAGEM, sem dizer o que é
+A imagem vai anexada nesta conversa — OLHE antes de responder. É proibido responder "recebi a imagem, vou encaminhar para a equipe" sem olhar: isso encerra o atendimento de quem está esperando uma resposta.
+O que fazer, conforme o que você vir:
+- **Carteirinha / cartão de convênio** → leia o convênio e o número, confirme em uma linha e siga o agendamento. Emita [CARTEIRINHA].
+- **Pedido/solicitação de exame** → leia os NOMES dos exames e responda com os valores da sua tabela, somando o total. Lembre que não é preciso consultar aqui antes: fazemos com pedido de qualquer médico.
+- **Documento de identidade** → use o nome completo e a data de nascimento para a ficha, confirme em uma linha e siga.
+- **Comprovante de pagamento** → agradeça e siga o agendamento.
+- **Receita de óculos ou de colírio** → diga que recebeu, NÃO leia valores de grau em voz alta e NÃO opine; siga para o que o paciente precisa.
+- **Imagem CLÍNICA** (foto de olho, exame, laudo, resultado, OCT, retinografia, topografia) → ⛔ NÃO descreva o que vê, NÃO interprete, NÃO diga se está normal ou alterado, NÃO sugira diagnóstico nem conduta. Diga com acolhimento que quem avalia isso é o Dr. Bruno, na consulta, e conduza para o agendamento.
+- **Qualquer outra coisa** → acolha em uma linha e siga o assunto da conversa; se for algo para a equipe resolver, aí sim diga que vai encaminhar.
+⚠️ Em TODOS os casos, continue a conversa de onde ela estava. A imagem é um dado a mais, não um fim de assunto.`;
+    }
+
     if (fotoDePedidoExame) {
       dynVolatil += `\n\n### O paciente acabou de enviar a FOTO DE UM PEDIDO DE EXAME e quer saber o VALOR
 A imagem vai anexada nesta conversa — você PODE vê-la, e é para isso que ela está aqui.
@@ -6558,9 +6585,8 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     // A foto pode ter chegado num turno ANTERIOR que o agrupamento cancelou —
     // nesse caso ela está no depósito, não em `imagemRecebida`. Só recolhe se a
     // conversa está em contexto de carteirinha, e o resgate é de uso único.
-    const imagemParaLer = imagemRecebida?.buffer ? imagemRecebida
-                        : ((fotoDeCarteirinha || fotoDePedidoExame) ? pegarImagemPendente(from) : null);
-    if ((fotoDeCarteirinha || fotoDePedidoExame) && imagemParaLer?.buffer) {
+    const imagemParaLer = imagemRecebida?.buffer ? imagemRecebida : pegarImagemPendente(from);
+    if (imagemParaLer?.buffer) {
       const MIMES_VISAO = ["image/jpeg", "image/png", "image/gif", "image/webp"];
       const mt = String(imagemParaLer.mimeType || "").toLowerCase().split(";")[0].trim();
       const cabe = imagemParaLer.buffer.length <= 3.5 * 1024 * 1024;
@@ -6571,7 +6597,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           { type: "image", source: { type: "base64", media_type: mt, data: imagemParaLer.buffer.toString("base64") } },
           { type: "text", text: textoAtual || "[Imagem recebida]" },
         ];
-        console.log(`[Visão] ${fotoDeCarteirinha ? "Carteirinha" : "Pedido de exame"} anexado para leitura (${mt}, ${Math.round(imagemParaLer.buffer.length / 1024)}KB${imagemRecebida?.buffer ? "" : " — resgatada do turno anterior"}).`);
+        console.log(`[Visão] ${fotoDeCarteirinha ? "Carteirinha" : fotoDePedidoExame ? "Pedido de exame" : "Imagem"} anexada para leitura (${mt}, ${Math.round(imagemParaLer.buffer.length / 1024)}KB${imagemRecebida?.buffer ? "" : " — resgatada do turno anterior"}).`);
       } else {
         // Sem visão: a Ana segue o fluxo tratando a carteirinha como entregue.
         console.log(`[Visão] Imagem NÃO anexada (mime=${mt || "?"}, ${Math.round((imagemParaLer.buffer.length || 0) / 1024)}KB) — fora do formato/tamanho suportado.`);
