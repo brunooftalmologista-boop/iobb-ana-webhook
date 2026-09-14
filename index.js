@@ -6907,9 +6907,27 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
             const jaSubstituiu = (messages || []).slice(-6).some(m =>
               m.role === "assistant" && /^Deixe-me confirmar direitinho a agenda|^A agenda está sem horários disponíveis no momento/.test(String(m.content || "").trim()));
             if (aindaErrada && jaSubstituiu) {
-              console.warn(`[HorarioTrava] Reescrita ainda errada (${aindaErrada}), mas a frase determinística JÁ foi usada nesta conversa — mandando a resposta dela para não repetir.`);
-              await registrarErro("substituicao_repetida_evitada", `${aindaErrada} | ${String(novo).slice(0, 200)}`,
+              // 🚨 14/09/2026 — O FURO QUE MANDOU UMA AGENDA INTEIRA FALSA.
+              // Esta guarda nasceu em 01/09 com uma boa razão: não repetir a
+              // mesma frase determinística feito robô. O raciocínio era "resposta
+              // imperfeita é melhor que a mesma frase pela quinta vez".
+              // Hoje, 13h44, ela deixou sair isto para o paciente 264816671673:
+              //   "Hoje temos disponível às 14h20, 14h40, 15h40, 16h00, 16h20,
+              //    17h00 e 17h20, todos no Conjunto Nacional."
+              // A tarde inteira estava OCUPADA — os onze horários de 14h a 17h20
+              // tinham paciente. Ela inventou os sete, e o paciente teria vindo
+              // ocupar a vaga de outra pessoa.
+              // O erro do raciocínio: "imperfeita" vale para ESTILO. Quando o que
+              // está errado é FATO sobre a agenda, a resposta não é imperfeita —
+              // é falsa, e falsa nunca pode sair.
+              // A saída não é repetir a frase nem mandar a mentira: é uma terceira
+              // resposta, que NÃO oferece horário nenhum e chama a equipe.
+              reply = `Deixa eu confirmar a agenda com a equipe para não te passar um horário errado — eles retornam por aqui em instantes.\n\nSe preferir, pode falar direto com elas pelo (61) 3033-6605.`;
+              console.warn(`[HorarioTrava] Reescrita ainda errada (${aindaErrada}) e a frase determinística já foi usada — mandando o ESCAPE (sem oferta) e chamando a equipe.`);
+              await registrarErro("escape_sem_oferta", `${aindaErrada} | descartado: ${String(novo).slice(0, 200)}`,
                 { conversationId: conversation.id, telefone: from }).catch(() => {});
+              await marcarPendenciaEquipe(conversation.id, "urgent").catch(() => {});
+              await notificarClinica(`⚠️ *A ANA NÃO CONSEGUIU FECHAR UM HORÁRIO*\n👤 ${patient.name || from}\n📱 ${from}\n\nEla errou a agenda duas vezes seguidas e foi impedida de responder. O paciente foi orientado a aguardar a equipe.\n\nMotivo: ${aindaErrada}`).catch(() => {});
             } else if (aindaErrada && RE_PEDIU_CANCELAR.test(String(text || ""))) {
               // 🚫 QUEM PEDIU PARA DESMARCAR NÃO RECEBE OFERTA DE HORÁRIO.
               // Caso Rufina (09/09): "peço que desmarque minha consulta de hoje,
