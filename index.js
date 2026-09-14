@@ -559,6 +559,13 @@ Sempre que alguém for COMPARECER sem hora marcada para ser VISTO PELO MÉDICO (
 Caso real (10/08): a Ana disse "na quarta o atendimento é das 8h às 18h" a uma paciente que ia por ordem de chegada para conferir óculos multifocais. Na quarta é Conjunto Nacional, onde o médico começa às 9h — ela chegaria uma hora antes e esperaria à toa. Em Taguatinga o erro seria de duas horas.
 
 ### Como lidar com horários (REGRA CRÍTICA)
+🙏 QUANDO O HORÁRIO QUE ELE PEDIU NÃO EXISTE — EXPLIQUE, NÃO SÓ NEGUE (regra do Dr. Bruno, 14/09/2026).
+O paciente não tem como saber que o dia está cheio: para ele, "não tenho esse horário" soa a má vontade. Três frases resolvem, nesta ordem:
+1. **Diga o que aconteceu, com clareza e sem rodeio:** "Conferi aqui: hoje a agenda do Conjunto Nacional está completa — todos os horários da tarde já têm paciente."
+2. **Ofereça o mais próximo que EXISTE, dizendo dia, hora e unidade.** Se houver duas opções boas (outro dia na mesma unidade, ou hoje na outra), dê as duas numa frase só e deixe ele escolher.
+3. **Reconheça o que ele te contou.** Se ele mencionou dor, olho vermelho, urgência ou viagem, diga em meia linha que entende a pressa e que, se precisar de algo hoje, a equipe pode ver possibilidades pelo (61) 3033-6605 — sem prometer encaixe.
+⛔ É PROIBIDO, nessa situação: anunciar "agendado" e desdizer depois; repetir o horário que ele pediu como se existisse; responder só "não tenho" e parar; insistir num horário só porque ELE o citou — o que vale é a lista, não o pedido.
+Caso real (14/09/2026, paciente Gonçalo): a tarde inteira estava ocupada, você ofereceu sete horários inexistentes, depois escreveu "Agendado!" e três segundos depois "esse horário não está disponível, ele NÃO ficou reservado". Ele respondeu "pensei que podia ser hoje às 17h00" — e estava com o olho vermelho havia dez dias. Nada disso teria acontecido com as três frases acima.
 Você MARCA o horário de verdade — mas SOMENTE horários que aparecerem na lista "### Horários REALMENTE disponíveis" que o sistema injeta no seu contexto. Essa lista é a agenda oficial.
 REGRA DE OURO: só ofereça e só marque um horário que esteja EXATAMENTE nessa lista. NUNCA invente, deduza ou "chute" um horário. Se um horário não está na lista, ele não existe para você.
 
@@ -2030,7 +2037,7 @@ function agendarEmVagaOcupada(reply, slots, meusAgendamentos) {
   return null;
 }
 function instrucaoAgendarVagaLivre(motivo) {
-  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Confirmar um horário ocupado é o pior erro possível: o paciente lê "agendado", se organiza, e o sistema tem que desdizer logo em seguida — foi o que aconteceu DUAS VEZES com o mesmo paciente. NÃO emita o agendamento nesse horário. Reescreva dizendo com franqueza que naquele horário não há vaga e oferecendo UM horário que esteja REALMENTE na lista, o mais próximo do que ele pediu — sem bloco de agendamento, esperando ele aceitar. Ex.: "Nesse horário não tenho vaga na sexta; o mais próximo é às 16h40 — serve para você?". Horário que não está na lista NÃO EXISTE.
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Confirmar um horário ocupado é o pior erro possível: o paciente lê "agendado", se organiza, e o sistema tem que desdizer logo em seguida — foi o que aconteceu DUAS VEZES com o mesmo paciente. NÃO emita o agendamento nesse horário. Reescreva com TRÊS coisas: (1) EXPLIQUE — "conferi aqui: esse horário já tem paciente" ou "o dia está completo" —, para ele entender que não é má vontade; (2) ofereça o mais próximo QUE EXISTE na lista, com dia, hora e unidade; (3) se ele falou de dor ou pressa, reconheça em meia linha e ofereça o telefone da equipe para ver possibilidades hoje, sem prometer encaixe. Dizendo com franqueza que naquele horário não há vaga e oferecendo UM horário que esteja REALMENTE na lista, o mais próximo do que ele pediu — sem bloco de agendamento, esperando ele aceitar. Ex.: "Nesse horário não tenho vaga na sexta; o mais próximo é às 16h40 — serve para você?". Horário que não está na lista NÃO EXISTE.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
@@ -2119,7 +2126,9 @@ function ofertaInexistente(reply, slots, meusAgendamentos) {
   return null;
 }
 function instrucaoOfertaReal(motivo) {
-  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Esse horário está OCUPADO — oferecê-lo faz o paciente dar todos os dados, ouvir "agendado" e só então descobrir que não existe. É o pior erro que você pode cometer, e o paciente não volta. Reescreva oferecendo UM horário COPIADO DA LISTA de vagas livres, o mais próximo do que ele pediu. Se o que ele pediu não existir, DIGA ISSO com franqueza e ofereça o mais próximo que existe (ex.: "Às 17h não tenho vaga nessa sexta; o mais próximo é às 16h20 — serve para você?"). Horário que não está na lista NÃO EXISTE, por mais que pareça razoável.
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Esse horário está OCUPADO — oferecê-lo faz o paciente dar todos os dados, ouvir "agendado" e só então descobrir que não existe. É o pior erro que você pode cometer, e o paciente não volta.
+Reescreva com TRÊS coisas, nesta ordem: (1) EXPLIQUE por que não dá — "conferi aqui: o dia está completo, todos os horários já têm paciente" —, porque sem isso ele lê má vontade; (2) ofereça UM horário COPIADO DA LISTA de vagas livres, o mais próximo do que ele pediu, dizendo dia, hora e unidade; (3) se ele citou dor, incômodo, urgência ou viagem, reconheça isso em meia linha e diga que, para algo ainda hoje, a equipe pode ver possibilidades pelo (61) 3033-6605 — sem prometer encaixe.
+NUNCA escreva "agendado" nesta mensagem. Se o que ele pediu não existir, DIGA ISSO com franqueza e ofereça o mais próximo que existe (ex.: "Às 17h não tenho vaga nessa sexta; o mais próximo é às 16h20 — serve para você?"). Horário que não está na lista NÃO EXISTE, por mais que pareça razoável.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
@@ -6905,7 +6914,13 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
             // pode estar certa sobre um assunto que não é marcar consulta, e uma
             // resposta imperfeita é melhor que a mesma frase pela quinta vez.
             const jaSubstituiu = (messages || []).slice(-6).some(m =>
-              m.role === "assistant" && /^Deixe-me confirmar direitinho a agenda|^A agenda está sem horários disponíveis no momento/.test(String(m.content || "").trim()));
+                    // ⚠️ ESTA LISTA TEM DE ACOMPANHAR O TEXTO DA FRASE DETERMINÍSTICA. Em
+      // 14/09/2026 mudei a frase para explicar antes de oferecer e quase deixei
+      // a guarda apontando para o texto velho — ela pararia de reconhecer que a
+      // substituição já aconteceu, e o escape nunca dispararia.
+      // As variantes antigas ficam para conversas que ainda as tenham no
+      // histórico.
+      m.role === "assistant" && /^Conferi a agenda|^Deixe-me confirmar direitinho a agenda|^A agenda está sem horários disponíveis no momento/.test(String(m.content || "").trim()));
             if (aindaErrada && jaSubstituiu) {
               // 🚨 14/09/2026 — O FURO QUE MANDOU UMA AGENDA INTEIRA FALSA.
               // Esta guarda nasceu em 01/09 com uma boa razão: não repetir a
@@ -6961,8 +6976,14 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
               const prox = (listaFallback || []).length
                 ? alternativaMaisProxima(listaFallback, new Date(), Date.now()) : null;
               reply = prox
-                ? `Deixe-me confirmar direitinho a agenda: o horário mais próximo que tenho disponível é *${prox.dia} às ${prox.hora}*, no ${unidadeParaPaciente(prox.unidade)}. Pode ser?`
-                : `A agenda está sem horários disponíveis no momento. Posso registrar seu pedido para a nossa equipe verificar uma opção e retornar?`;
+                // A frase EXPLICA antes de oferecer (Dr. Bruno, 14/09/2026).
+                // A versão anterior — "Deixe-me confirmar direitinho a agenda: o
+                // horário mais próximo que tenho é X" — não dizia por que o
+                // horário pedido não servia, e o paciente lia má vontade. O
+                // Gonçalo respondeu "pensei que podia ser hoje às 17h00" depois
+                // de ouvi-la duas vezes.
+                ? `Conferi a agenda com calma: o horário que você pediu já está ocupado. O mais próximo que tenho é *${prox.dia} às ${prox.hora}*, no ${unidadeParaPaciente(prox.unidade)}. Pode ser?\n\nSe precisar de algo ainda hoje, vale falar com a equipe pelo (61) 3033-6605 — são elas que enxergam o movimento do dia.`
+                : `Conferi a agenda: não tenho horário livre para oferecer agora. Posso registrar seu pedido para a equipe verificar uma opção e retornar? Se preferir falar direto com elas: (61) 3033-6605.`;
               console.warn(`[HorarioTrava] Reescrita AINDA errada (${aindaErrada}) — resposta substituída pela determinística.`);
               await registrarErro("reescrita_ainda_errada", `${aindaErrada} | ${String(novo).slice(0, 250)}`,
                 { conversationId: conversation.id, telefone: from }).catch(() => {});
