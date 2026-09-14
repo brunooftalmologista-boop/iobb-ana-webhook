@@ -6608,9 +6608,14 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
           if (precisaAntecedencia && ymd === ymdBR(agora)) {
             return `• **${rotulo}** (${dataTxt}) — NENHUM horário que você possa oferecer: o convênio citado exige ${ANA_ANTECEDENCIA_HORAS}h de antecedência. Explique isso ao paciente em vez de dizer que a agenda está cheia.`;
           }
-          return `• **${rotulo}** (${dataTxt}) — **ZERO vagas. A agenda deste dia está ESGOTADA.** Não existe nenhum horário livre, de manhã nem à tarde.`;
+          // ⚠️ NÃO dizer "lotada": às 17h30 as vagas que sobraram de hoje não
+          // estão ocupadas, elas simplesmente JÁ PASSARAM (a lista é filtrada
+          // por `minOferta`, que corta o que já venceu). Prescrever a desculpa
+          // "a agenda ficou cheia" faria a Ana mentir metade das vezes. O que é
+          // sempre verdade é o resultado: não há horário para oferecer.
+          return `• **${rotulo}** (${dataTxt}) — **ZERO horários disponíveis.** Não há NADA para oferecer neste dia, nem de manhã nem à tarde: ou as vagas foram todas ocupadas, ou o horário já passou. Não afirme qual dos dois foi — diga apenas que não tem horário nesse dia.`;
         };
-        return `\n\n📅 CONTAGEM FECHADA DE HOJE E AMANHÃ (feita pelo sistema, não por você — vale mais que qualquer horário escrito nesta conversa):\n${linhaDoDia(agora, "HOJE", bAg.hoje)}\n${linhaDoDia(agora + 24 * 60 * 60 * 1000, "AMANHÃ", bAg.amanha)}\n⛔ Se o paciente pedir um horário de um dia marcado como ZERO/ESGOTADO — mesmo que ELE tenha lido esse horário numa mensagem anterior sua, mesmo que insista, mesmo que você tenha errado antes — a resposta é SEMPRE a mesma: aquele dia não tem vaga. Diga isso com clareza, explique em uma linha (a agenda do dia ficou cheia) e ofereça o PRIMEIRO horário da lista acima. NUNCA tente "encaixar", NUNCA reofereça o horário que ele pediu só porque ele insistiu, e NUNCA peça desculpa e repita o mesmo erro. Insistência do paciente não cria vaga.`;
+        return `\n\n📅 CONTAGEM FECHADA DE HOJE E AMANHÃ (feita pelo sistema, não por você — vale mais que qualquer horário escrito nesta conversa):\n${linhaDoDia(agora, "HOJE", bAg.hoje)}\n${linhaDoDia(agora + 24 * 60 * 60 * 1000, "AMANHÃ", bAg.amanha)}\n⛔ Se o paciente pedir um horário de um dia marcado como ZERO — mesmo que ELE tenha lido esse horário numa mensagem anterior sua, mesmo que insista, mesmo que você tenha errado antes — a resposta é SEMPRE a mesma: aquele dia não tem horário. Diga isso com clareza e sem rodeio ("não tenho mais nenhum horário para hoje"), e na MESMA mensagem ofereça o PRIMEIRO horário da lista acima. NUNCA tente "encaixar", NUNCA reofereça o horário que ele pediu só porque ele insistiu, e NUNCA peça desculpa e repita o mesmo erro. Insistência do paciente não cria vaga.`;
       })();
       const ultimoSlot = (Array.isArray(slotsOferta) && slotsOferta.length)
         ? slotsOferta.reduce((a, b) => (b.start > a.start ? b : a)) : null;
