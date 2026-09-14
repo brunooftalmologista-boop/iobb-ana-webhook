@@ -455,6 +455,24 @@ reprovada 2× segue, para não destruir resposta legítima (ex.: casal = 2 horá
   esses estão certos;
 - a frase determinística de emergência sai **uma vez por conversa**: repetida,
   vira robô (caso 01/09: quatro vezes idêntica a quem só queria entregar exames);
+- **o zero de hoje e de amanhã é AFIRMADO, não deixado implícito** (14/09): a lista
+  de horários só mostra o que existe, então um dia lotado simplesmente não aparece —
+  e a Ana preenchia o silêncio. O paciente pedia "hoje às 17h20", nenhuma linha
+  dizia o contrário, e ela inventava: sete horários fantasmas de uma vez, num laço
+  de 18 minutos e 6 turnos (**onze travas numa conversa só**). O bloco "CONTAGEM
+  FECHADA DE HOJE E AMANHÃ" passa a contar os dois dias e escrever "ZERO horários
+  disponíveis" com todas as letras. Sem afirmar a CAUSA: às 17h30 as vagas que
+  sobraram não estão ocupadas, já passaram — dizer "a agenda lotou" seria mentira
+  metade das vezes. **Em prompt, o não-dito vira permissão**;
+- **disjuntor entre turnos** (14/09): o escape que corta a resposta e chama a equipe
+  só enxergava UM turno, e o contador zerava a cada mensagem nova do paciente. Agora
+  a conversa é a unidade: **4 erros de FATO sobre a agenda em 30 min** → escape
+  direto. O limite foi medido, não chutado — com 1, 2 ou 3 tropeços a conversa ainda
+  agenda ~50% das vezes (57/18/8 conversas em 30 dias); com 4, 8 ou 15, **nunca
+  agendou nenhuma**. A lista de etapas exclui erro de FORMA: as três mais frequentes
+  do banco (`ficha_em_conta_gotas` 182, `vaga_mais_cedo_ignorada` 128,
+  `varios_horarios_refeito` 114) ocorrem em conversas que terminam bem. O
+  `escape_sem_oferta` grava qual das duas portas disparou;
 - prosa × token divergentes → vale a PROSA (o que o paciente leu);
 - anti-duplicata e anti-overbooking (índice único no banco);
 - re-emissão de `[AGENDAR]` sem mudança → ignorada (não duplica).
