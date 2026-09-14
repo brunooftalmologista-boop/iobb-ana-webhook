@@ -770,6 +770,54 @@ async function registrarErro(etapa, detalhe, { conversationId = null, telefone =
   } catch (_) { /* nunca deixa o log derrubar o processamento */ }
 }
 
+// 🔁 DISJUNTOR ENTRE TURNOS (14/09/2026). O escape de hoje de manhã só enxerga
+// UM turno: se a reescrita saiu errada e a frase determinística já tinha sido
+// usada, ele corta. Mas o laço do paciente 264816671673 durou 18 minutos e SEIS
+// turnos — a cada nova mensagem dele o contador zerava, a Ana inventava horário
+// de novo, a trava barrava de novo. Onze travas numa conversa só.
+// Aqui a conversa inteira é a unidade de medida: três erros de FATO sobre a
+// agenda na última meia hora e ela para de tentar, independentemente de quantas
+// mensagens o paciente mandou no meio. Só roda quando uma trava já acusou erro
+// neste turno — ou seja, quase nunca. Falha de banco devolve false (na dúvida,
+// deixa a Ana tentar; o escape do turno continua de pé).
+const ETAPAS_ERRO_DE_AGENDA = [
+  // ⚠️ SÓ ERRO DE FATO SOBRE A AGENDA. Nada de estilo aqui: as três etapas mais
+  // frequentes do banco (ficha_em_conta_gotas 182, vaga_mais_cedo_ignorada 128,
+  // varios_horarios_refeito 114 em 30 dias) são de FORMA, acontecem em conversas
+  // que terminam bem, e se entrassem nesta lista o disjuntor abriria todo dia.
+  // Os nomes abaixo foram conferidos contra os valores REAIS de error_log —
+  // dois que eu tinha escrito de cabeça ("unidade_contradiz_oferta") não existiam.
+  "ofereceu_vaga_inexistente", "agendar_em_vaga_ocupada", "agendar_inicio_invalido",
+  "hoje_amanha_contradiz", "reescrita_ainda_errada", "unidade_dia_contradiz",
+  "agendar_bloco_invalido", "anunciou_sem_agendar", "prometeu_encaixe",
+  "escape_sem_oferta",
+];
+// LIMITE = 4, medido, não chutado. Distribuição real dos últimos 30 dias, por
+// pico de erros de fato numa janela de 30 min (conversas → quantas agendaram):
+//   1 erro → 57 conversas, 33 agendaram (58%)
+//   2 erros → 18 conversas, 8 agendaram (44%)
+//   3 erros →  8 conversas, 4 agendaram (50%)   ← ainda se recupera: NÃO cortar
+//   4 erros →  1 conversa,  0 agendaram
+//   8 erros →  1 conversa,  0 agendaram
+//  15 erros →  1 conversa,  0 agendaram (o caso de hoje)
+// Ou seja: até três tropeços ela ainda fecha metade das vezes; a partir do
+// quarto, nunca fechou uma. Cortar em 3 custaria 4 agendamentos por mês para
+// não ganhar nada. Cortar em 4 pega as três conversas perdidas e só elas.
+async function conversaEmLacoDeAgenda(conversationId, minutos = 30, limite = 4) {
+  if (!conversationId) return false;
+  try {
+    const desde = new Date(Date.now() - minutos * 60 * 1000).toISOString();
+    const { count, error } = await supabase
+      .from("error_log")
+      .select("id", { count: "exact", head: true })
+      .eq("conversation_id", conversationId)
+      .in("etapa", ETAPAS_ERRO_DE_AGENDA)
+      .gte("created_at", desde);
+    if (error) return false;
+    return (count || 0) >= limite;
+  } catch (_) { return false; }
+}
+
 // Rede de segurança de PROCESSO: uma promessa rejeitada sem catch (scheduler, boot,
 // comando) derrubaria o serviço inteiro. Aqui logamos e seguimos vivos.
 process.on("unhandledRejection", (e) => { console.error("[unhandledRejection]", e); registrarErro("unhandledRejection", e?.stack || e?.message || String(e)); });
@@ -6534,6 +6582,36 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
       // sem isso ela tratava "fora da lista" como "não tem vaga" e NEGAVA datas
       // com a agenda vazia. Fora do horizonte a resposta certa nunca é "não tem".
       slotsVigentes = Array.isArray(slotsOferta) ? slotsOferta : null;
+      // 📅 MAPA DE HOJE E AMANHÃ — a correção do laço de 14/09/2026.
+      // A lista acima só mostra o que EXISTE. Quando não existe nada hoje, hoje
+      // simplesmente NÃO APARECE — e a Ana preenchia o silêncio: o paciente pedia
+      // "hoje às 17h20", ela não achava nenhuma linha dizendo o contrário e
+      // inventava a vaga, anunciava, a trava barrava, ela pedia desculpa e
+      // inventava de novo. Onze travas numa conversa só (paciente 264816671673).
+      // A ausência de informação é que abria a porta; então o sistema passa a
+      // AFIRMAR o zero, com todas as letras, em vez de deixá-lo implícito.
+      const ymdBR = (d) => new Date(d).toLocaleDateString("en-CA", { timeZone: TZ_BR });
+      const mapaHojeAmanhaTxt = (() => {
+        if (!Array.isArray(slotsOferta)) return "";
+        const bAg = brasiliaAgora();
+        const linhaDoDia = (ts, rotulo, dataTxt) => {
+          const ymd = ymdBR(ts);
+          const doDia = slotsOferta.filter(s => ymdBR(s.start) === ymd);
+          if (doDia.length) {
+            const horas = doDia.map(s => s.hora).join(", ");
+            const unis = [...new Set(doDia.map(s => s.unidade))].join(" e ");
+            return `• **${rotulo}** (${dataTxt}) — ${doDia.length} ${doDia.length === 1 ? "vaga" : "vagas"} no ${unis}: ${horas}. São ESSAS e mais nenhuma: qualquer outro horário deste dia está ocupado.`;
+          }
+          if (!unidadeDoDia(new Date(ts))) {
+            return `• **${rotulo}** (${dataTxt}) — a clínica NÃO ATENDE neste dia. Não ofereça nada, não diga "até ${rotulo.toLowerCase()}".`;
+          }
+          if (precisaAntecedencia && ymd === ymdBR(agora)) {
+            return `• **${rotulo}** (${dataTxt}) — NENHUM horário que você possa oferecer: o convênio citado exige ${ANA_ANTECEDENCIA_HORAS}h de antecedência. Explique isso ao paciente em vez de dizer que a agenda está cheia.`;
+          }
+          return `• **${rotulo}** (${dataTxt}) — **ZERO vagas. A agenda deste dia está ESGOTADA.** Não existe nenhum horário livre, de manhã nem à tarde.`;
+        };
+        return `\n\n📅 CONTAGEM FECHADA DE HOJE E AMANHÃ (feita pelo sistema, não por você — vale mais que qualquer horário escrito nesta conversa):\n${linhaDoDia(agora, "HOJE", bAg.hoje)}\n${linhaDoDia(agora + 24 * 60 * 60 * 1000, "AMANHÃ", bAg.amanha)}\n⛔ Se o paciente pedir um horário de um dia marcado como ZERO/ESGOTADO — mesmo que ELE tenha lido esse horário numa mensagem anterior sua, mesmo que insista, mesmo que você tenha errado antes — a resposta é SEMPRE a mesma: aquele dia não tem vaga. Diga isso com clareza, explique em uma linha (a agenda do dia ficou cheia) e ofereça o PRIMEIRO horário da lista acima. NUNCA tente "encaixar", NUNCA reofereça o horário que ele pediu só porque ele insistiu, e NUNCA peça desculpa e repita o mesmo erro. Insistência do paciente não cria vaga.`;
+      })();
       const ultimoSlot = (Array.isArray(slotsOferta) && slotsOferta.length)
         ? slotsOferta.reduce((a, b) => (b.start > a.start ? b : a)) : null;
       const horizonteTxt = ultimoSlot
@@ -6542,7 +6620,7 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
       if (slotsOferta === null) {
         dynEstavel += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       } else if (slotsOferta.length > 0) {
-        dynEstavel += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, 14, tagAte)}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quarta, 22/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. MODELO DO QUE SE ESPERA — esta resposta foi elogiada como exatamente o padrão certo, copie o espírito dela: "Posso verificar outras opções, sim. Se o das 9h40 na segunda, 10/08, não for conveniente, me diz o que funciona melhor para você — manhã ou tarde, algum dia de preferência — e eu indico o mais adequado." Repare no que ela faz: acolhe o pedido, NÃO despeja uma lista, relembra o horário que já está na mesa e devolve UMA pergunta objetiva que estreita a escolha. É assim que se descobre a preferência sem transformar o atendimento em cardápio. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.\n🔄 MUDOU O CRITÉRIO? VARRA A LISTA DE NOVO, DESDE O COMEÇO. Quando o paciente troca de período, de horário ou de unidade ("tem na hora do almoço?", "e de tarde?", "e no Taguatinga?"), NÃO continue a partir da data que você acabou de oferecer — volte ao TOPO da lista e ache a data MAIS PRÓXIMA que atende ao novo pedido. Caso real de 06/08: a paciente pediu manhã cedo, recebeu 14/08 às 9h20 (certo, as 9h de 10/08 e 12/08 estavam ocupadas), perguntou "tem na hora do almoço?" e recebeu 14/08 às 12h — mas 10/08 às 12h estava LIVRE. Como a conversa seguiu ancorada no 14/08, ela acabou marcando 19/08: nove dias a mais do que precisava, e a vaga de 10/08 ficou vazia. Só ofereça data mais distante quando o PACIENTE pedir ("semana que vem", um dia específico, "depois do dia X").
+        dynEstavel += `\n\n### Horários REALMENTE disponíveis (fonte: agenda oficial — só ofereça e só marque ESTES)\n${formatSlotsParaAgendar(slotsOferta, 14, tagAte)}${mapaHojeAmanhaTxt}\n\nEsta lista é só PARA VOCÊ consultar — NÃO a mostre ao paciente. Escolha UM ÚNICO horário dela e ofereça SOMENTE ele, em linguagem humana (ex.: "Tenho quarta, 22/07, às 14h20 no Conjunto Nacional. Pode ser?"). É PROIBIDO listar, enumerar ou mandar mais de um horário na mesma mensagem (nunca "tenho às 9h, 9h20 e 9h40" nem uma lista). Se o paciente pedir "quais horários vocês têm?" ou um período (manhã/tarde), ainda assim ofereça UM (do período pedido) e diga que, se esse não servir, você vê outra opção. MODELO DO QUE SE ESPERA — esta resposta foi elogiada como exatamente o padrão certo, copie o espírito dela: "Posso verificar outras opções, sim. Se o das 9h40 na segunda, 10/08, não for conveniente, me diz o que funciona melhor para você — manhã ou tarde, algum dia de preferência — e eu indico o mais adequado." Repare no que ela faz: acolhe o pedido, NÃO despeja uma lista, relembra o horário que já está na mesa e devolve UMA pergunta objetiva que estreita a escolha. É assim que se descobre a preferência sem transformar o atendimento em cardápio. Ao paciente confirmar, anexe o bloco [AGENDAR] copiando o token [inicio:...] exato do horário escolhido.\n🔄 MUDOU O CRITÉRIO? VARRA A LISTA DE NOVO, DESDE O COMEÇO. Quando o paciente troca de período, de horário ou de unidade ("tem na hora do almoço?", "e de tarde?", "e no Taguatinga?"), NÃO continue a partir da data que você acabou de oferecer — volte ao TOPO da lista e ache a data MAIS PRÓXIMA que atende ao novo pedido. Caso real de 06/08: a paciente pediu manhã cedo, recebeu 14/08 às 9h20 (certo, as 9h de 10/08 e 12/08 estavam ocupadas), perguntou "tem na hora do almoço?" e recebeu 14/08 às 12h — mas 10/08 às 12h estava LIVRE. Como a conversa seguiu ancorada no 14/08, ela acabou marcando 19/08: nove dias a mais do que precisava, e a vaga de 10/08 ficou vazia. Só ofereça data mais distante quando o PACIENTE pedir ("semana que vem", um dia específico, "depois do dia X").
 🚫 HORÁRIO PROPOSTO PELO PACIENTE (regra crítica): quando o PACIENTE sugerir um horário ("consigo às 16h20", "tem às 15h?", "pode ser mais cedo, tipo 9h?"), PROCURE esse horário exato na lista acima. Se ele ESTIVER na lista, confirme normalmente. Se NÃO ESTIVER, é porque está ocupado ou não existe — então NUNCA diga "agendado", "remarcado" ou "confirmado" para ele. Responda que nesse horário não tem vaga e ofereça o mais próximo QUE ESTÁ na lista (ex.: "Às 16h20 não tenho vaga; consigo às 16h40 — pode ser?"). Confirmar um horário que não está na lista faz o paciente vir num horário ocupado por outra pessoa — é o pior erro possível.\n💰 PREÇO NUNCA ENCERRA A CONVERSA: sempre que você informar um valor de lente, cirurgia ou procedimento, a MESMA mensagem tem de terminar oferecendo um horário concreto da lista. Caso real: um paciente de lente escleral recebeu "está no valor de R$ 5.980,00 o par" e a conversa morreu ali — nenhum horário foi oferecido e ele nunca mais escreveu. Valor sem próximo passo é um beco: o paciente fica com o número na cabeça, sem nada para responder. O certo é fechar com "...e a avaliação, que define a lente ideal para a sua córnea, é R$ 200,00. Consigo *[dia] às [hora]* — quer que eu reserve?".
 🚫 NÃO PROMETA RESERVA QUE VOCÊ AINDA NÃO FEZ: enquanto faltar qualquer dado para emitir o [AGENDAR], é PROIBIDO dizer "vou já reservar", "já reservei", "está reservado" ou "vou guardar esse horário". O horário só fica reservado no instante em que você emite o bloco — antes disso ele continua livre para outra pessoa. Caso real: a Ana disse "Vou já reservar esse horário para você" e pediu o nome; o paciente não respondeu, nada foi reservado, e a vaga ficou vazia sem ninguém saber. O certo é pedir o dado deixando claro que a reserva depende dele: "Perfeito! Para eu reservar esse horário, me confirma seu nome completo e a data de nascimento?". Depois de gravar, aí sim anuncie: "Agendado para [dia] às [hora]".
 🚫 CORRIGIR UM DADO NÃO É REMARCAR: se você já marcou um horário nesta conversa e depois precisa apenas ajustar convênio, nome, nascimento ou carteirinha, NUNCA re-emita [AGENDAR] com um horário DIFERENTE — repita EXATAMENTE o mesmo [inicio:] de antes (ou apenas emita [CARTEIRINHA]). Trocar o horário por conta própria muda a consulta de lugar sem o paciente pedir, e ele aparece na hora errada. Só mude o horário quando o PACIENTE pedir para mudar.\nVale igual para REMARCAÇÃO: só anuncie a remarcação depois de escolher um horário DA LISTA. Enquanto o novo horário não for um da lista, o agendamento antigo continua valendo — não diga ao paciente que mudou.\nÚNICA EXCEÇÃO à regra do horário único: agendamento para MAIS DE UM paciente — ofereça exatamente UM horário POR paciente (N pacientes = N horários), preferindo horários em sequência no mesmo dia/unidade e dizendo qual é de quem (ver a seção "Agendamento para MAIS DE UM paciente").\nATENÇÃO — A LISTA ACIMA TEM AS DUAS UNIDADES: cada linha diz a unidade e o dia. NUNCA diga que "não há horário" numa unidade ou num dia sem antes procurar na lista inteira: pode haver vaga naquele dia em outra linha, mais abaixo. Lembre que cada dia pertence a UMA unidade (seg/qua/sex = Conjunto Nacional; ter/qui = Taguatinga), então um pedido por um DIA já define a unidade — se o paciente pedir sexta, procure as linhas de sexta (Conjunto Nacional), mesmo que ele tenha citado a outra unidade antes.\nNUNCA escreva o dia da semana de uma data por conta própria: copie o dia da semana exatamente como aparece na linha da lista (ex.: se a linha diz "sexta-feira, 31/07", nunca escreva "quinta-feira, 31/07"). Errar isso faz o paciente vir no dia errado.${horizonteTxt}${unidade ? `\n📍 ESTE PACIENTE JÁ ESCOLHEU A UNIDADE: **${unidade === "conjunto" ? "Conjunto Nacional (Asa Norte)" : "Taguatinga Shopping (Águas Claras)"}**. Essa parte está DECIDIDA — o horário que você oferecer TEM de ser dessa unidade (confira a unidade na própria linha da lista). Não reformule a pergunta como "qual é o horário mais próximo?": o mais próximo da OUTRA unidade não serve, e oferecê-lo faz o paciente repetir o que já disse. Só cite a outra unidade para ACRESCENTAR uma opção na mesma frase, nunca no lugar da que ele pediu. Caso real (03/09): a paciente escreveu "Asa norte" e recebeu "o horário mais próximo que tenho disponível é quinta-feira, 03/09 às 15:40, no Taguatinga Shopping" — teve de escrever de novo "Prefiro na unidade do conjunto nacional (asa norte)".` : ""}${(!unidade && ANA_UNIDADE_PREFERIDA) ? `\nPREFERÊNCIA DE UNIDADE (este paciente ainda NÃO disse onde quer ser atendido): hoje temos MAIS DISPONIBILIDADE na unidade **${ANA_UNIDADE_PREFERIDA}**. Use isso de duas formas: (a) AO PERGUNTAR a preferência, acrescente essa informação verdadeira e útil — ex.: "prefere Conjunto Nacional ou Taguatinga Shopping (em Águas Claras)? No Conjunto Nacional tenho mais horários disponíveis esta semana"; (b) se VOCÊ tiver que escolher (paciente sem preferência, com pressa, ou pedindo "o horário mais próximo"), ofereça um horário do **${ANA_UNIDADE_PREFERIDA}**. LIMITES: se o paciente disser que prefere a outra unidade, ou citar bairro/região mais perto dela, ATENDA IMEDIATAMENTE, sem insistir e sem justificar a troca. NUNCA diga que a outra unidade está cheia nem invente motivo — a única coisa que você pode afirmar é que há mais horários disponíveis nesta. EXCEÇÃO IMPORTANTE: se o paciente pedir explicitamente o horário MAIS PRÓXIMO/mais cedo possível (pressa, urgência de agenda), ofereça o horário genuinamente mais próximo da lista, mesmo que seja da outra unidade — nunca empurre uma data mais distante só para preencher a unidade preferida.` : ""}`;
@@ -6921,7 +6999,12 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       // As variantes antigas ficam para conversas que ainda as tenham no
       // histórico.
       m.role === "assistant" && /^Conferi a agenda|^Deixe-me confirmar direitinho a agenda|^A agenda está sem horários disponíveis no momento/.test(String(m.content || "").trim()));
-            if (aindaErrada && jaSubstituiu) {
+            // O escape agora tem DUAS portas: a do turno (a frase determinística
+            // já saiu aqui) e a da CONVERSA (quarto erro de fato em 30 min). A
+            // segunda existe porque o laço de 14/09 durou seis turnos e a
+            // primeira porta zerava a cada mensagem nova do paciente.
+            const emLaco = aindaErrada ? await conversaEmLacoDeAgenda(conversation.id) : false;
+            if (aindaErrada && (jaSubstituiu || emLaco)) {
               // 🚨 14/09/2026 — O FURO QUE MANDOU UMA AGENDA INTEIRA FALSA.
               // Esta guarda nasceu em 01/09 com uma boa razão: não repetir a
               // mesma frase determinística feito robô. O raciocínio era "resposta
@@ -6938,11 +7021,12 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
               // A saída não é repetir a frase nem mandar a mentira: é uma terceira
               // resposta, que NÃO oferece horário nenhum e chama a equipe.
               reply = `Deixa eu confirmar a agenda com a equipe para não te passar um horário errado — eles retornam por aqui em instantes.\n\nSe preferir, pode falar direto com elas pelo (61) 3033-6605.`;
-              console.warn(`[HorarioTrava] Reescrita ainda errada (${aindaErrada}) e a frase determinística já foi usada — mandando o ESCAPE (sem oferta) e chamando a equipe.`);
-              await registrarErro("escape_sem_oferta", `${aindaErrada} | descartado: ${String(novo).slice(0, 200)}`,
+              const porta = jaSubstituiu ? "frase determinística já usada neste turno" : "4º erro de fato na conversa em 30 min";
+              console.warn(`[HorarioTrava] Reescrita ainda errada (${aindaErrada}) — ${porta}. Mandando o ESCAPE (sem oferta) e chamando a equipe.`);
+              await registrarErro("escape_sem_oferta", `${aindaErrada} | porta: ${porta} | descartado: ${String(novo).slice(0, 200)}`,
                 { conversationId: conversation.id, telefone: from }).catch(() => {});
               await marcarPendenciaEquipe(conversation.id, "urgent").catch(() => {});
-              await notificarClinica(`⚠️ *A ANA NÃO CONSEGUIU FECHAR UM HORÁRIO*\n👤 ${patient.name || from}\n📱 ${from}\n\nEla errou a agenda duas vezes seguidas e foi impedida de responder. O paciente foi orientado a aguardar a equipe.\n\nMotivo: ${aindaErrada}`).catch(() => {});
+              await notificarClinica(`⚠️ *A ANA NÃO CONSEGUIU FECHAR UM HORÁRIO*\n👤 ${patient.name || from}\n📱 ${from}\n\nEla errou a agenda repetidamente e foi impedida de responder (${porta}). O paciente foi orientado a aguardar a equipe.\n\nMotivo: ${aindaErrada}`).catch(() => {});
             } else if (aindaErrada && RE_PEDIU_CANCELAR.test(String(text || ""))) {
               // 🚫 QUEM PEDIU PARA DESMARCAR NÃO RECEBE OFERTA DE HORÁRIO.
               // Caso Rufina (09/09): "peço que desmarque minha consulta de hoje,
