@@ -2972,12 +2972,19 @@ async function indicacoesDoPaciente(telefone) {
 async function fichaHistoricaDoPaciente(telefone) {
   if (!telefone) return [];
   try {
+    // ⚠️ ORDEM DESCENDENTE + limit, e SÓ DEPOIS invertida. Estava
+    // `ascending: true` com `.limit(5)`: isso devolve as CINCO MAIS ANTIGAS,
+    // não as mais recentes. Para quem tem histórico longo, a Ana enxergava
+    // 2024 e não via a consulta do mês passado — e é a recente que importa
+    // tanto para a ficha (convênio muda) quanto para saber que ele já veio.
+    // O `.reverse()` devolve a lista em ordem crescente, que é o que o resto
+    // do código espera (`ultimoNaoVazio` lê do fim para o começo).
     const { data } = await supabase.from("appointments")
-      .select("inicio, paciente_nome, convenio, observacoes")
+      .select("inicio, paciente_nome, convenio, observacoes, status, unidade, motivo, origem")
       .in("paciente_telefone", fonesBR(telefone))
       .lt("inicio", new Date(Date.now() - 2 * 3600 * 1000).toISOString())
-      .order("inicio", { ascending: true }).limit(5);
-    return data || [];
+      .order("inicio", { ascending: false }).limit(5);
+    return (data || []).reverse();
   } catch (e) { console.error("[Agenda DB] fichaHistoricaDoPaciente falhou:", e.message); return []; }
 }
 
@@ -6302,8 +6309,9 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
       const minhasIndicacoes = await indicacoesDoPaciente(from);
       // O nome do funil também serve de ficha — vem primeiro na ordem porque a
       // lista é lida do mais antigo para o mais novo (o último não-vazio vence).
+      const historico = await fichaHistoricaDoPaciente(from);
       const paraFicha = [...minhasIndicacoes.slice().reverse(),
-                         ...(await fichaHistoricaDoPaciente(from)), ...meusAg];
+                         ...historico, ...meusAg];
       // ⚠️ A CONDIÇÃO É paraFicha, NÃO meusAg. Quem acabou de consultar não tem
       // agendamento futuro — e é justamente quem não pode ser perguntado de novo.
       if (minhasIndicacoes.length) {
@@ -6361,6 +6369,31 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
             + (falta.length ? `\n- O que realmente falta e você PRECISA pedir: **${falta.join(" e ")}**. Peça só isso, de uma vez, junto do horário.` : `\n- Não falta nada: siga direto para o horário.`);
         }
         if (meusAg.length) dynEstavel += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar. Se o paciente só quer confirmar/saber, NÃO ofereça novo horário.\nPara os marcados "você PODE cancelar/remarcar este": se o paciente pedir para DESMARCAR, confirme com ele e emita o bloco [CANCELAR] copiando o token [inicio:...] exato. Para REMARCAR, ofereça um novo horário (da lista de disponíveis), e ao confirmar emita [CANCELAR] do antigo + [AGENDAR] do novo (o sistema marca o novo e cancela o antigo). Para os agendamentos "alteração só pela equipe", oriente o (61) 3033-6605 ou o WhatsApp da equipe (61) 99299-7639 — NÃO tente cancelar você mesma.`;
+        }
+      // ── ELE JÁ É PACIENTE DA CASA ────────────────────────────────────────
+      // Dr. Bruno, 16/09/2026: "no reengajamento vai precisar saber quem já
+      // consultou". Até aqui o histórico entrava SÓ como ficha — nome,
+      // nascimento, convênio — e em lugar nenhum se dizia à Ana que a pessoa
+      // já tinha vindo. Ela tratava um paciente de dois meses atrás, marcado
+      // pela secretária, exatamente como um desconhecido: "é sua primeira vez
+      // aqui?", explicação de endereço do zero, tudo de novo.
+      // O sinal é consulta PASSADA não cancelada. `compareceu` não serve de
+      // filtro: metade das 969 consultas passadas está sem marcação de
+      // presença (479), então exigir compareceu=true esconderia justamente
+      // quem a equipe não teve tempo de marcar.
+      const jaVeio = (historico || []).filter(a => !/^cancelad/i.test(String(a.status || "")));
+      if (jaVeio.length) {
+        const ult = jaVeio[jaVeio.length - 1];
+        const quando = new Date(ult.inicio).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "long", year: "numeric" });
+        dynEstavel += `\n\n### ⭐ ESTE PACIENTE JÁ SE CONSULTOU AQUI — ele NÃO é novo`
+          + `\n- Última vez: **${quando}**${ult.unidade ? `, no ${ult.unidade}` : ""}${ult.motivo ? ` (${ult.motivo})` : ""}.`
+          + (jaVeio.length > 1 ? `\n- Ao todo, ${jaVeio.length} consultas registradas aqui.` : "")
+          + `\n- Não importa QUEM marcou (ele mesmo, você ou a equipe pelo telefone): a consulta é da casa e conta.`
+          + `\n\nCOMO USAR:`
+          + `\n- 🚫 NUNCA pergunte "é a sua primeira vez aqui?" nem trate como paciente novo.`
+          + `\n- 🚫 NÃO repita a explicação completa de endereço e estacionamento como se ele nunca tivesse ido — ele já foi. No fechamento, o endereço entra normalmente (é a confirmação), mas sem o tom de quem está ensinando o caminho.`
+          + `\n- ✅ Trate como retorno: "que bom te ver de novo" cabe, uma vez só e sem exagero.`
+          + `\n⛔ LIMITE: você sabe que ele VEIO, não sabe o que foi conversado na consulta. NÃO comente o caso, não diga o que o Dr. Bruno achou, não sugira conduta e não invente diagnóstico. Se ele perguntar sobre resultado ou conduta, encaminhe para a equipe.`;
       }
     } catch (_) {}
 

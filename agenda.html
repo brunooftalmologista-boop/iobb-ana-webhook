@@ -1100,11 +1100,27 @@ function openAgBook(ini, unidade){
 }
 function closeAgBook(){ $('#agbook-modal').classList.remove('show'); }
 function agBookErr(m){ const el=$('#agbook-error'); el.textContent=m; el.style.display='block'; }
+// Telefone vazio: avisa ANTES de salvar, e diz a consequência que pesa.
+// Até 16/09/2026 o aviso vinha num toast DEPOIS de gravar ("não receberá a
+// confirmação da véspera") — tarde demais para ir buscar o número, e citando
+// o menor dos dois problemas. O maior é que a Ana procura o paciente pelo
+// telefone: sem ele, quando a pessoa escrever no WhatsApp meses depois, a Ana
+// não acha a consulta, trata como paciente novo e pede nome e nascimento de
+// novo. Em 90 dias isso aconteceu com 54 agendamentos da equipe.
+// Continua sendo possível salvar sem telefone (paciente de balcão existe) —
+// só deixou de ser por descuido.
+function confirmaSemTelefone(tel){
+  if(String(tel||'').trim()) return true;
+  return confirm('Sem telefone, a Ana NÃO vai reconhecer este paciente depois: '
+    + 'se ele escrever no WhatsApp, ela vai tratar como paciente novo e pedir nome e nascimento de novo. '
+    + 'Ele também não recebe a confirmação da véspera.\n\nMarcar assim mesmo?');
+}
 async function agBookSave(){
   const body={ unidade:agUnidade, inicio:agBookIni,
     nome:$('#agbook-nome').value.trim(), telefone:$('#agbook-tel').value.trim(),
     convenio:$('#agbook-conv').value.trim(), motivo:[...$('#agbook-motivo').querySelectorAll('input:checked')].map(c=>c.value).join(', '), observacoes:$('#agbook-obs').value.trim() };
   if(!body.nome){ agBookErr('Informe o nome do paciente.'); return; }
+  if(!confirmaSemTelefone(body.telefone)) return;
   $('#agbook-save').disabled = true;
   try{
     const d = await api('/api/agenda/book', {method:'POST', body});
@@ -1359,6 +1375,7 @@ async function salvarAgendamento(){
   const nome = $('#m-nome').value.trim();
   if(!slotSel){ $('#m-erro').textContent='Escolha um horário na lista de vagas.'; return; }
   if(!nome){ $('#m-erro').textContent='Informe o nome completo do paciente.'; return; }
+  if(!confirmaSemTelefone($('#m-tel').value)) return;
   const nasc = $('#m-nasc').value.trim();
   const body = {
     unidade: slotSel.unidade,
