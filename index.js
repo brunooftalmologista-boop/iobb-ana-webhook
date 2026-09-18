@@ -6395,7 +6395,17 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
           + `\n- ✅ Trate como retorno: "que bom te ver de novo" cabe, uma vez só e sem exagero.`
           + `\n⛔ LIMITE: você sabe que ele VEIO, não sabe o que foi conversado na consulta. NÃO comente o caso, não diga o que o Dr. Bruno achou, não sugira conduta e não invente diagnóstico. Se ele perguntar sobre resultado ou conduta, encaminhe para a equipe.`;
       }
-    } catch (_) {}
+    } catch (e) {
+      // ⚠️ ESTE CATCH ERA MUDO — `catch (_) {}` — e escondeu por seis dias um
+      // ReferenceError que derrubava TODOS os blocos acima (ficha, agendamentos
+      // do paciente, funil, "já se consultou aqui"). A Ana seguia respondendo
+      // normalmente, só que cega para o histórico, e nada no log dizia isso.
+      // Falha aqui continua NÃO derrubando a resposta ao paciente — mas agora
+      // deixa rastro, porque um bloco de contexto que some é invisível por fora.
+      console.error("[Ficha] Montagem do contexto do paciente falhou (segue sem ela):", e.message);
+      await registrarErro("ficha_contexto_falhou", e?.stack || e?.message || String(e),
+        { conversationId: conversation.id, telefone: from }).catch(() => {});
+    }
 
     // ── PACIENTE QUE VEIO DA CAMPANHA: NÃO PERGUNTE O QUE JÁ SABEMOS ─────────
     // A fila do reengajamento tem nome completo, convênio e unidade da última
@@ -6475,13 +6485,23 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
     // Ana repetiria esse número como se fosse o preço final. A tabela de preços
     // certa, com todas as ressalvas, já está no SYSTEM_PROMPT — é de lá que ela
     // fala de dinheiro.
-    let indicacoesDoPaciente = [];
+    // ⚠️ NOME DIFERENTE DA FUNÇÃO DE PROPÓSITO (17/09/2026). Esta variável
+    // se chamava `indicacoesDoPaciente` — idêntico à função declarada lá em
+    // cima (linha ~2948). Como as duas vivem no MESMO escopo de função (o
+    // handler do /webhook), o `let` colocava o nome em zona morta temporal
+    // desde o início do handler: a chamada `await indicacoesDoPaciente(from)`,
+    // umas 170 linhas ACIMA daqui, lançava ReferenceError a cada mensagem —
+    // e o `catch (_) {}` que a envolve engolia o erro sem deixar rastro.
+    // Resultado: a ficha do paciente, os agendamentos que ele já tem, o funil
+    // pós-consulta e o bloco "já se consultou aqui" NUNCA chegavam ao prompt.
+    // Era essa a causa de a Ana não reconhecer quem a secretária marcou.
+    let indicacoesVivas = [];
     try {
-      indicacoesDoPaciente = await indicacoesVivasDoPaciente(from);
-      if (indicacoesDoPaciente.length) {
+      indicacoesVivas = await indicacoesVivasDoPaciente(from);
+      if (indicacoesVivas.length) {
         // O paciente escreveu: a máquina para de cutucar e quem conduz é ela.
-        await marcarRespostaEmIndicacoes(indicacoesDoPaciente.map(i => i.id));
-        const lista = indicacoesDoPaciente.map(i => {
+        await marcarRespostaEmIndicacoes(indicacoesVivas.map(i => i.id));
+        const lista = indicacoesVivas.map(i => {
           const quando = new Date(i.created_at).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit", year: "numeric" });
           const cob = String(i.convenio || "").trim();
           const plano = cob && !/^particular$/i.test(cob) ? ` — paciente do convênio **${cob}**` : "";
@@ -6491,7 +6511,7 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
         // proíbe citar o valor particular a quem tem cobertura. Sem esta linha
         // ela pegaria os R$ 5.000 da própria tabela de preços e responderia o
         // preço de particular a quem não vai pagar nada por isso.
-        const algumConvenio = indicacoesDoPaciente.some(i => {
+        const algumConvenio = indicacoesVivas.some(i => {
           const c = String(i.convenio || "").trim();
           return !!c && !/^particular$/i.test(c);
         });
