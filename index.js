@@ -10926,6 +10926,22 @@ const SEM_RESPOSTA_MIN = (() => {
   const v = readEnv("SEM_RESPOSTA_MIN");
   return (v != null && v !== "" && !isNaN(Number(v))) ? Number(v) : 3;
 })();
+// Prazo MAIOR para conversa que a equipe assumiu (18/09/2026). O vigia pulava
+// essas conversas por completo — a ideia era não incomodar quem já está no
+// atendimento. Só que quando a equipe assume, a Ana fica muda SEM PRAZO
+// (`if (conversation.status === "human") return;`), então o paciente que não é
+// respondido não é respondido por ninguém.
+// Medido em 30 dias, 92 conversas com a equipe dentro: a mediana de resposta
+// delas é 1,4 min — são rápidas —, mas 46 vezes alguém esperou mais de 10 min,
+// 13 vezes mais de 30, 5 vezes mais de 2 horas, e o pior caso foi 20 horas.
+// Caso do dia: a Fernanda, atrasada e perdida no shopping, perguntou "qual cor
+// da torre?" às 12h00 e "não acho vocês" às 12h05; foi respondida às 14h30.
+// 10 minutos fica bem acima da mediana (não vira alarme durante um vaivém
+// normal) e bem abaixo do prejuízo.
+const SEM_RESPOSTA_EQUIPE_MIN = (() => {
+  const v = readEnv("SEM_RESPOSTA_EQUIPE_MIN");
+  return (v != null && v !== "" && !isNaN(Number(v))) ? Number(v) : 10;
+})();
 async function avisarMensagensSemResposta() {
   try {
     const limite = new Date(Date.now() - SEM_RESPOSTA_MIN * 60000).toISOString();
@@ -10971,7 +10987,13 @@ async function avisarMensagensSemResposta() {
       const { data: conv } = await supabase.from("conversations")
         .select("id, status, assigned_to, patient_id").eq("id", m.conversation_id).maybeSingle();
       // Conversa assumida por gente: quem responde é a equipe, no tempo dela.
-      if (!conv || conv.status !== "bot" || conv.assigned_to) { novos.push(m.id); continue; }
+      if (!conv) { novos.push(m.id); continue; }
+      // Conversa assumida pela equipe NÃO é mais ignorada — só espera mais.
+      // Enquanto não vencer o prazo, sai SEM marcar como avisado, para voltar
+      // a ser avaliada nas próximas rodadas (o vigia roda de 2 em 2 minutos).
+      const comEquipe = conv.status !== "bot" || !!conv.assigned_to;
+      if (comEquipe
+          && Math.round((Date.now() - new Date(m.timestamp).getTime()) / 60000) < SEM_RESPOSTA_EQUIPE_MIN) continue;
       const { data: pac } = conv.patient_id
         ? await supabase.from("patients").select("phone, name").eq("id", conv.patient_id).maybeSingle()
         : { data: null };
@@ -10979,7 +11001,9 @@ async function avisarMensagensSemResposta() {
       if (fone.startsWith("55619900")) { novos.push(m.id); continue; }   // número de teste
       const min = Math.round((Date.now() - new Date(m.timestamp).getTime()) / 60000);
       await notificarClinica(
-        `🔕 *MENSAGEM SEM RESPOSTA (${min} min)*\n👤 ${pac?.name || "paciente"}\n📱 ${fone}\n${m.media_path ? "🎧 veio como áudio/foto\n" : ""}\n💬 "${texto.slice(0, 200)}"\n\nA Ana não respondeu e a conversa está em modo automático. Alguém precisa olhar no painel.`
+        comEquipe
+          ? `⏳ *PACIENTE ESPERANDO A EQUIPE (${min} min)*\n👤 ${pac?.name || "paciente"}\n📱 ${fone}\n${m.media_path ? "🎧 veio como áudio/foto\n" : ""}\n💬 "${texto.slice(0, 200)}"\n\nEsta conversa foi assumida por alguém da equipe, então *a Ana está calada e não vai responder*. Só a equipe pode retomar.`
+          : `🔕 *MENSAGEM SEM RESPOSTA (${min} min)*\n👤 ${pac?.name || "paciente"}\n📱 ${fone}\n${m.media_path ? "🎧 veio como áudio/foto\n" : ""}\n💬 "${texto.slice(0, 200)}"\n\nA Ana não respondeu e a conversa está em modo automático. Alguém precisa olhar no painel.`
       ).catch(e => console.error("[SemResposta] Falha ao avisar:", e.message));
       await marcarPendenciaEquipe(m.conversation_id, "action").catch(() => {});
       await registrarErro("mensagem_sem_resposta", `${min}min | ${m.media_path ? "MÍDIA | " : ""}${texto.slice(0, 160)}`,
@@ -10995,7 +11019,7 @@ async function avisarMensagensSemResposta() {
 }
 function startSemRespostaScheduler() {
   setInterval(() => avisarMensagensSemResposta().catch(e => console.error("[SemResposta] scheduler:", e.message)), 2 * 60 * 1000);
-  console.log(`[SemResposta] Vigia ativo: avisa a equipe se um paciente ficar ${SEM_RESPOSTA_MIN} min sem resposta (env SEM_RESPOSTA_MIN).`);
+  console.log(`[SemResposta] Vigia ativo: ${SEM_RESPOSTA_MIN} min em conversa automática (SEM_RESPOSTA_MIN), ${SEM_RESPOSTA_EQUIPE_MIN} min em conversa assumida pela equipe (SEM_RESPOSTA_EQUIPE_MIN).`);
 }
 
 startResumoDiarioScheduler();
