@@ -1929,8 +1929,25 @@ function corrigirDiaDaSemana(texto, slots, pedidoPaciente) {
 // paciente vindo de anúncio pago. Aqui a detecção é determinística.
 // "às" é o que ancora: pega "às 09h20" e "às 9h", e ignora "24h antes"
 // (suspensão de lente) e "das 9h às 18h" (só casa o 18h — um horário só).
+// Blocos técnicos ([AGENDAR], [CANCELAR], ...) nunca são "horário oferecido":
+// o paciente não os vê. E o `inicio:` deles é um ISO completo, em UTC — dentro
+// de "2026-09-18T14:40:00.000Z" o extrator enxergava "40:00", e dentro de
+// "T13:20:00" enxergava "20:00". Como a grade só tem horários terminados em
+// :00, :20 e :40, isso contaminava quase toda resposta que agendava.
+// Caso real (18/09/2026, Valquiria 45 9915-3018): ela perguntou o número da
+// SALA; a Ana respondeu certo ("Sala 6017, 6º andar") e anexou o [AGENDAR] da
+// consulta dela. A trava leu "40:00" no ISO, concluiu que a Ana oferecia um
+// horário inexistente, mandou reescrever, leu "20:00" na reescrita, e o código
+// então substituiu a resposta correta pela frase da agenda — "o horário que
+// você pediu já está ocupado". A paciente perguntou onde era a sala e recebeu
+// oferta de outro horário. Dois minutos depois a equipe remarcou, e ela ficou
+// com DUAS consultas no mesmo dia.
+// Tirar os blocos aqui conserta TODAS as travas de uma vez, porque esta função
+// é o ponto único por onde elas leem horários.
+const RE_BLOCOS_TECNICOS = /\[(AGENDAR|CANCELAR|PREAGENDAMENTO|RECADO|CARTEIRINHA)\][\s\S]*?(?:\[\/\1\]|$)/gi;
 function horariosOferecidos(texto) {
   const achados = new Set();
+  texto = String(texto || "").replace(RE_BLOCOS_TECNICOS, " ");
   // Primeiro tira FAIXAS de funcionamento ("das 8h às 18h"): o "às" ali não
   // oferece nada, e sem isso uma mensagem que cite o horário da clínica mais um
   // horário de consulta pareceria dois horários oferecidos.
