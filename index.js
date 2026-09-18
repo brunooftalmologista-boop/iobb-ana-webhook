@@ -3433,14 +3433,37 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
           // Remarcação nasce de um PEDIDO. Se a última coisa que o paciente
           // escreveu foi um agradecimento ou um "ok", não há pedido nenhum —
           // e o horário que vale é o que ele já aceitou.
+          // 🔁 INVERSÃO DA PROVA (18/09/2026 — caso Valquiria, 45 9915-3018).
+          // Esta guarda testava se a última mensagem do paciente ERA cortesia,
+          // com uma lista de palavras. A lista nasceu colada no caso da Laís
+          // ("Tá bom! Obrigada!") e não reconheceu NENHUMA das três despedidas
+          // da Valquiria — "Até", "Eu que agradeço ☺️ Tenha uma feliz semana
+          // 🌻🌷!" e ", tudo ok, obrigada!" — porque a âncora ^...$ exige que a
+          // mensagem inteira seja feita só das palavras da lista. Resultado: ao
+          // responder "Tenha uma feliz semana", a Ana cancelou o 10h20 dela e
+          // criou um 11h20. A paciente só descobriu no lembrete da véspera.
+          // Acrescentar palavras à lista não conserta — sempre vai faltar uma.
+          // A prova passa a ser ao contrário: remarcação nasce de um PEDIDO, e
+          // pedido tem forma reconhecível. Sem um horário, uma data, um dia da
+          // semana ou um verbo de mudança, mover a consulta nunca é legítimo.
+          // A exceção que precisa continuar funcionando é o "sim/pode ser" que
+          // ACEITA uma troca que a própria Ana acabou de oferecer — por isso o
+          // segundo ramo confere se a última fala DELA citava justo esse horário.
           let cortesia = false;
           if (prosaTemHora && new Date(doMesmoPaciente[0].inicio).getTime() !== ini.getTime()) {
             try {
               const { data: ult } = await supabase.from("messages")
-                .select("content").eq("conversation_id", conversationId).eq("role", "user")
-                .order("timestamp", { ascending: false }).limit(1);
-              const txt = String(ult?.[0]?.content || "").trim();
-              cortesia = RE_SO_CORTESIA.test(txt);
+                .select("content, role").eq("conversation_id", conversationId)
+                .in("role", ["user", "assistant"])
+                .order("timestamp", { ascending: false }).limit(6);
+              const linhas = ult || [];
+              const txt = String(linhas.find(m => m.role === "user")?.content || "").trim();
+              const ultimaDaAna = String(linhas.find(m => m.role === "assistant")?.content || "");
+              // (a) o paciente pediu a mudança? horário, data, dia da semana ou verbo
+              const pediuMudanca = /\d{1,2}\s*[h:]\s*\d{0,2}|\d{1,2}\/\d{1,2}|\b(segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|amanh[ãa]|hoje|semana que vem|pr[óo]xima semana)|\b(remarc|desmarc|cancel|adiar|antecip|mud|troc|transfer|outro hor[áa]rio|outra data|mais cedo|mais tarde)\w*/i.test(txt);
+              // (b) ou aceitou uma troca que a ANA acabou de propor com ESTE horário
+              const aceitouOferta = horariosOferecidos(ultimaDaAna).includes(horaDoBloco);
+              cortesia = !pediuMudanca && !aceitouOferta;
             } catch (e) { console.error("[Agendar] Não consegui ler a última mensagem do paciente:", e.message); }
           }
           if (cortesia) {
