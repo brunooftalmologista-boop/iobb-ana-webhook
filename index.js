@@ -1590,7 +1590,23 @@ function vagaCitadaJaOcupada(messages, slots, meusAgendamentos, textoPaciente) {
     if ((meusAgendamentos || []).some(a => comoDia(new Date(a.inicio)) === alvoDia
         && comoHora(new Date(a.inicio)) === alvoHora)) return null;
     const alt = alternativaMaisProxima(slots, new Date(), Date.now());
-    return { dia: alvoDia, hora: alvoHora, alternativa: alt };
+    // ⚠️ SUMIR DA LISTA TEM DUAS CAUSAS, E ELAS NÃO SÃO A MESMA COISA
+    // (18/09/2026). A lista já vem filtrada para o FUTURO, então um horário que
+    // simplesmente PASSOU da hora some exatamente como um que foi ocupado.
+    // Esta trava afirmava sempre "JÁ FOI OCUPADO por outra pessoa" — e a Ana
+    // repetia, porque confia no que o sistema diz.
+    // Caso real: às 09h43 ela ofereceu "hoje às 10h00" a uma paciente; às 10h13
+    // a paciente aceitou, e a Ana respondeu "o horário das 10h de hoje acabou de
+    // ser preenchido por outro paciente". Ninguém marcou 10h naquele dia — eram
+    // 10h13, o horário tinha passado. Mentira desnecessária, e a verdade servia
+    // melhor: "as 10h já passaram".
+    // Distinguir é barato: basta comparar com o relógio.
+    const [dd, mm] = alvoDia.split("/").map(Number);
+    const [hh, mi] = alvoHora.split(":").map(Number);
+    const ano = new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR }).slice(0, 4);
+    const quando = new Date(`${ano}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}T${String(hh).padStart(2,"0")}:${String(mi).padStart(2,"0")}:00-03:00`);
+    const passou = quando.getTime() < Date.now();
+    return { dia: alvoDia, hora: alvoHora, alternativa: alt, motivo: passou ? "passou" : "ocupada" };
   }
   return null;
 }
@@ -6733,9 +6749,16 @@ Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peç
     try {
       const ocupada = vagaCitadaJaOcupada(messages, slotsVigentes, meusAgendamentos, text);
       if (ocupada) {
-        dynVolatil += `\n\n⏱️ ATENÇÃO — O HORÁRIO QUE VOCÊ OFERECEU ANTES NESTA CONVERSA (${ocupada.dia} às ${ocupada.hora}) JÁ FOI OCUPADO por outra pessoa desde então. Ele NÃO está mais na sua lista de vagas.
-Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA linha, sem drama e sem pedir desculpas em excesso, que ele acabou de ser preenchido${ocupada.alternativa ? `, e ofereça na mesma mensagem: **${ocupada.alternativa.dia} às ${ocupada.alternativa.hora}**, no ${ocupada.alternativa.unidade}` : ", e ofereça o mais próximo da sua lista"}. O paciente não tem culpa da demora — trate como uma troca simples, não como um problema.`;
-        console.log(`[Agenda] Vaga citada antes (${ocupada.dia} ${ocupada.hora}) já ocupada — avisando a Ana ANTES de responder.`);
+        const porque = ocupada.motivo === "passou"
+          ? `JÁ PASSOU DA HORA (agora é mais tarde que isso). Ele não foi ocupado por ninguém — o dia é que andou.`
+          : `JÁ FOI OCUPADO por outra pessoa desde então.`;
+        const comoDizer = ocupada.motivo === "passou"
+          ? `que esse horário já passou`
+          : `que ele acabou de ser preenchido`;
+        dynVolatil += `\n\n⏱️ ATENÇÃO — O HORÁRIO QUE VOCÊ OFERECEU ANTES NESTA CONVERSA (${ocupada.dia} às ${ocupada.hora}) ${porque} Ele NÃO está mais na sua lista de vagas.
+Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA linha, sem drama e sem pedir desculpas em excesso, ${comoDizer}${ocupada.alternativa ? `, e ofereça na mesma mensagem: **${ocupada.alternativa.dia} às ${ocupada.alternativa.hora}**, no ${ocupada.alternativa.unidade}` : ", e ofereça o mais próximo da sua lista"}. O paciente não tem culpa da demora — trate como uma troca simples, não como um problema.
+🚫 NÃO INVENTE A CAUSA: diga só o que está escrito aqui. Afirmar "foi preenchido por outro paciente" quando o horário apenas passou é mentira, e o paciente costuma perceber.`;
+        console.log(`[Agenda] Vaga citada antes (${ocupada.dia} ${ocupada.hora}) indisponível (${ocupada.motivo}) — avisando a Ana ANTES de responder.`);
       }
     } catch (e) { console.error("[Agenda] Checagem da vaga citada falhou (segue normal):", e.message); }
 
