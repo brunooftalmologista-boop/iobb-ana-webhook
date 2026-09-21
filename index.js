@@ -9513,7 +9513,14 @@ async function enviarTemplateMarketing(to, templateName, lang = "pt_BR", bodyPar
 //   #REENGAJAR ATUALIZAR  → reenvia os componentes (ex.: mudou botão) p/ revisão
 //   #REENGAJAR APAGAR     → apaga o template na Meta (para recriar do zero)
 const REENGAJAR_CAMPANHA = (readEnv("REENGAJAR_CAMPANHA") || "revisao_anual_2025").trim();
-const TEMPLATE_REENGAJAR_NOME = (readEnv("WA_REENGAJAMENTO_TEMPLATE_NAME") || "reengajamento_revisao_anual").trim();
+// ⚠️ NOME NOVO (21/09/2026): o corpo mudou de verdade — saiu o "Faz um ano",
+// que virou mentira para uma base que vai até 2019 —, e texto diferente exige
+// template diferente na Meta. O antigo `reengajamento_revisao_anual` continua
+// aprovado e intacto; só deixou de ser o padrão.
+// ⚠️ SE `WA_REENGAJAMENTO_TEMPLATE_NAME` ESTIVER SETADA NO RENDER, ELA VENCE:
+// é preciso atualizar ou remover a env, senão `#REENGAJAR CRIAR` tenta recriar
+// o template velho e o disparo continua usando o texto antigo.
+const TEMPLATE_REENGAJAR_NOME = (readEnv("WA_REENGAJAMENTO_TEMPLATE_NAME") || "reativacao_historico").trim();
 const TEMPLATE_REENGAJAR_LANG = (readEnv("WA_REENGAJAMENTO_TEMPLATE_LANG") || "pt_BR").trim();
 // ⚠️ Os rótulos passam pelo leitor de botões do webhook, que interpreta
 // /desmarc|cancel/ como "desmarcar" e /remarc|trocar|mudar/ como "remarcar".
@@ -9579,8 +9586,15 @@ function componentesTemplateReengajamento() {
   return [
     {
       type: "BODY",
-      text: "Olá, {{1}}! Aqui é a Ana, do Instituto de Olhos Bruno Borges. Faz um ano desde sua última consulta com o Dr. Bruno Borges, em {{2}} — a revisão anual ajuda a acompanhar a saúde dos seus olhos e a manter o grau em dia. Quer que eu veja os horários disponíveis?",
-      example: { body_text: [["Maria", "setembro de 2025"]] },
+      // 21/09/2026 — texto novo para a base histórica de 2019 a 2025.
+      // O anterior abria com "Faz um ano desde sua última consulta", o que era
+      // verdade para a safra de jul-set/2025 e passa a ser MENTIRA para a maior
+      // parte desta base: há gente de 2019, para quem são seis anos. Dizer o mês
+      // real em {{2}} e deixar a conta com o paciente resolve os dois casos.
+      // Sem urgência, sem escassez, sem preço e sem promessa de resultado — a
+      // publicidade médica não permite, e é também o que a Meta mais penaliza.
+      text: "Olá, {{1}}! Aqui é a Ana, do Instituto de Olhos Bruno Borges.\n\nVi que sua última consulta com o Dr. Bruno foi em {{2}}. Como já passou de um ano, pode ser um bom momento para a revisão — ela acompanha a saúde dos olhos e confere se o grau mudou.\n\nSe quiser, eu verifico um horário para você. Atendemos no Conjunto Nacional (Asa Norte) e no Taguatinga Shopping (Águas Claras).",
+      example: { body_text: [["Maria", "março de 2024"]] },
     },
     { type: "FOOTER", text: "Conjunto Nacional · Taguatinga Shopping" },
     { type: "BUTTONS", buttons: REENGAJAR_BOTOES.map(t => ({ type: "QUICK_REPLY", text: t })) },
