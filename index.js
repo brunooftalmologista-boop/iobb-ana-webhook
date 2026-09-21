@@ -10904,11 +10904,16 @@ async function carregarBaseHistoricaUmaVez() {
     const { count, error: e1 } = await supabase.from("base_historica")
       .select("fone_chave", { count: "exact", head: true });
     if (e1) { console.error("[BaseHistórica] Não consegui checar a tabela:", e1.message); return; }
-    if (count > 0) return;   // já carregada — silêncio, é o caso normal a cada boot
-
     const caminho = __dirname + "/sql/base_historica.json";
     if (!fs.existsSync(caminho)) { console.warn("[BaseHistórica] Arquivo de carga não encontrado — nada a fazer."); return; }
     const linhas = JSON.parse(fs.readFileSync(caminho, "utf8"));
+    // ⚠️ O GUARDA COMPARA COM O ARQUIVO, não com zero. A 1ª versão era
+    // `if (count > 0) return` e três linhas de teste que eu tinha deixado na
+    // tabela bloquearam a carga inteira em silêncio — o boot passou reto.
+    // Comparando com o tamanho esperado, a carga se completa sozinha mesmo se
+    // alguém já tiver inserido algumas linhas, e o `on conflict` cuida do resto.
+    if (count >= linhas.length) return;   // já carregada — caso normal a cada boot
+    if (count > 0) console.warn(`[BaseHistórica] Tabela com ${count} de ${linhas.length} — completando.`);
     console.log(`[BaseHistórica] Tabela vazia — carregando ${linhas.length} registros…`);
     let ok = 0;
     for (let i = 0; i < linhas.length; i += 500) {
