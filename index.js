@@ -9617,6 +9617,19 @@ async function statusTemplateReengajamento() {
 // "faz um ano que você não vem" para quem tem hora na semana que vem é o tipo
 // de erro que o paciente conta para os outros. Na dúvida (falha de banco),
 // manda: perder o contato é pior que um constrangimento improvável.
+// ⚠️ NÃO BASTA OLHAR O FUTURO (21/09/2026 — pergunta do Dr. Bruno: "cuidado com
+// os que já consultaram, isso é avaliado antes de disparar?"). Não era.
+// A checagem original só via consulta FUTURA, o que fazia sentido quando a fila
+// tinha 300 pessoas de uma safra recém-exportada. Com a base histórica de 5.536
+// (2019–2025) o risco muda de natureza: 88 dessas pessoas JÁ TÊM agendamento —
+// a maioria consultou nas últimas semanas — e receberiam "faz mais de um ano
+// que você não vem" poucos dias depois de terem sido atendidas. Outras 78 estão
+// com conversa ABERTA com a Ana agora; template de marketing no meio de uma
+// conversa viva é pior ainda.
+// Três motivos de exclusão, todos verificados imediatamente ANTES de cada envio
+// (e não no momento em que a fila foi montada, que pode ser semanas antes).
+// Continua existindo: o funil pós-consulta (indicações) usa só o futuro, e ali
+// está certo — lá o objetivo é não cutucar quem já tem hora marcada.
 async function temConsultaFutura(telefone) {
   const { data, error } = await supabase.from("appointments").select("id")
     .in("paciente_telefone", fonesBR(telefone))
@@ -9624,6 +9637,37 @@ async function temConsultaFutura(telefone) {
     .in("status", ["reservado", "confirmado"]).limit(1);
   if (error) { console.error("[Reengajar] Falha ao checar consulta futura:", error.message); return false; }
   return !!(data && data.length);
+}
+
+async function naoDeveReceberCampanha(telefone) {
+  const fones = fonesBR(telefone);
+  try {
+    // 1) Tem agendamento — futuro OU passado. Passado importa porque a base
+    //    histórica vai até 2025 e a pessoa pode ter voltado depois disso.
+    const { data: ag } = await supabase.from("appointments").select("id, inicio")
+      .in("paciente_telefone", fones)
+      .not("status", "in", '("cancelado","cancelada")').limit(1);
+    if (ag && ag.length) return "ja_agendado";
+
+    // 2) Conversa recente com a Ana: ou já está sendo atendida, ou acabou de ser.
+    const { data: pac } = await supabase.from("patients").select("id").in("phone", fones).limit(5);
+    if (pac && pac.length) {
+      const ids = pac.map(p => p.id);
+      const { data: conv } = await supabase.from("conversations").select("id").in("patient_id", ids);
+      if (conv && conv.length) {
+        const desde = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+        const { data: msg } = await supabase.from("messages").select("id")
+          .in("conversation_id", conv.map(c => c.id)).gt("timestamp", desde).limit(1);
+        if (msg && msg.length) return "conversa_recente";
+      }
+    }
+    return null;
+  } catch (e) {
+    // Na dúvida, NÃO envia: mandar de novo para quem acabou de vir é pior que
+    // deixar de mandar para alguém que voltaria.
+    console.error("[Reengajar] Checagem de elegibilidade falhou — pulando este contato:", e.message);
+    return "checagem_falhou";
+  }
 }
 
 async function resumoReengajamento() {
@@ -9659,7 +9703,8 @@ async function dispararLoteReengajamento(quantos) {
   for (const p of (fila || [])) {
     let status = "enviado", erro = null;
     try {
-      if (await temConsultaFutura(p.telefone)) { status = "ja_agendado"; r.jaAgendados++; }
+      const impedimento = await naoDeveReceberCampanha(p.telefone);
+      if (impedimento) { status = impedimento; r.jaAgendados++; }
       else {
         const env = await enviarTemplateMarketing(p.telefone, TEMPLATE_REENGAJAR_NOME, TEMPLATE_REENGAJAR_LANG,
           [p.primeiro_nome || "tudo bem", p.mes_referencia || ""], REENGAJAR_BOTOES);
