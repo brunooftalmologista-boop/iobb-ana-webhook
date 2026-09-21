@@ -10883,6 +10883,43 @@ async function devolverConversasParaAna() {
     if (n) console.log(`[RetornoAna] ${n} conversa(s) devolvida(s) à Ana (secretária sem escrever há ${minutos} min).`);
   } catch (e) { console.error("[RetornoAna] exceção:", e.message); }
 }
+// ===== CARGA ÚNICA DA BASE HISTÓRICA (21/09/2026) ==========================
+// O histórico de 2019–2025 veio de um export do iClinic em PDF. Os blocos SQL
+// gerados em 02/09 nunca foram executados, e ainda bem: a extração do PDF tinha
+// colado a coluna do CONVÊNIO dentro do NOME em 47% das linhas ("Luis Eduardo
+// Passos Ximendesgdf Saúde (inas)"), e em 182 casos vazou a linha de OUTRO
+// paciente. Carregar aquilo teria posto 2.922 cadastros sujos numa campanha de
+// marketing — o "Olá, número." multiplicado por milhares.
+// Os dados aqui já passaram pela limpeza: convênio descolado e RECUPERADO
+// (o campo vinha vazio), nomes conferidos contra os PDFs de origem, telefones
+// duplicados resolvidos pela consulta mais recente, 433 linhas irrecuperáveis
+// mantidas fora. 5.536 registros.
+// Por que por arquivo e não por SQL direto: passar 1,3 MB de dados pelo chat é
+// caro e frágil. O arquivo viaja pelo git e quem insere é o próprio serviço,
+// com as credenciais que ele já tem.
+// IDEMPOTENTE por dois caminhos: só roda com a tabela VAZIA, e o insert ignora
+// conflito de fone_chave.
+async function carregarBaseHistoricaUmaVez() {
+  try {
+    const { count, error: e1 } = await supabase.from("base_historica")
+      .select("fone_chave", { count: "exact", head: true });
+    if (e1) { console.error("[BaseHistórica] Não consegui checar a tabela:", e1.message); return; }
+    if (count > 0) return;   // já carregada — silêncio, é o caso normal a cada boot
+
+    const caminho = __dirname + "/sql/base_historica.json";
+    if (!fs.existsSync(caminho)) { console.warn("[BaseHistórica] Arquivo de carga não encontrado — nada a fazer."); return; }
+    const linhas = JSON.parse(fs.readFileSync(caminho, "utf8"));
+    console.log(`[BaseHistórica] Tabela vazia — carregando ${linhas.length} registros…`);
+    let ok = 0;
+    for (let i = 0; i < linhas.length; i += 500) {
+      const { error } = await supabase.from("base_historica").insert(linhas.slice(i, i + 500));
+      if (error) { console.error(`[BaseHistórica] Falha no lote ${i}:`, error.message); break; }
+      ok += Math.min(500, linhas.length - i);
+    }
+    console.log(`[BaseHistórica] Carga concluída: ${ok} de ${linhas.length}.`);
+  } catch (e) { console.error("[BaseHistórica] Carga falhou (não afeta o atendimento):", e.message); }
+}
+
 function startRetornoAna() {
   setInterval(() => devolverConversasParaAna(), 15 * 60 * 1000);
   devolverConversasParaAna();
@@ -11076,6 +11113,7 @@ startFollowUp();      // recuperação de leads frios (inerte até ativar no set
 startFollowUpIndicacoes(); // funil pós-consulta (inerte até ativar no settings)
 startLembreteScheduler(); // confirmação da véspera (inerte até o template na Meta)
 startRetornoAna();        // devolve à Ana conversa que a secretária assumiu e largou
+carregarBaseHistoricaUmaVez();   // 21/09/2026 — ver a função; roda só com a tabela vazia
 startAuditoriaDiaria();   // relatório de manhã no WhatsApp: a quem ligar + o que falhou
 
 app.listen(process.env.PORT || 3000, () => console.log("Ana online!"));
