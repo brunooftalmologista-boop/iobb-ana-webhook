@@ -9512,7 +9512,14 @@ async function enviarTemplateMarketing(to, templateName, lang = "pt_BR", bodyPar
 //   #REENGAJAR REPETIR    → devolve as falhas para a fila
 //   #REENGAJAR ATUALIZAR  → reenvia os componentes (ex.: mudou botão) p/ revisão
 //   #REENGAJAR APAGAR     → apaga o template na Meta (para recriar do zero)
-const REENGAJAR_CAMPANHA = (readEnv("REENGAJAR_CAMPANHA") || "revisao_anual_2025").trim();
+// Padrão trocado em 21/09/2026: `revisao_anual_2025` terminou (307 de 307
+// enviados, 16 agendamentos, 6,4%, 100% de comparecimento) e sua fila está
+// zerada — deixá-la como padrão só faria o #REENGAJAR dizer "fila vazia".
+// A vez agora é da base histórica de 2019-2025 já limpa e filtrada.
+// Nenhuma das duas variáveis (REENGAJAR_CAMPANHA, WA_REENGAJAMENTO_TEMPLATE_NAME)
+// existe no Render — conferido com o Dr. Bruno em 21/09 —, então o padrão do
+// código é o que vale de fato. Se um dia forem criadas, elas vencem.
+const REENGAJAR_CAMPANHA = (readEnv("REENGAJAR_CAMPANHA") || "reativacao_2026").trim();
 // ⚠️ NOME NOVO (21/09/2026): o corpo mudou de verdade — saiu o "Faz um ano",
 // que virou mentira para uma base que vai até 2019 —, e texto diferente exige
 // template diferente na Meta. O antigo `reengajamento_revisao_anual` continua
