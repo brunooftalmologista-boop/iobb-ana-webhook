@@ -2777,8 +2777,28 @@ function contradizHojeAmanha(texto, slots, meusAgendamentos) {
   // agendamento DESTE paciente, não há o que checar — e falar em cancelar já
   // é, por definição, falar de consulta que existe.
   const falaDeCancelamento = /cancel|desmarc|remarc/i.test(texto);
-  const falaDeConsultaExistente = falaDeCancelamento
-    || /(sua|seu|a|o)\s+(consulta|agendamento)\s+(de|do|da|em|para)?\s*hoje|(sua|seu)\s+(consulta|agendamento)|voc[êe]\s+(tem|est[áa])|est[áa]\s+(agendad|marcad)|vejo aqui/i.test(texto);
+  // ⚠️ INVERSÃO DA PROVA (21/09/2026). Esta isenção era uma lista de grafias
+  // — "sua consulta", "está agendado", "está marcado", "vejo aqui" — e por isso
+  // falhava no plural e em qualquer sinônimo.
+  // Caso real de hoje (Tatiana, 61 99837-6414): ela tinha TRÊS consultas para a
+  // manhã (ela, o marido e o filho) e perguntou "Está certo então os
+  // agendamentos né". A Ana respondeu com perfeição — "Sim, os três agendamentos
+  // estão confirmados para hoje: Diego 10h20, Tatiana 10h40, Miguel 11h00" — e a
+  // trava reclamou que esses horários "não existem na agenda de hoje". Claro que
+  // não existem na lista de VAGAS LIVRES: estão ocupados por essa própria
+  // família. "estão confirmados" não casava com `está agendad`, e "os três
+  // agendamentos" não casava com `sua consulta`.
+  // A resposta foi substituída por "o horário que você pediu já está ocupado,
+  // consigo 12:20" — para quem chegaria à clínica duas horas depois. A equipe
+  // teve de entrar e desmentir a Ana na frente da paciente.
+  // A regra passa a ser estrutural: esta trava existe para pegar OFERTA de
+  // horário inexistente. Se o texto não OFERECE nada — não tem "tenho",
+  // "consigo", "posso reservar", "pode ser?" —, ele está CONFIRMANDO ou
+  // INFORMANDO, e aí os horários citados são de consultas que já existem, que
+  // por definição não estão entre as vagas livres.
+  const ofereceHorario = /\b(tenho|consigo|posso (reservar|agendar|marcar)|reservo|dispon[íi]vel|pode ser\?|fica bom|te (reservo|marco))\b/i.test(texto);
+  const falaDeConsultaExistente = falaDeCancelamento || !ofereceHorario
+    || /(sua|seu|a|o)s?\s+(consulta|agendamento)s?\s+(de|do|da|em|para)?\s*hoje|(sua|seu)s?\s+(consulta|agendamento)s?|voc[êe]s?\s+(tem|t[êe]m|est[áa]|est[ãa]o)|est[áaãõ]\w*\s+(agendad|marcad|confirmad)|vejo aqui/i.test(texto);
   if (/\bhoje\b/i.test(texto) && !hojeNegado && !falaDeConsultaExistente && Array.isArray(slots)) {
     const horas = horariosOferecidos(texto);
     if (horas.length) {
