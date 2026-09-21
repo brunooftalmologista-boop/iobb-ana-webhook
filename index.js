@@ -4122,8 +4122,30 @@ async function getConversationMessages(conversationId) {
   return (data || []).reverse();
 }
 
+// Último filtro antes de um nome virar cadastro — e antes de ser USADO.
+// Vale para os dois lados porque já há nomes ruins gravados, e eles alimentam
+// tanto o follow-up ("Olá, <nome>") quanto a ficha que a Ana mostra a si mesma
+// ("Nome: <nome>"). Um nome errado no cadastro é pior que nenhum: sem nome a
+// mensagem sai "Olá."; com nome errado sai "Olá, número.".
+function nomePlausivel(n) {
+  const s = String(n || "").trim();
+  if (s.length < 2 || s.length > 45) return false;
+  const palavras = s.split(/\s+/);
+  if (palavras.length > 5) return false;
+  if (/[0-9@_/\\]|\n/.test(s)) return false;
+  // Palavras que jamais iniciam um nome e denunciam frase capturada por engano.
+  if (/^(n[úu]mero|telefone|whats|carteirinha|cart[ãa]o|plano|conv[êe]nio|particular|consulta|hor[áa]rio|exame|agendar|marcar|quero|queria|gostaria|preciso|pode|posso|sim|n[ãa]o|ok|oi|ol[áa]|bom|boa|obrigad)/i.test(s)) return false;
+  // Verbo no meio = é frase, não nome ("Elione ... sou cliente dele").
+  if (/\b(sou|est[ou]u?|tenho|quero|gostaria|preciso|fiz|vou|pode|poderia|marcar|agendar)\b/i.test(s)) return false;
+  return true;
+}
+
 async function updatePatientName(phone, name) {
-  await supabase.from("patients").update({ name, updated_at: new Date() }).eq("phone", phone);
+  if (!nomePlausivel(name)) {
+    console.warn(`[Paciente] Nome recusado por implausível: "${String(name).slice(0, 60)}"`);
+    return;
+  }
+  await supabase.from("patients").update({ name: String(name).trim(), updated_at: new Date() }).eq("phone", phone);
 }
 
 // ===== Atribuição de anúncios (Google Ads) =====
@@ -6318,9 +6340,20 @@ app.post("/webhook", async (req, res) => {
     const history = await getConversationMessages(conversation.id);
     const messages = history.map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }));
 
-    // Detectar nome do paciente nas mensagens
-    const nameMatch = text.match(/(?:me chamo|meu nome é|sou o|sou a)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)*)/i);
-    if (nameMatch) await updatePatientName(from, nameMatch[1]);
+    // Detectar nome do paciente nas mensagens.
+    // ⚠️ DOIS DEFEITOS SOMADOS, consertados em 21/09/2026:
+    // (1) SEM \b no gatilho: "sou o" casava DENTRO de outra palavra. Caso real —
+    //     áudio transcrito "...ela me indicou e pas(sou o) número de telefone pra
+    //     eu poder saber tudo..." — gravou como nome "número de telefone pra eu
+    //     poder saber tudo", e o follow-up saiu com "Olá, número.".
+    // (2) FLAG `i`: com ela, [A-ZÀ-Ú] passa a aceitar minúscula, então a exigência
+    //     de "começa com maiúscula" virava letra morta e qualquer frase entrava.
+    // Agora: fronteira de palavra no gatilho, sem `i` (o gatilho aceita as duas
+    // grafias explicitamente), partículas (de/da/do/dos) permitidas no meio, e
+    // no máximo 5 palavras — nome de gente não passa disso por aqui.
+    const nameMatch = text.match(
+      /\b(?:[Mm]e chamo|[Mm]eu nome (?:é|e)|[Ss]ou [oa])\s+([A-ZÀ-Ú][a-zà-ú]{1,}(?:\s+(?:d[aeo]s?\s+)?[A-ZÀ-Ú][a-zà-ú]{1,}){0,4})/);
+    if (nameMatch && nomePlausivel(nameMatch[1])) await updatePatientName(from, nameMatch[1]);
 
     // Ancora a data/hora atual (Brasília) no prompt — sem isto a Ana "chuta" o
     // dia da semana e erra "hoje/amanhã".
@@ -9376,7 +9409,9 @@ async function rodarFollowUpLeads() {
       }
     } catch (e) { console.error("[FollowUp] Falha ao ler quem recusou a campanha (segue sem o filtro):", e.message); }
     for (const lead of leads) {
-      const nome = (lead.name || "").trim().split(/\s+/)[0] || "";
+      // Só usa o nome se ele passar no mesmo filtro da escrita: há cadastros
+      // antigos com frase no lugar do nome, e "Olá, número." já foi ao ar.
+      const nome = nomePlausivel(lead.name) ? ((lead.name || "").trim().split(/\s+/)[0] || "") : "";
       const msg = `Olá${nome ? ", " + nome : ""}. Passando para saber se posso dar sequência ao seu atendimento. Se desejar, verifico um horário para a sua avaliação — fico à disposição.`;
       try {
         const waId = await sendWhatsApp(lead.phone, msg);
