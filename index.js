@@ -2695,12 +2695,20 @@ function resumoDaFicha(registros, cartRegistro, messages) {
       console.error("[Ficha] Registro SEM DATA VÁLIDA — ficha suprimida:", JSON.stringify(r).slice(0, 200));
       return "";
     }
+    // 🩺 O NOME DO MÉDICO ENTRA AQUI (22/09/2026 — pedido do Dr. Bruno).
+    // Em 90 dias, 131 mensagens de pacientes perguntam ou confirmam "é o Dr.
+    // Bruno?", e 261 citam o nome dele — é a dúvida mais repetida depois de
+    // marcar. Dizer antes de perguntarem elimina um turno inteiro de conversa.
+    // Custo: ZERO de API. Este cartão é montado pelo CÓDIGO, não escrito pela
+    // Ana — não passa pelo modelo, não entra no prompt, não gera reescrita.
+    // São ~9 caracteres a mais numa mensagem que já ia ser enviada.
     linhas.push([
       `👤 ${v(r.nome) || "—"}`,
       `🎂 Nascimento: ${v(r.nascimento) || "—"}`,
       `💳 ${atendimento}`,
       `📅 ${quando || "—"}`,
       `📍 ${unidadeParaPaciente(v(r.unidade)) || "—"}`,
+      `🩺 Dr. Bruno Borges`,
     ].join("\n"));
   }
   if (!linhas.length) return "";
