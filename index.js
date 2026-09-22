@@ -7481,7 +7481,39 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       } catch (e) { console.error("[Convênio] Checagem falhou (não impede o agendamento):", e.message); }
       for (const registro of ag.registros) {
         const rAg = await processarAgendarDaAna({ registro, patient, from, conversationId: conversation.id, replyTexto: reply });
+        // ⚠️ `already: true` NÃO É "gravou" (22/09/2026 — caso Aline, 61 9642-5166).
+        // As travas de re-emissão (cortesia, sem horário na prosa) recusam criar e
+        // devolvem `{ ok: true, already: true }` — `ok` porque, para quem só
+        // re-emitiu o MESMO horário, não havia nada a fazer e não é erro.
+        // Só que numa REMARCAÇÃO o [CANCELAR] vem junto, e a proteção logo abaixo
+        // ("novo horário não gravou -> não cancelo") olhava apenas para `ok`.
+        // Resultado: a trava barrou a criação, o `ok: true` liberou o cancelamento,
+        // e a paciente ficou SEM CONSULTA NENHUMA — perdeu a de 23/09 que já tinha
+        // e a nova de 25/09, depois de a Ana ter confirmado "está confirmado para
+        // sexta-feira, 25/09, às 10h20". O gatilho foi ela escrever "Grata".
+        // Mas `already` também volta quando a consulta REALMENTE existe no horário
+        // novo (re-emissão idêntica, serviços somados na mesma vaga, vaga que já
+        // era do paciente). Bloquear o cancelamento nesses casos deixaria a pessoa
+        // com DUAS consultas — o erro oposto, e igualmente ruim.
+        // Por isso a autorização não olha bandeira nenhuma: confere o ESTADO FINAL.
+        // Só libera o cancelamento do horário antigo se, neste instante, o paciente
+        // tiver mesmo uma consulta ativa no horário novo.
         if (!(rAg && rAg.ok)) agendouOk = false;
+        else {
+          try {
+            const { data: existe } = await supabase.from("appointments").select("id")
+              .eq("unidade", registro.unidade).eq("inicio", new Date(registro.inicio).toISOString())
+              .in("status", ["reservado", "confirmado"])
+              .in("paciente_telefone", fonesBR(from)).limit(1);
+            if (!existe || !existe.length) {
+              agendouOk = false;
+              console.warn(`[Agendar] Nada ativo em ${registro.inicio} (${registro.unidade}) para ${maskFone(from)} — o cancelamento do antigo NÃO será autorizado.`);
+            }
+          } catch (e) {
+            agendouOk = false;   // na dúvida, não cancela: consulta a mais é melhor que nenhuma
+            console.error("[Agendar] Falha ao conferir o estado final (não autorizo cancelar):", e.message);
+          }
+        }
       }
     }
     else if (registros.length) {
