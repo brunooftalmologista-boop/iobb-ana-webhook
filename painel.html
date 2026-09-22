@@ -250,6 +250,14 @@
       <button class="tab-btn active" data-tab="active" id="tab-active">Ativas <span class="cnt" id="cnt-active"></span></button>
       <button class="tab-btn" data-tab="closed" id="tab-closed">Encerradas <span class="cnt" id="cnt-closed"></span></button>
     </div>
+    <!-- Aviso de busca ativa (22/09/2026). A busca ignora a janela de horas da
+         lista, então ela traz conversa de QUALQUER época. Sem este aviso, o
+         resultado é indistinguível da lista normal — foi o que fez conversas de
+         julho parecerem presas no painel. Some sozinho quando a caixa esvazia. -->
+    <div id="aviso-busca" style="display:none;padding:8px 12px;background:#fff8e1;border-bottom:1px solid #ffe082;font-size:13px;color:#7a5c00">
+      <span id="aviso-busca-txt"></span>
+      <button id="aviso-busca-limpar" style="margin-left:8px;border:0;background:#ffe082;color:#5d4600;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px">Limpar busca</button>
+    </div>
     <div class="conv-list" id="conv-list"></div>
   </aside>
 
@@ -652,7 +660,20 @@ async function loadConversations(){
 // lista polida a cada 5s — senão o ciclo seguinte apagaria o resultado da busca
 // debaixo do dedo de quem está lendo.
 function todasConversas(){
-  if(!buscaExtras.length) return conversations;
+  // ⚠️ A INCLUSÃO É AMARRADA À CAIXA DE BUSCA, não ao array (22/09/2026).
+  // Antes bastava `buscaExtras` ter conteúdo, e ele só era esvaziado pelo
+  // handler de digitação. Quem buscava e depois limpava a caixa por outro
+  // caminho — clicando numa conversa, trocando de aba, com o Esc — ficava com
+  // os resultados GRUDADOS na lista pelo resto da sessão daquela aba.
+  // Caso real: o Dr. Bruno viu conversas de 13/07, 16/07, 20/07 e 11/08 na
+  // lista "Ativas (100)" com a caixa visivelmente vazia; no Chrome, recém-
+  // aberto, as mesmas conversas não apareciam — o que denunciou estado de
+  // memória da aba, e não dado errado no servidor. Os logs mostraram buscas
+  // por "49" e "4972" às 13h14; "4972" casa com o telefone 5561924976-09.
+  // Agora, sem termo na caixa, a lista é a lista — não importa o que ficou
+  // no array.
+  const termoAtivo = (el.search && el.search.value.trim().length >= 2);
+  if(!termoAtivo || !buscaExtras.length) return conversations;
   const vistos = new Set(conversations.map(c=>c.id));
   return conversations.concat(buscaExtras.filter(c=>!vistos.has(c.id)));
 }
@@ -667,6 +688,13 @@ async function buscarNoServidor(termo){
     applyFilter();
   }catch(e){ /* silencioso de propósito: o resultado local já está na tela */ }
 }
+// Botão da faixa de aviso: limpa a caixa e refaz o filtro pelo MESMO caminho
+// da digitação, para não existir um segundo jeito de limpar que possa divergir.
+document.addEventListener('click', (ev)=>{
+  if(ev.target && ev.target.id==='aviso-busca-limpar'){
+    el.search.value=''; buscaExtras=[]; onBusca(); el.search.focus();
+  }
+});
 function onBusca(){
   applyFilter();                                   // resposta imediata, sem rede
   clearTimeout(buscaTimer);
@@ -676,6 +704,17 @@ function onBusca(){
 function applyFilter(){
   const q = el.search.value.trim().toLowerCase();
   const base_ = todasConversas();
+  // Faixa de aviso: deixa explícito que a lista é RESULTADO DE BUSCA e que ela
+  // não respeita a janela de horas — a origem da confusão de 22/09.
+  try{
+    const av = $('#aviso-busca'), txt = $('#aviso-busca-txt');
+    if(av && txt){
+      if(q.length >= 2){
+        txt.textContent = `Resultados da busca por “${el.search.value.trim()}” — inclui conversas antigas, de qualquer data.`;
+        av.style.display = 'block';
+      } else av.style.display = 'none';
+    }
+  }catch(_){}
   // contadores por aba (sempre sobre o total, independentes da busca)
   const activeConvs = base_.filter(c=>c.status!=='closed');
   const closedConvs = base_.filter(c=>c.status==='closed');
