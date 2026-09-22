@@ -5251,6 +5251,11 @@ const ANA_DEBOUNCE_MS = (() => {
   const n = Number(bruto);
   return Number.isFinite(n) && n >= 0 ? n : 20000;
 })();
+// 22/09/2026: o boot não dizia o valor do agrupamento em lugar nenhum, então
+// nem eu nem o Dr. Bruno conseguíamos confirmar, pelo log do Render, se uma
+// troca de ANA_DEBOUNCE_MS tinha pegado — ficávamos dependendo de medir a
+// latência no dia seguinte. Uma linha resolve.
+console.log(`[Agrupar] Janela de agrupamento: ${ANA_DEBOUNCE_MS} ms${ANA_DEBOUNCE_MS ? "" : " (DESLIGADO)"}${readEnv("ANA_DEBOUNCE_MS") ? " (env do Render)" : " (padrão do código)"}.`);
 const seqPorPaciente = new Map();
 // ===== IMAGEM QUE SOBREVIVE AO AGRUPAMENTO =================================
 // O turno da imagem é cancelado pelo texto que vem logo depois (o agrupamento
