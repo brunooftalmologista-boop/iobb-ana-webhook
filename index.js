@@ -5709,6 +5709,50 @@ app.post("/webhook", async (req, res) => {
       }
       // Campanha de reengajamento (revisão anual). Nada sai sozinho: cada lote é
       // um comando explícito, para o número da clínica não levar rajada de frio.
+      // ===== #TEMPLATE — cria na Meta qualquer template já redigido =========
+      // Os textos ficam na tabela `templates_planejados`, com corpo, exemplo,
+      // botões, público-alvo e o PORQUÊ de cada escolha de redação. Antes de
+      // existir este comando, só o da campanha tinha como ser criado, e os
+      // outros três teriam de ser digitados à mão no Business Manager —
+      // justamente onde um typo no corpo custa uma nova fila de aprovação.
+      // `#TEMPLATE` lista o que está guardado; `#TEMPLATE CRIAR <nome>` envia.
+      const tplCmd = text.match(/^#TEMPLATE\b([\s\S]*)$/i);
+      if (tplCmd) {
+        const arg = tplCmd[1].trim();
+        try {
+          if (!/^criar\s+/i.test(arg)) {
+            const { data } = await supabase.from("templates_planejados")
+              .select("nome, quantas_pessoas, status, publico_alvo").order("quantas_pessoas", { ascending: false });
+            const linhas = (data || []).map(t =>
+              `• *${t.nome}* — ${t.quantas_pessoas} pessoa(s) · ${t.status}\n  _${String(t.publico_alvo||"").slice(0,90)}_`).join("\n");
+            await sendWhatsApp(from, linhas
+              ? `📝 *Templates guardados*\n\n${linhas}\n\nPara criar na Meta: *#TEMPLATE CRIAR <nome>*`
+              : "Nenhum template guardado.");
+            return res.sendStatus(200);
+          }
+          const nome = arg.replace(/^criar\s+/i, "").trim();
+          const { data: t } = await supabase.from("templates_planejados").select("*").eq("nome", nome).maybeSingle();
+          if (!t) { await sendWhatsApp(from, `❌ Não achei o template *${nome}*. Veja os disponíveis com *#TEMPLATE*.`); return res.sendStatus(200); }
+          const componentes = [
+            { type: "BODY", text: t.corpo, example: { body_text: t.exemplo } },
+            ...(t.rodape ? [{ type: "FOOTER", text: t.rodape }] : []),
+            { type: "BUTTONS", buttons: (t.botoes || []).map(x => ({ type: "QUICK_REPLY", text: x })) },
+          ];
+          const { data: r } = await axios.post(
+            `https://graph.facebook.com/v19.0/${WA_WABA_ID}/message_templates`,
+            { name: t.nome, language: t.idioma || "pt_BR", category: t.categoria || "MARKETING",
+              allow_category_change: true, components: componentes },
+            { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" }, timeout: 20000 });
+          await supabase.from("templates_planejados")
+            .update({ status: `enviado_meta:${r.status || "?"}` }).eq("nome", t.nome);
+          await sendWhatsApp(from, `✅ Template *${t.nome}* enviado à Meta.\nStatus: ${r.status || "?"} · categoria: ${r.category || "?"}\n\nA aprovação costuma sair em algumas horas. Confira com *#TEMPLATE*.`);
+        } catch (e) {
+          const d = e?.response?.data;
+          await sendWhatsApp(from, `❌ Falhou: ${d ? JSON.stringify(d).slice(0, 400) : e.message}`);
+        }
+        return res.sendStatus(200);
+      }
+
       const reengCmd = text.match(/^#REENGAJAR\b([\s\S]*)$/i);
       if (reengCmd) {
         const arg = reengCmd[1].trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
