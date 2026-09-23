@@ -2728,6 +2728,12 @@ function instrucaoDataReal(motivo) {
 }
 function instrucaoUmHorario(horas) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ofereceu ${horas.length} horários de uma vez (${horas.join(", ")}). Isso faz o paciente comparar e sumir, em vez de decidir. Reescreva a MESMA mensagem, com o mesmo tom e o mesmo conteúdo, mas oferecendo UM ÚNICO horário — exatamente um POR PACIENTE (se houver dois pacientes, dois horários, um para cada, dizendo qual é de quem). Escolha o horário mais próximo do que ele pediu e proponha ESSE, perguntando se serve. NÃO liste alternativas, NÃO ofereça "ou então", NÃO cite outros horários disponíveis: se não servir, ele mesmo pede outro.
+⚠️ A ARMADILHA MAIS COMUM — e é ela que faz esta reescrita falhar em 59% das vezes: quando o paciente PERGUNTA se existe outro horário ("tem mais tarde?", "não tem outro?", "quais horários vocês têm?", "tem de manhã?"), responder listando parece natural, mas é exatamente o erro. A pergunta dele é SIM ou NÃO, não um pedido de cardápio.
+O certo é confirmar que existe e oferecer UM — o mais próximo do que ele quer:
+  Paciente: "Não tem horário mais tarde que esse não?"
+  ERRADO:  "Tem sim! Tenho às 15h20 e também às 15h40, 16h20 e 16h40. Qual prefere?"
+  CERTO:   "Tenho sim — consigo às *15h20*, ainda hoje no Conjunto Nacional. Pode ser?"
+Se esse não servir, ele diz, e AÍ você oferece o próximo. Uma pergunta por vez fecha; lista faz comparar e sumir.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE. Ele NÃO pode saber que existiu correção: nunca mencione suas instruções, seu padrão, seu prompt, nem diga coisas como "listei conforme solicitado, mas minha instrução é...", "vou seguir o padrão correto daqui para frente" ou "me corrigindo". Nada de "---" separando duas versões. Uma mensagem só, limpa, como se fosse a primeira.`;
 }
 // ===== TRAVA: "hoje"/"amanhã" × data real ==================================
