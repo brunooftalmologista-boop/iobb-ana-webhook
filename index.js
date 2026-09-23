@@ -9432,6 +9432,19 @@ app.get("/version", (req, res) => {
       painel_janela_horas: janelaEmHoras(readEnv("PAINEL_JANELA_HORAS")),   // null = lista inteira
       espelho_extra_numeros: WA_ESPELHO_EXTRA.length,                       // 0 = espelho extra desligado
       secretaria_espelho: WA_SECRETARIA_NUMBER ? "ligado" : "desligado",
+      // 23/09 — estes três são CONFIGURAÇÃO, não segredo, e ficavam invisíveis
+      // de fora. O `dotenv` do boot carrega /etc/secrets/.env com override:true,
+      // então o Secret File GANHA da aba Environment: uma variável editada no
+      // painel pode simplesmente não valer, sem nenhum aviso. Foi o que deixou o
+      // teste de debounce de 12s sem confirmação por uma semana — eu não tinha
+      // como saber, de fora, qual valor o processo estava realmente usando.
+      // `fonte` diz de onde veio: se for "padrão" com a env salva no painel, o
+      // Secret File está mandando (ou a variável não foi salva de verdade).
+      debounce_ms: ANA_DEBOUNCE_MS,
+      debounce_fonte: readEnv("ANA_DEBOUNCE_MS") ? "env" : "padrão",
+      followup_hora_fim: FOLLOWUP_HORA_FIM,
+      reengajar_campanha: REENGAJAR_CAMPANHA,
+      reengajar_template: TEMPLATE_REENGAJAR_NOME,
     },
   });
 });
