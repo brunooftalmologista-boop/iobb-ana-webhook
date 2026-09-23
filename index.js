@@ -628,7 +628,7 @@ inicio: <copie o valor EXATO do [inicio:...] daquele horário na lista> | unidad
 [/AGENDAR]
 Regras do bloco:
 - ⛔ NENHUM campo pode sair como "-" em nome, nascimento ou convenio. Se você não tem o dado, você NÃO emite o bloco — pergunta primeiro. "convenio: -" já colocou 5 pacientes na agenda sem ninguém saber se eram particular ou de plano.
-- O campo "inicio" TEM que ser copiado ao pé da letra do token [inicio:...] do horário escolhido — é o que garante que você marque o horário certo. Nunca reescreva a data/hora à mão.
+- O campo "inicio" recebe o valor de DENTRO do token, sem os colchetes e sem o rótulo. Se a lista traz [inicio:2026-09-23T16:40:00], você escreve exatamente: inicio: 2026-09-23T16:40:00 — e NUNCA "inicio: [inicio:2026-09-23T16:40:00]". Copie o valor caractere por caractere; nunca reescreva a data/hora à mão.
 - Emita [AGENDAR] SOMENTE no exato momento em que o paciente ACABOU de confirmar um horário que você ofereceu. NÃO reemita o bloco em mensagens seguintes (ex.: ao responder "não uso lente", uma dúvida, um agradecimento) — se você já confirmou o horário antes, a marcação já foi feita; apenas converse, SEM anexar [AGENDAR] de novo. Só emita [AGENDAR] outra vez se o paciente pedir para MUDAR o horário e confirmar um NOVO (aí sim, com o novo [inicio:]). Não emita [AGENDAR] e [PREAGENDAMENTO] na mesma mensagem — use [AGENDAR] quando marcou um horário real; use [PREAGENDAMENTO] quando NÃO havia agenda/horário.
 - DEPOIS de confirmar um horário, NÃO repita a data/hora do agendamento nas mensagens seguintes — você pode ERRAR o horário ao repetir (dizer 11h40 quando marcou 11h20). Se precisar se referir ao agendamento, diga apenas "seu agendamento já está confirmado", SEM repetir data/hora. Em especial: se o paciente enviar a carteirinha DEPOIS de você já ter confirmado o horário, apenas agradeça e diga que está tudo certo com o agendamento — NÃO repita a data/hora nem reemita [AGENDAR].
 - motivo: use "Consulta" por padrão. NUNCA pergunte "qual exame?" nem ofereça/recite a lista de exames ao paciente. Registre "Retorno" se o paciente disser que é retorno. Registre "Teste de lente de contato" quando for o teste AVULSO de quem já consultou aqui (nesse caso convenio: particular, sempre). Registre "Avaliação de cirurgia" quando o atendimento seguiu o fluxo de cirurgia refrativa (ou de ceratocone com interesse cirúrgico), MESMO que o paciente não use essa palavra exata.
@@ -2417,7 +2417,7 @@ function anunciouAgendamentoSemAgendar(reply, slots, meusAgendamentos) {
   return null;
 }
 function instrucaoAgendarDeVerdade(motivo) {
-  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Dizer ao paciente que está agendado sem emitir o bloco é o pior erro que existe: ele organiza o dia, VEM à clínica, e não há consulta nenhuma no sistema — a recepção descobre com ele na frente. Reescreva a MESMA mensagem, com o mesmo tom, e emita o bloco [AGENDAR] copiando o token [inicio:...] EXATO do horário na lista de vagas, com a unidade escrita por extenso. Se por qualquer motivo você não puder emitir o bloco, então NÃO diga que está agendado: ofereça o horário e espere o paciente aceitar.
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Dizer ao paciente que está agendado sem emitir o bloco é o pior erro que existe: ele organiza o dia, VEM à clínica, e não há consulta nenhuma no sistema — a recepção descobre com ele na frente. Reescreva a MESMA mensagem, com o mesmo tom, e emita o bloco [AGENDAR] com o VALOR DE DENTRO do token do horário na lista — sem colchetes e sem o rótulo (de [inicio:2026-09-23T16:40:00] escreve-se "inicio: 2026-09-23T16:40:00") — e com a unidade escrita por extenso. Se por qualquer motivo você não puder emitir o bloco, então NÃO diga que está agendado: ofereça o horário e espere o paciente aceitar.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
@@ -3266,7 +3266,12 @@ function extrairAgendar(reply) {
   const registros = [];
   const parse = (inner) => {
     const campos = {};
-    for (const par of inner.replace(/\n/g, " ").split("|")) {
+    for (let par of inner.replace(/\n/g, " ").split("|")) {
+      // A outra forma do mesmo engano: o campo inteiro vem como token, sem o
+      // rótulo do lado de fora — "[inicio:2026-09-23T16:40:00] | unidade: ...".
+      // Desembrulhar aqui faz o resto do parser enxergar "inicio: 2026-...".
+      const parSemColchete = par.trim().match(/^\[\s*([a-zà-ú_]+\s*:[\s\S]+?)\s*\]$/i);
+      if (parSemColchete) par = parSemColchete[1];
       const idx = par.indexOf(":");                   // 1º ":" — preserva o ISO do inicio (que tem ":")
       if (idx === -1) continue;
       const chave = par.slice(0, idx).trim().toLowerCase().replace(/^-+\s*/, "");
@@ -3285,6 +3290,20 @@ function extrairAgendar(reply) {
       let valor = par.slice(idx + 1).trim();
       const semSinais = valor.replace(/^<+\s*|\s*>+$/g, "").trim();
       if (/^<[\s\S]*>$/.test(valor) && semSinais) valor = semSinais;
+      // 🧹 TIRA O TOKEN INTEIRO DE DENTRO DO CAMPO. O prompt mandava "copie o
+      // token [inicio:...] EXATO" — e um dia ela copiou exato MESMO, colchete e
+      // rótulo junto: "inicio: [inicio:2026-09-23T16:40:00]". new Date() disso é
+      // Invalid Date, o bloco inteiro é descartado, e o paciente já recebeu a
+      // confirmação com endereço.
+      // Caso Fernanda e Marcus (23/09/2026, 16h21): casal, dois blocos, os DOIS
+      // com o token embrulhado. A trava de "anunciou sem agendar" pegou e mandou
+      // reescrever; a reescrita repetiu o mesmo erro, porque a instrução era
+      // ambígua e a leitura dela era defensável. Quem salvou foi o alerta à
+      // secretária, que lançou as duas consultas na mão sete minutos depois.
+      // Instrução não conserta formatação — quem tem de aceitar as duas formas é
+      // o parser. Mesmo espírito da limpeza dos < > logo acima.
+      const semToken = valor.match(/^\[\s*[a-zà-ú_]+\s*:\s*([\s\S]+?)\s*\]$/i);
+      if (semToken && semToken[1].trim()) valor = semToken[1].trim();
       if (chave) campos[chave] = valor;
     }
     return Object.keys(campos).length ? campos : null;
