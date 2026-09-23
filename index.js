@@ -9409,7 +9409,19 @@ async function followUpAtivo() {
 }
 // Janela de envio do follow-up orgânico. Ajustável no Render sem deploy.
 const FOLLOWUP_HORA_INICIO = (() => { const v = Number(readEnv("FOLLOWUP_HORA_INICIO")); return Number.isFinite(v) ? v : 9; })();
-const FOLLOWUP_HORA_FIM    = (() => { const v = Number(readEnv("FOLLOWUP_HORA_FIM"));    return Number.isFinite(v) ? v : 18; })();
+// 21h e não 18h (23/09/2026 — medido em 400 follow-ups, jul a set). Taxa de
+// RESPOSTA por faixa de envio:
+//   antes das 8h  45%  (só 11 envios — amostra fraca)
+//   8h-12h        34%
+//   12h-18h       32%
+//   18h-21h       43%  ← a melhor faixa cheia, e estava BLOQUEADA
+//   após 21h      26%  ← invasivo e pior: segue bloqueado
+//   fim de semana 17%, ZERO comparecimento em 30 envios ← segue bloqueado
+// A faixa da noite é quando a pessoa sai do trabalho e olha o celular. Os 54
+// envios dela renderam 5 comparecimentos — proporcionalmente o melhor do dia.
+// Não é voltar ao envio 24h de antes: é abrir a faixa que o dado mostra boa e
+// manter fechadas as duas que o dado mostra ruins.
+const FOLLOWUP_HORA_FIM    = (() => { const v = Number(readEnv("FOLLOWUP_HORA_FIM"));    return Number.isFinite(v) ? v : 21; })();
 async function rodarFollowUpLeads() {
   if (!(await followUpAtivo())) return;
   // ⏰ SÓ EM HORÁRIO COMERCIAL, DIA ÚTIL (Dr. Bruno, 03/09/2026).
