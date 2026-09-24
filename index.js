@@ -1419,6 +1419,72 @@ function unidadeContradizOferta(texto, slots) {
   }
   return null;
 }
+// ===== TRAVA: "A UNIDADE X ATENDE HOJE" — SEM HORÁRIO NENHUM ==============
+// Caso Davi Sampaio (24/09/2026, 13h49) — o erro mais caro do dia, porque o
+// paciente PEGA O CARRO. Ele perguntou "vocês estão funcionando hoje na unidade
+// do Conjunto Nacional?" numa QUINTA, e ouviu "Sim, o Conjunto Nacional atende
+// hoje, sexta-feira". Quinta é Taguatinga: ele ia achar a porta fechada.
+// Duas travas já existiam e as duas são cegas aqui: `unidadeContradizOferta`
+// exige um HORÁRIO ofertado (esta resposta não tem nenhum) e `corrigirDiaDaSemana`
+// exige uma DATA junto do dia da semana (aqui é só "hoje, sexta-feira").
+// A raiz do "sexta-feira" não é conta de calendário: esse mesmo paciente falara
+// com a Ana em 18/09, que ERA sexta, e a conversa inteira está no contexto dela.
+// Ela copiou o dia do histórico. Nenhuma instrução conserta isso — o código sabe
+// que dia é hoje e de quem é o dia, então quem responde é o código.
+function afirmouUnidadeNoDiaErrado(texto) {
+  if (!texto) return null;
+  const t = String(texto);
+  // Só afirmação de FUNCIONAMENTO. Oferta de horário é com a outra trava.
+  if (!/\b(atende|atendemos|funciona|funcionamos|abre|abrimos|est[áa] abert|tem atendimento|h[áa] atendimento)/i.test(t)) return null;
+  // Negativa ("hoje o Conjunto não atende") é justamente a resposta certa.
+  if (/\b(n[ãa]o|nenhum)\s+(atende|funciona|abre|h[áa]|tem)/i.test(t)) return null;
+  const dizTag  = /taguatinga|[áa]guas claras/i.test(t);
+  const dizConj = /conjunto\s*nacional|asa norte/i.test(t);
+  if (dizTag === dizConj) return null;   // cita as duas (ou nenhuma): ambíguo, não opina
+  const citada = dizTag ? "Taguatinga" : "Conjunto Nacional";
+  for (const a of [{ re: /\bhoje\b/i, quando: "hoje", data: new Date() },
+                   { re: /\bamanh[ãa]/i, quando: "amanhã", data: new Date(Date.now() + 86400000) }]) {
+    if (!a.re.test(t)) continue;
+    const real = unidadeDoDia(a.data);
+    if (real === citada) continue;
+    return real
+      ? `afirmou que o ${citada} atende ${a.quando}, mas ${a.quando} quem atende é o ${real} — o paciente iria à unidade errada`
+      : `afirmou que o ${citada} atende ${a.quando}, mas ${a.quando} não há atendimento em nenhuma unidade`;
+  }
+  return null;
+}
+
+// ===== TRAVA: NOME DO DIA COLADO EM "HOJE"/"AMANHÃ", SEM DATA =============
+// Irmã da `corrigirDiaDaSemana`, que só age quando há uma DATA no texto. Aqui é
+// o contrário: "hoje, sexta-feira" sem dia nenhum. Substituição determinística —
+// o código sabe que dia é hoje, não há o que deduzir.
+// ⚠️ Quando a data VEM depois ("hoje, sexta-feira, 18/09"), esta trava sai de
+// cena pelo lookahead: aquele caso é da outra, que corrige data e dia juntos.
+function corrigirNomeDoDiaSemData(texto) {
+  if (!texto) return { texto, correcoes: [] };
+  const correcoes = [];
+  const semAcento = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const nomeDe = (d) => d.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long" }).replace("-feira", "");
+  // ⚠️ NADA DE LOOKAHEAD AQUI. A 1ª versão usava (?!...\d{1,2}\/\d{1,2}) para
+  // ignorar "hoje, sexta-feira, 18/09" — e o motor simplesmente DESCARTAVA o
+  // "-feira" do casamento para o lookahead passar, corrigindo "sexta" para
+  // "quinta" numa frase certa (18/09 é sexta de verdade). Pego no teste, não em
+  // produção. A data opcional entra no PRÓPRIO casamento e a decisão é do
+  // callback, que enxerga o que casou — sem ambiguidade de backtracking.
+  const out = String(texto).replace(
+    /\b(hoje|amanh[ãa])(\s*,?\s*(?:que\s+)?(?:é\s+)?)(segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo)(-feira)?(\s*,?\s*\d{1,2}\/\d{1,2})?/gi,
+    (m, quando, meio, dow, feira, dataDepois) => {
+      if (dataDepois) return m;          // tem data junto: é caso da corrigirDiaDaSemana
+      const base = /^hoje$/i.test(quando) ? new Date() : new Date(Date.now() + 86400000);
+      const real = nomeDe(base);
+      if (semAcento(real) === semAcento(dow)) return m;                  // já está certo
+      const sufixo = (feira && !/^(s[áa]bado|domingo)$/i.test(real)) ? "-feira" : "";
+      correcoes.push(`${quando} não é ${semAcento(dow)}, é ${real}`);
+      return `${quando}${meio}${real}${sufixo}`;
+    });
+  return { texto: out, correcoes };
+}
+
 // ===== TRAVA: BAIRRO TROCADO NO NOME DA UNIDADE ===========================
 // Dr. Bruno, 01/09/2026: "Ana tendo alguns problemas com unidades e dias".
 // A trava de cima (unidadeContradizOferta) só julga quando há HORÁRIO ofertado
@@ -7105,6 +7171,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       } catch (e) { console.error("[Ficha] Checagem falhou (segue sem travar):", e.message); }
       const maisCedo = existeVagaMaisCedo(reply, slotsVigentes, text, messages);
       const unidadeErrada = unidadeContradizOferta(reply, slotsVigentes);
+      const unidadeNoDiaErrado = afirmouUnidadeNoDiaErrado(reply);
       // Prometeu cancelar e não emitiu o bloco (ou emitiu menos que prometeu).
       // Ofereceu vaga que NÃO está livre. Só na etapa de OFERTA: na mensagem de
       // confirmação o horário já saiu da lista (acabou de ser ocupado por ele).
@@ -7161,13 +7228,14 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       const tocouQueroAgendar = /^\s*quero agendar\s*$/i.test(String(text || ""));
       const ofertaCegaCampanha = (tocouQueroAgendar && etapaDeOferta && campanhaSabeConvenio)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (unidadeNoDiaErrado || despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = unidadeNoDiaErrado || despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          despedidaFechada ? "despedida_dia_fechado"
+          unidadeNoDiaErrado ? "unidade_nao_abre_hoje"
+            : despedidaFechada ? "despedida_dia_fechado"
             : unidadeDoPaciente ? "unidade_pedida_ignorada"
             : carteirinhaRepetida ? "carteirinha_pedida_2x"
             : receitaAntesDaConsulta ? "receita_antes_da_consulta"
@@ -7510,6 +7578,15 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
         console.warn(`[DataTrava] Corrigido antes de enviar: ${rev.correcoes.join(" | ")}`);
         await registrarErro("dia_semana_corrigido", rev.correcoes.join(" | "), { conversationId: conversation.id, telefone: from });
         reply = rev.texto;
+      }
+      // Depois da de cima: aquela trata "sexta-feira, 18/09" (com data), esta
+      // trata "hoje, sexta-feira" (sem data). Rodar nesta ordem evita corrigir
+      // duas vezes a mesma frase.
+      const revHoje = corrigirNomeDoDiaSemData(reply);
+      if (revHoje.correcoes.length) {
+        console.warn(`[DataTrava] Dia de hoje/amanhã corrigido: ${revHoje.correcoes.join(" | ")}`);
+        await registrarErro("dia_de_hoje_corrigido", revHoje.correcoes.join(" | "), { conversationId: conversation.id, telefone: from });
+        reply = revHoje.texto;
       }
     } catch (e) { console.error("[DataTrava] falhou (mensagem segue original):", e.message); }
 
