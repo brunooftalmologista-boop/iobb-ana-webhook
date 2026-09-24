@@ -3365,7 +3365,20 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
         `🚨 *AGENDAMENTO NÃO FOI GRAVADO*\n📱 ${from}\nA Ana anunciou o agendamento ao paciente, mas o registro veio incompleto e NADA entrou na agenda.\n👉 Confiram a conversa no painel e lancem o horário na mão.`).catch(() => {});
       return { ok: false };
     }
-    let ini = new Date(inicioRaw);
+    // ⏰ HORA SEM FUSO É HORA DE BRASÍLIA — NUNCA UTC.
+    // O token da lista sempre sai em UTC com "Z" (`s.start.toISOString()`), e
+    // copiado assim cai certo. Mas quando a Ana digita a hora à mão ela escreve
+    // o relógio da parede — "2026-10-02T14:20:00", sem Z e sem offset. O Render
+    // roda em UTC, e o `new Date()` de uma data-hora SEM designador de fuso usa
+    // o fuso LOCAL do processo: 14:20 vira 14:20 UTC = **11:20 em Brasília**.
+    // Três horas antes do que o paciente ouviu, numa vaga que costuma estar
+    // livre — então nenhuma trava de "vaga ocupada" reclama.
+    // Caso Ana Rosa Pereira da Silva (24/09/2026, 09h16): ela aceitou "sexta,
+    // 02/10, às 14h20", e a agenda gravou 11h20. Só apareceu porque eu fui
+    // conferir OUTRA coisa na mesma linha — nenhum alerta disparou.
+    // A Ana nunca pensa em UTC: hora sem fuso, vinda dela, é sempre -03:00.
+    const semFuso = !/(Z|[+-]\d{2}:?\d{2})$/i.test(inicioRaw);
+    let ini = new Date(semFuso ? `${inicioRaw}-03:00` : inicioRaw);
     if (isNaN(ini.getTime())) {
       console.error("[Agendar] inicio inválido:", inicioRaw);
       await registrarErro("agendar_bloco_invalido", `inicio inválido: ${inicioRaw}`,
