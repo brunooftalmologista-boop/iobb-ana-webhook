@@ -9665,6 +9665,51 @@ async function rodarFollowUpLeads() {
     if (antes !== leads.length) console.log(`[FollowUp] ${antes - leads.length} de ${antes} descartado(s): o paciente já tinha encerrado.`);
     if (!leads.length) return;
 
+    // 🔎 A PROVA INVERTIDA (24/09/2026). A lista `encerrou` acima olha a fala do
+    // PACIENTE — e jeito de se despedir é conjunto ABERTO, então ela sempre deixa
+    // passar. Em 13/08 este mesmo bug foi "consertado" engordando a lista; em
+    // 24/09 metade dos 14 follow-ups do dia saiu para quem já tinha encerrado:
+    //   "Entendi. Não vou marcar, Ana. Muito Obrigado."  (o ^nao não casa: começa com "Entendi")
+    //   "Agradeço muito, deixarei pra outra oportunidade então!"
+    //   "não moro mais em Brasília"   ·   "* outubro"   ·   "Ok. Mais uma vez obrigado."
+    //   "Bom dia e obrigada pela atenção!"   ·   a Lais, que tinha ACABADO de mandar a carteirinha
+    // Nenhuma lista pega essas seis, e sempre caberá uma sétima.
+    // A inversão: em vez de procurar despedida na fala do paciente (aberto),
+    // exigir PENDÊNCIA na fala da ANA (fechado — o texto é nosso). Se a última
+    // coisa que ela disse tem uma pergunta de verdade no ar, a bola é do paciente
+    // e o follow-up faz sentido. Se ela se despediu, a conversa acabou.
+    // Conferido contra os 14 do dia 24-25/09: separa os 14 corretamente.
+    try {
+      const cids = [...new Set(leads.map(l => l.conversation_id).filter(Boolean))];
+      const { data: falas } = await supabase
+        .from("messages").select("conversation_id, content, event, timestamp")
+        .in("conversation_id", cids).in("role", ["assistant", "human"])
+        .order("timestamp", { ascending: false }).limit(500);
+      const ultimaDaAna = new Map();
+      for (const m of (falas || [])) {
+        if (m.event === "followup") continue;               // não medir o próprio follow-up
+        if (!ultimaDaAna.has(m.conversation_id)) ultimaDaAna.set(m.conversation_id, m.content);
+      }
+      // Fecho de cortesia é pergunta que significa o CONTRÁRIO de pendência.
+      // Esta lista é pequena e segura porque o texto é da Ana, escrito pelo nosso
+      // prompt — conjunto fechado, ao contrário do jeito de o paciente agradecer.
+      const RE_FECHO = /(posso|poderia)\s+(te\s+)?ajudar\s+em\s+(mais\s+)?(alguma\s+coisa|algo)\s*\?|h[áa]\s+(mais\s+)?(algo|alguma coisa)\s+(mais\s+)?em que\s+(eu\s+)?poss[ao]\s+ajudar\s*\?|precisa\s+de\s+mais\s+alguma\s+coisa\s*\?|mais\s+alguma\s+d[úu]vida\s*\?/gi;
+      const perguntaPendente = (t) => {
+        const s = String(t || "");
+        if (!s.includes("?")) return false;
+        return s.replace(RE_FECHO, " ").includes("?");
+      };
+      const n = leads.length;
+      leads = leads.filter(l => perguntaPendente(ultimaDaAna.get(l.conversation_id)));
+      if (n !== leads.length) console.log(`[FollowUp] ${n - leads.length} de ${n} descartado(s): a Ana não deixou pergunta no ar — conversa encerrada.`);
+      if (!leads.length) return;
+    } catch (e) {
+      // Na dúvida NÃO persegue: mandar de novo para quem se despediu é pior que
+      // perder um lead. (Ao contrário das travas de agenda, onde o default é agir.)
+      console.error("[FollowUp] Checagem de pendência falhou — nada enviado nesta rodada:", e.message);
+      return;
+    }
+
     // QUEM DISSE "AGORA NÃO" NA CAMPANHA FICA DE FORA (Dr. Bruno, 01/09/2026).
     // Ele respondeu à mensagem de reengajamento dizendo que não é o momento —
     // e aí, horas depois, receberia um "posso dar sequência ao seu atendimento?"
