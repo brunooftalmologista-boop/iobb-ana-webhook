@@ -201,8 +201,32 @@
   .ag-anatag{background:#e5534b;color:#fff;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:6px;margin-left:2px;vertical-align:middle;}
   .ag-wslot .ag-hold{font-size:10px;}
   .ag-day-empty{font-size:11px;color:var(--muted);text-align:center;padding:12px 4px;}
-  .ads-content{white-space:pre-wrap;font-size:13.5px;line-height:1.45;max-height:60vh;overflow:auto;background:var(--header);border-radius:8px;padding:14px;color:#111b21;margin-top:4px;}
-  .ads-content:empty{display:none;}
+  .painel-scroll{white-space:pre-wrap;font-size:13.5px;line-height:1.45;max-height:60vh;overflow:auto;background:var(--header);border-radius:8px;padding:14px;color:#111b21;margin-top:4px;}
+  .painel-scroll:empty{display:none;}
+  /* 🩹 O que a Ana errou */
+  .erros-badge{position:absolute;top:-2px;right:-2px;min-width:16px;height:16px;border-radius:9px;background:#d93025;color:#fff;font-size:10px;line-height:16px;text-align:center;padding:0 4px;font-weight:700;}
+  #btn-erros{position:relative;}
+  .erros-filtros{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:8px 0 4px;}
+  .erros-dias.is-on{background:#128c7e;color:#fff;border-color:#128c7e;}
+  /* `.modal label{display:block}` (linha ~145) vence `.erros-check` sozinho —
+     por isso o prefixo `.modal`, igual ao que já se faz em `.modal .chk-group
+     label`. Sem isso a caixinha fica centralizada ACIMA do texto. */
+  .modal .erros-check{font-size:12px;color:#54656f;display:flex;align-items:center;gap:6px;cursor:pointer;margin:6px 0 2px;font-weight:400;}
+  /* `.modal input{width:100%}` (linha ~146) vale para os campos de formulário e
+     esticava a caixinha, jogando o texto para longe. */
+  .modal .erros-check input[type="checkbox"]{width:auto;flex:none;margin:0;padding:0;}
+  #erros-content{white-space:normal;}
+  .erro-item{border-left:3px solid #d93025;background:#fff;border-radius:6px;padding:9px 11px;margin-bottom:8px;cursor:pointer;}
+  .erro-item:hover{background:#f0f4f6;}
+  .erro-item.g-resolvido{border-left-color:#1a9c5b;}
+  .erro-item.g-forma{border-left-color:#c8a415;}
+  .erro-topo{display:flex;justify-content:space-between;gap:10px;font-size:13px;}
+  .erro-rotulo{font-weight:600;color:#111b21;}
+  .erro-hora{color:#667781;font-size:12px;white-space:nowrap;}
+  .erro-fone{color:#667781;font-size:12px;margin-top:2px;}
+  .erro-detalhe{color:#3b4a54;font-size:12px;margin-top:5px;white-space:pre-wrap;word-break:break-word;}
+  .erro-grupo-titulo{font-size:12px;font-weight:700;color:#54656f;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 6px;}
+  .erro-vazio{color:#667781;font-size:13.5px;padding:10px 2px;}
 
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111b21;color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;opacity:0;transition:.3s;z-index:200;pointer-events:none;}
   #toast.show{opacity:.95;}
@@ -232,7 +256,7 @@
         <button class="icon-btn" id="btn-refresh" title="Atualizar">⟳</button>
         <button class="icon-btn" id="btn-agenda" title="Agenda">🗓️</button>
         <button class="icon-btn" id="btn-config" title="Configurações">⚙️</button>
-        <button class="icon-btn" id="btn-ads" title="Relatório Google Ads">📊</button>
+        <button class="icon-btn" id="btn-erros" title="O que a Ana errou">🩹<span id="erros-badge" class="erros-badge" hidden></span></button>
         <button class="icon-btn" id="btn-logout" title="Sair">⎋</button>
       </div>
     </div>
@@ -357,16 +381,22 @@
   </div>
 </div>
 
-<!-- Relatório Google Ads modal -->
-<div class="modal-bg" id="ads-modal">
+
+<!-- O que a Ana errou (só leitura) -->
+<div class="modal-bg" id="erros-modal">
   <div class="modal ads">
-    <h3>📊 Relatório Google Ads</h3>
-    <p id="ads-sub">Gerando relatório…</p>
-    <div id="ads-content" class="ads-content"></div>
+    <h3>🩹 O que a Ana errou</h3>
+    <p id="erros-sub">Carregando…</p>
+    <div class="erros-filtros">
+      <button class="btn ghost erros-dias is-on" data-dias="1">Hoje</button>
+      <button class="btn ghost erros-dias" data-dias="3">3 dias</button>
+      <button class="btn ghost erros-dias" data-dias="7">7 dias</button>
+    </div>
+    <label class="erros-check"><input type="checkbox" id="erros-tudo"> mostrar também o que a trava já resolveu</label>
+    <div id="erros-content" class="painel-scroll"></div>
     <div class="modal-actions">
-      <button class="btn ghost" id="ads-close">Fechar</button>
-      <button class="btn ghost" id="ads-conv">Baixar conversões</button>
-      <button class="btn primary" id="ads-refresh">Gerar novamente</button>
+      <button class="btn ghost" id="erros-close">Fechar</button>
+      <button class="btn primary" id="erros-refresh">Atualizar</button>
     </div>
   </div>
 </div>
@@ -1422,39 +1452,59 @@ function openConfig(){
 }
 function closeConfig(){ $('#config-modal').classList.remove('show'); }
 
-// ---------- Relatório Google Ads ----------
-function formatReport(t){
-  const esc = String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  return esc.replace(/\*([^*\n]+)\*/g,'<b>$1</b>').replace(/_([^_\n]+)_/g,'<i>$1</i>');
+
+// ---------- 🩹 O que a Ana errou (só leitura) ----------
+// As travas gravam tudo no error_log desde sempre, e o painel nunca mostrou —
+// cada bug desta semana foi achado abrindo conversa e tirando print, com o
+// registro já deitado no banco. Aqui é leitura pura: nada é alterado.
+let errosDias = 1, errosTudo = false;
+// `esc()` já existe no painel (linha ~609) — reaproveitada, não redeclarada.
+function horaCurta(iso){
+  try{ return new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+  catch(_){ return ''; }
 }
-async function openAds(){
-  $('#ads-modal').classList.add('show');
-  $('#ads-content').innerHTML='';
-  $('#ads-sub').textContent='Gerando relatório…';
+async function loadErros(){
+  $('#erros-sub').textContent = 'Carregando…';
+  $('#erros-content').innerHTML = '';
   try{
-    const d = await api('/api/ads/report',{method:'POST'});
-    if(d && d.report){
-      $('#ads-sub').textContent = (d.mode==='test' ? '🧪 Modo teste (dados simulados)' : 'Dados reais da conta') + ' — também enviado ao WhatsApp.';
-      $('#ads-content').innerHTML = formatReport(d.report);
-    } else {
-      $('#ads-sub').textContent = 'Não foi possível gerar o relatório. Verifique os logs do servidor.';
+    const d = await api('/api/erros?dias='+errosDias);
+    const itens = (d && d.itens) || [];
+    const grupos = [
+      ['acao',      'precisa de gente'],
+      ['forma',     'jeito de atender'],
+      ['resolvido', 'a trava resolveu sozinha'],
+    ];
+    let html = '';
+    for(const [g, titulo] of grupos){
+      if(g !== 'acao' && !errosTudo) continue;
+      const doGrupo = itens.filter(i=>i.grupo===g);
+      if(!doGrupo.length) continue;
+      html += '<div class="erro-grupo-titulo">'+esc(titulo)+' · '+doGrupo.length+'</div>';
+      for(const i of doGrupo){
+        html += '<div class="erro-item g-'+esc(i.grupo)+'"'
+             + (i.conversation_id ? ' data-conv="'+esc(i.conversation_id)+'"' : '')
+             + '><div class="erro-topo"><span class="erro-rotulo">'+esc(i.rotulo)+'</span>'
+             + '<span class="erro-hora">'+esc(horaCurta(i.quando))+'</span></div>'
+             + (i.telefone ? '<div class="erro-fone">'+esc(i.telefone)+(i.conversation_id?' · clique para abrir a conversa':'')+'</div>' : '')
+             + '<div class="erro-detalhe">'+esc(i.detalhe)+'</div></div>';
+      }
     }
+    $('#erros-content').innerHTML = html || '<div class="erro-vazio">Nada no período. 👌</div>';
+    const rotuloDias = errosDias===1 ? 'hoje' : 'nos últimos '+errosDias+' dias';
+    $('#erros-sub').textContent = d.acao
+      ? d.acao+' ocorrência(s) que pedem atenção '+rotuloDias+' — de '+d.total+' no total.'
+      : 'Nada que peça atenção '+rotuloDias+' ('+d.total+' registro(s) de forma ou já resolvidos).';
+    atualizarBadgeErros(d.acao||0);
   }catch(e){
-    $('#ads-sub').textContent = 'Erro ao gerar o relatório ('+e.message+').';
+    $('#erros-sub').textContent = 'Não consegui ler o registro ('+e.message+').';
   }
 }
-function closeAds(){ $('#ads-modal').classList.remove('show'); }
-async function downloadConversions(){
-  try{
-    const r = await fetch(API_BASE.replace(/\/$/,'')+'/api/ads/conversions.csv?markReported=1',{ headers:{'Authorization':'Bearer '+AUTH} });
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download='conversoes_google_ads.csv'; document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-    toast('Conversões exportadas (CSV para o Google Ads).');
-  }catch(e){ toast('Falha ao exportar conversões.'); }
+function atualizarBadgeErros(n){
+  const b = $('#erros-badge'); if(!b) return;
+  if(n>0){ b.textContent = n>99?'99+':String(n); b.hidden=false; } else { b.hidden=true; }
 }
+function openErros(){ $('#erros-modal').classList.add('show'); loadErros(); }
+function closeErros(){ $('#erros-modal').classList.remove('show'); }
 
 // ---------- Marcar agendamento (conversão) ----------
 async function markBooked(){
@@ -1515,8 +1565,31 @@ $('#btn-newchat').onclick=openNewChat;
 $('#nc-cancel').onclick=closeNewChat;
 $('#nc-send').onclick=submitNewChat;
 $('#btn-config').onclick=openConfig;
-$('#btn-ads').onclick=openAds;
-$('#ads-close').onclick=closeAds;
+$('#btn-erros').onclick=openErros;
+$('#erros-close').onclick=closeErros;
+$('#erros-refresh').onclick=loadErros;
+$('#erros-tudo').onchange=(e)=>{ errosTudo = e.target.checked; loadErros(); };
+document.querySelectorAll('.erros-dias').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('.erros-dias').forEach(x=>x.classList.remove('is-on'));
+    b.classList.add('is-on');
+    errosDias = Number(b.dataset.dias)||1;
+    loadErros();
+  };
+});
+// Clicar no item abre a conversa daquele erro — é o passo que hoje custa
+// procurar o telefone na lista à mão.
+$('#erros-content').onclick=(e)=>{
+  const item = e.target.closest('.erro-item[data-conv]');
+  if(!item) return;
+  const id = item.dataset.conv;
+  if(!conversations.some(c=>c.id===id)){
+    toast('Essa conversa não está na lista atual — use a busca pelo telefone.');
+    return;
+  }
+  closeErros();
+  openConversation(id);
+};
 
 // ===== Agenda (Modelo B) ======================================================
 // Fonte única no banco (tabela appointments). A secretária vê os horários livres
@@ -1751,8 +1824,6 @@ $('#agdet-cancelar').onclick=async()=>{
   try{ await api('/api/agenda/'+agDetId+'/cancel',{method:'POST'}); toast('Agendamento cancelado.'); closeAgDetails(); agRefresh(); }
   catch(err){ toast('Falha ao cancelar.'); }
 };
-$('#ads-refresh').onclick=openAds;
-$('#ads-conv').onclick=downloadConversions;
 $('#btn-booked').onclick=markBooked;
 $('#btn-back').onclick=()=>{ document.getElementById('app').classList.remove('chat-open'); activeId=null; };
 $('#btn-send').onclick=sendMessage;
@@ -1813,6 +1884,16 @@ if('Notification' in window && Notification.permission==='default'){
 // intervalos só rodam quando autenticado
 setInterval(()=>{ if(AUTH) loadConversations(); }, 5000);          // lista + notificações
 setInterval(()=>{ if(AUTH && activeId) loadMessages(false); }, 3000); // chat aberto
+// Contador do 🩹: de 5 em 5 MINUTOS, não de 5 em 5 segundos. O que ele mostra
+// muda ~6 vezes por dia — não justifica entrar no poll da lista, que já é o
+// maior consumidor de egress do projeto.
+async function atualizarContadorErros(){
+  if(!AUTH) return;
+  try{ const d = await api('/api/erros?dias=1'); atualizarBadgeErros(d.acao||0); }
+  catch(_){ /* silencioso: é um contador, não pode atrapalhar o atendimento */ }
+}
+setInterval(atualizarContadorErros, 300000);
+setTimeout(atualizarContadorErros, 4000);
 </script>
 </body>
 </html>

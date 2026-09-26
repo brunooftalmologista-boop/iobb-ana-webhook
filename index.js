@@ -8004,6 +8004,91 @@ app.use("/api", (req, _res, next) => {
   }
   next();
 });
+// ===== /api/erros — O QUE A ANA ERROU (só leitura) =======================
+// Pedido do Dr. Bruno em 26/09/2026. Até aqui o painel NÃO lia o `error_log`:
+// as travas gravavam tudo e ninguém via. Nos 14 dias anteriores foram 82
+// eventos caros (~6/dia), e cada bug que consertamos nesta semana — o fuso das
+// 3 horas, a unidade errada, a idade perguntada à toa, o cartão em dobro — foi
+// achado pelo Dr. Bruno abrindo conversa e tirando print, com o registro já
+// deitado no banco desde o minuto do erro.
+// A triagem é o que faz a tela valer: 6 por dia vira ruído se tudo aparecer
+// junto. Três grupos, e só o primeiro pede gente.
+const ERROS_ACAO = new Set([
+  "anunciou_sem_agendar", "agendar_bloco_invalido", "agendar_sem_nome",
+  "agendar_em_vaga_ocupada", "agendar_hora_divergente", "ofereceu_vaga_inexistente",
+  "mensagem_sem_resposta", "sem_resposta_equipe", "prometeu_cancelar_sem_bloco",
+  "prometeu_recado_sem_bloco", "ficha_incompleta_persistiu", "reescrita_ainda_errada",
+  "unidade_nao_abre_hoje", "unidade_dia_contradiz", "agendou_com_ficha_incompleta",
+  "ficha_contexto_falhou", "envio_falhou",
+]);
+const ERROS_RESOLVIDOS = new Set([
+  "dia_semana_corrigido", "dia_de_hoje_corrigido", "unidade_data_corrigida",
+  "unidade_exame_corrigida", "ficha_duplicada_removida", "agendar_nome_recuperado",
+  "agendar_hora_corrigida", "bairro_trocado", "convenio_inventado",
+]);
+// Nome legível: quem lê isto é a secretária no balcão, não quem escreveu a trava.
+const ERRO_ROTULO = {
+  anunciou_sem_agendar: "Disse que agendou, mas não gravou",
+  agendar_bloco_invalido: "Agendamento não entrou na agenda",
+  agendar_sem_nome: "Agendou sem o nome do paciente",
+  agendar_hora_divergente: "Falou uma hora e gravou outra",
+  agendar_em_vaga_ocupada: "Tentou marcar em vaga já ocupada",
+  ofereceu_vaga_inexistente: "Ofereceu horário que não existe",
+  mensagem_sem_resposta: "Paciente ficou sem resposta",
+  sem_resposta_equipe: "Conversa parada com a equipe",
+  prometeu_cancelar_sem_bloco: "Disse que cancelou e não cancelou",
+  prometeu_recado_sem_bloco: "Prometeu recado que ninguém recebeu",
+  ficha_incompleta_persistiu: "Agendou com a ficha incompleta",
+  agendou_com_ficha_incompleta: "Agendou com a ficha incompleta",
+  reescrita_ainda_errada: "Errou de novo depois da correção",
+  unidade_nao_abre_hoje: "Disse que a unidade abre num dia que não abre",
+  unidade_dia_contradiz: "Unidade não bate com o dia",
+  ficha_contexto_falhou: "Não conseguiu ler a ficha do paciente",
+  dia_semana_corrigido: "Dia da semana corrigido",
+  dia_de_hoje_corrigido: "Dia de hoje/amanhã corrigido",
+  unidade_data_corrigida: "Unidade da data corrigida",
+  ficha_duplicada_removida: "Cartão de confirmação duplicado",
+  agendar_nome_recuperado: "Nome recuperado da base histórica",
+  agendar_hora_corrigida: "Horário corrigido pela fala",
+  ficha_em_conta_gotas: "Pediu os dados em conta-gotas",
+  vaga_mais_cedo_ignorada: "Ignorou vaga mais cedo",
+  varios_horarios_refeito: "Ofereceu vários horários",
+  preco_sem_horario: "Deu o preço sem oferecer horário",
+};
+app.get("/api/erros", async (req, res) => {
+  try {
+    const dias = Math.min(Math.max(Number(req.query.dias) || 1, 1), 14);
+    const desde = new Date(Date.now() - dias * 86400000).toISOString();
+    const { data, error } = await supabase
+      .from("error_log")
+      .select("id, created_at, etapa, detalhe, telefone, conversation_id")
+      .gte("created_at", desde)
+      .order("created_at", { ascending: false })
+      .limit(300);
+    if (error) throw error;
+    const itens = (data || []).map(r => ({
+      id: r.id,
+      quando: r.created_at,
+      etapa: r.etapa,
+      rotulo: ERRO_ROTULO[r.etapa] || r.etapa,
+      grupo: ERROS_ACAO.has(r.etapa) ? "acao" : ERROS_RESOLVIDOS.has(r.etapa) ? "resolvido" : "forma",
+      telefone: r.telefone || null,
+      conversation_id: r.conversation_id || null,
+      // O detalhe traz a resposta inteira da Ana; no painel só cabe o começo.
+      detalhe: String(r.detalhe || "").slice(0, 400),
+    }));
+    res.json({
+      dias,
+      total: itens.length,
+      acao: itens.filter(i => i.grupo === "acao").length,
+      itens,
+    });
+  } catch (e) {
+    console.error("[Painel] /api/erros falhou:", e.message);
+    res.status(500).json({ error: "Não consegui ler o registro de erros." });
+  }
+});
+
 app.get("/api/conversations", async (req, res) => {
   let assinatura = null;
   try {
