@@ -2729,6 +2729,62 @@ ${faltas.some(f => /NÃO está na lista/.test(f)) ? `⚠️ Sobre o convênio qu
 // (ao corrigir um dado, ao se despedir), e a ficha ia junto toda vez. Aqui
 // pulamos o registro cujo dia/hora JÁ apareceu num resumo anterior desta
 // conversa. Remarcação muda a data, então gera resumo novo — que é o certo.
+// 🎂 NASCIMENTO SEMPRE EM DD/MM/AAAA. A Ana copia o campo do bloco como veio, e
+// quando o dado nasce da ficha do banco ele vem em ISO: a Maria Luzimar recebeu
+// "Nascimento: 1944-04-02" (26/09/2026) — formato de banco de dados na mão de
+// uma paciente de 82 anos, que ainda é convidada a CONFERIR o dado.
+// Só converte o que é inequivocamente ISO (AAAA-MM-DD). Qualquer outra coisa
+// passa intacta: adivinhar entre 03/04 e 04/03 seria pior que não mexer.
+function nascimentoBR(s) {
+  const t = String(s || "").trim();
+  const m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : (t || null);
+}
+
+// 🧹 A ANA ÀS VEZES ESCREVE O CARTÃO SOZINHA — e aí saem DOIS.
+// Caso Maria Luzimar (26/09/2026): ela montou "*Confirme os dados, por favor:*"
+// com as cinco linhas, o código anexou "*Confira seus dados, por favor:*" logo
+// abaixo, e a paciente recebeu a mesma ficha duas vezes seguidas, com o
+// nascimento escrito de dois jeitos diferentes.
+// A guarda que existia (`jaResumido`) só olhava mensagens ANTERIORES da conversa
+// — era cega para a cópia escrita na MESMA mensagem.
+// Quem manda é o cartão do CÓDIGO: ele é montado do que vai ser gravado, e não
+// do que a Ana lembrou de repetir. Então a versão dela sai fora.
+// O reconhecimento é estrutural (uma sequência de linhas com os rótulos), não
+// por título: o título ela varia à vontade ("Confirme", "Confira", "Seus dados").
+const RE_LINHA_DE_FICHA = /^\s*(👤|🎂|💳|📅|📍|🩺)/u;
+function removerFichaEscritaPelaAna(texto) {
+  const linhas = String(texto || "").split("\n");
+  const fora = new Set();
+  let i = 0;
+  while (i < linhas.length) {
+    if (!RE_LINHA_DE_FICHA.test(linhas[i])) { i++; continue; }
+    let fim = i;
+    while (fim + 1 < linhas.length &&
+           (RE_LINHA_DE_FICHA.test(linhas[fim + 1]) || !linhas[fim + 1].trim())) fim++;
+    const quantas = linhas.slice(i, fim + 1).filter(l => RE_LINHA_DE_FICHA.test(l)).length;
+    if (quantas >= 3) {                       // 3+ rótulos seguidos: é ficha, não frase solta
+      for (let k = i; k <= fim; k++) fora.add(k);
+      // o título logo acima ("*Confirme os dados, por favor:*") e a linha de
+      // fecho logo abaixo ("Se algo estiver incorreto...") vão junto
+      for (let k = i - 1; k >= 0 && k >= i - 2; k--) {
+        if (!linhas[k].trim()) { fora.add(k); continue; }
+        if (/^\*?\s*(confir[am]|confer[ei]|seus dados|dados do agendamento)/i.test(linhas[k].replace(/[*_]/g, ""))) { fora.add(k); break; }
+        break;
+      }
+      for (let k = fim + 1; k < linhas.length && k <= fim + 2; k++) {
+        if (!linhas[k].trim()) { fora.add(k); continue; }
+        if (/se algo estiver (incorreto|errado)/i.test(linhas[k])) { fora.add(k); break; }
+        break;
+      }
+    }
+    i = fim + 1;
+  }
+  if (!fora.size) return { texto, removeu: false };
+  const limpo = linhas.filter((_, k) => !fora.has(k)).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return { texto: limpo, removeu: true };
+}
+
 function resumoDaFicha(registros, cartRegistro, messages) {
   const jaResumido = (linhaData) => (messages || []).some(m =>
     m.role === "assistant" && String(m.content || "").includes("Confira seus dados")
@@ -2771,7 +2827,7 @@ function resumoDaFicha(registros, cartRegistro, messages) {
     // São ~9 caracteres a mais numa mensagem que já ia ser enviada.
     linhas.push([
       `👤 ${v(r.nome) || "—"}`,
-      `🎂 Nascimento: ${v(r.nascimento) || "—"}`,
+      `🎂 Nascimento: ${nascimentoBR(v(r.nascimento)) || "—"}`,
       `💳 ${atendimento}`,
       `📅 ${quando || "—"}`,
       `📍 ${unidadeParaPaciente(v(r.unidade)) || "—"}`,
@@ -7620,7 +7676,18 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     if (ag.registros.length) {
       try {
         const resumo = resumoDaFicha(ag.registros, cart.registro, messages);
-        if (resumo) reply += resumo;
+        if (resumo) {
+          // A versão escrita pela Ana sai ANTES de anexar a do código — senão
+          // a paciente recebe a ficha duas vezes (caso Maria Luzimar, 26/09).
+          const semCopia = removerFichaEscritaPelaAna(reply);
+          if (semCopia.removeu) {
+            console.warn("[Ficha] A Ana escreveu o cartão sozinha — removido, vale o do código.");
+            await registrarErro("ficha_duplicada_removida", reply.slice(0, 250),
+              { conversationId: conversation.id, telefone: from }).catch(() => {});
+            reply = semCopia.texto;
+          }
+          reply += resumo;
+        }
       } catch (e) { console.error("[Ficha] Resumo falhou (mensagem segue sem ele):", e.message); }
     }
 
