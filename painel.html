@@ -227,6 +227,11 @@
   .erro-detalhe{color:#3b4a54;font-size:12px;margin-top:5px;white-space:pre-wrap;word-break:break-word;}
   .erro-grupo-titulo{font-size:12px;font-weight:700;color:#54656f;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 6px;}
   .erro-vazio{color:#667781;font-size:13.5px;padding:10px 2px;}
+  /* Com a seção de edição aberta o modal de detalhes passa de 1100px de altura.
+     Os modais não rolam (overflow visible) e a caixa é centralizada, então o
+     topo E o rodapé saíam da tela — a seção "Remarcar" ficava inalcançável.
+     Escopo só neste modal, para não mexer no comportamento dos outros. */
+  #agdet-modal .modal{max-height:88vh;overflow-y:auto;}
 
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111b21;color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;opacity:0;transition:.3s;z-index:200;pointer-events:none;}
   #toast.show{opacity:.95;}
@@ -486,6 +491,44 @@
         <button class="btn" id="agdet-veio">Compareceu</button>
         <button class="btn ghost" id="agdet-faltou">Faltou</button>
         <button class="btn ghost" id="agdet-limpar">Limpar</button>
+      </div>
+    </div>
+    <!-- Editar: até 26/09/2026 a única saída era CANCELAR e marcar de novo, o
+         que some com o histórico e libera a vaga na hora (foi assim que a vaga
+         da Meyre foi reocupada em 22 min). Os endpoints /editar e /move já
+         existiam no servidor; faltava a tela. -->
+    <div id="agdet-editar" style="margin-top:14px;padding-top:12px;border-top:1px solid #e3e9ef">
+      <button class="btn ghost" id="agdet-abrir-edicao" style="width:100%">✏️ Corrigir dados ou remarcar</button>
+      <div id="agdet-form" hidden>
+        <label>Nome do paciente</label>
+        <input id="agedit-nome" autocomplete="off">
+        <label>Telefone</label>
+        <input id="agedit-tel" inputmode="tel" autocomplete="off" placeholder="Ex.: 61 98406-0001">
+        <label>Convênio</label>
+        <select id="agedit-conv"></select>
+        <label>Motivo</label>
+        <input id="agedit-motivo" autocomplete="off">
+        <label>Observações</label>
+        <textarea id="agedit-obs" rows="2" autocomplete="off"></textarea>
+        <div class="modal-actions" style="margin-top:10px">
+          <button class="btn primary" id="agedit-salvar">Salvar dados</button>
+        </div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #e3e9ef">
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px">Remarcar</div>
+          <div style="font-size:12px;color:#54656f;margin-bottom:8px">O novo horário é reservado <b>antes</b> de o antigo ser liberado. Se alguém ocupar no meio do caminho, nada muda.</div>
+          <label>Unidade</label>
+          <select id="agedit-unidade">
+            <option value="Conjunto Nacional">Conjunto Nacional (seg · qua · sex)</option>
+            <option value="Taguatinga">Taguatinga Shopping (ter · qui)</option>
+          </select>
+          <label>Novo horário</label>
+          <select id="agedit-slot"><option value="">Carregando vagas…</option></select>
+          <div class="modal-actions" style="margin-top:10px">
+            <button class="btn primary" id="agedit-remarcar">Remarcar</button>
+          </div>
+        </div>
+        <div id="agedit-error" style="color:#d33;font-size:13px;margin-top:8px;display:none"></div>
       </div>
     </div>
     <div class="modal-actions">
@@ -1740,7 +1783,98 @@ function openAgDetails(id){
     linha('Registrado por', origem)+
     (a.status==='reservado'?linha('Status','Reserva temporária (aguardando confirmação)'):'');
   renderPresenca(a);
+  prepararEdicao(a);
   $('#agdet-modal').classList.add('show');
+}
+
+// ---------- Corrigir dados / remarcar ----------
+// Bloqueio (feriado) não tem paciente: o servidor recusa editar nome/telefone/
+// convênio de bloqueio, então a tela nem oferece.
+function prepararEdicao(a){
+  const ehBloqueio = a.origem === 'bloqueio';
+  const cancelado  = a.status === 'cancelado';
+  $('#agdet-editar').style.display = cancelado ? 'none' : 'block';
+  $('#agdet-form').hidden = true;
+  $('#agedit-error').style.display = 'none';
+  if(cancelado) return;
+  if(!$('#agedit-conv').options.length){
+    $('#agedit-conv').innerHTML='<option value="">— sem convênio —</option>'+CONVENIOS.map(c=>'<option>'+c+'</option>').join('');
+  }
+  $('#agedit-nome').value   = a.paciente_nome || '';
+  $('#agedit-tel').value    = a.paciente_telefone || '';
+  $('#agedit-motivo').value = a.motivo || '';
+  $('#agedit-obs').value    = a.observacoes || '';
+  // O convênio gravado pode não estar na lista (veio da Ana, escrito por
+  // extenso). Nesse caso acrescenta a opção, para não apagar o dado ao salvar.
+  const conv = a.convenio || '';
+  if(conv && ![...$('#agedit-conv').options].some(o=>o.value===conv)){
+    $('#agedit-conv').insertAdjacentHTML('beforeend','<option>'+esc(conv)+'</option>');
+  }
+  $('#agedit-conv').value = conv;
+  for(const el of ['agedit-nome','agedit-tel','agedit-conv']) $('#'+el).disabled = ehBloqueio;
+  $('#agedit-unidade').value = a.unidade === 'Taguatinga' ? 'Taguatinga' : 'Conjunto Nacional';
+}
+function erroEdicao(msg){
+  const b=$('#agedit-error');
+  if(!msg){ b.style.display='none'; return; }
+  b.textContent=msg; b.style.display='block';
+}
+async function carregarVagasEdicao(){
+  const sel=$('#agedit-slot');
+  sel.innerHTML='<option value="">Carregando vagas…</option>';
+  try{
+    const u=$('#agedit-unidade').value;
+    const d=await api('/api/agenda/slots?unidade='+encodeURIComponent(u));
+    const slots=(d&&d.slots)||[];
+    sel.innerHTML = slots.length
+      ? '<option value="">Escolha o novo horário…</option>' + slots.map(s=>{
+          const dt=new Date(s.inicio);
+          const rot=dt.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'short',day:'2-digit',month:'2-digit'})
+                  +' · '+dt.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+          return '<option value="'+esc(s.inicio)+'">'+esc(rot)+'</option>';
+        }).join('')
+      : '<option value="">Nenhuma vaga livre nessa unidade</option>';
+  }catch(e){
+    sel.innerHTML='<option value="">Não consegui ler a agenda</option>';
+    erroEdicao('Falha ao carregar as vagas ('+e.message+').');
+  }
+}
+async function salvarEdicao(){
+  if(!agDetId) return;
+  erroEdicao('');
+  const corpo={
+    nome:$('#agedit-nome').value.trim(),
+    telefone:$('#agedit-tel').value.trim(),
+    convenio:$('#agedit-conv').value.trim(),
+    motivo:$('#agedit-motivo').value.trim(),
+    observacoes:$('#agedit-obs').value.trim(),
+  };
+  if(!corpo.nome){ erroEdicao('O nome do paciente não pode ficar vazio.'); return; }
+  const b=$('#agedit-salvar'); b.disabled=true;
+  try{
+    const r=await api('/api/agenda/'+agDetId+'/editar',{method:'POST',body:JSON.stringify(corpo)});
+    if(!r || r.ok===false) throw new Error((r&&r.error)||'Falha ao salvar.');
+    toast('Dados atualizados.');
+    closeAgDetails(); agRefresh();
+  }catch(e){ erroEdicao(e.message); }
+  finally{ b.disabled=false; }
+}
+async function remarcarAgendamento(){
+  if(!agDetId) return;
+  erroEdicao('');
+  const inicio=$('#agedit-slot').value;
+  if(!inicio){ erroEdicao('Escolha o novo horário.'); return; }
+  const quando=$('#agedit-slot').selectedOptions[0].textContent;
+  if(!confirm('Remarcar para '+quando+'?\n\nO novo horário é reservado antes de o antigo ser liberado.')) return;
+  const b=$('#agedit-remarcar'); b.disabled=true;
+  try{
+    const r=await api('/api/agenda/'+agDetId+'/move',{method:'POST',
+      body:JSON.stringify({inicio, unidade:$('#agedit-unidade').value})});
+    if(!r || r.ok===false) throw new Error((r&&r.error)||'Falha ao remarcar.');
+    toast('Remarcado para '+quando+'.');
+    closeAgDetails(); agRefresh();
+  }catch(e){ erroEdicao(e.message); }
+  finally{ b.disabled=false; }
 }
 
 // Comparecimento: só faz sentido depois que a consulta aconteceu, então para
@@ -1824,6 +1958,14 @@ $('#agdet-cancelar').onclick=async()=>{
   try{ await api('/api/agenda/'+agDetId+'/cancel',{method:'POST'}); toast('Agendamento cancelado.'); closeAgDetails(); agRefresh(); }
   catch(err){ toast('Falha ao cancelar.'); }
 };
+$('#agdet-abrir-edicao').onclick=()=>{
+  const f=$('#agdet-form');
+  f.hidden=!f.hidden;
+  if(!f.hidden) carregarVagasEdicao();   // só busca vagas quando a seção abre
+};
+$('#agedit-unidade').onchange=carregarVagasEdicao;
+$('#agedit-salvar').onclick=salvarEdicao;
+$('#agedit-remarcar').onclick=remarcarAgendamento;
 $('#btn-booked').onclick=markBooked;
 $('#btn-back').onclick=()=>{ document.getElementById('app').classList.remove('chat-open'); activeId=null; };
 $('#btn-send').onclick=sendMessage;
