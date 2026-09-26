@@ -554,3 +554,15 @@ O detalhe de cada passo está nas mensagens dos ~400 commits (`git log`) e em
   Meta + IG_ID/IG_TOKEN.
 - Futuro desejado (não começar sem o Bruno pedir): prontuário eletrônico próprio
   integrado a Ana + agenda + painel.
+- **Perguntar "como você conheceu a clínica?"** (aprovado pelo Dr. Bruno em
+  26/09/2026, ainda NÃO construído — é mudança de comportamento, segue a regra de
+  deploy de fim de semana). Motivo: dos 135 que consultaram de 28/08 a 26/09,
+  **53 (39%) eram pacientes novos sem origem rastreada** — o maior grupo, com 42%
+  de particular (Ads: 24%). O boca a boca mora aí dentro, misturado com Maps,
+  busca orgânica e Instagram, e nenhum dos 53 disse espontaneamente que foi
+  indicado. Desenho combinado: UMA pergunta, só DEPOIS de o `[AGENDAR]` estar
+  gravado (não arrisca a vaga), só para paciente NOVO (nunca base histórica,
+  nunca quem veio da campanha ou do Ads — esses já têm origem). Gravar a
+  resposta como origem do paciente. Se indicação for grande, lembrar o paciente
+  satisfeito de que pode indicar — **sem brinde nem vantagem** (CFM). Detalhe em
+  `docs/decisoes/` quando for construído.
