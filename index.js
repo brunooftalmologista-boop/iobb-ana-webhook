@@ -10145,15 +10145,44 @@ async function temConsultaFutura(telefone) {
   return !!(data && data.length);
 }
 
-async function naoDeveReceberCampanha(telefone) {
+async function naoDeveReceberCampanha(telefone, nome) {
   const fones = fonesBR(telefone);
   try {
-    // 1) Tem agendamento — futuro OU passado. Passado importa porque a base
-    //    histórica vai até 2025 e a pessoa pode ter voltado depois disso.
+    // 1) Tem agendamento — futuro OU passado, e QUALQUER status.
+    //    Passado importa porque a base histórica vai até 2025 e a pessoa pode ter
+    //    voltado depois disso.
+    //    Cancelado TAMBÉM conta (28/09/2026). Caso Silvana: três agendamentos em
+    //    13/08/2026, todos cancelados — a versão anterior ignorava cancelado e ela
+    //    recebeu "sua última consulta foi em julho de 2025". Respondeu: "o ano está
+    //    errado, julho de 2026". Quem estava marcando consulta há seis semanas não
+    //    é paciente sumido, mesmo que aquela marcação não tenha ido adiante. A
+    //    agenda nova só começa em 23/07/2026, então "qualquer agendamento" aqui já
+    //    quer dizer "teve contato de agenda nos últimos meses".
     const { data: ag } = await supabase.from("appointments").select("id, inicio")
-      .in("paciente_telefone", fones)
-      .not("status", "in", '("cancelado","cancelada")').limit(1);
+      .in("paciente_telefone", fones).limit(1);
     if (ag && ag.length) return "ja_agendado";
+
+    // 1b) Mesmo agendamento, OUTRO telefone — casado pelo NOME COMPLETO.
+    //    Caso Breno Nogueira Menke (28/09/2026): consultou em 09/09 pela Ana,
+    //    marcado de outro número (61 9626-1727); a campanha foi para o número
+    //    antigo da base (61 8184-8533) e ele respondeu "fiz a minha consulta no
+    //    começo do mês". O nome era idêntico.
+    //    Comparação EXATA (sem curinga, só ignorando maiúscula) e só com nome de
+    //    3 palavras ou mais: "Maria Silva" casaria com gente demais. O erro que
+    //    sobra é deixar de mandar para um homônimo perfeito de 3+ palavras — raro
+    //    e barato. O contrário (mandar "faz mais de um ano" a quem veio este mês)
+    //    é o que o paciente estranha.
+    //    Limite conhecido: acento diferente dos dois lados ("Tânia" × "Tania") não
+    //    casa. Não resolvido aqui de propósito — exigiria a extensão unaccent.
+    const nomeLimpo = String(nome || "").replace(/\s+/g, " ").trim();
+    // Conta só palavra que identifica: "Adriano da Silva" tem três, mas o "da" não
+    // distingue ninguém — na prática é um nome comum de duas.
+    const palavrasFortes = nomeLimpo.split(" ").filter(w => !/^(d[aeo]s?|e)$/i.test(w)).length;
+    if (palavrasFortes >= 3) {
+      const { data: porNome } = await supabase.from("appointments").select("id")
+        .ilike("paciente_nome", nomeLimpo.replace(/[%_\\]/g, "\\$&")).limit(1);
+      if (porNome && porNome.length) return "ja_agendado";
+    }
 
     // 2) Conversa recente com a Ana: ou já está sendo atendida, ou acabou de ser.
     const { data: pac } = await supabase.from("patients").select("id").in("phone", fones).limit(5);
@@ -10200,7 +10229,7 @@ async function resumoReengajamento() {
 async function dispararLoteReengajamento(quantos) {
   const n = Math.max(1, Math.min(Number(quantos) || 0, REENGAJAR_LOTE_MAX));
   const { data: fila, error } = await supabase.from("reengajamento")
-    .select("fone_chave, telefone, primeiro_nome, mes_referencia")
+    .select("fone_chave, telefone, nome, primeiro_nome, mes_referencia")
     .eq("campanha", REENGAJAR_CAMPANHA).eq("status", "pendente")
     .order("ultima_consulta", { ascending: false }).limit(n);
   if (error) throw new Error(`fila: ${error.message}`);
@@ -10209,7 +10238,7 @@ async function dispararLoteReengajamento(quantos) {
   for (const p of (fila || [])) {
     let status = "enviado", erro = null;
     try {
-      const impedimento = await naoDeveReceberCampanha(p.telefone);
+      const impedimento = await naoDeveReceberCampanha(p.telefone, p.nome);
       if (impedimento) { status = impedimento; r.jaAgendados++; }
       else {
         const env = await enviarTemplateMarketing(p.telefone, TEMPLATE_REENGAJAR_NOME, TEMPLATE_REENGAJAR_LANG,
