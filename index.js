@@ -4755,12 +4755,19 @@ async function trySendWhatsApp(to, texto) {
 // clínica. Loga CLARAMENTE cada tentativa: destino, sucesso/falha, motivo e código
 // da Meta. NUNCA lança. `label` identifica a origem no log (ex.: "[Recado urgência]").
 async function espelharParaSecretaria(label, texto) {
-  // Espelhamento para a secretária DESATIVADO (WA_SECRETARIA_NUMBER vazio): não
-  // envia nada e não tenta a salvaguarda. A informação continua no painel e no
-  // espelho geral da clínica (notificarClinica).
+  // SEM NÚMERO DA SECRETÁRIA → VAI PARA O CANAL DA CLÍNICA (Dr. Bruno, 28/09/2026).
+  // Até aqui, com WA_SECRETARIA_NUMBER vazio, esta função não enviava NADA — só
+  // escrevia no log. Eram 15 avisos mudos, entre eles "AGENDAMENTO NÃO FOI
+  // GRAVADO", "AGENDAMENTO SEM NOME", recados e respostas ao lembrete. Eu
+  // cheguei a descrever o de agendamento falho como a rede que salvou um casal
+  // em 23/09 — não era: ele nunca saiu. Quem viu foi a equipe, por outro meio.
+  // Agora cai em notificarClinica, o mesmo canal que já recebe a cópia de cada
+  // conversa. Nenhum dos 15 duplicava algo que já fosse para lá (conferido).
+  // Se um dia o número da secretária voltar, o fluxo antigo abaixo volta junto.
   if (!WA_SECRETARIA_NUMBER) {
-    console.log(`[Espelho]${label} — desativado (WA_SECRETARIA_NUMBER vazio); nada enviado.`);
-    return { entregue: false, canal: "desativado" };
+    await notificarClinica(texto);
+    console.log(`[Espelho]${label} — sem número da secretária; enviado ao canal da clínica.`);
+    return { entregue: true, canal: "clinica" };
   }
   const r1 = await trySendWhatsApp(WA_SECRETARIA_NUMBER, texto);
   if (r1.ok) {
