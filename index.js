@@ -11236,6 +11236,80 @@ async function cancelarPorTextoLivre(conversation, from, texto) {
   return true;
 }
 
+// ===== "CONFIRMO" PARA UMA CONSULTA QUE JÁ FOI DESMARCADA =====================
+// Caso Eliane e Paulo Marcos (28/09/2026): lembrete às 17h20; às 17h32 a equipe
+// cancelou os dois e escreveu "Desconsiderar a mensagem"; às 18h49 o paciente
+// respondeu "Confirmo". Sem consulta ATIVA, registrarRespostaAoLembrete desistia
+// e a Ana respondia no escuro: "Olá. Sou a Ana… Como posso ajudar?". O paciente
+// ficou achando que estava marcado — e o cancelamento tinha sido ENGANO; foi o
+// Dr. Bruno quem percebeu e mandou recolocar.
+// Agora: (1) a Ana diz com todas as letras que consta como desmarcada, sem culpar
+// ninguém, e abre as duas portas — "foi engano" ou "novo horário"; (2) a clínica
+// é avisada NA HORA, dizendo se a vaga ainda está livre para recolocar. O aviso
+// é o que importa: quem sabe se o cancelamento foi certo é a equipe.
+// Só age se NÃO houver nenhuma consulta ativa futura (sem limite de 30 dias):
+// quem remarcou para longe não pode ouvir "consta como desmarcada".
+async function confirmouConsultaCancelada({ conversation, from, fone }) {
+  const agora = new Date();
+  const { data: ativaFutura } = await supabase.from("appointments")
+    .select("id, paciente_telefone, conversation_id").in("status", ["reservado", "confirmado"])
+    .gte("inicio", agora.toISOString()).limit(500);
+  const temAtiva = (ativaFutura || []).some(a => String(a.conversation_id || "") === String(conversation.id)
+                                              || foneChave(a.paciente_telefone) === fone);
+  if (temAtiva) return false;
+
+  const { data: canc } = await supabase.from("appointments")
+    .select("id, inicio, unidade, paciente_nome, paciente_telefone, conversation_id, updated_at")
+    .eq("status", "cancelado").gte("inicio", agora.toISOString())
+    .lte("inicio", new Date(agora.getTime() + 3 * 24 * 3600 * 1000).toISOString())
+    .order("inicio", { ascending: true }).limit(200);
+  const meus = (canc || []).filter(a => String(a.conversation_id || "") === String(conversation.id)
+                                     || foneChave(a.paciente_telefone) === fone);
+  if (!meus.length) return false;
+
+  // O mesmo dia da primeira (família no mesmo número vem junto).
+  const diaDe = (d) => new Date(d).toLocaleDateString("en-CA", { timeZone: TZ_BR });
+  const grupo = meus.filter(a => diaDe(a.inicio) === diaDe(meus[0].inicio));
+  const primeiroNomeDe = (a) => String(a.paciente_nome || "").trim().split(/\s+/)[0] || "";
+  const cap = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
+
+  // A vaga ainda está livre? É o que decide se dá para simplesmente recolocar.
+  const livres = [];
+  for (const a of grupo) {
+    const { data: ocup } = await supabase.from("appointments").select("id")
+      .eq("unidade", a.unidade).eq("inicio", a.inicio).in("status", ["reservado", "confirmado"]).limit(1);
+    livres.push(!(ocup && ocup.length));
+  }
+  const todasLivres = livres.every(Boolean);
+
+  const quando = fmtLembreteQuando(grupo[0].inicio);
+  const lista = grupo.map((a, i) => `• ${cap(primeiroNomeDe(a)) || "paciente"} — ${fmtHoraBR(a.inicio)}${livres[i] ? "" : " (vaga já ocupada)"}`).join("\n");
+  await marcarPendenciaEquipe(conversation.id).catch(() => {});
+  await espelharParaSecretaria("[Confirmou desmarcada]",
+    `⚠️ *PACIENTE CONFIRMOU CONSULTA QUE ESTÁ DESMARCADA*\n📱 ${from}\n🕐 ${quando.replace(/ às .*/, "")} — ${grupo[0].unidade}\n${lista}\n\n`
+    + (todasLivres ? "✅ A vaga continua livre — se o cancelamento foi engano, dá para recolocar no painel."
+                   : "⛔ Pelo menos uma vaga já foi ocupada por outro paciente.")
+    + (conversation.status === "bot" ? "\n\nA Ana avisou o paciente que consta como desmarcada." : "\n\nA conversa está com a equipe — a Ana não respondeu."))
+    .catch(() => {});
+
+  // Em modo humano a conversa é da secretária: avisa, mas não responde.
+  if (conversation.status !== "bot") return true;
+
+  const resposta = grupo.length === 1
+    ? `Oi${primeiroNomeDe(grupo[0]) ? ", " + cap(primeiroNomeDe(grupo[0])) : ""}! Vi aqui que a sua consulta de *${quando}*, no ${unidadeParaPaciente(grupo[0].unidade)}, consta como *desmarcada* na nossa agenda.\n\nSe foi engano, me avise que a equipe confere agora. Ou, se preferir, eu verifico um novo horário para você.`
+    : `Oi! Vi aqui que as consultas de *${quando.replace(/ às .*/, "")}*, no ${unidadeParaPaciente(grupo[0].unidade)}, constam como *desmarcadas* na nossa agenda:\n${grupo.map(a => `• ${cap(primeiroNomeDe(a)) || "paciente"} — ${fmtHoraBR(a.inicio)}`).join("\n")}\n\nSe foi engano, me avise que a equipe confere agora. Ou, se preferir, eu verifico novos horários.`;
+  try {
+    const waId = await sendWhatsApp(from, resposta);
+    await supabase.from("messages").insert({ conversation_id: conversation.id, role: "assistant", content: resposta, wa_message_id: waId, event: "confirmou_desmarcada" });
+    await supabase.from("conversations").update({ last_message: resposta, updated_at: new Date().toISOString() }).eq("id", conversation.id);
+    console.log(`[Confirmação] ${maskFone(fone)} confirmou consulta DESMARCADA — paciente e clínica avisados (sem IA).`);
+    return true;
+  } catch (e) {
+    console.error("[Confirmação] Falha ao avisar confirmação de desmarcada (segue para a Ana):", e.message);
+    return false;
+  }
+}
+
 async function registrarRespostaAoLembrete(conversation, patient, from, texto, intencaoBotao = null) {
   // Houve lembrete nesta conversa há pouco? (messages.timestamp é naive UTC)
   const corte = new Date(Date.now() - 48 * 3600 * 1000).toISOString().slice(0, 19);
@@ -11302,7 +11376,20 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto, i
     .order("inicio", { ascending: true }).limit(300);
   const ap = (cands || []).find(a => String(a.conversation_id || "") === String(conversation.id))
           || (cands || []).find(a => foneChave(a.paciente_telefone) === fone);
-  if (!ap) return false;
+  if (!ap) {
+    // Sem consulta ativa: pode ser que ela tenha sido DESMARCADA depois do
+    // lembrete (caso Eliane/Paulo, 28/09). Ver confirmouConsultaCancelada.
+    // ⚠️ Só com confirmação EXPLÍCITA ("Confirmo" é o texto do botão). O
+    // RE_CONFIRMA aceita "ok", "sim", "beleza", 👍 — e depois de o próprio
+    // paciente tocar Desmarcar, um "ok" de cortesia ouviria "consta como
+    // desmarcada", que ele acabou de fazer. Esses seguem para a Ana, como antes.
+    const confirmaExplicito = /^(confirmo|confirmado|confirmada|confirmar|vou sim|vou estar|estarei)\b/.test(t);
+    if (confirmaExplicito) {
+      try { return await confirmouConsultaCancelada({ conversation, from, fone }); }
+      catch (e) { console.error("[Confirmação] Checagem de desmarcada falhou (segue para a Ana):", e.message); }
+    }
+    return false;
+  }
 
   // FAMÍLIA NO MESMO NÚMERO: mãe e filho, ou dois irmãos, dividem o WhatsApp e
   // cada um tem seu horário. Um único "CONFIRMO" chegava e o código pegava
