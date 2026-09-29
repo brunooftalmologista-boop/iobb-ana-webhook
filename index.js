@@ -7875,7 +7875,58 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     // Se veio junto de um [AGENDAR] (remarcação), só cancela o antigo se o novo foi
     // gravado com sucesso — assim o paciente NUNCA fica sem nenhum horário.
     if (canc.registros.length) {
-      if (ag.registros.length && !agendouOk) {
+      // 🛑 CANCELAMENTO SOZINHO EXIGE PEDIDO DO PACIENTE (29/09/2026).
+      // Caso Thalma Maciel Soares Haum: agendou terça 29/09 às 12h00; às 08h20
+      // escreveu "Obrigada", a Ana respondeu "De nada. Até amanhã! 😊" — e 2
+      // segundos depois a consulta estava CANCELADA. A resposta de cortesia levou
+      // um [CANCELAR] escondido. Nenhuma trava disparou, nada no error_log. A vaga
+      // foi dada a outra pessoa e, no dia, deu overbooking com ela na recepção.
+      // A remarcação ([CANCELAR] + [AGENDAR]) já era protegida: cortesia não
+      // remarca, e o antigo só sai se o novo existir. O [CANCELAR] SOZINHO não
+      // tinha trava nenhuma. Mesma inversão da prova usada na remarcação: cancelar
+      // nasce de um PEDIDO, e pedido tem forma reconhecível (desmarcar, cancelar,
+      // remarcar, não vou/não posso, imprevisto, outro dia…). Sem sinal em nenhuma
+      // das últimas falas do paciente, o bloco é descartado — a consulta fica.
+      // A regex é PERMISSIVA de propósito: só barra quando claramente não houve
+      // pedido. Na dúvida entre cancelar e manter, manter: consulta a mais a
+      // equipe resolve com uma ligação; consulta sumida vira overbooking no balcão.
+      // Testada contra os 27 cancelamentos-sozinhos reais de 60 dias antes de subir.
+      // Achou dois furos na 1ª versão: "desmarQUE"/"remarQUE" (escrevi só com c)
+      // e "mais cedo"/"próxima semana". "amanhã" e dias da semana ficam DE FORA
+      // de propósito: a Thalma escreveu "pode deixar amanhã em Taguatinga" ao
+      // ESCOLHER a consulta — com eles, a trava liberaria justo o caso dela.
+      const RE_PEDIU_CANCELAR = /(desmar[cq]|cancel|remar[cq]|adiar|antecip|imprevisto|outro dia|outra data|outro hor[aá]rio|mais cedo|mais tarde|pr[oó]xima semana|semana que vem|mudar|trocar|n[aã]o\s+(vou|posso|poderei|consigo|conseguirei|irei|vai\s+dar|d[aá]))/i;
+      const falasDoPaciente = (history || []).filter(m => m.role === "user").slice(-6).map(m => String(m.content || ""));
+      const houvePedido = falasDoPaciente.some(t => RE_PEDIU_CANCELAR.test(t));
+      // O discriminador que o texto não dá, a agenda dá. Caso das irmãs Cidrack
+      // (25/08): pediram "depois do dia 5/09", a Ana marcou os horários novos e só
+      // DEPOIS de um "obrigada" cancelou os antigos — limpeza legítima de uma
+      // remarcação. A Thalma ia ficar SEM NENHUMA consulta. Só barra quando o
+      // paciente ficaria sem consulta ativa futura; se sobra outra, é limpeza.
+      let sobraOutraAtiva = true;   // na dúvida (erro de banco), não barra: comportamento antigo
+      if (!ag.registros.length && !houvePedido) {
+        try {
+          const alvos = new Set(canc.registros.map(r => inicioDoBloco(r.inicio))
+            .filter(d => !isNaN(d.getTime())).map(d => d.toISOString()));
+          const { data: ativas } = await supabase.from("appointments").select("inicio")
+            .in("paciente_telefone", fonesBR(from)).in("status", ["reservado", "confirmado"])
+            .gte("inicio", new Date().toISOString());
+          sobraOutraAtiva = (ativas || []).some(a => !alvos.has(new Date(a.inicio).toISOString()));
+        } catch (e) { console.error("[Cancelar] Não consegui conferir as outras consultas (não barro):", e.message); }
+      }
+      if (!ag.registros.length && !houvePedido && !sobraOutraAtiva) {
+        const oQue = canc.registros.map(r => `${r.unidade || "?"} ${r.inicio || "?"}`).join("; ");
+        console.warn(`[Cancelar] BLOQUEADO — [CANCELAR] sem nenhum pedido do paciente nas últimas falas (${oQue}). A consulta fica.`);
+        await registrarErro("cancelar_sem_pedido",
+          `bloco descartado: ${oQue} | últimas falas: ${falasDoPaciente.slice(-3).join(" ▸ ").slice(0, 240)}`,
+          { conversationId: conversation.id, telefone: from }).catch(() => {});
+        // Se a prosa ANUNCIOU cancelamento, o paciente acha que foi desmarcado e
+        // não foi — aí a clínica precisa saber para esclarecer com ele.
+        if (/desmarc|cancel/i.test(String(reply || ""))) {
+          notificarClinica(`⚠️ *A Ana disse ao paciente que desmarcou, mas o sistema NÃO desmarcou*\n📱 ${from}\n🕐 ${oQue}\n\nO paciente não tinha pedido cancelamento nas últimas mensagens, então a consulta foi mantida. Confirmem com ele se quer mesmo desmarcar.`)
+            .catch(e => console.error("[Cancelar] Falha ao avisar a clínica:", e.message));
+        }
+      } else if (ag.registros.length && !agendouOk) {
         console.warn("[Cancelar] Remarcação: novo horário não gravou — mantenho o antigo, NÃO cancelo.");
       } else {
         // TODOS os blocos, não só o primeiro: mãe e filho no mesmo WhatsApp
