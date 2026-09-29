@@ -2472,7 +2472,7 @@ function anunciouAgendamentoSemAgendar(reply, slots, meusAgendamentos) {
   // Anunciou. O bloco saiu, com início válido?
   const regs = extrairAgendar(reply).registros || [];
   const validos = regs.filter(r => {
-    const t = new Date(String(r.inicio || "").trim()).getTime();
+    const t = inicioDoBloco(r.inicio).getTime();
     return !isNaN(t) && String(r.unidade || "").trim();
   });
   if (!validos.length) {
@@ -2729,6 +2729,26 @@ ${faltas.some(f => /NÃO está na lista/.test(f)) ? `⚠️ Sobre o convênio qu
 // (ao corrigir um dado, ao se despedir), e a ficha ia junto toda vez. Aqui
 // pulamos o registro cujo dia/hora JÁ apareceu num resumo anterior desta
 // conversa. Remarcação muda a data, então gera resumo novo — que é o certo.
+// ⏰ HORA DO BLOCO DA ANA → Date. UM LUGAR SÓ PARA TODO MUNDO (29/09/2026).
+// Hora sem fuso vinda da Ana é SEMPRE horário de Brasília. O Render roda em UTC,
+// e new Date("2026-10-02T10:40:00") lê como 10:40 UTC = 07:40 em Brasília.
+// Em 24/09 consertei isso só na GRAVAÇÃO (processarAgendarDaAna). Outros quatro
+// lugares liam o mesmo campo com new Date() cru e ficaram errados:
+//   · o cartão "Confira seus dados" — Analice (29/09) leu "10h40" no texto e
+//     "07h40" no cartão, na mesma mensagem;
+//   · o [CANCELAR] — procurava a consulta 3h antes, não achava, não cancelava;
+//   · a conferência da remarcação — não achava o horário novo, concluía que
+//     falhou e NÃO liberava o antigo: paciente com duas consultas;
+//   · a trava de "anunciou sem agendar" (só validade, mas fica igual aos outros).
+// Regra: todo lugar que lê `inicio` de um BLOCO da Ana usa esta função. Linha
+// do banco (timestamptz) já vem com fuso e não precisa.
+function inicioDoBloco(raw) {
+  const t = String(raw ?? "").trim();
+  if (!t) return new Date(NaN);
+  const semFuso = !/(Z|[+-]\d{2}:?\d{2})$/i.test(t);
+  return new Date(semFuso ? `${t}-03:00` : t);
+}
+
 // 🎂 NASCIMENTO SEMPRE EM DD/MM/AAAA. A Ana copia o campo do bloco como veio, e
 // quando o dado nasce da ficha do banco ele vem em ISO: a Maria Luzimar recebeu
 // "Nascimento: 1944-04-02" (26/09/2026) — formato de banco de dados na mão de
@@ -2792,7 +2812,7 @@ function resumoDaFicha(registros, cartRegistro, messages) {
   const linhas = [];
   for (const r of (registros || [])) {
     const v = (x) => { const s = String(x || "").trim(); return (s && s !== "-") ? s : null; };
-    const ini = new Date(v(r.inicio));
+    const ini = inicioDoBloco(v(r.inicio));
     const quando = isNaN(ini.getTime()) ? null
       : `${ini.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit" })}, às ${fmtHoraBR(ini.toISOString()).replace(":", "h")}`;
     const conv = v(r.convenio);
@@ -3500,8 +3520,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     // 02/10, às 14h20", e a agenda gravou 11h20. Só apareceu porque eu fui
     // conferir OUTRA coisa na mesma linha — nenhum alerta disparou.
     // A Ana nunca pensa em UTC: hora sem fuso, vinda dela, é sempre -03:00.
-    const semFuso = !/(Z|[+-]\d{2}:?\d{2})$/i.test(inicioRaw);
-    let ini = new Date(semFuso ? `${inicioRaw}-03:00` : inicioRaw);
+    let ini = inicioDoBloco(inicioRaw);
     if (isNaN(ini.getTime())) {
       console.error("[Agendar] inicio inválido:", inicioRaw);
       await registrarErro("agendar_bloco_invalido", `inicio inválido: ${inicioRaw}`,
@@ -3969,7 +3988,7 @@ async function processarCancelarDaAna({ registro, from, conversationId }) {
     };
     const inicioRaw = limpo(registro.inicio);
     if (!inicioRaw) { console.error("[Cancelar] Bloco sem inicio."); return { ok: false }; }
-    const ini = new Date(inicioRaw);
+    const ini = inicioDoBloco(inicioRaw);
     if (isNaN(ini.getTime())) { console.error("[Cancelar] inicio inválido:", inicioRaw); return { ok: false }; }
     let unidade = limpo(registro.unidade);
     if (unidade) {
@@ -7819,7 +7838,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
         else {
           try {
             const { data: existe } = await supabase.from("appointments").select("id")
-              .eq("unidade", registro.unidade).eq("inicio", new Date(registro.inicio).toISOString())
+              .eq("unidade", registro.unidade).eq("inicio", inicioDoBloco(registro.inicio).toISOString())
               .in("status", ["reservado", "confirmado"])
               .in("paciente_telefone", fonesBR(from)).limit(1);
             if (!existe || !existe.length) {
