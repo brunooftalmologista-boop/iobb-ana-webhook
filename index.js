@@ -2748,6 +2748,14 @@ function inicioDoBloco(raw) {
   const semFuso = !/(Z|[+-]\d{2}:?\d{2})$/i.test(t);
   return new Date(semFuso ? `${t}-03:00` : t);
 }
+// O contrário vale para `messages.timestamp`: a coluna é sem fuso e guarda UTC.
+// Devolve milissegundos (NaN se ilegível), sem depender do fuso do processo.
+function instanteDaMensagem(raw) {
+  const t = String(raw ?? "").trim();
+  if (!t) return NaN;
+  const semFuso = !/(Z|[+-]\d{2}:?\d{2})$/i.test(t);
+  return new Date(semFuso ? `${t.replace(" ", "T")}Z` : t).getTime();
+}
 
 // 🎂 NASCIMENTO SEMPRE EM DD/MM/AAAA. A Ana copia o campo do bloco como veio, e
 // quando o dado nasce da ficha do banco ele vem em ISO: a Maria Luzimar recebeu
@@ -3620,6 +3628,11 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
         .eq("conversation_id", String(conversationId))
         .eq("origem", "ana")
         .in("status", ["reservado", "confirmado"])
+        // Só consulta que AINDA VAI ACONTECER pode ser remarcada. Sem este filtro,
+        // marcar um retorno "remarcava" a consulta já ATENDIDA da mesma conversa:
+        // 8 consultas com presença registrada viraram "cancelado" (Rita 24/08,
+        // André 21/09…), e a Ana depois lia a data da última consulta errada.
+        .gte("inicio", new Date().toISOString())
         .order("inicio", { ascending: false })
         .limit(5);
       if (existentes && existentes.length) {
@@ -7895,24 +7908,56 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       // e "mais cedo"/"próxima semana". "amanhã" e dias da semana ficam DE FORA
       // de propósito: a Thalma escreveu "pode deixar amanhã em Taguatinga" ao
       // ESCOLHER a consulta — com eles, a trava liberaria justo o caso dela.
-      const RE_PEDIU_CANCELAR = /(desmar[cq]|cancel|remar[cq]|adiar|antecip|imprevisto|outro dia|outra data|outro hor[aá]rio|mais cedo|mais tarde|pr[oó]xima semana|semana que vem|mudar|trocar|n[aã]o\s+(vou|posso|poderei|consigo|conseguirei|irei|vai\s+dar|d[aá]))/i;
-      const falasDoPaciente = (history || []).filter(m => m.role === "user").slice(-6).map(m => String(m.content || ""));
-      const houvePedido = falasDoPaciente.some(t => RE_PEDIU_CANCELAR.test(t));
-      // O discriminador que o texto não dá, a agenda dá. Caso das irmãs Cidrack
-      // (25/08): pediram "depois do dia 5/09", a Ana marcou os horários novos e só
-      // DEPOIS de um "obrigada" cancelou os antigos — limpeza legítima de uma
-      // remarcação. A Thalma ia ficar SEM NENHUMA consulta. Só barra quando o
-      // paciente ficaria sem consulta ativa futura; se sobra outra, é limpeza.
+      //
+      // ⏱️ O PEDIDO TEM DE SER MAIS NOVO QUE A CONSULTA (30/09/2026 — caso Ricardo
+      // Nobre de Mattos). A trava acima subiu em 29/09 e, no dia seguinte, deixou
+      // passar exatamente o que devia barrar: ele pediu para remarcar ("surgiu um
+      // imprevisto…"), a Ana marcou 07/10 às 11h00, ele escreveu "Obrigado", ela
+      // respondeu "Por nada. Até quarta-feira!" — e cancelou o 07/10 recém-criado.
+      // Passou porque a trava procurava o pedido nas ÚLTIMAS 6 FALAS, e o pedido
+      // de remarcação ainda estava entre elas. Só que aquele pedido JÁ TINHA SIDO
+      // ATENDIDO: a consulta que a Ana cancelou nasceu DEPOIS dele. Pedido antigo
+      // não autoriza cancelar consulta nova.
+      // Regra: o pedido só vale se veio DEPOIS de a consulta-alvo ser criada (ou
+      // está na mensagem deste turno). Rodada contra os cancelamentos-sozinhos de
+      // 60 dias: barra 10. Sete indevidos — Thalma, Ricardo, Maria Bernadete,
+      // Silvana, Maria do Carmo e as duas irmãs Cidrack (que em 29/09 eu li como
+      // limpeza legítima e não eram: a secretária teve de remarcar as duas 6 dias
+      // depois). E três "cancelo para corrigir um dado e marco de novo" (Romulo,
+      // Rita, André), onde barrar é inofensivo: o [AGENDAR] seguinte cai no
+      // re-emit idêntico e a consulta nunca fica fora da agenda.
+      // Nenhum dos 45 cancelamentos pedidos de verdade seria barrado.
+      const RE_PEDIU_CANCELAR = /(desmar[cq]|cancel|remar[cq]|adiar|antecip|imprevisto|outro dia|outra data|outro hor[aá]rio|mais cedo|mais tarde|pr[oó]xima semana|semana que vem|mudar|trocar|desist|esquec|deixa\s+(pra|para)\s+l|n[aã]o\s+(vou|posso|poderei|consigo|conseguirei|irei|quero|vai\s+dar|d[aá]))/i;
+      let falasDoPaciente = (history || []).filter(m => m.role === "user").slice(-6).map(m => String(m.content || ""));
+      let houvePedido = RE_PEDIU_CANCELAR.test(String(text || ""));
+      // O discriminador que o texto não dá, a agenda dá: se depois do cancelamento
+      // ainda sobra OUTRA consulta ativa do mesmo telefone, é limpeza de duplicata
+      // ou de remarcação — deixa passar. Só barra quando ficaria sem nenhuma.
       let sobraOutraAtiva = true;   // na dúvida (erro de banco), não barra: comportamento antigo
       if (!ag.registros.length && !houvePedido) {
         try {
           const alvos = new Set(canc.registros.map(r => inicioDoBloco(r.inicio))
             .filter(d => !isNaN(d.getTime())).map(d => d.toISOString()));
-          const { data: ativas } = await supabase.from("appointments").select("inicio")
+          const { data: ativas } = await supabase.from("appointments").select("inicio, created_at")
             .in("paciente_telefone", fonesBR(from)).in("status", ["reservado", "confirmado"])
             .gte("inicio", new Date().toISOString());
-          sobraOutraAtiva = (ativas || []).some(a => !alvos.has(new Date(a.inicio).toISOString()));
-        } catch (e) { console.error("[Cancelar] Não consegui conferir as outras consultas (não barro):", e.message); }
+          const ehAlvo = (a) => alvos.has(new Date(a.inicio).toISOString());
+          sobraOutraAtiva = (ativas || []).some(a => !ehAlvo(a));
+          const consultasAlvo = (ativas || []).filter(ehAlvo);
+          const { data: falas } = await supabase.from("messages").select("content, timestamp")
+            .eq("conversation_id", conversation.id).eq("role", "user")
+            .order("timestamp", { ascending: false }).limit(15);
+          const pedidos = (falas || []).filter(m => RE_PEDIU_CANCELAR.test(String(m.content || "")))
+            .map(m => instanteDaMensagem(m.timestamp)).filter(t => !isNaN(t));
+          falasDoPaciente = (falas || []).slice(0, 6).reverse().map(m => String(m.content || ""));
+          // Alvo não encontrado entre as ativas = nada a cancelar; cai no fluxo
+          // normal, que só registra "provavelmente já tratado".
+          houvePedido = !consultasAlvo.length
+            || consultasAlvo.some(a => pedidos.some(t => t > new Date(a.created_at).getTime()));
+        } catch (e) {
+          houvePedido = falasDoPaciente.some(t => RE_PEDIU_CANCELAR.test(t));   // sem banco: regra de 29/09
+          console.error("[Cancelar] Não consegui conferir pedido × consulta (uso as últimas falas):", e.message);
+        }
       }
       if (!ag.registros.length && !houvePedido && !sobraOutraAtiva) {
         const oQue = canc.registros.map(r => `${r.unidade || "?"} ${r.inicio || "?"}`).join("; ");
@@ -7931,7 +7976,19 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       } else {
         // TODOS os blocos, não só o primeiro: mãe e filho no mesmo WhatsApp
         // cancelam junto, e até 18/08 o segundo era descartado em silêncio.
+        // 🛑 NUNCA CANCELAR O HORÁRIO QUE ESTA MESMA MENSAGEM ACABOU DE MARCAR.
+        // André von Borries Lopes (27/09): pediu para corrigir o motivo para
+        // "Retorno"; a Ana mandou [AGENDAR] e [CANCELAR] do MESMO horário. O novo
+        // foi gravado às 22:46:45 e cancelado às 22:46:46 — ele ficou sem nada,
+        // ouvindo "vou corrigir o agendamento". A vaga foi dada a outra paciente.
+        const recemMarcados = new Set(ag.registros.map(r => inicioDoBloco(r.inicio).getTime()).filter(t => !isNaN(t)));
         for (const registro of canc.registros) {
+          if (recemMarcados.has(inicioDoBloco(registro.inicio).getTime())) {
+            console.warn(`[Cancelar] IGNORADO — o bloco cancela o mesmo horário que esta mensagem acabou de marcar (${registro.inicio}).`);
+            await registrarErro("cancelar_o_recem_marcado", `bloco descartado: ${registro.unidade || "?"} ${registro.inicio || "?"}`,
+              { conversationId: conversation.id, telefone: from }).catch(() => {});
+            continue;
+          }
           await processarCancelarDaAna({ registro, from, conversationId: conversation.id });
         }
       }
