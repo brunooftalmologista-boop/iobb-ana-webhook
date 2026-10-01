@@ -3487,7 +3487,7 @@ async function avisarFalhaDeAgendamento(conversationId, from, texto) {
   await trySendWhatsApp(from, texto);
   await saveMessage(conversationId, "assistant", texto)
     .catch(e => console.error("[Agendar] Falha ao salvar a correção no histórico:", e.message));
-  await marcarPendenciaEquipe(conversationId, "action").catch(() => {});
+  await marcarPendenciaEquipe(conversationId, "urgent").catch(() => {});
 }
 
 async function processarAgendarDaAna({ registro, patient, from, conversationId, replyTexto }) {
@@ -4332,6 +4332,13 @@ async function saveMessage(conversationId, role, content, waMessageId = null, me
   }
   if (error) console.error("[Msg] Falha ao inserir mensagem no banco:", error.message);
   else if (withMedia.media_path) console.log(`[Anexo] media_path gravado na mensagem (${withMedia.media_type || "?"}): ${withMedia.media_path}`);
+  // A equipe ESCREVEU para o paciente = agiu → a pendência sai. É uma das três
+  // formas de resolver (as outras: ✓ no painel e encerrar a conversa). Abrir a
+  // conversa só para ler deixou de contar (ver GET /messages).
+  if (!error && role === "human") {
+    supabase.from("conversations").update({ team_flag: null }).eq("id", conversationId).not("team_flag", "is", null)
+      .then(() => limparCacheConversas(), e => console.error("[Painel] Falha ao limpar team_flag após resposta da equipe:", e?.message || e));
+  }
 
   invalidarCacheMensagens(conversationId);   // o painel tem de ver esta mensagem já
   await supabase.from("conversations").update({ last_message: content, updated_at: new Date() }).eq("id", conversationId);
@@ -5263,10 +5270,21 @@ async function notificarRecadoEquipe(recado, patient, from) {
 // Marca a conversa como "precisa da equipe" para o painel destacar a caixa
 // (amarelo = 'action'; vermelho = 'urgent'). Limpa ao abrir a conversa no painel.
 // Best-effort: nunca derruba o fluxo.
+// "urgent" = a EQUIPE PRECISA ASSUMIR (a Ana prometeu contato, o paciente está
+// esperando, o agendamento falhou): no painel pisca em vermelho e toca o alarme.
+// "action" = conferir algo (carteirinha, convênio, ficha) — barra verde, sem alarme.
+// Dr. Bruno, 30/09/2026: "quando for para a equipe assumir, aquele alerta de
+// urgência, com alerta sonoro e piscando". Até aqui o alarme dependia de a Ana
+// usar certas palavras na prosa ("Registro feito. A equipe entrará em contato"
+// não estava na lista) e a marca sumia ao ABRIR a conversa.
+// Nunca rebaixa: um "action" posterior não apaga um "urgent" pendente.
 async function marcarPendenciaEquipe(conversationId, nivel = "action") {
   if (!conversationId) return;
   try {
-    await supabase.from("conversations").update({ team_flag: nivel }).eq("id", conversationId);
+    let q = supabase.from("conversations").update({ team_flag: nivel }).eq("id", conversationId);
+    if (nivel !== "urgent") q = q.or("team_flag.is.null,team_flag.neq.urgent");
+    await q;
+    limparCacheConversas();   // a marca não muda updated_at — sem isto a lista em cache esconderia o alerta
   } catch (e) { console.error("[Painel] Falha ao marcar pendência da equipe:", e.message); }
 }
 
@@ -7872,11 +7890,11 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       // offline no Google Ads, sem depender do clique manual no painel.
       await marcarConversaoAgendada(conversation.id);
       // Sinaliza no painel que a conversa precisa da equipe (pré-agendamento/encaixe).
-      await marcarPendenciaEquipe(conversation.id, "action");
+      await marcarPendenciaEquipe(conversation.id, "urgent");
     }
     else if (rec.recado) {
       await notificarRecadoEquipe(rec.recado, patient, from);
-      await marcarPendenciaEquipe(conversation.id, rec.recado.prioritario ? "urgent" : "action");
+      await marcarPendenciaEquipe(conversation.id, "urgent");   // recado = a equipe precisa retornar
       // Registro informativo (não é erro): alimenta a cobrança de recado sem
       // resposta. Foi um "a equipe entrará em contato" sem ninguém cobrar que
       // matou um lead de lente em 03/08 — ninguém percebeu até a auditoria.
@@ -8389,11 +8407,12 @@ app.get("/api/conversations", async (req, res) => {
 
 app.get("/api/conversations/:id/messages", async (req, res) => {
   const convId = String(req.params.id);
-  // Abrir a conversa = a equipe viu o alerta → limpa a marca de "precisa da
-  // equipe". Fica FORA do cache: é o efeito colateral que o painel espera de
-  // toda abertura, e some se ficar atrás do atalho.
-  supabase.from("conversations").update({ team_flag: null }).eq("id", convId)
-    .then(() => {}, e => console.error("[Painel] Falha ao limpar team_flag:", e?.message || e));
+  // ⚠️ ABRIR NÃO RESOLVE (Dr. Bruno, 30/09/2026). Até aqui, abrir a conversa
+  // apagava a marca de "precisa da equipe" — e quem abria só para olhar (ou
+  // para tirar um print) sumia com o alerta de um pré-agendamento que ninguém
+  // tinha atendido (Maria Eduarda, pedido para 16/10). Agora a marca só sai
+  // quando alguém age: escreve ao paciente (saveMessage "human"), clica ✓ no
+  // painel (POST /resolver) ou encerra a conversa.
   // Assinatura barata desta conversa: quantas mensagens tem + a última timestamp.
   let assinatura = null;
   try {
@@ -8492,8 +8511,18 @@ app.post("/api/conversations/:id/release", async (req, res) => {
 // conversas "closed" e abre uma nova conversa "bot" — a Ana volta a atender
 // normalmente, sem ficar travada.
 app.post("/api/conversations/:id/close", async (req, res) => {
-  const { error } = await supabase.from("conversations").update({ status: "closed", assigned_to: null }).eq("id", req.params.id);
+  const { error } = await supabase.from("conversations").update({ status: "closed", assigned_to: null, team_flag: null }).eq("id", req.params.id);
   if (error) return res.status(500).json({ ok: false, error: error.message });
+  limparCacheConversas();
+  res.json({ ok: true });
+});
+
+// ✓ no painel: a equipe resolveu a pendência sem precisar escrever ao paciente
+// (ex.: ligou, ou marcou direto na agenda). Tira o sinal de alerta da lista.
+app.post("/api/conversations/:id/resolver", async (req, res) => {
+  const { error } = await supabase.from("conversations").update({ team_flag: null }).eq("id", req.params.id);
+  if (error) return res.status(500).json({ ok: false, error: error.message });
+  limparCacheConversas();
   res.json({ ok: true });
 });
 
@@ -11411,7 +11440,7 @@ async function confirmouConsultaCancelada({ conversation, from, fone }) {
 
   const quando = fmtLembreteQuando(grupo[0].inicio);
   const lista = grupo.map((a, i) => `• ${cap(primeiroNomeDe(a)) || "paciente"} — ${fmtHoraBR(a.inicio)}${livres[i] ? "" : " (vaga já ocupada)"}`).join("\n");
-  await marcarPendenciaEquipe(conversation.id).catch(() => {});
+  await marcarPendenciaEquipe(conversation.id, "urgent").catch(() => {});
   await espelharParaSecretaria("[Confirmou desmarcada]",
     `⚠️ *PACIENTE CONFIRMOU CONSULTA QUE ESTÁ DESMARCADA*\n📱 ${from}\n🕐 ${quando.replace(/ às .*/, "")} — ${grupo[0].unidade}\n${lista}\n\n`
     + (todasLivres ? "✅ A vaga continua livre — se o cancelamento foi engano, dá para recolocar no painel."
@@ -11562,7 +11591,7 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto, i
     }
 
     // Não mexe na agenda: quem remarca é a Ana (com a lista) ou a equipe.
-    await marcarPendenciaEquipe(conversation.id).catch(() => {});
+    await marcarPendenciaEquipe(conversation.id, "urgent").catch(() => {});
     await espelharParaSecretaria("[Resposta ao lembrete]",
       `🔄 *PACIENTE QUER REMARCAR/CANCELAR*\n👤 ${ap.paciente_nome || from}\n📱 ${from}\n🕐 ${fmtDataHoraBR(ap.inicio)} — ${ap.unidade}\n💬 "${String(texto).slice(0, 120)}"`).catch(() => {});
     console.log(`[Confirmação] ${maskFone(fone)} pediu remarcação de ${ap.inicio} — equipe avisada.`);
@@ -11971,7 +12000,7 @@ async function avisarMensagensSemResposta() {
           ? `⏳ *PACIENTE ESPERANDO A EQUIPE (${min} min)*\n👤 ${pac?.name || "paciente"}\n📱 ${fone}\n${m.media_path ? "🎧 veio como áudio/foto\n" : ""}\n💬 "${texto.slice(0, 200)}"\n\nEsta conversa foi assumida por alguém da equipe, então *a Ana está calada e não vai responder*. Só a equipe pode retomar.`
           : `🔕 *MENSAGEM SEM RESPOSTA (${min} min)*\n👤 ${pac?.name || "paciente"}\n📱 ${fone}\n${m.media_path ? "🎧 veio como áudio/foto\n" : ""}\n💬 "${texto.slice(0, 200)}"\n\nA Ana não respondeu e a conversa está em modo automático. Alguém precisa olhar no painel.`
       ).catch(e => console.error("[SemResposta] Falha ao avisar:", e.message));
-      await marcarPendenciaEquipe(m.conversation_id, "action").catch(() => {});
+      await marcarPendenciaEquipe(m.conversation_id, "urgent").catch(() => {});   // paciente esperando
       await registrarErro("mensagem_sem_resposta", `${min}min | ${m.media_path ? "MÍDIA | " : ""}${texto.slice(0, 160)}`,
         { conversationId: m.conversation_id, telefone: fone }).catch(() => {});
       console.warn(`[SemResposta] ${maskFone(fone)} há ${min} min sem resposta — equipe avisada.`);

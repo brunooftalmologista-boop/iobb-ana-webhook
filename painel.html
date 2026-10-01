@@ -63,6 +63,8 @@
   .conv.needs-urgent::before{background:#e02424;animation:attnblink 1s steps(1) infinite;}
   .attn-dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:0 0 auto;display:inline-block;box-shadow:0 0 0 2px #fff;}
   .attn-dot.urgent{background:#e02424;animation:attnblink 1s steps(1) infinite;}
+  #btn-read.pendente{background:#d1f4cc;color:#008069;font-weight:700;}
+  #btn-read.pendente-urgente{background:#fde2e2;color:#e02424;animation:attnblink 1s steps(1) infinite;}
   @keyframes attnblink{50%{opacity:.15;}}
   .icon-btn.armed{color:var(--green-dark);}
   .icon-btn.armed::after{content:'';position:absolute;width:7px;height:7px;border-radius:50%;background:var(--green);margin:-14px 0 0 14px;box-shadow:0 0 0 2px var(--header);}
@@ -611,6 +613,7 @@ let activeConv = null;
 let messages = [];
 let unreadCount = {};        // { convId: n }  (novos observados nesta sessão)
 let prevUpdated = {};        // { convId: updated_at } para detectar novidades
+let prevFlag = {};           // { convId: team_flag } — marca do BACKEND; quando sobe, toca o alarme
 let attention = {};          // { convId: 'action'|'urgent' } precisa de ação da equipe
 let anaGlobalActive = null;  // estado global da Ana (null=desconhecido)
 let anaPendingTarget = null; // alvo pretendido ao abrir o modal admin
@@ -714,6 +717,16 @@ async function loadConversations(){
         }
       }
       prevUpdated[c.id] = c.updated_at;
+      // 🚨 MARCA DO BACKEND (30/09/2026). O sistema marca a conversa quando a
+      // equipe precisa assumir (pré-agendamento, recado, paciente esperando,
+      // agendamento que falhou). Quando a marca APARECE ou SOBE para urgente,
+      // toca o alarme — independentemente das palavras que a Ana usou. Na 1ª
+      // carga (prevFlag vazio) só pisca, sem som, para não disparar tudo junto.
+      const antes = prevFlag[c.id], agora = c.team_flag || null;
+      if(antes !== undefined && agora && agora !== antes && !(antes==='urgent' && agora==='action')){
+        alertPending(agora, c);
+      }
+      prevFlag[c.id] = agora;
     }
     applyFilter();
     loadAnaStatus();   // reflete o estado global da Ana (ligada/desligada) a cada ciclo
@@ -997,8 +1010,9 @@ async function openConversation(id){
   activeConv = conversations.find(c=>c.id===id);
   if(!activeConv) return;
   unreadCount[id]=0;
-  delete attention[id];   // abriu → limpa destaque de "precisa de ação"
-  if(activeConv) activeConv.team_flag=null;   // some o destaque na hora (backend limpa via GET /messages)
+  delete attention[id];   // abriu → limpa só o destaque da HEURÍSTICA de texto
+  // A marca do backend (team_flag) NÃO some ao abrir: só quando alguém responde
+  // ao paciente, clica ✓ ou encerra a conversa (Dr. Bruno, 30/09/2026).
   unlockAudio();          // é um gesto do usuário → garante áudio destravado
   readState[id]=activeConv.updated_at; saveRead();
 
@@ -1037,6 +1051,14 @@ function updateChatHeader(){
   if(btnReopen) btnReopen.style.display = closed ? 'flex' : 'none';
   // "Devolver à Ana" só aparece quando um humano assumiu (status human)
   if(btnDev) btnDev.style.display = human ? 'flex' : 'none';
+  // Com pendência aberta, o ✓ vira o botão de "resolvido" e fica em destaque.
+  const btnRead=$('#btn-read');
+  if(btnRead){
+    const f=activeConv.team_flag;
+    btnRead.classList.toggle('pendente', !!f);
+    btnRead.classList.toggle('pendente-urgente', f==='urgent');
+    btnRead.title = f ? 'Resolver pendência (tira o alerta da lista)' : 'Marcar como lido';
+  }
   updateTyping();
 }
 
@@ -1220,9 +1242,19 @@ async function uploadFile(e){
 }
 
 // ---------- Marcar como lido ----------
-function markRead(){
+async function markRead(){
   if(!activeConv) return;
   readState[activeId]=new Date().toISOString(); unreadCount[activeId]=0; saveRead();
+  // ✓ também RESOLVE a pendência (tira o alerta vermelho/verde da lista).
+  if(activeConv.team_flag){
+    try{
+      await api(`/api/conversations/${activeId}/resolver`,{ method:'POST', body:JSON.stringify({}) });
+      activeConv.team_flag=null; prevFlag[activeId]=null;
+      const c=conversations.find(x=>x.id===activeId); if(c) c.team_flag=null;
+      updateChatHeader(); renderList(); toast('Pendência resolvida — alerta removido.');
+      return;
+    }catch(e){ toast('Não consegui remover o alerta. Tente de novo.'); }
+  }
   renderList(); toast('Marcada como lida.');
 }
 
