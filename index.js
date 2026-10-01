@@ -3764,8 +3764,15 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
                 .in("role", ["user", "assistant"])
                 .order("timestamp", { ascending: false }).limit(6);
               const linhas = ult || [];
-              const txt = String(linhas.find(m => m.role === "user")?.content || "").trim();
-              const ultimaDaAna = String(linhas.find(m => m.role === "assistant")?.content || "");
+              const iUser = linhas.findIndex(m => m.role === "user");
+              const txt = String(linhas[iUser]?.content || "").trim();
+              // ⚠️ A fala da Ana ANTERIOR ao paciente — não a resposta deste turno.
+              // A resposta atual já foi gravada em `messages` antes de o [AGENDAR]
+              // ser processado; pegar "a última assistant" devolvia ELA MESMA, que
+              // sempre cita o horário do bloco → aceitouOferta sempre verdadeiro e
+              // esta guarda nunca disparava. Caso Lohana (01/10): respondeu "Isso"
+              // ao cartão das 14h00 e a Ana remarcou sozinha para as 15h00.
+              const ultimaDaAna = String((iUser >= 0 ? linhas.slice(iUser + 1) : []).find(m => m.role === "assistant")?.content || "");
               // (a) o paciente pediu a mudança? horário, data, dia da semana ou verbo
               const pediuMudanca = /\d{1,2}\s*[h:]\s*\d{0,2}|\d{1,2}\/\d{1,2}|\b(segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|amanh[ãa]|hoje|semana que vem|pr[óo]xima semana)|\b(remarc|desmarc|cancel|adiar|antecip|mud|troc|transfer|outro hor[áa]rio|outra data|mais cedo|mais tarde)\w*/i.test(txt);
               // (b) ou aceitou uma troca que a ANA acabou de propor com ESTE horário
@@ -7393,12 +7400,22 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           const amanha = new Date(Date.now() + 24 * 3600 * 1000);
           let fechado = unidadeDoDia(amanha) === null;          // sábado/domingo
           if (!fechado) {
-            const d0 = new Date(amanha); d0.setHours(0, 0, 0, 0);
+            // FERIADO = bloqueio ATIVO e NENHUMA vaga livre no dia (01/10/2026).
+            // Antes contava qualquer linha de bloqueio, inclusive DESBLOQUEADA
+            // (status cancelado) e bloqueio de só uma manhã — e o dia em UTC. Em
+            // 02/10 havia três bloqueios já desfeitos: a trava achou que a clínica
+            // não abria e mandou refazer CINCO respostas da Lohana, que tinha
+            // consulta justamente no dia seguinte.
+            const ymd = amanha.toLocaleDateString("en-CA", { timeZone: TZ_BR });
+            const d0 = new Date(`${ymd}T00:00:00-03:00`);
             const d1 = new Date(d0.getTime() + 24 * 3600 * 1000);
-            const { data: bloq } = await supabase.from("appointments")
-              .select("id").eq("origem", "bloqueio")
-              .gte("inicio", d0.toISOString()).lt("inicio", d1.toISOString()).limit(1);
-            fechado = !!(bloq && bloq.length);                  // feriado bloqueado
+            const temVaga = (slotsVigentes || []).some(sl => sl.start >= d0 && sl.start < d1);
+            if (!temVaga) {
+              const { data: bloq } = await supabase.from("appointments")
+                .select("id").eq("origem", "bloqueio").in("status", ["reservado", "confirmado"])
+                .gte("inicio", d0.toISOString()).lt("inicio", d1.toISOString()).limit(1);
+              fechado = !!(bloq && bloq.length);                // feriado bloqueado
+            }
           }
           despedidaFechada = despedidaParaDiaFechado(reply, fechado);
         }
