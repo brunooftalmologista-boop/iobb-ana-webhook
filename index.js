@@ -505,7 +505,7 @@ Como identificar o interesse: a pessoa fala em "largar/parar de usar óculos", "
    💳 O VALOR DA AVALIAÇÃO DEPENDE DE QUEM É O PACIENTE (Dr. Bruno, 02/09/2026) — o preço da CIRURGIA não, esse é sempre particular:
    - PARTICULAR: a avaliação é a consulta de R$ 200,00, já com os exames inclusos. Diga o valor com naturalidade.
    - CONVÊNIO ATENDIDO: 🚫 NÃO cite os R$ 200,00 e NÃO chame a avaliação de particular. Diga que a avaliação é agendada como consulta normal e que a equipe confirma a cobertura pelo plano — e siga para o horário. Jogar um preço particular em quem tem plano soa como cobrança indevida e é o tipo de coisa que faz o paciente parar de responder.
-   - AINDA NÃO SE SABE: pergunte se é particular ou por convênio ANTES de falar em valor de avaliação (os preços da CIRURGIA você já pode informar — não dependem de plano).
+   - AINDA NÃO SE SABE: diga o valor ENQUADRADO e pergunte na MESMA mensagem — "No particular, a avaliação é R$ 200,00, já com os exames inclusos. Você tem convênio? Atendemos vários planos." 🚫 Nunca segure o valor até ele responder ("antes de informar o valor, você tem convênio?"): quem pergunta preço e não ouve o preço vai embora (Dr. Bruno, 01/10/2026). Os preços da CIRURGIA você já pode informar — não dependem de plano.
    🚫 NÃO OFEREÇA AVALIAÇÃO A QUEM JÁ ESTÁ NO FLUXO (Dr. Bruno, 02/09/2026). Se o paciente disser que ACABOU DE CONSULTAR ("fui aí hoje", "consultei semana passada") ou já tiver consulta/exame marcado na seção "Agendamentos que ESTE paciente já tem", ele NÃO precisa de uma avaliação nova: responda o valor da cirurgia e diga que o próprio Dr. Bruno trata disso no atendimento que já está marcado. Oferecer mais um horário a quem já tem um soa como venda e faz o paciente desconfiar do resto.
    Caso real (02/09, Maurício): ele consultou de manhã, tinha um exame de córnea marcado para sexta — que é o exame da própria refrativa —, perguntou o valor da cirurgia e ouviu "a avaliação é uma consulta de R$ 200,00, posso verificar um horário?". Ele é de CONVÊNIO, e a carteirinha dele estava três linhas abaixo, na mesma mensagem. Deixe claro que ela é o passo que responde com precisão a todas as dúvidas e define se e como operar. O objetivo do atendimento é agendar essa avaliação — siga o fluxo normal de agendamento (se houver agenda, ofereça um horário e marque; senão, faça o pré-agendamento — unidade, período, dados).
    PREFERÊNCIA DE UNIDADE: os exames de córnea da avaliação (ex.: Pentacam) são feitos no CONJUNTO NACIONAL. Por isso, prefira agendar avaliações de cirurgia refrativa, de ceratocone e de adaptação de lente de contato no Conjunto Nacional. Se o paciente preferir Taguatinga, registre a preferência dele, mas avise com gentileza que algum exame complementar pode exigir uma ida ao Conjunto Nacional, e deixe a equipe confirmar.
@@ -2161,6 +2161,18 @@ function instrucaoMaisCedo(motivo) {
 // Só reprova quando ela pede MENOS do que falta: pedir um dado quando só falta
 // aquele é o certo e não dispara nada.
 function fichaEmContaGotas(reply, messages) {
+  // ⏱️ SÓ VALE COM HORÁRIO NA MESA (01/10/2026). A trava nasceu para a fase de
+  // FICHA — paciente aceitou um horário e a Ana pinga um dado por vez. Mas ela
+  // também disparava na fase de QUALIFICAÇÃO: "Quanto é a consulta?" → "No
+  // particular é R$ 200,00. Você tem convênio?" (exatamente o formato que a
+  // trava de preço exige) era recusado por pedir 1 dado "quando faltam 2". Na
+  // reescrita a Ana SEGUROU o preço — "Antes de informar o valor, você tem
+  // convênio?" — e o paciente foi embora ("não irei mais precisar"). Em 30 dias
+  // a trava disparou 260 vezes; só 83 tinham um horário oferecido em jogo, e 59
+  // das recusadas traziam o preço. Sem horário oferecido, não existe ficha a
+  // pedir de uma vez — existe pergunta, e pergunta pode ser uma só.
+  const ultimaDaAna = [...(messages || [])].reverse().find(m => m.role === "assistant");
+  if (!horariosOferecidos(reply).length && !horariosOferecidos(ultimaDaAna?.content).length) return null;
   const pedeNome  = /nome completo/i.test(reply);
   const pedeNasc  = /data de nascimento|sua data de nasc|o nascimento/i.test(reply);
   const pedeForma = /particular ou (por )?(conv[êe]nio|plano)|qual (é o )?conv[êe]nio|tem conv[êe]nio|tem algum (plano|conv[êe]nio)|ser[áa] particular/i.test(reply);
@@ -2176,7 +2188,8 @@ function fichaEmContaGotas(reply, messages) {
   return `pediu ${pediu} dado(s) da ficha quando ainda faltam ${falta} — vai ter que voltar a perguntar`;
 }
 function instrucaoFichaDeUmaVez() {
-  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você pediu só PARTE dos dados que ainda faltam. Cada ida e volta a mais é uma chance de o paciente largar a conversa no meio — e é o que acontece. Reescreva a MESMA mensagem pedindo, DE UMA VEZ SÓ e em UMA frase natural, TUDO o que falta: o nome completo, a data de nascimento e se o atendimento será particular ou por convênio (e, sendo convênio, qual) — omitindo apenas o que ele JÁ informou nesta conversa. Deixe claro que o horário está separado e que é rápido. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se será particular ou por convênio (se for convênio, qual)?"
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você pediu só PARTE dos dados que ainda faltam. Cada ida e volta a mais é uma chance de o paciente largar a conversa no meio — e é o que acontece. 💰 Se a mensagem original informava um VALOR, ele continua na reescrita — nunca condicione o preço a uma resposta ("antes de informar o valor…").
+Reescreva a MESMA mensagem pedindo, DE UMA VEZ SÓ e em UMA frase natural, TUDO o que falta: o nome completo, a data de nascimento e se o atendimento será particular ou por convênio (e, sendo convênio, qual) — omitindo apenas o que ele JÁ informou nesta conversa. Deixe claro que o horário está separado e que é rápido. Ex.: "Consigo separar quinta-feira, 13/08, às 10h20, no Taguatinga Shopping. Para eu confirmar, me informa o nome completo, a data de nascimento e se será particular ou por convênio (se for convênio, qual)?"
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 
@@ -2608,9 +2621,15 @@ function precoSemSaberConvenio(reply, messages, jaSabeDeOutraFonte = false) {
   if (!/R\$\s?200(?:[.,]00)?\b|200\s*reais/i.test(reply)) return null;
   // Se a própria mensagem já enquadra ("no particular", "se for particular") E
   // pergunta do convênio, está exatamente no formato certo — não trava.
-  const enquadra = /(no|em|se for|para) particular|particular[^.!?\n]{0,20}(é|custa|fica)/i.test(reply);
-  const pergunta = /(tem|possui|é por|seria por|usa)[^.!?\n]{0,30}conv[êe]nio|conv[êe]nio[^.!?\n]{0,20}\?|particular ou (por )?conv[êe]nio/i.test(reply);
-  if (enquadra && pergunta) return null;
+  // INVERSÃO DA PROVA (01/10/2026): o erro que esta trava pega é o "R$ 200,00"
+  // SECO, sem nenhuma palavra sobre plano. Se a mensagem fala de convênio ou
+  // plano de qualquer jeito — pergunta ("você tem convênio?") ou recusa ("a
+  // GEAP não é um convênio que atendemos") —, o
+  // paciente já sabe que o valor depende disso. A versão anterior exigia um
+  // formato exato e recusou 11 respostas certas em 10 dias, entre elas
+  // "A consulta particular está R$ 200,00. Você tem convênio?" ("está" não
+  // estava na lista de verbos).
+  if (/conv[êe]nio|plano/i.test(reply)) return null;
   // Já se sabe pela conversa? Qualquer menção anterior (dele ou dela) a
   // particular/convênio/plano basta — inclusive a foto da carteirinha.
   const jaSabe = (messages || []).some(m => RE_SABE_FORMA_ATENDIMENTO.test(String(m.content || "")));
@@ -2621,6 +2640,7 @@ function instrucaoPrecoComConvenio() {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você informou o valor da consulta sem saber se este paciente é PARTICULAR ou tem CONVÊNIO — e nem perguntou. Quem tem plano atendido não paga consulta: ouvir "R$ 200,00" como se fosse O preço faz a pessoa achar que vai pagar e desistir antes de dizer que tem convênio.
 Reescreva mantendo a transparência, mas ENQUADRANDO o valor e perguntando na MESMA mensagem: diga que **no particular** a consulta é R$ 200,00, pergunte se ele tem convênio (atendemos vários) e ofereça um horário concreto da lista — tudo junto, em três linhas no máximo. Ex.: "No particular a consulta é R$ 200,00 — e você tem convênio? Atendemos vários planos. Já consigo *quinta-feira, 03/09, às 10h20*, no Taguatinga Shopping; reservo para você?"
 🚫 Não peça desculpas, não diga que se enganou e não repita o valor duas vezes.
+💰 O VALOR FICA NA MENSAGEM. Nunca segure o preço até o paciente responder ("antes de informar o valor, você tem convênio?") — quem pergunta preço e não ouve o preço vai embora.
 🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 function instrucaoPerguntarConvenio() {
