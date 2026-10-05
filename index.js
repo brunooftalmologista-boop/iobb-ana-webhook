@@ -395,7 +395,7 @@ MODELO DO QUE SE ESPERA — estas duas respostas foram elogiadas como o padrão 
 Repare no que elas fazem: afirmam com segurança que a compra é AQUI (sem "acho que", sem "a equipe confirma"), explicam o PORQUÊ de o valor não sair antes (é sob medida, depende dos parâmetros) em vez de só negar, e não inventam nenhum número. Dizer "não sei o valor" seco soa a desinteresse; dizer por que ele ainda não existe soa a cuidado.
 Quem NÃO tem receita, ou usa lente e nunca adaptou aqui: o caminho é a consulta para adaptação/avaliação (o teste de lente é cobrado à parte — gelatinosas R$ 120,00, rígidas/esclerais R$ 150,00). Os valores de lente escleral já estão na tabela e podem ser informados normalmente.
 👩‍⚕️ QUEM FAZ O QUÊ (não confunda os papéis — correção do Dr. Bruno, 19/08): a **ADAPTAÇÃO** das lentes — avaliação da córnea, definição do modelo e dos parâmetros, orçamento — **é feita pelo Dr. Bruno**, na consulta. A **contatóloga** atua DEPOIS: faz a **colocação das lentes e orienta o uso e os cuidados**. NUNCA diga que "a contatóloga avalia/adapta/define a lente" — quem adapta é o médico.
-🎯 FECHAMENTO OBRIGATÓRIO EM LENTE DE CONTATO: a explicação "o valor depende do modelo, o orçamento sai após a avaliação" está CERTA — mas é PROIBIDO encerrar a mensagem nela. Ela responde a pergunta e não dá o próximo passo; o paciente fica sem nada para decidir e some (aconteceu em 4 conversas perdidas de lente em agosto). SEMPRE que explicar isso, termine a MESMA mensagem enquadrando a avaliação como o passo pequeno e concreto, com horário: "...por isso o orçamento exato sai na avaliação. A consulta é R$ 200,00 e o teste de lente R$ 150,00. Consigo *quinta-feira, 20/08, às 10h20* — reservo para você?".
+🎯 FECHAMENTO OBRIGATÓRIO EM LENTE DE CONTATO: a explicação "o valor depende do modelo, o orçamento sai após a avaliação" está CERTA — mas é PROIBIDO encerrar a mensagem nela. Ela responde a pergunta e não dá o próximo passo; o paciente fica sem nada para decidir e some (aconteceu em 4 conversas perdidas de lente em agosto). SEMPRE que explicar isso, termine a MESMA mensagem enquadrando a avaliação como o passo pequeno e concreto, com horário: "...por isso o orçamento exato sai na avaliação. A consulta é R$ 200,00 e o teste de lente R$ 150,00. Consigo *[dia e hora COPIADOS da lista de vagas]* — reservo para você?".
 🔀 PIVÔS DE LENTE — quando o pedido não é o caminho certo, corrija o rumo SEM perder o paciente (negar e parar é perder; casos reais de agosto):
 - Pediu ESCLERAL mas o caso é MIOPIA simples (sem ceratocone/córnea irregular): explique em uma linha que para miopia a adaptação é de lente comum (gelatinosa ou rígida), que temos, e ofereça a avaliação com horário. NÃO deixe a conversa morrer na explicação do que a escleral não é.
 - Pediu POLIMENTO de lente ou outro serviço que não fazemos: diga que não realizamos e emende o que PODEMOS fazer — se a lente está desconfortável ou vencida, a avaliação verifica se é caso de nova adaptação; ofereça horário.
@@ -412,7 +412,7 @@ Em qualquer um dos casos ele agenda **SÓ O TESTE**, sem consulta: R$ 120,00 gel
 Quem **não** tem nem uma coisa nem outra agenda a **CONSULTA** (R$ 200,00 particular, ou pelo convênio quando atendido) — o médico precisa avaliar a córnea antes de definir qual lente testar. Aí continue orientando, sem alarmar: **dependendo do caso podem ser necessários exames complementares, cobrados à parte**, e o teste de lente também é à parte. Diga isso como cuidado, não como lista de custos.
 
 COMO DESCOBRIR SEM TRAVAR O ATENDIMENTO: pergunte UMA vez, de forma natural, **na mesma mensagem em que oferece o horário** — nunca pergunte e pare esperando. Modelo:
-  "Para adaptação de lente de contato o caminho depende de uma coisa só: você tem algum exame oftalmológico recente, dos últimos 3 meses? Pode ser de outro serviço. Se tiver, dá para agendar direto o teste de lente (R$ 150,00 para rígida/escleral), que é feito no Conjunto Nacional — tenho quarta-feira, 12/08, às 9h20. Se não tiver, o primeiro passo é a consulta (R$ 200,00), e eu reservo esse mesmo horário para você."
+  "Para adaptação de lente de contato o caminho depende de uma coisa só: você tem algum exame oftalmológico recente, dos últimos 3 meses? Pode ser de outro serviço. Se tiver, dá para agendar direto o teste de lente (R$ 150,00 para rígida/escleral), que é feito no Conjunto Nacional — tenho [dia e hora COPIADOS da lista de vagas]. Se não tiver, o primeiro passo é a consulta (R$ 200,00), e eu reservo esse mesmo horário para você."
 Assim a resposta dele só decide QUAL agendamento, nunca SE haverá agendamento.
 
 - **O TESTE É SEMPRE PARTICULAR** — nenhum convênio cobre. Para quem vai agendar só o teste, NÃO pergunte "particular ou convênio": informe o valor e siga. (A CONSULTA, essa sim, pode ser por convênio — aí a pergunta é normal.)
@@ -1153,7 +1153,10 @@ function detectSchedulingIntent(messages) {
   // ("horário/agendar/marcar/consulta/disponibilidade") passavam, então frases
   // comuns como "tem vaga sexta?", "tem disponível quinta?", "quando me atende?"
   // não injetavam a lista real e a Ana chutava.
-  return /(horario|agend|marcar|remarcar|consulta|disponiv|disponibil|vaga|encaixe|atend|quando|hoje|amanha|semana|manha|tarde|periodo|segunda|terca|quarta|quinta|sexta|feira|que horas|marca[cç]|conjunto|taguatinga|aguas|nacional|asa norte)/.test(recent);
+  // 05/10/2026 (Alexandre): "quero fazer o teste… Qual o valor e a DATA MAIS
+  // PRÓXIMA?" não tinha nenhuma destas palavras — a lista não foi injetada e a
+  // Ana copiou o exemplo do prompt ("quarta-feira… às 9h20"), um horário BLOQUEADO.
+  return /(horario|agend|marcar|remarcar|consulta|disponiv|disponibil|vaga|encaixe|atend|quando|hoje|amanha|semana|manha|tarde|periodo|segunda|terca|quarta|quinta|sexta|feira|que horas|marca[cç]|conjunto|taguatinga|aguas|nacional|asa norte|data|proxim|teste|exame|adapta)/.test(recent);
 }
 
 function detectUnidade(messages) {
@@ -7335,6 +7338,22 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       await sendWhatsApp(from, FRIENDLY_FALLBACK).catch(e => console.error("[Ana] Falha ao enviar fallback:", e.message));
       await saveMessage(conversation.id, "assistant", FRIENDLY_FALLBACK).catch(e => console.error("[Ana] Falha ao salvar fallback:", e.message));
       return;
+    }
+
+    // 🗓️ OFERTA SEM LISTA (05/10/2026). Se a Ana ofereceu dia + hora mas a lista
+    // de vagas NÃO foi injetada neste turno, o horário só pode ter sido inventado
+    // — e todas as travas de horário se desligavam ("sem agenda não dá para
+    // julgar"). Carrega a lista agora só para CONFERIR: a trava de vaga
+    // inexistente passa a funcionar e a âncora da reescrita traz uma vaga real.
+    if (!Array.isArray(slotsVigentes) && /\d{2}\/\d{2}(?!\/?\d)[^.\n]{0,40}?[àa]s\s+\d{1,2}\s*(?:h|:)/i.test(String(reply || "").replace(/[*_~`]/g, ""))) {
+      try {
+        const s = await fetchSlotsDB(null);
+        if (Array.isArray(s)) {
+          const minOf = minTsAntecedencia(conversaExigeAntecedencia(messages));
+          slotsVigentes = s.filter(x => x.start.getTime() >= minOf);
+          console.warn("[Agenda] A Ana ofereceu horário SEM a lista no prompt — lista carregada para conferir.");
+        }
+      } catch (e) { console.error("[Agenda] Não consegui carregar a lista para conferir a oferta:", e.message); }
     }
 
     // TRAVA: um horário por vez. Roda ANTES de separar os blocos, no texto cru,
