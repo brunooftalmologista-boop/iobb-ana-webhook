@@ -228,6 +228,7 @@ A regra de "não negar por nome parecido" existe para não perder plano que aten
 - QUALITY / QUALLITY (qualquer grafia: "Quality", "Quallity", "Qualyty", "Quality Saúde"): NÃO atendemos.
 - SULAMÉRICA (qualquer grafia ou produto: "SulAmérica", "Sul América", "SulAmérica Saúde"): NÃO atendemos, em variação NENHUMA — nunca foi atendida. Não confunda com nenhum plano da lista.
 - **BRADESCO SAÚDE · AMIL · CASSI · ASSEFAZ · GEAP · GDF SAÚDE (INAS-DF / IASES-DF) · SESC · PORTO SEGURO · HAPVIDA**: NÃO atendemos nenhum deles, em nenhuma variação ou produto (confirmado pelo Dr. Bruno em 25/08/2026). São os planos que mais nos procuram sem serem atendidos — juntos, quase 180 perguntas em dois meses. Negue de primeira, com cordialidade e sem rodeio, e SIGA no mesmo fôlego para o particular (R$ 200,00) com nota fiscal para reembolso + um horário concreto. Não pergunte o nome completo nem diga "vou verificar": esses já foram verificados.
+- **FUSEX** (Fundo de Saúde do Exército — "plano do Exército"): NÃO atendemos (Dr. Bruno, 05/10/2026). Caso real (05/10): perguntada "vocês aceitam o plano de saúde do exército — fusex?", você respondeu "Sim, atendemos o FUSEX!" e já ia marcar duas consultas. Plano que NÃO está na lista de atendidos não se aceita por palpite: o nome era claro e inteiro, não parcial.
 - **STJ · GAMA SAÚDE · PMDF** (a PMDF é a Polícia Militar do DF): NÃO atendemos (Dr. Bruno, 26/08/2026). ⚠️ Estes três exigem cuidado extra porque, por ERRO NOSSO, apareciam como atendidos no site e em material antigo — então o paciente pode chegar dizendo "vi que vocês atendem". Não discuta e não culpe ninguém: peça desculpas em UMA frase ("essa informação estava desatualizada, me desculpe"), diga que o plano não é atendido e ofereça o particular (R$ 200,00, com nota fiscal para reembolso) já com um horário concreto na mesma mensagem.
   🚫 NÃO CONFUNDA — os OUTROS tribunais CONTINUAM ATENDIDOS: **STF-MED, STM, TST SAÚDE, TJDFT, TRF, TRT, T.R.E., SIS SENADO, MPF, MPDFT, MPM, MPT** são todos atendidos normalmente. Só o **STJ** saiu. Negar um deles por parecença é erro grave.
   🚫 "GAMA" aqui é o PLANO Gama Saúde — não tem nada a ver com o GAMA, cidade do DF. Paciente perguntando se atendemos alguém que mora no Gama não é pergunta de convênio.
@@ -2691,6 +2692,9 @@ const CONVENIOS_NAO_ATENDIDOS = [
   // O PMDF nunca esteve na lista da Ana — só nas landings, o que é pior: o anúncio
   // trazia o paciente e a Ana não sabia o que responder.
   "stj", "gama", "pmdf",
+  // 05/10/2026 — Dr. Bruno: FUSEX (Exército) NÃO é atendido. A Ana disse "Sim,
+  // atendemos o FUSEX!" e ia marcar duas consultas (Neidimar e Marcos).
+  "fusex",
 ];
 // Casar é DE PROPÓSITO generoso (substring nos dois sentidos): um falso positivo
 // deixa passar um agendamento; um falso negativo trava um agendamento legítimo.
@@ -11586,8 +11590,14 @@ async function registrarRespostaAoLembrete(conversation, patient, from, texto, i
     .gte("inicio", new Date().toISOString())
     .lte("inicio", new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString())
     .order("inicio", { ascending: true }).limit(300);
-  const ap = (cands || []).find(a => String(a.conversation_id || "") === String(conversation.id))
-          || (cands || []).find(a => foneChave(a.paciente_telefone) === fone);
+  // A MAIS PRÓXIMA entre as deste paciente — por conversa OU por telefone, juntas.
+  // Antes a busca preferia a da CONVERSA e só depois o telefone. Caso Laryssa
+  // (04/10): lembrete da consulta de 05/10 15h40 (marcada pela secretária, sem
+  // conversa vinculada); ela tocou "Desmarcar" e o código cancelou a de 14/10
+  // 17h00 — a única ligada à conversa. A de amanhã ficou de pé, a vaga ficou
+  // vazia, e a de 14/10 sumiu sem ela pedir. O lembrete é sempre da próxima.
+  const ap = (cands || []).find(a => String(a.conversation_id || "") === String(conversation.id)
+                                  || foneChave(a.paciente_telefone) === fone);
   if (!ap) {
     // Sem consulta ativa: pode ser que ela tenha sido DESMARCADA depois do
     // lembrete (caso Eliane/Paulo, 28/09). Ver confirmouConsultaCancelada.
