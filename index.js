@@ -5714,6 +5714,18 @@ app.post("/webhook", async (req, res) => {
       const filename = msg.document?.filename || "documento";
       const dl = await downloadMedia(msg.document.id);
       if (dl) media = await storeInboundMedia(dl.buffer, dl.mimeType, filename);
+      // 📄 A ANA PASSA A LER PDF (Dr. Bruno, 06/10/2026: "Ana não lê PDF?").
+      // Em 30 dias chegaram 41 PDFs — carteirinha exportada pelo app do convênio,
+      // CNH digital — e em todos ela respondeu "não consigo abrir PDF, manda uma
+      // foto ou digita o número": atrito com quem já tinha mandado o documento.
+      // A API lê PDF nativamente; o arquivo segue o mesmo caminho da foto (inclusive
+      // o depósito que sobrevive ao agrupamento de mensagens). Imagem enviada
+      // "como documento" (ex.: "PAS Serpro.jpeg") também passa a ser lida.
+      const mtDoc = String(dl?.mimeType || "").toLowerCase().split(";")[0].trim();
+      if (dl?.buffer && (mtDoc === "application/pdf" || mtDoc.startsWith("image/"))) {
+        imagemRecebida = dl;
+        guardarImagemPendente(from, dl);
+      }
       text = `[Documento recebido: ${filename}]`;
       mediaNotification = `📄 Paciente enviou um documento: ${filename}`;
     } else if (msg.type === "video") {
@@ -7100,11 +7112,11 @@ O QUE FAZER:
 5. Se você ainda não sabe se é particular ou convênio, PERGUNTE na mesma mensagem — pelo convênio, os exames cobertos não têm custo, e informar só o valor particular faz quem tem plano desistir achando que vai pagar.
 6. Termine oferecendo um horário concreto para os exames.
 ⛔ LIMITE CLÍNICO, INEGOCIÁVEL — vale aqui igual a sempre: você lê apenas os NOMES DOS EXAMES SOLICITADOS. É PROIBIDO comentar, interpretar ou opinar sobre qualquer conteúdo clínico do papel — hipótese diagnóstica, CID, achado, resultado, o motivo do pedido ou o que o médico escreveu. Nada disso entra na sua resposta. Se o papel for um RESULTADO/LAUDO de exame (e não um pedido), não o interprete: diga que quem avalia é o médico na consulta e siga para o agendamento.
-Se a imagem estiver ilegível ou vier em PDF que você não consegue abrir, peça em uma frase que ela digite os nomes dos exames — sem encerrar a conversa e sem falar em encaminhamento.`;
+Se a imagem ou o PDF estiver ilegível (ou protegido por senha), peça em uma frase que ela digite os nomes dos exames — sem encerrar a conversa e sem falar em encaminhamento.`;
     }
 
     if (fotoDeCarteirinha) {
-      dynVolatil += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nA imagem vai anexada nesta conversa quando disponível — ou seja, você PODE vê-la.\n🚫 NUNCA diga que vai "encaminhar a carteirinha para a equipe", que "a equipe vai verificar o cartão" ou que "a equipe entra em contato" por causa dela. A carteirinha NÃO precisa de ninguém: você lê os dados e o sistema anexa sozinho à ficha do agendamento. Falar em encaminhamento faz o paciente achar que o atendimento parou — e ele para mesmo.\nO que fazer:\n- 📖 Se o paciente mandou o cartão PERGUNTANDO se atendemos ("posso enviar para saber se vocês atendem?"): LEIA NA HORA e responda a partir do que está impresso — nunca desconverse com "a equipe verifica no sistema". Caso real (14/08): o filho mandou o cartão do pai exatamente com essa pergunta, você adiou a leitura, agendou, e só leu o cartão no fim — era uma Unimed regional — hoje atendida normalmente, mas na época a leitura tardia do cartão atrasou tudo.\n- Se for MESMO uma carteirinha/cartão de convênio: leia o NOME DO CONVÊNIO e, se estiver legível, o NÚMERO, e REGISTRE emitindo o bloco [CARTEIRINHA] (convenio + numero) ao final da mensagem — o sistema anexa à ficha. Se o fluxo for de pré-agendamento, registre TAMBÉM no bloco de pré-agendamento (convênio lido e número; se o número não estiver legível, use "carteirinha por foto"). Confirme em UMA linha qual convênio você identificou e SIGA IMEDIATAMENTE para o próximo passo do agendamento (oferecer o horário ou confirmar o que já foi combinado) — nunca termine a mensagem na carteirinha.\n- Se o arquivo for PDF ou você não conseguir enxergá-lo: NÃO diga que vai encaminhar. Peça, em uma frase, o NÚMERO da carteirinha digitado (ou uma foto do cartão) e siga o agendamento normalmente na mesma mensagem.\n- 🔎 TRANSCREVA O NOME DO CONVÊNIO INTEIRO, COMO ESTÁ IMPRESSO — e depois CONFIRA contra a lista de convênios atendidos E contra a lista dos NÃO atendidos. É PROIBIDO encurtar um nome composto até ele casar com um plano da lista. "Quality Pró-Saúde" NÃO é o "Pró-Saúde" da Câmara dos Deputados: se o cartão trouxer "Quality" (ou Quallity/Qualyty) em qualquer posição, o plano NÃO é atendido, mesmo que o resto do nome coincida com um que atendemos. Caso real (10/08): a paciente perguntou por "quality pro saúde", você distinguiu certo os dois e pediu para ela confirmar qual era — aí veio a foto do cartão, você leu apenas "Pró-Saúde" e agendou. Um convênio que não atendemos entrou na agenda, e isso só apareceria na recepção, com a criança já lá. ⚖️ MAS O CRITÉRIO É A LISTA DOS **NÃO** ATENDIDOS, NÃO A IGUALDADE EXATA. Só trate como não atendido quando o cartão trouxer um nome da lista dos NÃO atendidos (Quality/Quallity/Qualyty, SulAmérica). Fora disso, cartão que traga a MARCA de um convênio da lista é ATENDIDO, mesmo com palavras a mais: variações, sub-planos e produtos (\"Seguros Unimed\", \"Unimed Seguros\", \"PME Compacto ENF\", \"Ideal\", \"Enfermaria\", \"Apartamento\") NÃO descredenciam nada — a equipe confirma o sub-plano depois, com o horário já reservado. Unimed com nome de CIDADE no cartão (Curitiba, Uberlândia, Fesp, João Pessoa…) é ATENDIDA igual às demais: agende normalmente e registre o nome como está impresso — a equipe solicita a autorização com a carteirinha que você anotou. Exigir nome idêntico faz você NEGAR convênio que atendemos, que é o erro mais caro dos dois: o paciente vai embora achando que não é atendido aqui.\n🚫 NUNCA VOLTE ATRÁS NUMA ACEITAÇÃO. Se você já disse ao paciente que o convênio dele é atendido, é PROIBIDO reverter depois por causa do que leu no cartão — a não ser que apareça um nome da lista dos NÃO atendidos (Quality/Quallity/Qualyty, SulAmérica). Ler o cartão serve para REGISTRAR o número e o nome do plano, nunca para reabrir uma decisão já comunicada. Caso real (11/08, Laura): você disse \"O plano é Unimed — atendemos, sim\", ofereceu horário, e três mensagens depois negou o mesmo convênio e ofereceu particular com reembolso.
+      dynVolatil += `\n\n### O paciente acabou de enviar uma FOTO (provável carteirinha do convênio)\nA imagem vai anexada nesta conversa quando disponível — ou seja, você PODE vê-la.\n🚫 NUNCA diga que vai "encaminhar a carteirinha para a equipe", que "a equipe vai verificar o cartão" ou que "a equipe entra em contato" por causa dela. A carteirinha NÃO precisa de ninguém: você lê os dados e o sistema anexa sozinho à ficha do agendamento. Falar em encaminhamento faz o paciente achar que o atendimento parou — e ele para mesmo.\nO que fazer:\n- 📖 Se o paciente mandou o cartão PERGUNTANDO se atendemos ("posso enviar para saber se vocês atendem?"): LEIA NA HORA e responda a partir do que está impresso — nunca desconverse com "a equipe verifica no sistema". Caso real (14/08): o filho mandou o cartão do pai exatamente com essa pergunta, você adiou a leitura, agendou, e só leu o cartão no fim — era uma Unimed regional — hoje atendida normalmente, mas na época a leitura tardia do cartão atrasou tudo.\n- Se for MESMO uma carteirinha/cartão de convênio: leia o NOME DO CONVÊNIO e, se estiver legível, o NÚMERO, e REGISTRE emitindo o bloco [CARTEIRINHA] (convenio + numero) ao final da mensagem — o sistema anexa à ficha. Se o fluxo for de pré-agendamento, registre TAMBÉM no bloco de pré-agendamento (convênio lido e número; se o número não estiver legível, use "carteirinha por foto"). Confirme em UMA linha qual convênio você identificou e SIGA IMEDIATAMENTE para o próximo passo do agendamento (oferecer o horário ou confirmar o que já foi combinado) — nunca termine a mensagem na carteirinha.\n- PDF você LÊ normalmente (o arquivo vai anexado, igual à foto). Só se não conseguir enxergar o conteúdo (ilegível, protegido por senha, em branco): NÃO diga que vai encaminhar. Peça, em uma frase, o NÚMERO da carteirinha digitado (ou uma foto do cartão) e siga o agendamento normalmente na mesma mensagem.\n- 🔎 TRANSCREVA O NOME DO CONVÊNIO INTEIRO, COMO ESTÁ IMPRESSO — e depois CONFIRA contra a lista de convênios atendidos E contra a lista dos NÃO atendidos. É PROIBIDO encurtar um nome composto até ele casar com um plano da lista. "Quality Pró-Saúde" NÃO é o "Pró-Saúde" da Câmara dos Deputados: se o cartão trouxer "Quality" (ou Quallity/Qualyty) em qualquer posição, o plano NÃO é atendido, mesmo que o resto do nome coincida com um que atendemos. Caso real (10/08): a paciente perguntou por "quality pro saúde", você distinguiu certo os dois e pediu para ela confirmar qual era — aí veio a foto do cartão, você leu apenas "Pró-Saúde" e agendou. Um convênio que não atendemos entrou na agenda, e isso só apareceria na recepção, com a criança já lá. ⚖️ MAS O CRITÉRIO É A LISTA DOS **NÃO** ATENDIDOS, NÃO A IGUALDADE EXATA. Só trate como não atendido quando o cartão trouxer um nome da lista dos NÃO atendidos (Quality/Quallity/Qualyty, SulAmérica). Fora disso, cartão que traga a MARCA de um convênio da lista é ATENDIDO, mesmo com palavras a mais: variações, sub-planos e produtos (\"Seguros Unimed\", \"Unimed Seguros\", \"PME Compacto ENF\", \"Ideal\", \"Enfermaria\", \"Apartamento\") NÃO descredenciam nada — a equipe confirma o sub-plano depois, com o horário já reservado. Unimed com nome de CIDADE no cartão (Curitiba, Uberlândia, Fesp, João Pessoa…) é ATENDIDA igual às demais: agende normalmente e registre o nome como está impresso — a equipe solicita a autorização com a carteirinha que você anotou. Exigir nome idêntico faz você NEGAR convênio que atendemos, que é o erro mais caro dos dois: o paciente vai embora achando que não é atendido aqui.\n🚫 NUNCA VOLTE ATRÁS NUMA ACEITAÇÃO. Se você já disse ao paciente que o convênio dele é atendido, é PROIBIDO reverter depois por causa do que leu no cartão — a não ser que apareça um nome da lista dos NÃO atendidos (Quality/Quallity/Qualyty, SulAmérica). Ler o cartão serve para REGISTRAR o número e o nome do plano, nunca para reabrir uma decisão já comunicada. Caso real (11/08, Laura): você disse \"O plano é Unimed — atendemos, sim\", ofereceu horário, e três mensagens depois negou o mesmo convênio e ofereceu particular com reembolso.
 - 📝 NOME COMPLETO: o documento quase sempre traz o nome INTEIRO do paciente. TRANSCREVA esse nome e use-o no campo "nome:" do [AGENDAR] e do [PREAGENDAMENTO] — não continue com só o primeiro nome nem com o apelido do WhatsApp. Caso real: você leu o documento, disse "identifiquei seu nome e data de nascimento", gravou o nascimento e ainda assim registrou só "Raquel" — a ficha chegou à recepção sem sobrenome. Se o documento não trouxer o nome e você só tiver o primeiro, PODE marcar assim mesmo (nunca atrase o agendamento por isso), mas peça o nome completo na MESMA mensagem em que confirma o horário.\n- Se estiver ilegível, peça gentilmente uma foto mais nítida — sem travar o agendamento.\n- Se a imagem NÃO for uma carteirinha: NÃO descreva o que vê e NÃO comente o conteúdo. Apenas acolha e diga que vai encaminhar à equipe.\nLIMITE ABSOLUTO (inegociável): você só lê DOCUMENTO ADMINISTRATIVO (carteirinha/cartão do plano). Se a imagem for clínica — foto de olho, exame, laudo, receita, resultado, OCT, retinografia etc. — NUNCA descreva, interprete, opine, sugira diagnóstico ou diga se está normal/alterado. Nesses casos: acolha, diga que quem avalia é o médico na consulta, e siga para o agendamento. Continuam valendo todas as regras absolutas (nunca diagnosticar, nunca interpretar exames).\nConcluído isso, CONTINUE/CONCLUA o pré-agendamento normalmente. NÃO peça a carteirinha de novo e NÃO diga apenas que "vai encaminhar" — conclua, explicando que a equipe confirma a cobertura junto com o horário.`;
     }
 
@@ -7259,15 +7271,20 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     // nesse caso ela está no depósito, não em `imagemRecebida`. Só recolhe se a
     // conversa está em contexto de carteirinha, e o resgate é de uso único.
     const imagemParaLer = imagemRecebida?.buffer ? imagemRecebida : pegarImagemPendente(from);
+    let anexouPdf = false;   // PDF protegido/corrompido faz a API recusar a chamada inteira (400)
     if (imagemParaLer?.buffer) {
-      const MIMES_VISAO = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+      const MIMES_VISAO = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"];
       const mt = String(imagemParaLer.mimeType || "").toLowerCase().split(";")[0].trim();
       const cabe = imagemParaLer.buffer.length <= 3.5 * 1024 * 1024;
       if (MIMES_VISAO.includes(mt) && cabe) {
         const ultima = apiMessages[apiMessages.length - 1];
         const textoAtual = typeof ultima.content === "string" ? ultima.content : text;
+        const b64 = imagemParaLer.buffer.toString("base64");
+        anexouPdf = mt === "application/pdf";
         ultima.content = [
-          { type: "image", source: { type: "base64", media_type: mt, data: imagemParaLer.buffer.toString("base64") } },
+          mt === "application/pdf"
+            ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }
+            : { type: "image", source: { type: "base64", media_type: mt, data: b64 } },
           { type: "text", text: textoAtual || "[Imagem recebida]" },
         ];
         console.log(`[Visão] ${fotoDeCarteirinha ? "Carteirinha" : fotoDePedidoExame ? "Pedido de exame" : "Imagem"} anexada para leitura (${mt}, ${Math.round(imagemParaLer.buffer.length / 1024)}KB${imagemRecebida?.buffer ? "" : " — resgatada do turno anterior"}).`);
@@ -7296,6 +7313,31 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           messages: mensagensComCache(apiMessages),
         }, { origem: "atendimento" });
       } catch (e1) {
+        // PDF que a API não consegue abrir (senha, corrompido) derruba a chamada
+        // inteira com 400. Tira o anexo e tenta UMA vez — a Ana então responde
+        // como antes ("não consegui abrir, me manda uma foto ou o número").
+        if (anexouPdf && e1?.response?.status === 400) {
+          const ultima = apiMessages[apiMessages.length - 1];
+          if (Array.isArray(ultima?.content)) {
+            ultima.content = ultima.content.filter(b => b.type !== "document");
+            ultima.content.push({ type: "text", text: "(O PDF que o paciente enviou não pôde ser aberto — está protegido ou corrompido. Peça uma foto do documento ou o dado digitado, sem falar em encaminhar.)" });
+          }
+          anexouPdf = false;
+          await registrarErro("pdf_nao_abriu", e1?.response?.data ? JSON.stringify(e1.response.data).slice(0, 300) : e1.message,
+            { conversationId: conversation.id, telefone: from }).catch(() => {});
+          try {
+            response = await anthropicMessages({
+              model: ANA_MODEL, max_tokens: 1000,
+              system: [
+                { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
+                ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
+                { type: "text", text: dynVolatil },
+              ],
+              messages: mensagensComCache(apiMessages),
+            }, { origem: "atendimento" });
+          } catch (e3) { e1 = e3; }
+        }
+        if (!response) {
         // BLINDAGEM: se o caching (system em blocos) for recusado (400), refaz com o
         // system como TEXTO simples — o paciente não fica sem resposta por causa disso.
         if (e1?.response?.status === 400) {
@@ -7330,6 +7372,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
             }, { origem: "atendimento" });
           }
         } else throw e1;
+        }
       }
       // Custo real: agora medido e GRAVADO dentro de anthropicMessages
       // (registrarCustoAPI) — vale para esta chamada e para todas as outras.
