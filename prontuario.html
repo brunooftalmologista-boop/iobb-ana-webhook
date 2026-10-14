@@ -266,7 +266,7 @@ function portao(msg){ $("#app").hidden=true; $("#portao").hidden=false; if(msg) 
 
 /* ===== formulário (mesma lógica do modelo aprovado) ===== */
 const BIO=[["pal","Pálpebras e cílios","sem alterações"],["conj","Conjuntiva","calma"],["cor","Córnea","transparente"],["ca","Câmara anterior","formada, sem reação"],["iris","Íris e pupila","isocórica, fotorreagente"],["crist","Cristalino","transparente"]];
-const FO=[["disco","Disco","corado, bordos nítidos, E/D 0,3"],["mac","Mácula","brilho foveal presente"],["vasos","Vasos","sem alterações"],["perif","Periferia","retina aplicada"]];
+const FO=[["disco","Disco óptico","corado, bordos nítidos, relação escavação/disco 0,3"],["mac","Mácula","brilho foveal presente"],["vasos","Vasos","sem alterações"],["perif","Periferia","retina aplicada"]];
 function montaGrade(id,itens){ const g=$("#"+id); g.innerHTML='<span class="h blank"></span><span class="h od">OD</span><span class="h oe">OE</span>';
   for(const [k,nome] of itens) g.insertAdjacentHTML("beforeend",`<span class="lbl rowlbl">${nome}</span><input id="${id}-${k}-od"><input id="${id}-${k}-oe">`); }
 montaGrade("bio",BIO); montaGrade("fo",FO);
@@ -301,22 +301,28 @@ document.addEventListener("focusout",e=>{ if(e.target.matches("#form input")){ n
 document.addEventListener("input",e=>{ if(e.target.closest("#form")) atualiza(); });
 
 const v=id=>($("#"+id)?.value||"").trim();
-function par(rot,od,oe){ if(!od&&!oe) return ""; if(od&&od===oe) return `${rot}: AO ${od}`; return `${rot}: OD ${od||"—"} | OE ${oe||"—"}`; }
-function refr(o){ const e=v(`re-${o}-esf`),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`),a=v(`re-${o}-av`); if(!e&&!c) return ""; let s=e||"Plano"; if(c) s+=` ${c} x ${x||"?"}°`; if(a) s+=` (${a})`; return s; }
+// Texto POR EXTENSO, sem abreviações (Dr. Bruno, 14/10/2026).
+const OD="olho direito", OE="olho esquerdo", AO="ambos os olhos";
+const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
+function par(rot,od,oe){ if(!od&&!oe) return ""; if(od&&od===oe) return `${rot}: ${AO} ${od}.`; return `${rot}: ${OD} ${od||"não aferido"}; ${OE} ${oe||"não aferido"}.`; }
+function refr(o){ const e=v(`re-${o}-esf`),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`),a=v(`re-${o}-av`); if(!e&&!c) return "";
+  let s=`esférico ${e?(e==="Plano"?"plano":e):"plano"}`; if(c) s+=`, cilíndrico ${c}, eixo ${x||"?"}°`; if(a) s+=`, acuidade visual ${a}`; return s; }
 function grade(id,itens,rot){ const ls=[]; let igual=true;
   for(const [k,nome] of itens){ const a=v(`${id}-${k}-od`),b=v(`${id}-${k}-oe`); if(!a&&!b) continue; if(a!==b) igual=false; ls.push([nome,a,b]); }
-  if(!ls.length) return ""; if(igual) return `${rot} AO: `+ls.map(([n,a])=>`${n.toLowerCase()} ${a}`).join("; ")+".";
-  return `${rot}:\n`+ls.map(([n,a,b])=>a===b?`  ${n}: AO ${a}`:`  ${n}: OD ${a||"—"} | OE ${b||"—"}`).join("\n"); }
+  if(!ls.length) return ""; if(igual) return `${rot} de ${AO}: `+ls.map(([n,a])=>`${n.toLowerCase()} ${a}`).join("; ")+".";
+  return `${rot}:\n`+ls.map(([n,a,b])=>a===b?`${n}: ${AO} ${a}.`:`${n}: ${OD} ${a||"não avaliado"}; ${OE} ${b||"não avaliado"}.`).join("\n"); }
 function textoIclinic(){ const L=[];
-  const qp=[...marcados("qp").map(nomeChip),v("qp-txt")].filter(Boolean).join(". "); if(qp) L.push(`QP: ${qp}.`.replace(/\.\.$/,"."));
-  const ap=[...marcados("ap").map(nomeChip),v("ap-txt")].filter(Boolean).join("; "); if(ap) L.push(`AP: ${ap}.`);
-  for(const [r,a,b] of [["AV sc",v("av-sc-od"),v("av-sc-oe")],["AV cc",v("av-cc-od"),v("av-cc-oe")],["AV perto",v("av-pt-od"),v("av-pt-oe")]]){ const s=par(r,a,b); if(s) L.push(s); }
-  const rod=refr("od"),roe=refr("oe"); if(rod||roe) L.push(`RE: OD ${rod||"—"} | OE ${roe||"—"}`+(v("re-add")?` | Add ${v("re-add")}`:""));
-  const bio=grade("bio",BIO,"BIO"); if(bio) L.push(bio);
-  if(v("pio-od")||v("pio-oe")) L.push(`PIO: OD ${v("pio-od")||"—"} | OE ${v("pio-oe")||"—"} mmHg (${v("pio-met")}${v("pio-hora")?", "+v("pio-hora"):""})`);
-  const fo=grade("fo",FO,"FO"); if(fo) L.push(fo);
-  const hd=[...marcados("hd").map(c=>`${nomeChip(c)} (${c.dataset.cid})`),v("hd-txt")].filter(Boolean).join("; "); if(hd) L.push(`HD: ${hd}.`);
-  const cd=[...marcados("cd").map(nomeChip),v("cd-txt")].filter(Boolean).join("; "); if(cd) L.push(`CD: ${cd}.`);
+  const qp=[...marcados("qp").map(nomeChip),v("qp-txt")].filter(Boolean).join(". "); if(qp) L.push(`Queixa principal: ${qp}.`.replace(/\.\.$/,"."));
+  const ap=[...marcados("ap").map(nomeChip),v("ap-txt")].filter(Boolean).join("; "); if(ap) L.push(`Antecedentes: ${ap}.`);
+  const avs=[["Acuidade visual sem correção",v("av-sc-od"),v("av-sc-oe")],["Acuidade visual com correção",v("av-cc-od"),v("av-cc-oe")],["Acuidade visual para perto",v("av-pt-od"),v("av-pt-oe")]]
+    .map(([r,a,b])=>par(r,a,b)).filter(Boolean); if(avs.length) L.push(avs.join("\n"));
+  const rod=refr("od"),roe=refr("oe");
+  if(rod||roe) L.push(`Refração estática:\n${cap(OD)}: ${rod||"não realizada"}.\n${cap(OE)}: ${roe||"não realizada"}.`+(v("re-add")?`\nAdição: ${v("re-add")}.`:""));
+  const bio=grade("bio",BIO,"Biomicroscopia"); if(bio) L.push(bio);
+  if(v("pio-od")||v("pio-oe")) L.push(`Pressão intraocular (${v("pio-met")}${v("pio-hora")?", às "+v("pio-hora"):""}): ${OD} ${v("pio-od")||"não aferida"}${v("pio-od")?" mmHg":""}; ${OE} ${v("pio-oe")||"não aferida"}${v("pio-oe")?" mmHg":""}.`);
+  const fo=grade("fo",FO,"Fundoscopia"); if(fo) L.push(fo);
+  const hd=[...marcados("hd").map(c=>`${nomeChip(c)} (CID ${c.dataset.cid})`),v("hd-txt")].filter(Boolean).join("; "); if(hd) L.push(`Hipótese diagnóstica: ${hd}.`);
+  const cd=[...marcados("cd").map(nomeChip),v("cd-txt")].filter(Boolean).join("; "); if(cd) L.push(`Conduta: ${cd}.`);
   if(v("retorno")) L.push(`Retorno em ${v("retorno")}.`);
   return L.join("\n\n"); }   // linha em branco entre os itens (Dr. Bruno, 14/10)
 function receita(){ const l=o=>{ const e=v(`re-${o}-esf`)||(v(`re-${o}-cil`)?"Plano":""),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`); return [e||"—",c||"—",c?(x?x+"°":"?"):"—"]; };
@@ -408,7 +414,7 @@ $("#salvar").addEventListener("click",()=>salvar());
 function copiar(txt,msg){ const ok=()=>status(msg,"ok");
   try{ navigator.clipboard.writeText(txt).then(ok,()=>{ const r=document.createRange(); r.selectNodeContents($("#saida")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); status("Texto selecionado: use Ctrl+C / ⌘C.",""); }); }catch(_){} }
 $("#copiar").addEventListener("click",async()=>{ copiar(textoIclinic(),"Copiado. Cole no iClinic."); await salvar(); });
-$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiar(`RECEITA (${r.uso})\nOD: ${r.od.join("  ")}\nOE: ${r.oe.join("  ")}${r.add?"\nAdição: "+r.add:""}`,"Receita copiada."); });
+$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiar(`Receita de óculos (${r.uso.toLowerCase()})\nOlho direito: esférico ${r.od[0]}, cilíndrico ${r.od[1]}, eixo ${r.od[2]}\nOlho esquerdo: esférico ${r.oe[0]}, cilíndrico ${r.oe[1]}, eixo ${r.oe[2]}${r.add?"\nAdição: "+r.add:""}`,"Receita copiada."); });
 setInterval(()=>{ if(atual&&sujo) salvar(true); },60000);   // salva sozinho a cada minuto
 window.addEventListener("beforeunload",e=>{ if(sujo){ e.preventDefault(); e.returnValue=""; } });
 
