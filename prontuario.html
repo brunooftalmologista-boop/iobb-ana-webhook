@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Prontuário — IOBB</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,600&display=swap">
+<style>
+/* Prontuário do Dr. Bruno — fase 1: gera o texto para colar no iClinic.
+   Layout: consultas do dia | formulário | texto pronto + receita. */
+:root{
+  --bg:#f3f5f6; --surface:#fff; --ink:#18242b; --muted:#5d6b73; --line:#d9e0e3;
+  --accent:#1d6b74; --accent-soft:#e1eff0; --od:#8a4b2a; --oe:#2a5a8a; --chip:#eef2f3; --warn:#9a5b00; --ok:#2d7a3e;
+  --f-display:"Source Serif 4", Georgia, serif;
+  --f-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){ :root{
+  --bg:#11181c; --surface:#182227; --ink:#e3eaed; --muted:#93a3ab; --line:#2b3a41;
+  --accent:#5fb3bb; --accent-soft:#1d3236; --od:#e0a07c; --oe:#8fb8e3; --chip:#203036; --warn:#e2a64a; --ok:#6cc27e; color-scheme:dark } }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body)}
+.top{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.top b{font-family:var(--f-display);font-size:18px}
+.top .r{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.wrap{max-width:1500px;margin:0 auto;padding:16px;display:grid;gap:16px;grid-template-columns:240px minmax(0,1fr) minmax(0,380px);align-items:start}
+@media (max-width:1180px){.wrap{grid-template-columns:220px minmax(0,1fr)} aside.saida{grid-column:1/-1}}
+@media (max-width:760px){.wrap{grid-template-columns:minmax(0,1fr)}}
+.lista{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:sticky;top:64px}
+@media (max-width:760px){.lista{position:static}}
+.lista h3{margin:0;padding:10px 12px;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+.item{display:grid;grid-template-columns:44px minmax(0,1fr);gap:2px 8px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;background:none;border-left:0;border-right:0;border-top:0;text-align:left;width:100%;font:inherit;color:inherit}
+.item:hover{background:var(--accent-soft)} .item.ativo{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.item .h{font:500 13px var(--f-mono);color:var(--muted)} .item .n{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .s{grid-column:2;font-size:12px;color:var(--muted)} .item .s .feito{color:var(--ok);font-weight:600}
+.vazio{padding:14px 12px;color:var(--muted);font-size:14px}
+button{font:500 14px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)} button.pri{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.chip:focus-visible,.item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main{display:grid;gap:12px;min-width:0}
+.pac{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:8px}
+.pac h1{font:600 24px/1.2 var(--f-display);margin:0;text-wrap:balance}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--muted);font-size:14px}
+.ana{font-size:14px;background:var(--accent-soft);border-radius:8px;padding:8px 10px}
+.ana b{color:var(--accent)} .ana p{margin:2px 0}
+.modelos{display:flex;flex-wrap:wrap;gap:8px}
+section.box{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 16px;display:grid;gap:10px;min-width:0}
+.sec-h{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between}
+h2{font:600 15px var(--f-body);margin:0} h2 small{font-weight:400;color:var(--muted);margin-left:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:13px;padding:4px 10px;border-radius:999px;background:var(--chip);border:1px solid transparent;cursor:pointer;user-select:none}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:500}
+.chip .cid{font-family:var(--f-mono);font-size:11px;color:var(--muted);margin-left:4px}
+textarea,input,select{font:15px var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%;min-width:0}
+textarea{min-height:54px;resize:vertical}
+.grid-olho{display:grid;grid-template-columns:minmax(90px,140px) minmax(0,1fr) minmax(0,1fr);gap:6px 10px;align-items:center}
+.grid-olho .h{font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+.h.od{color:var(--od)} .h.oe{color:var(--oe)} .lbl{font-size:13px;color:var(--muted)}
+.ref{display:grid;grid-template-columns:40px repeat(4,minmax(0,1fr));gap:6px 8px;align-items:center}
+.ref input{font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+.ref .h{font-size:12px;color:var(--muted);text-align:right} .ref .eye{font:600 13px var(--f-body)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row>label{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted)} .row input,.row select{width:auto}
+.hint{font-size:12px;color:var(--muted)}
+aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
+@media (max-width:1180px){aside.saida{position:static}}
+.out{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 16px;display:grid;gap:10px}
+.out pre{margin:0;font:13px/1.55 var(--f-mono);white-space:pre-wrap;word-break:break-word;background:var(--bg);border-radius:6px;padding:10px;max-height:46vh;overflow:auto}
+.rx{border:1px dashed var(--line);border-radius:8px;padding:10px;display:grid;gap:8px;background:var(--bg)}
+.rx table{width:100%;border-collapse:collapse;font:13px var(--f-mono);font-variant-numeric:tabular-nums}
+.rx th,.rx td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:right} .rx th:first-child,.rx td:first-child{text-align:left}
+.status{font-size:13px;min-height:1.2em} .status.ok{color:var(--ok)} .status.erro{color:var(--warn)}
+.hist details{border-top:1px solid var(--line);padding:6px 0} .hist summary{cursor:pointer;font-size:14px}
+.hist pre{font:12px/1.5 var(--f-mono);white-space:pre-wrap;margin:6px 0 0}
+.portao{max-width:520px;margin:12vh auto;padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:12px;display:grid;gap:12px}
+.portao h1{font:600 22px var(--f-display);margin:0}
+.portao a{color:var(--accent)}
+@media (max-width:520px){.grid-olho{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} .grid-olho .rowlbl{grid-column:1/-1} .grid-olho .h.blank{display:none}}
+</style>
+</head>
+<body>
+
+<div id="portao" class="portao" hidden>
+  <h1>Prontuário</h1>
+  <p id="portao-msg">Entre no painel com o usuário <b>Dr. Bruno</b> e volte a esta página.</p>
+  <a href="/painel">Abrir o painel</a>
+</div>
+
+<div id="app" hidden>
+  <div class="top">
+    <b>Prontuário</b>
+    <div class="r">
+      <input type="date" id="dia" style="width:auto">
+      <button type="button" id="hoje">Hoje</button>
+      <a href="/painel" style="color:var(--muted);font-size:14px">Voltar ao painel</a>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <nav class="lista" aria-label="Consultas do dia">
+      <h3 id="lista-titulo">Consultas</h3>
+      <div id="lista"><div class="vazio">Carregando…</div></div>
+    </nav>
+
+    <main>
+      <div id="sem-consulta" class="pac"><h1>Escolha uma consulta</h1><div class="meta">Clique no paciente na lista ao lado.</div></div>
+
+      <div id="ficha" hidden style="display:grid;gap:12px">
+        <div class="pac">
+          <div class="meta" id="pac-topo"></div>
+          <h1 id="pac-nome"></h1>
+          <div class="meta" id="pac-meta"></div>
+          <div class="ana" id="pac-ana" hidden></div>
+          <div class="modelos" aria-label="Modelos prontos">
+            <button type="button" data-modelo="rotina">Rotina normal</button>
+            <button type="button" data-modelo="lente">Retorno de lente</button>
+            <button type="button" data-modelo="ceratocone">Ceratocone</button>
+            <button type="button" data-modelo="catarata">Catarata</button>
+            <button type="button" id="limpar">Limpar</button>
+          </div>
+        </div>
+
+        <div id="form" style="display:grid;gap:12px">
+          <section class="box">
+            <div class="sec-h"><h2>Queixa principal</h2></div>
+            <div class="chips" data-grupo="qp">
+              <span class="chip" tabindex="0">Baixa visual para longe</span><span class="chip" tabindex="0">Baixa visual para perto</span>
+              <span class="chip" tabindex="0">Revisão de rotina</span><span class="chip" tabindex="0">Cefaleia</span><span class="chip" tabindex="0">Ardor</span>
+              <span class="chip" tabindex="0">Prurido</span><span class="chip" tabindex="0">Olho vermelho</span><span class="chip" tabindex="0">Desconforto com a lente</span>
+            </div>
+            <textarea id="qp-txt" placeholder="Detalhe (tempo, olho, piora)…"></textarea>
+          </section>
+
+          <section class="box">
+            <div class="sec-h"><h2>Antecedentes</h2></div>
+            <div class="chips" data-grupo="ap">
+              <span class="chip" tabindex="0">Usa óculos</span><span class="chip" tabindex="0">Usa lente de contato</span><span class="chip" tabindex="0">HAS</span>
+              <span class="chip" tabindex="0">DM</span><span class="chip" tabindex="0">Glaucoma na família</span><span class="chip" tabindex="0">Cirurgia ocular prévia</span><span class="chip" tabindex="0">Alergias</span>
+            </div>
+            <input id="ap-txt" placeholder="Medicações, alergias, cirurgias…">
+          </section>
+
+          <section class="box">
+            <div class="sec-h"><h2>Acuidade visual <small>Snellen</small></h2></div>
+            <div class="grid-olho">
+              <span class="h blank"></span><span class="h od">OD</span><span class="h oe">OE</span>
+              <span class="lbl rowlbl">Sem correção</span><input id="av-sc-od" list="snellen"><input id="av-sc-oe" list="snellen">
+              <span class="lbl rowlbl">Com correção</span><input id="av-cc-od" list="snellen"><input id="av-cc-oe" list="snellen">
+              <span class="lbl rowlbl">Perto</span><input id="av-pt-od" list="jaeger"><input id="av-pt-oe" list="jaeger">
+            </div>
+          </section>
+
+          <section class="box">
+            <div class="sec-h"><h2>Refração estática <small>-250 ou -2.5 vira -2,50</small></h2><button type="button" id="transpor">Transpor cilindro</button></div>
+            <div class="ref">
+              <span></span><span class="h">Esférico</span><span class="h">Cilíndrico</span><span class="h">Eixo</span><span class="h">AV</span>
+              <span class="eye" style="color:var(--od)">OD</span><input id="re-od-esf" inputmode="decimal"><input id="re-od-cil" inputmode="decimal"><input id="re-od-eixo" inputmode="numeric"><input id="re-od-av" list="snellen">
+              <span class="eye" style="color:var(--oe)">OE</span><input id="re-oe-esf" inputmode="decimal"><input id="re-oe-cil" inputmode="decimal"><input id="re-oe-eixo" inputmode="numeric"><input id="re-oe-av" list="snellen">
+            </div>
+            <div class="row"><label>Adição <input id="re-add" inputmode="decimal" style="width:90px;font-family:var(--f-mono);text-align:right"></label><span class="hint" id="ref-aviso"></span></div>
+          </section>
+
+          <section class="box">
+            <div class="sec-h"><h2>Biomicroscopia</h2><button type="button" data-normal="bio">Normal AO</button></div>
+            <div class="grid-olho" id="bio"></div>
+          </section>
+
+          <section class="box">
+            <div class="sec-h"><h2>Pressão intraocular</h2></div>
+            <div class="row">
+              <label><span style="color:var(--od);font-weight:600">OD</span> <input id="pio-od" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label>
+              <label><span style="color:var(--oe);font-weight:600">OE</span> <input id="pio-oe" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label>
+              <span class="lbl">mmHg</span>
+              <select id="pio-met" aria-label="Método"><option>aplanação</option><option>tonômetro de rebote</option><option>sopro</option></select>
+              <label>às <input id="pio-hora" style="width:80px;font-family:var(--f-mono)"></label>
+            </div>
+          </section>
+
+          <section class="box">
+            <div class="sec-h"><h2>Fundoscopia</h2><button type="button" data-normal="fo">Normal AO</button></div>
+            <div class="grid-olho" id="fo"></div>
+          </section>
+
+          <section class="box">
+            <div class="sec-h"><h2>Hipótese diagnóstica</h2></div>
+            <div class="chips" data-grupo="hd">
+              <span class="chip" tabindex="0" data-cid="H52.1">Miopia</span><span class="chip" tabindex="0" data-cid="H52.0">Hipermetropia</span>
+              <span class="chip" tabindex="0" data-cid="H52.2">Astigmatismo</span><span class="chip" tabindex="0" data-cid="H52.4">Presbiopia</span>
+              <span class="chip" tabindex="0" data-cid="H18.6">Ceratocone</span><span class="chip" tabindex="0" data-cid="H25.9">Catarata senil</span>
+              <span class="chip" tabindex="0" data-cid="H04.1">Olho seco</span><span class="chip" tabindex="0" data-cid="H01.0">Blefarite</span>
+              <span class="chip" tabindex="0" data-cid="H10.1">Conjuntivite alérgica</span><span class="chip" tabindex="0" data-cid="H40.0">Suspeita de glaucoma</span>
+            </div>
+            <input id="hd-txt" placeholder="Outra hipótese…">
+          </section>
+
+          <section class="box">
+            <div class="sec-h"><h2>Conduta</h2></div>
+            <div class="chips" data-grupo="cd">
+              <span class="chip" tabindex="0">Prescrição de óculos</span><span class="chip" tabindex="0">Lubrificante ocular</span><span class="chip" tabindex="0">Compressa morna e higiene palpebral</span>
+              <span class="chip" tabindex="0">Solicito Pentacam</span><span class="chip" tabindex="0">Solicito topografia</span><span class="chip" tabindex="0">Teste de lente de contato</span>
+              <span class="chip" tabindex="0">Mapeamento de retina</span><span class="chip" tabindex="0">Avaliação para cirurgia refrativa</span>
+            </div>
+            <input id="cd-txt" placeholder="Orientações, colírios, encaminhamentos…">
+            <div class="row"><label>Retorno <select id="retorno"><option value="">—</option><option>7 dias</option><option>30 dias</option><option>3 meses</option><option>6 meses</option><option>1 ano</option></select></label></div>
+          </section>
+
+          <section class="box hist" id="hist-box" hidden>
+            <div class="sec-h"><h2>Consultas anteriores registradas aqui</h2></div>
+            <div id="hist"></div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <aside class="saida" id="saida-box" hidden>
+      <div class="out">
+        <div class="sec-h"><h2>Texto para o iClinic</h2>
+          <div class="row"><button type="button" id="salvar">Salvar</button><button type="button" class="pri" id="copiar">Copiar</button></div></div>
+        <pre id="saida" aria-live="polite"></pre>
+        <div class="status" id="status"></div>
+        <div class="hint">Copiar também salva. Salvar marca o paciente como atendido na agenda.</div>
+      </div>
+      <div class="out">
+        <div class="sec-h"><h2>Receita de óculos</h2><button type="button" id="copiar-rx">Copiar</button></div>
+        <div class="rx">
+          <div class="row"><label>Uso <select id="rx-uso"><option>Longe</option><option>Perto</option><option>Multifocal</option><option>Visão intermediária</option></select></label></div>
+          <div style="overflow-x:auto"><table aria-label="Receita"><thead><tr><th></th><th>Esf</th><th>Cil</th><th>Eixo</th></tr></thead><tbody id="rx-body"></tbody></table></div>
+          <div class="hint" id="rx-add"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<datalist id="snellen"><option>20/20</option><option>20/25</option><option>20/30</option><option>20/40</option><option>20/50</option><option>20/60</option><option>20/70</option><option>20/80</option><option>20/100</option><option>20/200</option><option>20/400</option><option>CD 2m</option><option>CD 1m</option><option>MM</option><option>PL</option><option>SPL</option></datalist>
+<datalist id="jaeger"><option>J1</option><option>J2</option><option>J3</option><option>J4</option><option>J6</option></datalist>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const TZ="America/Sao_Paulo";
+
+/* ===== sessão: a mesma do painel (mesmo endereço, mesmo armazenamento) ===== */
+let AUTH=localStorage.getItem('iobb_at')||'';
+function sync(){ const at=localStorage.getItem('iobb_at')||''; if(at&&at!==AUTH){AUTH=at;return true;} return false; }
+async function refresh(){
+  if(sync()) return true;
+  const rt=localStorage.getItem('iobb_rt'); if(!rt) return false;
+  const ultima=Number(localStorage.getItem('iobb_rt_ts')||0);
+  if(Date.now()-ultima<8000){ await new Promise(r=>setTimeout(r,1500)); return sync(); }
+  localStorage.setItem('iobb_rt_ts',String(Date.now()));
+  try{ const r=await fetch('/api/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:rt})});
+    if(!r.ok) return sync(); const d=await r.json(); AUTH=d.access_token||''; localStorage.setItem('iobb_at',AUTH); if(d.refresh_token) localStorage.setItem('iobb_rt',d.refresh_token); return true;
+  }catch(_){ return false; }
+}
+async function api(path,opts={},again){
+  sync();
+  const r=await fetch(path,{headers:{'Content-Type':'application/json','Authorization':'Bearer '+AUTH},...opts});
+  if(r.status===401&&!again&&await refresh()) return api(path,opts,true);
+  if(!r.ok){ const e=new Error('HTTP '+r.status); e.status=r.status; try{ e.msg=(await r.json()).error; }catch(_){} throw e; }
+  return r.json();
+}
+function portao(msg){ $("#app").hidden=true; $("#portao").hidden=false; if(msg) $("#portao-msg").innerHTML=msg; }
+
+/* ===== formulário (mesma lógica do modelo aprovado) ===== */
+const BIO=[["pal","Pálpebras e cílios","sem alterações"],["conj","Conjuntiva","calma"],["cor","Córnea","transparente"],["ca","Câmara anterior","formada, sem reação"],["iris","Íris e pupila","isocórica, fotorreagente"],["crist","Cristalino","transparente"]];
+const FO=[["disco","Disco","corado, bordos nítidos, E/D 0,3"],["mac","Mácula","brilho foveal presente"],["vasos","Vasos","sem alterações"],["perif","Periferia","retina aplicada"]];
+function montaGrade(id,itens){ const g=$("#"+id); g.innerHTML='<span class="h blank"></span><span class="h od">OD</span><span class="h oe">OE</span>';
+  for(const [k,nome] of itens) g.insertAdjacentHTML("beforeend",`<span class="lbl rowlbl">${nome}</span><input id="${id}-${k}-od"><input id="${id}-${k}-oe">`); }
+montaGrade("bio",BIO); montaGrade("fo",FO);
+function dioptria(v,ehEsf){
+  let t=String(v||"").trim().replace(",",".").replace(/\s/g,""); if(!t) return "";
+  if(/^(pl|plano|0+(\.0*)?)$/i.test(t)) return ehEsf?"Plano":"";
+  if(/^[+-]?\d{3}$/.test(t)) t=(t[0]==="-"||t[0]==="+"?t[0]:"")+(Number(t.replace(/[+-]/,""))/100);
+  const n=Number(t); if(!isFinite(n)) return v;
+  const q=Math.round(n*4)/4; return (q>0?"+":q<0?"-":"")+Math.abs(q).toFixed(2).replace(".",",");
+}
+function eixo(v){ const n=parseInt(String(v||"").replace(/\D/g,""),10); if(isNaN(n)) return ""; return String(n===0?180:Math.min(Math.max(n,1),180)); }
+function num(s){ if(!s||s==="Plano") return 0; return Number(String(s).replace(",",".")); }
+function normalizaCampo(el){ const id=el.id;
+  if(/-esf$/.test(id)) el.value=dioptria(el.value,true);
+  else if(/-cil$/.test(id)) el.value=dioptria(el.value,false);
+  else if(/-eixo$/.test(id)) el.value=eixo(el.value);
+  else if(id==="re-add"){ const d=dioptria(el.value,false); el.value=d?d.replace("-","+"):""; } }
+$("#transpor").addEventListener("click",()=>{ for(const o of ["od","oe"]){ const e=$(`#re-${o}-esf`),c=$(`#re-${o}-cil`),x=$(`#re-${o}-eixo`); const cil=num(c.value); if(!cil) continue;
+  e.value=dioptria(String(num(e.value)+cil),true); c.value=dioptria(String(-cil),false); let ax=parseInt(x.value||"0",10); x.value=String(ax>90?ax-90:ax+90); } atualiza(); });
+function liga(c){ c.setAttribute("aria-pressed",c.getAttribute("aria-pressed")==="true"?"false":"true"); atualiza(); }
+$$(".chip").forEach(c=>{ c.setAttribute("role","button"); c.setAttribute("aria-pressed","false");
+  if(c.dataset.cid) c.insertAdjacentHTML("beforeend",`<span class="cid">${c.dataset.cid}</span>`);
+  c.addEventListener("click",()=>liga(c)); c.addEventListener("keydown",e=>{ if(e.key===" "||e.key==="Enter"){ e.preventDefault(); liga(c);} }); });
+const nomeChip=c=>c.childNodes[0].textContent.trim();
+const marcados=g=>$$(`[data-grupo="${g}"] .chip[aria-pressed="true"]`);
+function normal(id){ for(const [k,,txt] of (id==="bio"?BIO:FO)) for(const o of ["od","oe"]){ const el=$(`#${id}-${k}-${o}`); if(!el.value) el.value=txt; } atualiza(); }
+$$("[data-normal]").forEach(b=>b.addEventListener("click",()=>normal(b.dataset.normal)));
+const campos=()=>$$("#form input, #form select, #form textarea");
+document.addEventListener("keydown",e=>{ if(e.key!=="Enter"||e.target.tagName!=="INPUT"||!e.target.closest("#form")) return;
+  e.preventDefault(); normalizaCampo(e.target); const l=campos(),i=l.indexOf(e.target); if(i>=0&&l[i+1]) l[i+1].focus(); atualiza(); });
+document.addEventListener("focusout",e=>{ if(e.target.matches("#form input")){ normalizaCampo(e.target); atualiza(); } });
+document.addEventListener("input",e=>{ if(e.target.closest("#form")) atualiza(); });
+
+const v=id=>($("#"+id)?.value||"").trim();
+function par(rot,od,oe){ if(!od&&!oe) return ""; if(od&&od===oe) return `${rot}: AO ${od}`; return `${rot}: OD ${od||"—"} | OE ${oe||"—"}`; }
+function refr(o){ const e=v(`re-${o}-esf`),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`),a=v(`re-${o}-av`); if(!e&&!c) return ""; let s=e||"Plano"; if(c) s+=` ${c} x ${x||"?"}°`; if(a) s+=` (${a})`; return s; }
+function grade(id,itens,rot){ const ls=[]; let igual=true;
+  for(const [k,nome] of itens){ const a=v(`${id}-${k}-od`),b=v(`${id}-${k}-oe`); if(!a&&!b) continue; if(a!==b) igual=false; ls.push([nome,a,b]); }
+  if(!ls.length) return ""; if(igual) return `${rot} AO: `+ls.map(([n,a])=>`${n.toLowerCase()} ${a}`).join("; ")+".";
+  return `${rot}:\n`+ls.map(([n,a,b])=>a===b?`  ${n}: AO ${a}`:`  ${n}: OD ${a||"—"} | OE ${b||"—"}`).join("\n"); }
+function textoIclinic(){ const L=[];
+  const qp=[...marcados("qp").map(nomeChip),v("qp-txt")].filter(Boolean).join(". "); if(qp) L.push(`QP: ${qp}.`.replace(/\.\.$/,"."));
+  const ap=[...marcados("ap").map(nomeChip),v("ap-txt")].filter(Boolean).join("; "); if(ap) L.push(`AP: ${ap}.`);
+  for(const [r,a,b] of [["AV sc",v("av-sc-od"),v("av-sc-oe")],["AV cc",v("av-cc-od"),v("av-cc-oe")],["AV perto",v("av-pt-od"),v("av-pt-oe")]]){ const s=par(r,a,b); if(s) L.push(s); }
+  const rod=refr("od"),roe=refr("oe"); if(rod||roe) L.push(`RE: OD ${rod||"—"} | OE ${roe||"—"}`+(v("re-add")?` | Add ${v("re-add")}`:""));
+  const bio=grade("bio",BIO,"BIO"); if(bio) L.push(bio);
+  if(v("pio-od")||v("pio-oe")) L.push(`PIO: OD ${v("pio-od")||"—"} | OE ${v("pio-oe")||"—"} mmHg (${v("pio-met")}${v("pio-hora")?", "+v("pio-hora"):""})`);
+  const fo=grade("fo",FO,"FO"); if(fo) L.push(fo);
+  const hd=[...marcados("hd").map(c=>`${nomeChip(c)} (${c.dataset.cid})`),v("hd-txt")].filter(Boolean).join("; "); if(hd) L.push(`HD: ${hd}.`);
+  const cd=[...marcados("cd").map(nomeChip),v("cd-txt")].filter(Boolean).join("; "); if(cd) L.push(`CD: ${cd}.`);
+  if(v("retorno")) L.push(`Retorno em ${v("retorno")}.`);
+  return L.join("\n"); }
+function receita(){ const l=o=>{ const e=v(`re-${o}-esf`)||(v(`re-${o}-cil`)?"Plano":""),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`); return [e||"—",c||"—",c?(x?x+"°":"?"):"—"]; };
+  return {od:l("od"),oe:l("oe"),add:v("re-add"),uso:$("#rx-uso").value}; }
+function avisos(){ const m=[]; for(const o of ["od","oe"]) if(v(`re-${o}-cil`)&&!v(`re-${o}-eixo`)) m.push(`${o.toUpperCase()}: cilindro sem eixo`);
+  if(v("re-add")&&num(v("re-add"))>3.5) m.push("adição acima de +3,50, confira"); $("#ref-aviso").textContent=m.join(" · "); $("#ref-aviso").style.color=m.length?"var(--warn)":""; }
+let sujo=false;
+function atualiza(){
+  $("#saida").textContent=textoIclinic()||"Preencha a consulta: o texto aparece aqui, pronto para colar.";
+  const r=receita();
+  $("#rx-body").innerHTML=`<tr><td style="color:var(--od);font-weight:600">OD</td><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><td style="color:var(--oe);font-weight:600">OE</td><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
+  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos();
+  if(atual){ sujo=true; rascunhoLocal(); status("Alterações não salvas.",""); }
+}
+$("#rx-uso").addEventListener("change",atualiza);
+const MODELOS={
+  rotina:{chips:{qp:["Revisão de rotina"],ap:["Usa óculos"],cd:["Prescrição de óculos"]},retorno:"1 ano"},
+  lente:{chips:{qp:["Desconforto com a lente"],ap:["Usa lente de contato"]},retorno:"6 meses",campos:{"cd-txt":"Mantenho a lente atual; orientações de higiene e tempo de uso."}},
+  ceratocone:{chips:{qp:["Baixa visual para longe"],hd:["Ceratocone"],cd:["Solicito Pentacam","Teste de lente de contato"]},retorno:"3 meses",campos:{"ap-txt":"Coçar os olhos: orientado a evitar."}},
+  catarata:{chips:{qp:["Baixa visual para longe"],hd:["Catarata senil"],cd:["Mapeamento de retina"]},retorno:"6 meses",campos:{"bio-crist-od":"opacidade nuclear ++/4","bio-crist-oe":"opacidade nuclear +/4"}}
+};
+function limpar(){ campos().forEach(el=>{ if(el.tagName==="SELECT") el.selectedIndex=0; else el.value=""; }); $$(".chip").forEach(c=>c.setAttribute("aria-pressed","false")); $("#rx-uso").selectedIndex=0; }
+function horaPio(){ const h=new Date(); $("#pio-hora").value=String(h.getHours()).padStart(2,"0")+"h"+String(h.getMinutes()).padStart(2,"0"); }
+$("#limpar").addEventListener("click",()=>{ limpar(); horaPio(); atualiza(); });
+$$("[data-modelo]").forEach(b=>b.addEventListener("click",()=>{ const m=MODELOS[b.dataset.modelo];
+  for(const [g,lista] of Object.entries(m.chips)) $$(`[data-grupo="${g}"] .chip`).forEach(c=>{ if(lista.includes(nomeChip(c))) c.setAttribute("aria-pressed","true"); });
+  normal("bio"); normal("fo"); for(const [id,val] of Object.entries(m.campos||{})){ const el=$("#"+id); if(el) el.value=val; }
+  $("#retorno").value=m.retorno; atualiza(); }));
+
+/* ===== estado <-> objeto salvo ===== */
+function coletar(){ const d={campos:{},chips:$$('.chip[aria-pressed="true"]').map(c=>c.closest("[data-grupo]").dataset.grupo+"|"+nomeChip(c))};
+  campos().forEach(el=>d.campos[el.id]=el.value); d.campos["rx-uso"]=$("#rx-uso").value; return d; }
+function aplicar(d){ limpar(); if(!d) return;
+  for(const [id,val] of Object.entries(d.campos||{})){ const el=$("#"+id); if(el) el.value=val; }
+  for(const k of d.chips||[]){ const [g,n]=k.split("|"); $$(`[data-grupo="${g}"] .chip`).forEach(c=>{ if(nomeChip(c)===n) c.setAttribute("aria-pressed","true"); }); } }
+const chaveLocal=id=>"pront-rasc-"+id;
+function rascunhoLocal(){ try{ localStorage.setItem(chaveLocal(atual),JSON.stringify({ts:Date.now(),dados:coletar()})); }catch(_){} }
+function status(t,cls){ const s=$("#status"); s.textContent=t; s.className="status "+(cls||""); }
+
+/* ===== dia e consultas ===== */
+let atual=null, consultas=[];
+const hojeBR=()=>new Date().toLocaleDateString("en-CA",{timeZone:TZ});
+const hhmm=iso=>new Date(iso).toLocaleTimeString("pt-BR",{timeZone:TZ,hour:"2-digit",minute:"2-digit"});
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function carregaDia(ymd){
+  $("#lista").innerHTML='<div class="vazio">Carregando…</div>';
+  try{ const r=await api("/api/prontuario/dia?data="+ymd); consultas=r.consultas||[];
+    $("#lista-titulo").textContent=`${new Date(ymd+"T12:00:00-03:00").toLocaleDateString("pt-BR",{weekday:"short",day:"2-digit",month:"2-digit"})} · ${consultas.length} consulta(s)`;
+    if(!consultas.length){ $("#lista").innerHTML='<div class="vazio">Nenhuma consulta neste dia.</div>'; return; }
+    $("#lista").innerHTML=consultas.map(c=>`<button class="item${c.id===atual?" ativo":""}" data-id="${c.id}"><span class="h">${hhmm(c.inicio)}</span><span class="n">${esc(c.paciente_nome||"Sem nome")}</span>
+      <span class="s">${esc(c.unidade)}${c.encaixe?" · encaixe":""}${c.tem_registro?' · <span class="feito">registrado</span>':""}</span></button>`).join("");
+    $$(".item").forEach(b=>b.addEventListener("click",()=>abrir(b.dataset.id)));
+  }catch(e){
+    if(e.status===401||e.status===403) return portao(e.status===403?"Esta página é só para o login <b>Dr. Bruno</b>. Saia do painel e entre com o seu usuário.":null);
+    $("#lista").innerHTML='<div class="vazio">Não consegui carregar a agenda. Tente de novo em instantes.</div>';
+  }
+}
+async function abrir(id){
+  if(atual&&sujo){ await salvar(true); }
+  atual=null; sujo=false;
+  $$(".item").forEach(b=>b.classList.toggle("ativo",b.dataset.id===id));
+  status("Abrindo…","");
+  try{
+    const r=await api("/api/prontuario/consulta/"+id); const c=r.consulta;
+    $("#sem-consulta").hidden=true; $("#ficha").hidden=false; $("#saida-box").hidden=false;
+    $("#pac-topo").textContent=`${new Date(c.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"2-digit"})} · ${hhmm(c.inicio)} · ${c.unidade}`;
+    $("#pac-nome").textContent=c.paciente_nome||"Sem nome";
+    $("#pac-meta").innerHTML=[c.idade!=null?`${c.idade} anos (${c.nascimento})`:"",c.convenio?esc(c.convenio):"",c.motivo?"Motivo: "+esc(c.motivo):""].filter(Boolean).map(t=>`<span>${t}</span>`).join("");
+    if(r.falas&&r.falas.length){ $("#pac-ana").hidden=false; $("#pac-ana").innerHTML="<b>Disse à Ana:</b>"+r.falas.slice(-4).map(t=>`<p>“${esc(t)}”</p>`).join(""); } else $("#pac-ana").hidden=true;
+    if(r.historico&&r.historico.length){ $("#hist-box").hidden=false; $("#hist").innerHTML=r.historico.map(h=>`<details><summary>${new Date(h.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ})}</summary><pre>${esc(h.texto)}</pre></details>`).join(""); } else $("#hist-box").hidden=true;
+    let dados=r.registro?r.registro.dados:null;
+    try{ const loc=JSON.parse(localStorage.getItem(chaveLocal(id))||"null"); if(loc&&(!r.registro||loc.ts>new Date(r.registro.updated_at).getTime())) dados=loc.dados; }catch(_){}
+    aplicar(dados); if(!dados) horaPio();
+    atual=id; atualiza(); sujo=false;
+    status(r.registro?`Salvo às ${hhmm(r.registro.updated_at)}.`:"Ainda não salvo.",r.registro?"ok":"");
+    window.scrollTo({top:0});
+  }catch(e){ status(e.msg||"Não consegui abrir a consulta.","erro"); }
+}
+async function salvar(silencioso){
+  if(!atual) return false;
+  try{ const r=await api("/api/prontuario/consulta/"+atual,{method:"POST",body:JSON.stringify({dados:coletar(),texto:textoIclinic()})});
+    sujo=false; try{ localStorage.removeItem(chaveLocal(atual)); }catch(_){}
+    status(`Salvo às ${hhmm(r.updated_at)}.`,"ok");
+    const it=consultas.find(c=>c.id===atual); if(it&&!it.tem_registro){ it.tem_registro=true; const b=$(`.item[data-id="${atual}"] .s`); if(b) b.insertAdjacentHTML("beforeend",' · <span class="feito">registrado</span>'); }
+    return true;
+  }catch(e){ if(!silencioso) status(e.msg||"Não consegui salvar. Copie o texto antes de sair.","erro"); return false; }
+}
+$("#salvar").addEventListener("click",()=>salvar());
+function copiar(txt,msg){ const ok=()=>status(msg,"ok");
+  try{ navigator.clipboard.writeText(txt).then(ok,()=>{ const r=document.createRange(); r.selectNodeContents($("#saida")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); status("Texto selecionado: use Ctrl+C / ⌘C.",""); }); }catch(_){} }
+$("#copiar").addEventListener("click",async()=>{ copiar(textoIclinic(),"Copiado. Cole no iClinic."); await salvar(); });
+$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiar(`RECEITA (${r.uso})\nOD: ${r.od.join("  ")}\nOE: ${r.oe.join("  ")}${r.add?"\nAdição: "+r.add:""}`,"Receita copiada."); });
+setInterval(()=>{ if(atual&&sujo) salvar(true); },60000);   // salva sozinho a cada minuto
+window.addEventListener("beforeunload",e=>{ if(sujo){ e.preventDefault(); e.returnValue=""; } });
+
+$("#dia").addEventListener("change",()=>carregaDia($("#dia").value));
+$("#hoje").addEventListener("click",()=>{ $("#dia").value=hojeBR(); carregaDia($("#dia").value); });
+
+/* ===== entrada ===== */
+(async()=>{
+  if(!AUTH) return portao();
+  try{ await api("/api/prontuario/eu"); }
+  catch(e){ return portao(e.status===403?"Esta página é só para o login <b>Dr. Bruno</b>. Saia do painel e entre com o seu usuário.":null); }
+  $("#portao").hidden=true; $("#app").hidden=false;
+  $("#dia").value=hojeBR(); carregaDia($("#dia").value);
+})();
+})();
+</script>
+</body>
+</html>

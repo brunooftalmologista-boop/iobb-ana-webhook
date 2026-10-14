@@ -263,6 +263,7 @@
         <button class="icon-btn" id="btn-refresh" title="Atualizar">⟳</button>
         <button class="icon-btn" id="btn-agenda" title="Agenda">🗓️</button>
         <button class="icon-btn" id="btn-config" title="Configurações">⚙️</button>
+        <a class="icon-btn" id="btn-prontuario" href="/prontuario" target="_blank" title="Prontuário (só o Dr. Bruno)" style="text-decoration:none;display:none">🩺</a>
         <button class="icon-btn" id="btn-erros" title="O que a Ana errou">🩹<span id="erros-badge" class="erros-badge" hidden></span></button>
         <button class="icon-btn" id="btn-logout" title="Sair">⎋</button>
       </div>
@@ -341,13 +342,14 @@
   <div class="modal">
     <h3>🔒 Painel IOBB — Acesso restrito</h3>
     <p>Esta área contém dados de pacientes (LGPD). Entre com seu usuário.</p>
-    <label>Secretária</label>
+    <label>Usuário</label>
     <select id="login-agent">
       <option value="">Selecione…</option>
       <option>Aline</option>
       <option>Mylla</option>
       <option>Elaine</option>
       <option>Secretaria</option>
+      <option>Dr. Bruno</option>
     </select>
     <label>Senha</label>
     <input id="login-pass" type="password" placeholder="Sua senha" autocomplete="current-password">
@@ -1604,14 +1606,18 @@ async function doLogin(){
     });
     if(r.status===429){ const d=await r.json().catch(()=>({})); showLoginError(d.error||'Muitas tentativas. Aguarde.'); return; }
     if(!r.ok) throw new Error('login');
-    const d = await r.json(); setTokens(d.access_token, d.refresh_token); AGENT=nome;
+    const d = await r.json(); setTokens(d.access_token, d.refresh_token); AGENT=nome; mostrarProntuario();
     localStorage.setItem(LS.agent,AGENT);
     $('#login-pass').value='';
     hideLogin(); startApp();
   }catch(e){ showLoginError('Usuário ou senha inválidos.'); $('#login-pass').select(); }
 }
+// 🩺 Atalho do prontuário: aparece só para o login do médico. É só atalho — a
+// barreira de verdade é no servidor (rotas /api/prontuario exigem o login dele).
+function mostrarProntuario(){ const b=document.getElementById('btn-prontuario'); if(b) b.style.display = (AGENT==='Dr. Bruno' && AUTH) ? '' : 'none'; }
 function logout(){
   clearTokens();
+  mostrarProntuario();
   activeId=null; activeConv=null; conversations=[]; filtered=[]; messages=[];
   el.list.innerHTML=''; el.conv.style.display='none'; el.empty.style.display='flex';
   document.getElementById('app').classList.remove('chat-open');
@@ -2068,6 +2074,7 @@ async function atualizarContadorErros(){
 }
 setInterval(atualizarContadorErros, 300000);
 setTimeout(atualizarContadorErros, 4000);
+mostrarProntuario();
 </script>
 </body>
 </html>

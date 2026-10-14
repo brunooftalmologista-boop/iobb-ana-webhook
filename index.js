@@ -8147,7 +8147,13 @@ const SECRETARIAS = [
   { nome: "Mylla",      email: "mylla@iobb.local",      pwEnv: "PANEL_PW_MYLLA" },
   { nome: "Elaine",     email: "elaine@iobb.local",     pwEnv: "PANEL_PW_ELAINE" },
   { nome: "Secretaria", email: "secretaria@iobb.local", pwEnv: "PANEL_PW_SECRETARIA" },
+  // 🩺 O MÉDICO (Dr. Bruno, 14/10/2026): o ÚNICO login com acesso ao prontuário.
+  // `medico: true` faz duas coisas: (1) NUNCA cai na senha comum PANEL_PASSWORD
+  // — sem PANEL_PW_BRUNO o usuário simplesmente não existe; quem sabe a senha
+  // das secretárias não entra como ele; (2) libera as rotas /api/prontuario.
+  { nome: "Dr. Bruno",  email: "bruno@iobb.local",      pwEnv: "PANEL_PW_BRUNO", medico: true },
 ];
+const MEDICO_EMAIL = "bruno@iobb.local";
 
 // Restaura o estado GLOBAL da Ana (settings.ai_enabled) ao subir, para que
 // ligar/desligar (pelo painel ou #ANA) persista entre reinícios do Render.
@@ -8166,7 +8172,7 @@ const SECRETARIAS = [
     const { data: list, error: listErr } = await supabase.auth.admin.listUsers();
     if (listErr) { console.error("Auth listUsers:", listErr.message); return; }
     for (const s of SECRETARIAS) {
-      const senha = process.env[s.pwEnv] || process.env.PANEL_PASSWORD;
+      const senha = process.env[s.pwEnv] || (s.medico ? null : process.env.PANEL_PASSWORD);
       if (!senha) { console.log(`Sem senha em env para ${s.nome} — usuária não criada.`); continue; }
       const existente = list.users.find(u => u.email === s.email);
       if (!existente) {
@@ -8224,7 +8230,8 @@ app.post("/api/login", loginRateLimit, async (req, res) => {
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
       expires_at: data.session.expires_at,
-      agent: secretaria.nome
+      agent: secretaria.nome,
+      medico: !!secretaria.medico,
     });
   } catch (e) {
     console.error("Erro no login:", e.message);
@@ -10027,6 +10034,129 @@ for (const slug of LP_SLUGS) {
 // no-store nas duas páginas: elas mudam com frequência e o navegador estava
 // servindo a versão antiga — a secretária não via o botão novo mesmo depois do
 // deploy, e a única saída era Cmd+Shift+R, que ninguém adivinha.
+// ===== PRONTUÁRIO (fase 1: copia-e-cola para o iClinic) — Dr. Bruno, 14/10/2026 =====
+// Isolado do atendimento: tabela própria (prontuario_consultas), rotas próprias,
+// página própria (/prontuario). Nada daqui entra no prompt da Ana nem sai para
+// a IA. O iClinic continua sendo o prontuário oficial; isto é o rascunho do
+// médico, guardado para a migração futura.
+// A barreira é no SERVIDOR: todas as rotas exigem o login do médico.
+function requireMedico(req, res, next) {
+  if (String(req.panelUser?.email || "").toLowerCase() !== MEDICO_EMAIL) {
+    return res.status(403).json({ error: "Acesso restrito ao médico." });
+  }
+  next();
+}
+const ult8 = (t) => String(t || "").replace(/\D/g, "").slice(-8);
+function idadeDe(obs) {
+  const m = String(obs || "").match(/Nascimento:\s*(\d{2})\/(\d{2})\/(\d{4})|Nascimento:\s*(\d{4})-(\d{2})-(\d{2})/i);
+  if (!m) return null;
+  const [d, mo, a] = m[1] ? [m[1], m[2], m[3]] : [m[6], m[5], m[4]];
+  const nasc = new Date(`${a}-${mo}-${d}T12:00:00-03:00`);
+  if (isNaN(nasc)) return null;
+  const hoje = new Date();
+  let idade = hoje.getFullYear() - nasc.getFullYear();
+  const md = (hoje.getMonth() - nasc.getMonth()) || (hoje.getDate() - nasc.getDate());
+  if (md < 0) idade--;
+  return { idade, nascimento: `${d}/${mo}/${a}` };
+}
+app.get("/api/prontuario/eu", requireMedico, (req, res) => res.json({ ok: true, medico: true }));
+// Consultas de um dia (padrão: hoje, em Brasília), com a marca de quem já tem registro.
+app.get("/api/prontuario/dia", requireMedico, async (req, res) => {
+  try {
+    const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.data || ""))
+      ? String(req.query.data) : new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR });
+    const d0 = new Date(`${ymd}T00:00:00-03:00`), d1 = new Date(d0.getTime() + 864e5);
+    const { data: ags, error } = await supabase.from("appointments")
+      .select("id, inicio, unidade, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, encaixe, compareceu")
+      .gte("inicio", d0.toISOString()).lt("inicio", d1.toISOString())
+      .in("status", ["reservado", "confirmado"]).neq("origem", "bloqueio")
+      .order("inicio", { ascending: true });
+    if (error) throw error;
+    const ids = (ags || []).map(a => a.id);
+    let feitos = new Set();
+    if (ids.length) {
+      const { data: regs } = await supabase.from("prontuario_consultas").select("appointment_id").in("appointment_id", ids);
+      feitos = new Set((regs || []).map(r => r.appointment_id));
+    }
+    res.json({ data: ymd, consultas: (ags || []).map(a => ({ ...a, ...(idadeDe(a.observacoes) || {}), tem_registro: feitos.has(a.id) })) });
+  } catch (e) {
+    console.error("[Prontuário] /dia falhou:", e.message);
+    res.status(500).json({ error: "Não consegui ler a agenda do dia." });
+  }
+});
+// Uma consulta: dados do agendamento, o registro (se houver), o histórico do
+// paciente no prontuário e as últimas falas dele com a Ana.
+app.get("/api/prontuario/consulta/:id", requireMedico, async (req, res) => {
+  try {
+    const { data: ag, error } = await supabase.from("appointments")
+      .select("id, inicio, unidade, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, conversation_id, compareceu")
+      .eq("id", req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada." });
+    const { data: reg } = await supabase.from("prontuario_consultas").select("*").eq("appointment_id", ag.id).maybeSingle();
+    const f8 = ult8(ag.paciente_telefone);
+    let historico = [];
+    if (f8) {
+      const { data: hs } = await supabase.from("prontuario_consultas")
+        .select("id, data_consulta, texto").like("paciente_telefone", `%${f8}`)
+        .neq("appointment_id", ag.id).order("data_consulta", { ascending: false }).limit(10);
+      historico = hs || [];
+    }
+    let falas = [];
+    try {
+      let convId = ag.conversation_id;
+      if (!convId && f8) {
+        const { data: ps } = await supabase.from("patients").select("id").like("phone", `%${f8}`).limit(1);
+        if (ps && ps[0]) {
+          const { data: cs } = await supabase.from("conversations").select("id").eq("patient_id", ps[0].id)
+            .order("updated_at", { ascending: false }).limit(1);
+          convId = cs && cs[0] ? cs[0].id : null;
+        }
+      }
+      if (convId) {
+        const { data: ms } = await supabase.from("messages").select("content, timestamp")
+          .eq("conversation_id", convId).eq("role", "user")
+          .order("timestamp", { ascending: false }).limit(6);
+        falas = (ms || []).reverse().map(m => String(m.content || "").slice(0, 300))
+          .filter(t => !/^(confirmo|ok|obrigad|sim|bom dia|boa tarde|boa noite)\W*$/i.test(t.trim()));
+      }
+    } catch (_) { /* as falas são só contexto: sem elas a tela abre igual */ }
+    res.json({ consulta: { ...ag, ...(idadeDe(ag.observacoes) || {}) }, registro: reg || null, historico, falas });
+  } catch (e) {
+    console.error("[Prontuário] /consulta falhou:", e.message);
+    res.status(500).json({ error: "Não consegui abrir a consulta." });
+  }
+});
+// Salva (cria ou atualiza) o registro da consulta e marca o comparecimento.
+app.post("/api/prontuario/consulta/:id", requireMedico, async (req, res) => {
+  try {
+    const { dados, texto } = req.body || {};
+    if (!dados || typeof dados !== "object") return res.status(400).json({ error: "Nada para salvar." });
+    const { data: ag, error } = await supabase.from("appointments")
+      .select("id, inicio, paciente_nome, paciente_telefone, compareceu").eq("id", req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada." });
+    const linha = {
+      appointment_id: ag.id, paciente_nome: ag.paciente_nome, paciente_telefone: ag.paciente_telefone,
+      data_consulta: ag.inicio, dados, texto: String(texto || "").slice(0, 20000),
+      criado_por: "Dr. Bruno", updated_at: new Date().toISOString(),
+    };
+    const { data: salvo, error: e2 } = await supabase.from("prontuario_consultas")
+      .upsert(linha, { onConflict: "appointment_id" }).select("id, updated_at").single();
+    if (e2) throw e2;
+    // Salvar a consulta = o paciente veio. Só preenche se a recepção ainda não marcou.
+    if (ag.compareceu === null || ag.compareceu === undefined) {
+      await supabase.from("appointments").update({ compareceu: true, compareceu_em: new Date().toISOString(), compareceu_por: "Dr. Bruno (prontuário)" })
+        .eq("id", ag.id).is("compareceu", null);
+    }
+    res.json({ ok: true, id: salvo.id, updated_at: salvo.updated_at });
+  } catch (e) {
+    console.error("[Prontuário] salvar falhou:", e.message);
+    res.status(500).json({ error: "Não consegui salvar. Copie o texto antes de sair da tela." });
+  }
+});
+app.get("/prontuario", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/prontuario.html"); });
+
 app.get("/painel", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/painel.html"); });
 // Qual commit está REALMENTE no ar. Já anunciei deploy pronto olhando um /agenda
 // que respondia 200 pelo processo ANTIGO; sem um marcador de versão não dá para
@@ -10044,6 +10174,7 @@ app.get("/version", (req, res) => {
     // errado. Com isto a resposta é imediata, e nenhum número de telefone vaza.
     config: {
       painel_janela_horas: janelaEmHoras(readEnv("PAINEL_JANELA_HORAS")),   // null = lista inteira
+      login_medico: !!process.env.PANEL_PW_BRUNO,                           // senha do Dr. Bruno configurada no Render
       espelho_extra_numeros: WA_ESPELHO_EXTRA.length,                       // 0 = espelho extra desligado
       secretaria_espelho: WA_SECRETARIA_NUMBER ? "ligado" : "desligado",
       // 23/09 — estes três são CONFIGURAÇÃO, não segredo, e ficavam invisíveis
