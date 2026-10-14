@@ -318,7 +318,7 @@ function textoIclinic(){ const L=[];
   const hd=[...marcados("hd").map(c=>`${nomeChip(c)} (${c.dataset.cid})`),v("hd-txt")].filter(Boolean).join("; "); if(hd) L.push(`HD: ${hd}.`);
   const cd=[...marcados("cd").map(nomeChip),v("cd-txt")].filter(Boolean).join("; "); if(cd) L.push(`CD: ${cd}.`);
   if(v("retorno")) L.push(`Retorno em ${v("retorno")}.`);
-  return L.join("\n"); }
+  return L.join("\n\n"); }   // linha em branco entre os itens (Dr. Bruno, 14/10)
 function receita(){ const l=o=>{ const e=v(`re-${o}-esf`)||(v(`re-${o}-cil`)?"Plano":""),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`); return [e||"—",c||"—",c?(x?x+"°":"?"):"—"]; };
   return {od:l("od"),oe:l("oe"),add:v("re-add"),uso:$("#rx-uso").value}; }
 function avisos(){ const m=[]; for(const o of ["od","oe"]) if(v(`re-${o}-cil`)&&!v(`re-${o}-eixo`)) m.push(`${o.toUpperCase()}: cilindro sem eixo`);
