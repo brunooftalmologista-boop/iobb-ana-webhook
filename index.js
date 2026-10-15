@@ -8181,10 +8181,28 @@ const MEDICO_EMAIL = "bruno@iobb.local";
         });
         console.log(error ? `Erro ao criar ${s.nome}: ${error.message}` : `Usuária ${s.nome} criada.`);
       } else {
-        const { error } = await supabase.auth.admin.updateUserById(existente.id, {
-          password: senha, user_metadata: { nome: s.nome }
-        });
-        if (error) console.error(`Erro ao atualizar ${s.nome}:`, error.message);
+        // ⚠️ SÓ REGRAVA A SENHA SE ELA MUDOU (15/10/2026). Antes, TODO deploy
+        // chamava updateUserById com a senha — e o Supabase trata isso como troca
+        // de senha: derruba todas as sessões daquele usuário. Cada atualização do
+        // sistema deslogava as secretárias e o Dr. Bruno ("sessão inválida" ao
+        // salvar o prontuário, logo após o deploy das 13h56). Agora testamos a
+        // senha da env com um login; se ela já vale, não mexemos em nada.
+        let senhaJaVale = false;
+        try {
+          const { data: t, error: eT } = await authClient.auth.signInWithPassword({ email: s.email, password: senha });
+          senhaJaVale = !eT && !!t?.session;
+        } catch (_) { senhaJaVale = false; }
+        if (senhaJaVale) {
+          if (existente.user_metadata?.nome !== s.nome) {
+            await supabase.auth.admin.updateUserById(existente.id, { user_metadata: { nome: s.nome } }).catch(() => {});
+          }
+        } else {
+          const { error } = await supabase.auth.admin.updateUserById(existente.id, {
+            password: senha, user_metadata: { nome: s.nome }
+          });
+          if (error) console.error(`Erro ao atualizar ${s.nome}:`, error.message);
+          else console.log(`[Auth] Senha de ${s.nome} atualizada a partir da env (as sessões dele(a) caem uma vez).`);
+        }
       }
     }
   } catch (e) {
