@@ -10210,6 +10210,7 @@ app.post("/api/prontuario/consulta/:id", requireMedico, async (req, res) => {
     res.status(500).json({ error: "Não consegui salvar. Copie o texto antes de sair da tela." });
   }
 });
+app.get("/prontuario/timbrado.jpg", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/timbrado-a4.jpg"); });
 app.get("/prontuario/logo.png", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/logo-receita.png"); });
 app.get("/prontuario", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/prontuario.html"); });
 

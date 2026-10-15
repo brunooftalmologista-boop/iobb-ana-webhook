@@ -248,6 +248,7 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
           <div class="row"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="perto">Óculos para perto</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option></select></label></div>
           <div style="overflow-x:auto"><table aria-label="Receita"><thead><tr><th></th><th>Esf</th><th>Cil</th><th>Eixo</th></tr></thead><tbody id="rx-body"></tbody></table></div>
           <div class="hint" id="rx-add"></div>
+          <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="rx-timbrado" style="width:auto"> Imprimir no papel timbrado (sem logotipo)</label>
           <div class="status" id="status-rx" aria-live="polite"></div>
           <label class="hint" for="rx-sug">Lentes sugeridas (pode editar)</label>
           <textarea id="rx-sug" style="min-height:48px;font-size:13px"></textarea>
@@ -387,6 +388,9 @@ let sugEditada=false;
 function sugerir(){ if(sugEditada) return; const t=SUGESTOES[$("#rx-uso").value]||SUGESTOES.monofocais; $("#rx-sug").value=altoIndice()?t.alto:t.padrao; }
 $("#rx-sug").addEventListener("input",()=>{ sugEditada=true; });
 $("#rx-uso").addEventListener("change",()=>{ sugEditada=false; sugerir(); atualiza(); });
+// Área livre do papel timbrado A4 da clínica, em mm (medida na foto do papel, 15/10/2026).
+// Se a impressão sair deslocada, é só ajustar estes números.
+const MARGENS_TIMBRADO={topo:50, base:47, lado:20};
 const TIPO_TEXTO={"monofocais":"monofocais","monofocais-alto":"monofocais de alto índice","perto":"monofocais para perto","multifocais":"multifocais","ocupacionais":"ocupacionais"};
 const MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 // Aviso da receita aparece JUNTO do botão (antes ia para a caixa do iClinic, lá
@@ -409,33 +413,16 @@ function gerarPrescricao(){
   const prox=`${MESES[mm-1].charAt(0).toUpperCase()+MESES[mm-1].slice(1)} de ${aa+1}`;
   const cel=(e,c,x)=>`<td>${esc(e)}</td><td>${esc(c)}</td><td>${x&&x!=="—"?esc(x.replace("°",""))+"º":""}</td>`;
   const nome=String(consultaAtual.paciente_nome||"").toUpperCase();
-  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Receita de Óculos - ${esc(nome)}</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;600;700&display=swap">
-<style>
-@page{size:A4;margin:16mm 20mm 18mm}
-body{font:11.5pt/1.35 "EB Garamond",Garamond,"Times New Roman",serif;color:#111;margin:0}
-.barra{display:flex;gap:10px;justify-content:flex-end;padding:10px;background:#eef2f3;font:14px system-ui,sans-serif}
-.barra button{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid #1d6b74;background:#1d6b74;color:#fff;cursor:pointer}
-@media print{.barra{display:none}}
-.folha{max-width:170mm;margin:0 auto;padding:6mm 5mm}
-@media print{.folha{padding:0}}
-.cab{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12mm}
-.cab img{width:48.6mm;height:auto}
-.nome{font-size:12.5pt;margin:0 0 8mm}
-h1{text-align:center;font-size:15pt;letter-spacing:.06em;margin:0 0 6mm;font-weight:700}
-table{width:100%;border-collapse:collapse;margin-bottom:6mm}
-th,td{border:1px solid #333;padding:6px 8px;text-align:center;font-size:12pt}
-th{font-weight:600} td:first-child,th:first-child{text-align:left;font-weight:600;width:34%}
-.sug{margin:0 0 6mm}
-h2{font-size:12pt;margin:5mm 0 2mm;letter-spacing:.04em}
-ul{margin:0;padding-left:5mm;font-size:10.5pt} li{margin:0 0 1mm}
-.prox{margin:7mm 0 0;font-weight:600}
-.ass{margin-top:16mm;text-align:center;line-height:1.25}
-.ass .linha{width:70mm;border-top:1px solid #333;margin:0 auto 2mm}
-</style></head><body>
-<div class="barra"><span style="margin-right:auto">Confira e use <b>Imprimir</b> (ou “Salvar como PDF”) para entregar ao paciente.</span><button onclick="print()">Imprimir</button></div>
-<div class="folha">
-<div class="cab"><span>Brasília, ${dataExame}.</span><img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges"></div>
+  // PAPEL TIMBRADO (Dr. Bruno, 15/10/2026): a clínica tem papel A4 já impresso com
+  // o logotipo no topo e os endereços no rodapé. Medido na foto do papel: o
+  // logotipo ocupa até ~41 mm do topo e o rodapé começa ~42 mm acima da borda de
+  // baixo. Com o timbrado, a folha é desenhada em A4 exato (margem de página 0)
+  // e o conteúdo fica na área livre: 50 mm em cima, 47 mm embaixo, 20 mm dos
+  // lados. Na tela aparece a foto do papel por trás, só para conferir o encaixe.
+  const timbrado=$("#rx-timbrado").checked;
+  const M=MARGENS_TIMBRADO;
+  const corpo=`
+<div class="cab">${timbrado?"":`<img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges">`}<span>Brasília, ${dataExame}.</span></div>
 <p class="nome">Nome: ${esc(nome)}</p>
 <h1>RECEITA DE ÓCULOS${perto?" PARA PERTO":""}</h1>
 <table><thead><tr><th></th><th>ESFÉRICO</th><th>CILÍNDRO</th><th>EIXO</th></tr></thead><tbody>
@@ -462,14 +449,60 @@ ${mono?"":`<tr><td>ADIÇÃO</td><td colspan="3">${esc(r.add||"-")}</td></tr>`}
 <li>Em casos de cilindros maiores que 2 dioptrias, indicar armações com a menor distância ao vértice possível.</li>
 <li>Sr. Óptico favor manter as marcas originais de fábrica em caso de multifocais.</li></ul>
 <p class="prox">Data da próxima consulta: ${prox}</p>
-<div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877</div>
-</div></body></html>`;
+<div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877</div>`;
+  const cssComum=`
+body{font:11.5pt/1.35 "EB Garamond",Garamond,"Times New Roman",serif;color:#111;margin:0}
+.barra{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px;background:#eef2f3;font:14px system-ui,sans-serif}
+.barra button{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid #1d6b74;background:#1d6b74;color:#fff;cursor:pointer}
+@media print{.barra{display:none}}
+.cab{display:flex;justify-content:space-between;align-items:flex-end}
+.nome{font-size:1.09em}
+h1{text-align:center;font-size:1.3em;letter-spacing:.06em;font-weight:700}
+table{width:100%;border-collapse:collapse}
+th,td{border:1px solid #333;text-align:center}
+th{font-weight:600} td:first-child,th:first-child{text-align:left;font-weight:600;width:34%}
+h2{font-size:1.04em;letter-spacing:.04em}
+.prox{font-weight:600}
+.ass{text-align:center;line-height:1.25}
+.ass .linha{width:70mm;border-top:1px solid #333;margin:0 auto 2mm}`;
+  const cssLivre=`
+@page{size:A4;margin:16mm 20mm 18mm}
+.folha{max-width:170mm;margin:0 auto;padding:6mm 5mm}
+@media print{.folha{padding:0}}
+.cab{margin-bottom:12mm} .cab img{width:48.6mm;height:auto} .cab{flex-direction:row-reverse}
+.nome{margin:0 0 8mm} h1{margin:0 0 6mm} table{margin-bottom:6mm} th,td{padding:6px 8px;font-size:12pt}
+.sug{margin:0 0 6mm} h2{margin:5mm 0 2mm} ul{margin:0;padding-left:5mm;font-size:10.5pt} li{margin:0 0 1mm}
+.prox{margin:7mm 0 0} .ass{margin-top:16mm}`;
+  const cssTimbrado=`
+@page{size:A4;margin:0}
+html,body{background:#9aa5ab}
+@media print{html,body{background:none}}
+.folha{position:relative;width:210mm;height:297mm;margin:12px auto;box-sizing:border-box;padding:${M.topo}mm ${M.lado}mm ${M.base}mm;background:#fff url(/prontuario/timbrado.jpg) center/100% 100% no-repeat;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+@media print{.folha{margin:0;background:none;box-shadow:none}}
+.conteudo{height:100%;overflow:hidden;font-size:10.5pt;display:flex;flex-direction:column}
+.cab{justify-content:flex-end;margin-bottom:5mm}
+.nome{margin:0 0 4mm} h1{margin:0 0 4mm} table{margin-bottom:4mm} th,td{padding:4px 8px;font-size:1.05em}
+.sug{margin:0 0 3mm} h2{margin:2.5mm 0 1mm} ul{margin:0;padding-left:5mm;font-size:.86em} li{margin:0 0 .6mm}
+.prox{margin:4mm 0 0} .ass{margin-top:auto;padding-top:8mm}`;
+  // Se o conteúdo não couber na área livre do timbrado, a fonte encolhe um pouco
+  // até caber — nunca invade o logotipo nem o rodapé.
+  const ajusta=`<script>(function(){var c=document.querySelector('.conteudo');if(!c)return;var f=10.5;
+    function caber(){while(c.scrollHeight>c.clientHeight+1&&f>7.5){f-=.25;c.style.fontSize=f+'pt';}}
+    if(document.fonts&&document.fonts.ready)document.fonts.ready.then(caber);caber();})();<\/script>`;
+  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Receita de Óculos - ${esc(nome)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;600;700&display=swap">
+<style>${cssComum}${timbrado?cssTimbrado:cssLivre}</style></head><body>
+<div class="barra"><span style="margin-right:auto">${timbrado?"Coloque o <b>papel timbrado</b> na impressora. Na janela de impressão, use escala <b>100%</b> (sem “ajustar à página”). A foto do papel aparece só aqui na tela; ela não é impressa.":"Confira e use <b>Imprimir</b> (ou “Salvar como PDF”) para entregar ao paciente."}</span><button onclick="print()">Imprimir</button></div>
+${timbrado?`<div class="folha"><div class="conteudo">${corpo}</div></div>${ajusta}`:`<div class="folha">${corpo}</div>`}
+</body></html>`;
   const w=window.open("","_blank");
   if(!w){ status("O navegador bloqueou a janela da receita. Permita pop-ups para este site.","erro"); return; }
   w.document.open(); w.document.write(html); w.document.close();
   status("Receita aberta em outra janela.","ok");
 }
 $("#gerar-rx").addEventListener("click",gerarPrescricao);
+try{ $("#rx-timbrado").checked=localStorage.getItem("rx-timbrado")!=="0"; }catch(_){ $("#rx-timbrado").checked=true; }
+$("#rx-timbrado").addEventListener("change",()=>{ try{ localStorage.setItem("rx-timbrado",$("#rx-timbrado").checked?"1":"0"); }catch(_){} });
 const MODELOS={
   rotina:{chips:{qp:["Revisão de rotina"],ap:["Usa óculos"],cd:["Prescrição de óculos"]},retorno:"1 ano"},
   lente:{chips:{qp:["Desconforto com a lente"],ap:["Usa lente de contato"]},retorno:"6 meses",campos:{"cd-txt":"Mantenho a lente atual; orientações de higiene e tempo de uso."}},
