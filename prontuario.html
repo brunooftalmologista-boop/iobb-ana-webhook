@@ -60,6 +60,7 @@ h2{font:600 15px var(--f-body);margin:0} h2 small{font-weight:400;color:var(--mu
 .chip .cid{font-family:var(--f-mono);font-size:11px;color:var(--muted);margin-left:4px}
 textarea,input,select{font:15px var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%;min-width:0}
 textarea{min-height:54px;resize:vertical}
+textarea.itens{min-height:92px;line-height:1.45}
 .grid-olho{display:grid;grid-template-columns:minmax(90px,140px) minmax(0,1fr) minmax(0,1fr);gap:6px 10px;align-items:center}
 .grid-olho .h{font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
 .h.od{color:var(--od)} .h.oe{color:var(--oe)} .lbl{font-size:13px;color:var(--muted)}
@@ -138,7 +139,7 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
               <span class="chip" tabindex="0">Revisão de rotina</span><span class="chip" tabindex="0">Cefaleia</span><span class="chip" tabindex="0">Ardor</span>
               <span class="chip" tabindex="0">Prurido</span><span class="chip" tabindex="0">Olho vermelho</span><span class="chip" tabindex="0">Desconforto com a lente</span>
             </div>
-            <textarea id="qp-txt" placeholder="Detalhe (tempo, olho, piora)…"></textarea>
+            <textarea id="qp-txt" class="itens" rows="3" placeholder="Detalhe (tempo, olho, piora)…"></textarea>
           </section>
 
           <section class="box">
@@ -147,7 +148,7 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
               <span class="chip" tabindex="0">Usa óculos</span><span class="chip" tabindex="0">Usa lente de contato</span><span class="chip" tabindex="0">HAS</span>
               <span class="chip" tabindex="0">DM</span><span class="chip" tabindex="0">Glaucoma na família</span><span class="chip" tabindex="0">Cirurgia ocular prévia</span><span class="chip" tabindex="0">Alergias</span>
             </div>
-            <input id="ap-txt" placeholder="Medicações, alergias, cirurgias…">
+            <textarea id="ap-txt" class="itens" rows="4" placeholder="Um item por linha: medicações, alergias, cirurgias…"></textarea>
           </section>
 
           <section class="box">
@@ -200,17 +201,25 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
               <span class="chip" tabindex="0" data-cid="H04.1">Olho seco</span><span class="chip" tabindex="0" data-cid="H01.0">Blefarite</span>
               <span class="chip" tabindex="0" data-cid="H10.1">Conjuntivite alérgica</span><span class="chip" tabindex="0" data-cid="H40.0">Suspeita de glaucoma</span>
             </div>
-            <input id="hd-txt" placeholder="Outra hipótese…">
+            <textarea id="hd-txt" class="itens" rows="3" placeholder="Outras hipóteses, uma por linha…"></textarea>
           </section>
 
           <section class="box">
             <div class="sec-h"><h2>Conduta</h2></div>
             <div class="chips" data-grupo="cd">
               <span class="chip" tabindex="0">Prescrição de óculos</span><span class="chip" tabindex="0">Lubrificante ocular</span><span class="chip" tabindex="0">Compressa morna e higiene palpebral</span>
-              <span class="chip" tabindex="0">Solicito Pentacam</span><span class="chip" tabindex="0">Solicito topografia</span><span class="chip" tabindex="0">Teste de lente de contato</span>
-              <span class="chip" tabindex="0">Mapeamento de retina</span><span class="chip" tabindex="0">Avaliação para cirurgia refrativa</span>
+              <span class="chip" tabindex="0">Teste de lente de contato</span><span class="chip" tabindex="0">Avaliação para cirurgia refrativa</span>
+              <span class="chip" tabindex="0">Orientado a não coçar os olhos</span><span class="chip" tabindex="0">Encaminhamento</span>
             </div>
-            <input id="cd-txt" placeholder="Orientações, colírios, encaminhamentos…">
+            <div class="hint">Exames solicitados</div>
+            <div class="chips" data-grupo="ex">
+              <span class="chip" tabindex="0">Pentacam</span><span class="chip" tabindex="0">Topografia de córnea</span><span class="chip" tabindex="0">Paquimetria</span>
+              <span class="chip" tabindex="0">Microscopia especular</span><span class="chip" tabindex="0">Mapeamento de retina</span><span class="chip" tabindex="0">Retinografia</span>
+              <span class="chip" tabindex="0">OCT de mácula</span><span class="chip" tabindex="0">OCT de nervo óptico</span><span class="chip" tabindex="0">Campimetria visual</span>
+              <span class="chip" tabindex="0">Curva diária de pressão ocular</span><span class="chip" tabindex="0">Gonioscopia</span><span class="chip" tabindex="0">Teste de sobrecarga hídrica</span>
+              <span class="chip" tabindex="0">Biometria</span><span class="chip" tabindex="0">Ultrassonografia ocular</span>
+            </div>
+            <textarea id="cd-txt" class="itens" rows="4" placeholder="Um item por linha: orientações, colírios, encaminhamentos, outros exames…"></textarea>
             <div class="row"><label>Retorno <select id="retorno"><option value="">—</option><option>7 dias</option><option>30 dias</option><option>3 meses</option><option>6 meses</option><option>1 ano</option></select></label></div>
           </section>
 
@@ -322,9 +331,14 @@ function grade(id,itens,rot){ const ls=[]; let igual=true;
   for(const [k,nome] of itens){ const a=v(`${id}-${k}-od`),b=v(`${id}-${k}-oe`); if(!a&&!b) continue; if(a!==b) igual=false; ls.push([nome,a,b]); }
   if(!ls.length) return ""; if(igual) return `${rot} de ${AO}: `+ls.map(([n,a])=>`${n.toLowerCase()} ${a}`).join("; ")+".";
   return `${rot}:\n`+ls.map(([n,a,b])=>a===b?`${n}: ${AO} ${a}.`:`${n}: ${OD} ${a||"não avaliado"}; ${OE} ${b||"não avaliado"}.`).join("\n"); }
+// Itens = opções clicadas + cada LINHA da caixa de texto. Um item fica na mesma
+// linha do título; dois ou mais saem um por linha (Dr. Bruno, 15/10/2026).
+const linhas=id=>v(id).split(/\n+/).map(t=>t.trim()).filter(Boolean);
+const ponto=t=>{ t=t.charAt(0).toUpperCase()+t.slice(1); return /[.!?:]$/.test(t)?t:t+"."; };
+function bloco(rot,itens){ if(!itens.length) return ""; if(itens.length===1) return `${rot}: ${ponto(itens[0])}`; return `${rot}:\n`+itens.map(ponto).join("\n"); }
 function textoIclinic(){ const L=[];
-  const qp=[...marcados("qp").map(nomeChip),v("qp-txt")].filter(Boolean).join(". "); if(qp) L.push(`Queixa principal: ${qp}.`.replace(/\.\.$/,"."));
-  const ap=[...marcados("ap").map(nomeChip),v("ap-txt")].filter(Boolean).join("; "); if(ap) L.push(`Antecedentes: ${ap}.`);
+  const qp=bloco("Queixa principal",[...marcados("qp").map(nomeChip),...linhas("qp-txt")]); if(qp) L.push(qp);
+  const ap=bloco("Antecedentes",[...marcados("ap").map(nomeChip),...linhas("ap-txt")]); if(ap) L.push(ap);
   const avs=[["Acuidade visual sem correção",v("av-sc-od"),v("av-sc-oe")],["Acuidade visual com correção",v("av-cc-od"),v("av-cc-oe")],["Acuidade visual para perto",v("av-pt-od"),v("av-pt-oe")]]
     .map(([r,a,b])=>par(r,a,b)).filter(Boolean); if(avs.length) L.push(avs.join("\n"));
   const rod=refr("od"),roe=refr("oe");
@@ -332,8 +346,9 @@ function textoIclinic(){ const L=[];
   const bio=grade("bio",BIO,"Biomicroscopia"); if(bio) L.push(bio);
   if(v("pio-od")||v("pio-oe")) L.push(`Pressão intraocular (${v("pio-met")}${v("pio-hora")?", às "+v("pio-hora"):""}): ${OD} ${v("pio-od")||"não aferida"}${v("pio-od")?" mmHg":""}; ${OE} ${v("pio-oe")||"não aferida"}${v("pio-oe")?" mmHg":""}.`);
   const fo=grade("fo",FO,"Fundoscopia"); if(fo) L.push(fo);
-  const hd=[...marcados("hd").map(c=>`${nomeChip(c)} (CID ${c.dataset.cid})`),v("hd-txt")].filter(Boolean).join("; "); if(hd) L.push(`Hipótese diagnóstica: ${hd}.`);
-  const cd=[...marcados("cd").map(nomeChip),v("cd-txt")].filter(Boolean).join("; "); if(cd) L.push(`Conduta: ${cd}.`);
+  const hd=bloco("Hipótese diagnóstica",[...marcados("hd").map(c=>`${nomeChip(c)} (CID ${c.dataset.cid})`),...linhas("hd-txt")]); if(hd) L.push(hd);
+  const cd=bloco("Conduta",[...marcados("cd").map(nomeChip),...linhas("cd-txt")]); if(cd) L.push(cd);
+  const ex=bloco("Exames solicitados",marcados("ex").map(nomeChip)); if(ex) L.push(ex);
   if(v("retorno")) L.push(`Retorno em ${v("retorno")}.`);
   return L.join("\n\n"); }   // linha em branco entre os itens (Dr. Bruno, 14/10)
 function receita(){ const l=o=>{ const e=v(`re-${o}-esf`)||(v(`re-${o}-cil`)?"Plano":""),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`); return [e||"—",c||"—",c?(x?x+"°":"?"):"—"]; };
@@ -448,8 +463,8 @@ $("#gerar-rx").addEventListener("click",gerarPrescricao);
 const MODELOS={
   rotina:{chips:{qp:["Revisão de rotina"],ap:["Usa óculos"],cd:["Prescrição de óculos"]},retorno:"1 ano"},
   lente:{chips:{qp:["Desconforto com a lente"],ap:["Usa lente de contato"]},retorno:"6 meses",campos:{"cd-txt":"Mantenho a lente atual; orientações de higiene e tempo de uso."}},
-  ceratocone:{chips:{qp:["Baixa visual para longe"],hd:["Ceratocone"],cd:["Solicito Pentacam","Teste de lente de contato"]},retorno:"3 meses",campos:{"ap-txt":"Coçar os olhos: orientado a evitar."}},
-  catarata:{chips:{qp:["Baixa visual para longe"],hd:["Catarata senil"],cd:["Mapeamento de retina"]},retorno:"6 meses",campos:{"bio-crist-od":"opacidade nuclear ++/4","bio-crist-oe":"opacidade nuclear +/4"}}
+  ceratocone:{chips:{qp:["Baixa visual para longe"],hd:["Ceratocone"],cd:["Teste de lente de contato","Orientado a não coçar os olhos"],ex:["Pentacam"]},retorno:"3 meses"},
+  catarata:{chips:{qp:["Baixa visual para longe"],hd:["Catarata senil"],ex:["Mapeamento de retina"]},retorno:"6 meses",campos:{"bio-crist-od":"opacidade nuclear ++/4","bio-crist-oe":"opacidade nuclear +/4"}}
 };
 function limpar(){ campos().forEach(el=>{ if(el.tagName==="SELECT") el.selectedIndex=0; else el.value=""; }); $$(".chip").forEach(c=>c.setAttribute("aria-pressed","false")); $("#rx-uso").selectedIndex=0; $("#rx-sug").value=""; }
 function horaPio(){ const h=new Date(); $("#pio-hora").value=String(h.getHours()).padStart(2,"0")+"h"+String(h.getMinutes()).padStart(2,"0"); }
