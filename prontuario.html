@@ -225,9 +225,10 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
       <div class="out">
         <div class="sec-h"><h2>Receita de óculos</h2><div class="row"><button type="button" id="copiar-rx">Copiar</button><button type="button" class="pri" id="gerar-rx">Gerar prescrição</button></div></div>
         <div class="rx">
-          <div class="row"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option></select></label></div>
+          <div class="row"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option></select></label></div>
           <div style="overflow-x:auto"><table aria-label="Receita"><thead><tr><th></th><th>Esf</th><th>Cil</th><th>Eixo</th></tr></thead><tbody id="rx-body"></tbody></table></div>
           <div class="hint" id="rx-add"></div>
+          <div class="status" id="status-rx" aria-live="polite"></div>
           <label class="hint" for="rx-sug">Lentes sugeridas (pode editar)</label>
           <textarea id="rx-sug" style="min-height:48px;font-size:13px"></textarea>
         </div>
@@ -345,6 +346,10 @@ const SUGESTOES={
     alto:"Varilux XR Series 1.67/1.74, Zeiss SmartLife Individual 3 1.67/1.74 ou Hoyalux iD MyStyle V+ 1.67/1.74"},
   monofocais:{padrao:"Hoya Nulux com Hi-Vision LongLife, Zeiss ClearView com DuraVision Platinum ou Essilor com Crizal Sapphire",
     alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
+  // Monofocal de alto índice escolhida pelo médico (Dr. Bruno, 15/10/2026),
+  // independentemente do grau.
+  "monofocais-alto":{padrao:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR",
+    alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
   ocupacionais:{padrao:"Zeiss OfficeLens, Hoya iD WorkStyle 3 ou Essilor Eyezen",
     alto:"Zeiss OfficeLens 1.67, Hoya iD WorkStyle 3 1.67 ou Rodenstock Impression B.I.G. NORM Ergo 1.67"}
 };
@@ -354,12 +359,17 @@ let sugEditada=false;
 function sugerir(){ if(sugEditada) return; const t=SUGESTOES[$("#rx-uso").value]||SUGESTOES.monofocais; $("#rx-sug").value=altoIndice()?t.alto:t.padrao; }
 $("#rx-sug").addEventListener("input",()=>{ sugEditada=true; });
 $("#rx-uso").addEventListener("change",()=>{ sugEditada=false; sugerir(); atualiza(); });
+const TIPO_TEXTO={"monofocais":"monofocais","monofocais-alto":"monofocais de alto índice","multifocais":"multifocais","ocupacionais":"ocupacionais"};
 const MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+// Aviso da receita aparece JUNTO do botão (antes ia para a caixa do iClinic, lá
+// em cima, e parecia que o botão não fazia nada — 15/10).
+function statusRx(t,cls){ const s=$("#status-rx"); s.textContent=t; s.className="status "+(cls||""); }
 function gerarPrescricao(){
+  const status=statusRx;
   if(!consultaAtual){ status("Abra uma consulta primeiro.","erro"); return; }
-  const r=receita(); const mono=$("#rx-uso").value==="monofocais";
+  const r=receita(); const mono=String($("#rx-uso").value).startsWith("monofocais");
   if(!v("re-od-esf")&&!v("re-od-cil")&&!v("re-oe-esf")&&!v("re-oe-cil")){ status("Preencha a refração antes de gerar a prescrição.","erro"); return; }
-  if(!mono&&!v("re-add")){ status("Lente multifocal/ocupacional sem adição: preencha a adição.","erro"); return; }
+  if(!mono&&!v("re-add")){ status("Lente multifocal ou ocupacional precisa de adição: preencha a adição na refração (ou escolha Monofocal).","erro"); $("#re-add").focus(); return; }
   const dt=new Date(consultaAtual.inicio);
   const dataExame=dt.toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   const [dd,mm,aa]=dataExame.split("/").map(Number);
@@ -400,7 +410,7 @@ ul{margin:0;padding-left:5mm;font-size:10.5pt} li{margin:0 0 1mm}
 <tr><td>OLHO ESQUERDO</td>${cel(r.oe[0],r.oe[1]==="—"?"":r.oe[1],r.oe[2])}</tr>
 ${mono?"":`<tr><td>ADIÇÃO</td><td colspan="3">${esc(r.add||"-")}</td></tr>`}
 </tbody></table>
-<p class="sug">Lentes ${esc($("#rx-uso").value)} sugeridas: ${esc(v("rx-sug"))}</p>
+<p class="sug">Lentes ${esc(TIPO_TEXTO[$("#rx-uso").value]||$("#rx-uso").value)} sugeridas: ${esc(v("rx-sug"))}</p>
 <h2>IMPORTANTE</h2>
 <h2>RECOMENDAÇÕES PARA O PACIENTE:</h2>
 <ul><li>Não deixe de conferir seus óculos com o médico oftalmologista antes de usá-los.</li>
@@ -424,6 +434,7 @@ ${mono?"":`<tr><td>ADIÇÃO</td><td colspan="3">${esc(r.add||"-")}</td></tr>`}
   const w=window.open("","_blank");
   if(!w){ status("O navegador bloqueou a janela da receita. Permita pop-ups para este site.","erro"); return; }
   w.document.open(); w.document.write(html); w.document.close();
+  status("Receita aberta em outra janela.","ok");
 }
 $("#gerar-rx").addEventListener("click",gerarPrescricao);
 const MODELOS={
@@ -445,6 +456,10 @@ function coletar(){ const d={campos:{},chips:$$('.chip[aria-pressed="true"]').ma
   campos().forEach(el=>d.campos[el.id]=el.value); d.campos["rx-uso"]=$("#rx-uso").value; d.campos["rx-sug"]=$("#rx-sug").value; return d; }
 function aplicar(d){ limpar(); sugEditada=false; if(!d) return; if(d.campos&&d.campos["rx-sug"]) sugEditada=true;
   for(const [id,val] of Object.entries(d.campos||{})){ const el=$("#"+id); if(el) el.value=val; }
+  // Registros salvos antes de 15/10 guardavam "Longe/Perto/Multifocal/Visão intermediária".
+  const ANTIGO={"Longe":"monofocais","Perto":"monofocais","Multifocal":"multifocais","Visão intermediária":"ocupacionais"};
+  const uso=(d.campos||{})["rx-uso"]; $("#rx-uso").value=ANTIGO[uso]||uso||"monofocais";
+  if(!$("#rx-uso").value) $("#rx-uso").value="monofocais";
   for(const k of d.chips||[]){ const [g,n]=k.split("|"); $$(`[data-grupo="${g}"] .chip`).forEach(c=>{ if(nomeChip(c)===n) c.setAttribute("aria-pressed","true"); }); } }
 const chaveLocal=id=>"pront-rasc-"+id;
 function rascunhoLocal(){ try{ localStorage.setItem(chaveLocal(atual),JSON.stringify({ts:Date.now(),dados:coletar()})); }catch(_){} }
@@ -502,7 +517,7 @@ $("#salvar").addEventListener("click",()=>salvar());
 function copiar(txt,msg){ const ok=()=>status(msg,"ok");
   try{ navigator.clipboard.writeText(txt).then(ok,()=>{ const r=document.createRange(); r.selectNodeContents($("#saida")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); status("Texto selecionado: use Ctrl+C / ⌘C.",""); }); }catch(_){} }
 $("#copiar").addEventListener("click",async()=>{ copiar(textoIclinic(),"Copiado. Cole no iClinic."); await salvar(); });
-$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiar(`Receita de óculos (lentes ${r.uso})\nOlho direito: esférico ${r.od[0]}, cilíndrico ${r.od[1]}, eixo ${r.od[2]}\nOlho esquerdo: esférico ${r.oe[0]}, cilíndrico ${r.oe[1]}, eixo ${r.oe[2]}${r.add?"\nAdição: "+r.add:""}`,"Receita copiada."); });
+$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiar(`Receita de óculos (lentes ${TIPO_TEXTO[r.uso]||r.uso})\nOlho direito: esférico ${r.od[0]}, cilíndrico ${r.od[1]}, eixo ${r.od[2]}\nOlho esquerdo: esférico ${r.oe[0]}, cilíndrico ${r.oe[1]}, eixo ${r.oe[2]}${r.add?"\nAdição: "+r.add:""}`,"Receita copiada."); });
 setInterval(()=>{ if(atual&&sujo) salvar(true); },60000);   // salva sozinho a cada minuto
 window.addEventListener("beforeunload",e=>{ if(sujo){ e.preventDefault(); e.returnValue=""; } });
 
