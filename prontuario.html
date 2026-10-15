@@ -223,11 +223,13 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
         <div class="hint">Copiar também salva. Salvar marca o paciente como atendido na agenda.</div>
       </div>
       <div class="out">
-        <div class="sec-h"><h2>Receita de óculos</h2><button type="button" id="copiar-rx">Copiar</button></div>
+        <div class="sec-h"><h2>Receita de óculos</h2><div class="row"><button type="button" id="copiar-rx">Copiar</button><button type="button" class="pri" id="gerar-rx">Gerar prescrição</button></div></div>
         <div class="rx">
-          <div class="row"><label>Uso <select id="rx-uso"><option>Longe</option><option>Perto</option><option>Multifocal</option><option>Visão intermediária</option></select></label></div>
+          <div class="row"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option></select></label></div>
           <div style="overflow-x:auto"><table aria-label="Receita"><thead><tr><th></th><th>Esf</th><th>Cil</th><th>Eixo</th></tr></thead><tbody id="rx-body"></tbody></table></div>
           <div class="hint" id="rx-add"></div>
+          <label class="hint" for="rx-sug">Lentes sugeridas (pode editar)</label>
+          <textarea id="rx-sug" style="min-height:48px;font-size:13px"></textarea>
         </div>
       </div>
     </aside>
@@ -334,17 +336,103 @@ function atualiza(){
   $("#saida").textContent=textoIclinic()||"Preencha a consulta: o texto aparece aqui, pronto para colar.";
   const r=receita();
   $("#rx-body").innerHTML=`<tr><td style="color:var(--od);font-weight:600">OD</td><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><td style="color:var(--oe);font-weight:600">OE</td><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
-  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos();
+  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir();
   if(atual){ sujo=true; rascunhoLocal(); status("Alterações não salvas.",""); }
 }
-$("#rx-uso").addEventListener("change",atualiza);
+/* ===== prescrição no modelo da receita do Dr. Bruno (skill receita-oculos-iobb) ===== */
+const SUGESTOES={
+  multifocais:{padrao:"Varilux XR Series, Zeiss SmartLife Individual 3 ou Hoyalux iD MyStyle V+",
+    alto:"Varilux XR Series 1.67/1.74, Zeiss SmartLife Individual 3 1.67/1.74 ou Hoyalux iD MyStyle V+ 1.67/1.74"},
+  monofocais:{padrao:"Hoya Nulux com Hi-Vision LongLife, Zeiss ClearView com DuraVision Platinum ou Essilor com Crizal Sapphire",
+    alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
+  ocupacionais:{padrao:"Zeiss OfficeLens, Hoya iD WorkStyle 3 ou Essilor Eyezen",
+    alto:"Zeiss OfficeLens 1.67, Hoya iD WorkStyle 3 1.67 ou Rodenstock Impression B.I.G. NORM Ergo 1.67"}
+};
+// Regra da receita: esférico OU cilíndrico acima de 4,00 em módulo, em qualquer olho → alto índice.
+const altoIndice=()=>["re-od-esf","re-od-cil","re-oe-esf","re-oe-cil"].some(id=>Math.abs(num(v(id)))>4);
+let sugEditada=false;
+function sugerir(){ if(sugEditada) return; const t=SUGESTOES[$("#rx-uso").value]||SUGESTOES.monofocais; $("#rx-sug").value=altoIndice()?t.alto:t.padrao; }
+$("#rx-sug").addEventListener("input",()=>{ sugEditada=true; });
+$("#rx-uso").addEventListener("change",()=>{ sugEditada=false; sugerir(); atualiza(); });
+const MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+function gerarPrescricao(){
+  if(!consultaAtual){ status("Abra uma consulta primeiro.","erro"); return; }
+  const r=receita(); const mono=$("#rx-uso").value==="monofocais";
+  if(!v("re-od-esf")&&!v("re-od-cil")&&!v("re-oe-esf")&&!v("re-oe-cil")){ status("Preencha a refração antes de gerar a prescrição.","erro"); return; }
+  if(!mono&&!v("re-add")){ status("Lente multifocal/ocupacional sem adição: preencha a adição.","erro"); return; }
+  const dt=new Date(consultaAtual.inicio);
+  const dataExame=dt.toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+  const [dd,mm,aa]=dataExame.split("/").map(Number);
+  const prox=`${MESES[mm-1].charAt(0).toUpperCase()+MESES[mm-1].slice(1)} de ${aa+1}`;
+  const cel=(e,c,x)=>`<td>${esc(e)}</td><td>${esc(c)}</td><td>${x&&x!=="—"?esc(x.replace("°",""))+"º":""}</td>`;
+  const nome=String(consultaAtual.paciente_nome||"").toUpperCase();
+  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Receita de Óculos - ${esc(nome)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;600;700&display=swap">
+<style>
+@page{size:A4;margin:16mm 20mm 18mm}
+body{font:11.5pt/1.35 "EB Garamond",Garamond,"Times New Roman",serif;color:#111;margin:0}
+.barra{display:flex;gap:10px;justify-content:flex-end;padding:10px;background:#eef2f3;font:14px system-ui,sans-serif}
+.barra button{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid #1d6b74;background:#1d6b74;color:#fff;cursor:pointer}
+@media print{.barra{display:none}}
+.folha{max-width:170mm;margin:0 auto;padding:6mm 5mm}
+@media print{.folha{padding:0}}
+.cab{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12mm}
+.cab img{width:48.6mm;height:auto}
+.nome{font-size:12.5pt;margin:0 0 8mm}
+h1{text-align:center;font-size:15pt;letter-spacing:.06em;margin:0 0 6mm;font-weight:700}
+table{width:100%;border-collapse:collapse;margin-bottom:6mm}
+th,td{border:1px solid #333;padding:6px 8px;text-align:center;font-size:12pt}
+th{font-weight:600} td:first-child,th:first-child{text-align:left;font-weight:600;width:34%}
+.sug{margin:0 0 6mm}
+h2{font-size:12pt;margin:5mm 0 2mm;letter-spacing:.04em}
+ul{margin:0;padding-left:5mm;font-size:10.5pt} li{margin:0 0 1mm}
+.prox{margin:7mm 0 0;font-weight:600}
+.ass{margin-top:16mm;text-align:center;line-height:1.25}
+.ass .linha{width:70mm;border-top:1px solid #333;margin:0 auto 2mm}
+</style></head><body>
+<div class="barra"><span style="margin-right:auto">Confira e use <b>Imprimir</b> (ou “Salvar como PDF”) para entregar ao paciente.</span><button onclick="print()">Imprimir</button></div>
+<div class="folha">
+<div class="cab"><span>Brasília, ${dataExame}.</span><img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges"></div>
+<p class="nome">Nome: ${esc(nome)}</p>
+<h1>RECEITA DE ÓCULOS</h1>
+<table><thead><tr><th></th><th>ESFÉRICO</th><th>CILÍNDRO</th><th>EIXO</th></tr></thead><tbody>
+<tr><td>OLHO DIREITO</td>${cel(r.od[0],r.od[1]==="—"?"":r.od[1],r.od[2])}</tr>
+<tr><td>OLHO ESQUERDO</td>${cel(r.oe[0],r.oe[1]==="—"?"":r.oe[1],r.oe[2])}</tr>
+${mono?"":`<tr><td>ADIÇÃO</td><td colspan="3">${esc(r.add||"-")}</td></tr>`}
+</tbody></table>
+<p class="sug">Lentes ${esc($("#rx-uso").value)} sugeridas: ${esc(v("rx-sug"))}</p>
+<h2>IMPORTANTE</h2>
+<h2>RECOMENDAÇÕES PARA O PACIENTE:</h2>
+<ul><li>Não deixe de conferir seus óculos com o médico oftalmologista antes de usá-los.</li>
+<li>Esta receita é adequada apenas para montagem de óculos.</li>
+<li>Nos 15 primeiros dias de uso efetivo é normal sentir tonturas, cefaléias, desníveis, etc.</li>
+<li>Se contudo, após esse período, ainda sentir algo, solicite uma revisão sem qualquer ônus.</li>
+<li>As lentes bifocais e multifocais exigem maior período de adaptação, cuidado ao subir e descer degraus.</li>
+<li>Um exame de vista é sempre oportuno antes de seu filho começar a estudar.</li>
+<li>Depois dos 40 anos, seja mais frequente ao consultório do seu oftalmologista.</li>
+<li>Faça seus óculos na ótica de sua preferência, trazendo-os depois para serem conferidos.</li></ul>
+<h2>RECOMENDAÇÕES PARA AS ÓTICAS:</h2>
+<ul><li>A distância nasopupilar deve ser medida separadamente para cada olho e com pupilômetro.</li>
+<li>A altura do centro óptico deve ser aferida tanto para longe como para correção de perto.</li>
+<li>A curva base da prescrição anterior deve ser sempre mantida.</li>
+<li>Para cada 2º graus de ângulo pantoscópico descer 1 mm do centro óptico da lente com relação ao centro pupilar ( 3 a 5 mm é o ideal ). A armação deve ter um ângulo pantoscópico correto (  7º a  12º graus ) e a distância ao vértice deve ser a habitual ( 1,5 cm ).</li>
+<li>Em casos de cilindros maiores que 2 dioptrias, indicar armações com a menor distância ao vértice possível.</li>
+<li>Sr. Óptico favor manter as marcas originais de fábrica em caso de multifocais.</li></ul>
+<p class="prox">Data da próxima consulta: ${prox}</p>
+<div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877</div>
+</div></body></html>`;
+  const w=window.open("","_blank");
+  if(!w){ status("O navegador bloqueou a janela da receita. Permita pop-ups para este site.","erro"); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+$("#gerar-rx").addEventListener("click",gerarPrescricao);
 const MODELOS={
   rotina:{chips:{qp:["Revisão de rotina"],ap:["Usa óculos"],cd:["Prescrição de óculos"]},retorno:"1 ano"},
   lente:{chips:{qp:["Desconforto com a lente"],ap:["Usa lente de contato"]},retorno:"6 meses",campos:{"cd-txt":"Mantenho a lente atual; orientações de higiene e tempo de uso."}},
   ceratocone:{chips:{qp:["Baixa visual para longe"],hd:["Ceratocone"],cd:["Solicito Pentacam","Teste de lente de contato"]},retorno:"3 meses",campos:{"ap-txt":"Coçar os olhos: orientado a evitar."}},
   catarata:{chips:{qp:["Baixa visual para longe"],hd:["Catarata senil"],cd:["Mapeamento de retina"]},retorno:"6 meses",campos:{"bio-crist-od":"opacidade nuclear ++/4","bio-crist-oe":"opacidade nuclear +/4"}}
 };
-function limpar(){ campos().forEach(el=>{ if(el.tagName==="SELECT") el.selectedIndex=0; else el.value=""; }); $$(".chip").forEach(c=>c.setAttribute("aria-pressed","false")); $("#rx-uso").selectedIndex=0; }
+function limpar(){ campos().forEach(el=>{ if(el.tagName==="SELECT") el.selectedIndex=0; else el.value=""; }); $$(".chip").forEach(c=>c.setAttribute("aria-pressed","false")); $("#rx-uso").selectedIndex=0; $("#rx-sug").value=""; }
 function horaPio(){ const h=new Date(); $("#pio-hora").value=String(h.getHours()).padStart(2,"0")+"h"+String(h.getMinutes()).padStart(2,"0"); }
 $("#limpar").addEventListener("click",()=>{ limpar(); horaPio(); atualiza(); });
 $$("[data-modelo]").forEach(b=>b.addEventListener("click",()=>{ const m=MODELOS[b.dataset.modelo];
@@ -354,8 +442,8 @@ $$("[data-modelo]").forEach(b=>b.addEventListener("click",()=>{ const m=MODELOS[
 
 /* ===== estado <-> objeto salvo ===== */
 function coletar(){ const d={campos:{},chips:$$('.chip[aria-pressed="true"]').map(c=>c.closest("[data-grupo]").dataset.grupo+"|"+nomeChip(c))};
-  campos().forEach(el=>d.campos[el.id]=el.value); d.campos["rx-uso"]=$("#rx-uso").value; return d; }
-function aplicar(d){ limpar(); if(!d) return;
+  campos().forEach(el=>d.campos[el.id]=el.value); d.campos["rx-uso"]=$("#rx-uso").value; d.campos["rx-sug"]=$("#rx-sug").value; return d; }
+function aplicar(d){ limpar(); sugEditada=false; if(!d) return; if(d.campos&&d.campos["rx-sug"]) sugEditada=true;
   for(const [id,val] of Object.entries(d.campos||{})){ const el=$("#"+id); if(el) el.value=val; }
   for(const k of d.chips||[]){ const [g,n]=k.split("|"); $$(`[data-grupo="${g}"] .chip`).forEach(c=>{ if(nomeChip(c)===n) c.setAttribute("aria-pressed","true"); }); } }
 const chaveLocal=id=>"pront-rasc-"+id;
@@ -363,7 +451,7 @@ function rascunhoLocal(){ try{ localStorage.setItem(chaveLocal(atual),JSON.strin
 function status(t,cls){ const s=$("#status"); s.textContent=t; s.className="status "+(cls||""); }
 
 /* ===== dia e consultas ===== */
-let atual=null, consultas=[];
+let atual=null, consultas=[], consultaAtual=null;
 const hojeBR=()=>new Date().toLocaleDateString("en-CA",{timeZone:TZ});
 const hhmm=iso=>new Date(iso).toLocaleTimeString("pt-BR",{timeZone:TZ,hour:"2-digit",minute:"2-digit"});
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -386,7 +474,7 @@ async function abrir(id){
   $$(".item").forEach(b=>b.classList.toggle("ativo",b.dataset.id===id));
   status("Abrindo…","");
   try{
-    const r=await api("/api/prontuario/consulta/"+id); const c=r.consulta;
+    const r=await api("/api/prontuario/consulta/"+id); const c=r.consulta; consultaAtual=c;
     $("#sem-consulta").hidden=true; $("#ficha").hidden=false; $("#saida-box").hidden=false;
     $("#pac-topo").textContent=`${new Date(c.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"2-digit"})} · ${hhmm(c.inicio)} · ${c.unidade}`;
     $("#pac-nome").textContent=c.paciente_nome||"Sem nome";
@@ -414,7 +502,7 @@ $("#salvar").addEventListener("click",()=>salvar());
 function copiar(txt,msg){ const ok=()=>status(msg,"ok");
   try{ navigator.clipboard.writeText(txt).then(ok,()=>{ const r=document.createRange(); r.selectNodeContents($("#saida")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); status("Texto selecionado: use Ctrl+C / ⌘C.",""); }); }catch(_){} }
 $("#copiar").addEventListener("click",async()=>{ copiar(textoIclinic(),"Copiado. Cole no iClinic."); await salvar(); });
-$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiar(`Receita de óculos (${r.uso.toLowerCase()})\nOlho direito: esférico ${r.od[0]}, cilíndrico ${r.od[1]}, eixo ${r.od[2]}\nOlho esquerdo: esférico ${r.oe[0]}, cilíndrico ${r.oe[1]}, eixo ${r.oe[2]}${r.add?"\nAdição: "+r.add:""}`,"Receita copiada."); });
+$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiar(`Receita de óculos (lentes ${r.uso})\nOlho direito: esférico ${r.od[0]}, cilíndrico ${r.od[1]}, eixo ${r.od[2]}\nOlho esquerdo: esférico ${r.oe[0]}, cilíndrico ${r.oe[1]}, eixo ${r.oe[2]}${r.add?"\nAdição: "+r.add:""}`,"Receita copiada."); });
 setInterval(()=>{ if(atual&&sujo) salvar(true); },60000);   // salva sozinho a cada minuto
 window.addEventListener("beforeunload",e=>{ if(sujo){ e.preventDefault(); e.returnValue=""; } });
 
