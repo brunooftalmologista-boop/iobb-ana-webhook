@@ -10102,7 +10102,7 @@ app.get("/api/prontuario/consulta/:id", requireMedico, async (req, res) => {
         .neq("appointment_id", ag.id).order("data_consulta", { ascending: false }).limit(10);
       historico = hs || [];
     }
-    let falas = [];
+    let falas = [], conversa = [];
     try {
       let convId = ag.conversation_id;
       if (!convId && f8) {
@@ -10114,14 +10114,17 @@ app.get("/api/prontuario/consulta/:id", requireMedico, async (req, res) => {
         }
       }
       if (convId) {
-        const { data: ms } = await supabase.from("messages").select("content, timestamp")
-          .eq("conversation_id", convId).eq("role", "user")
-          .order("timestamp", { ascending: false }).limit(6);
-        falas = (ms || []).reverse().map(m => String(m.content || "").slice(0, 300))
+        // A conversa inteira recente (paciente, Ana e equipe) — a tela mostra
+        // ESCONDIDA e só abre quando o médico clica (Dr. Bruno, 15/10/2026).
+        const { data: ms } = await supabase.from("messages").select("role, content, timestamp")
+          .eq("conversation_id", convId).in("role", ["user", "assistant", "human"])
+          .order("timestamp", { ascending: false }).limit(40);
+        conversa = (ms || []).reverse().map(m => ({ role: m.role, quando: m.timestamp, texto: String(m.content || "").slice(0, 1500) }));
+        falas = conversa.filter(m => m.role === "user").slice(-6).map(m => m.texto.slice(0, 300))
           .filter(t => !/^(confirmo|ok|obrigad|sim|bom dia|boa tarde|boa noite)\W*$/i.test(t.trim()));
       }
     } catch (_) { /* as falas são só contexto: sem elas a tela abre igual */ }
-    res.json({ consulta: { ...ag, ...(idadeDe(ag.observacoes) || {}) }, registro: reg || null, historico, falas });
+    res.json({ consulta: { ...ag, ...(idadeDe(ag.observacoes) || {}) }, registro: reg || null, historico, falas, conversa });
   } catch (e) {
     console.error("[Prontuário] /consulta falhou:", e.message);
     res.status(500).json({ error: "Não consegui abrir a consulta." });
