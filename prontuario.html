@@ -43,6 +43,8 @@ main{display:grid;gap:12px;min-width:0}
 .pac{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:8px}
 .pac h1{font:600 24px/1.2 var(--f-display);margin:0;text-wrap:balance}
 .meta{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--muted);font-size:14px}
+.nome-linha{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+.idade{font:600 20px var(--f-display);color:var(--accent)}
 .ana{font-size:14px;background:var(--accent-soft);border-radius:8px;padding:8px 10px}
 .ana b{color:var(--accent)} .ana p{margin:2px 0}
 .ana summary{cursor:pointer;color:var(--accent);font-weight:500}
@@ -116,7 +118,8 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
       <div id="ficha" hidden style="display:grid;gap:12px">
         <div class="pac">
           <div class="meta" id="pac-topo"></div>
-          <h1 id="pac-nome"></h1>
+          <div class="nome-linha"><h1 id="pac-nome"></h1><span id="pac-idade" class="idade"></span></div>
+          <div class="row" id="nasc-box" hidden><label>Data de nascimento <input id="nasc-in" placeholder="dd/mm/aaaa" inputmode="numeric" style="width:130px;font-family:var(--f-mono)"></label><button type="button" id="nasc-ok">Gravar</button><span class="hint" id="nasc-msg">Sem data de nascimento na agenda.</span></div>
           <div class="meta" id="pac-meta"></div>
           <details class="ana" id="pac-ana" hidden>
             <summary id="pac-ana-resumo">Ver conversa com a Ana</summary>
@@ -523,7 +526,8 @@ async function abrir(id){
     $("#sem-consulta").hidden=true; $("#ficha").hidden=false; $("#saida-box").hidden=false;
     $("#pac-topo").textContent=`${new Date(c.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"2-digit"})} · ${hhmm(c.inicio)} · ${c.unidade}`;
     $("#pac-nome").textContent=c.paciente_nome||"Sem nome";
-    $("#pac-meta").innerHTML=[c.idade!=null?`${c.idade} anos (${c.nascimento})`:"",c.convenio?esc(c.convenio):"",c.motivo?"Motivo: "+esc(c.motivo):""].filter(Boolean).map(t=>`<span>${t}</span>`).join("");
+    mostraIdade(c.idade,c.nascimento);
+    $("#pac-meta").innerHTML=[c.convenio?esc(c.convenio):"",c.motivo?"Motivo: "+esc(c.motivo):""].filter(Boolean).map(t=>`<span>${t}</span>`).join("");
     // Conversa com a Ana: fica FECHADA; abre ao clicar (Dr. Bruno, 15/10/2026).
     const conv=r.conversa||[];
     $("#pac-ana").open=false;
@@ -543,6 +547,19 @@ async function abrir(id){
     window.scrollTo({top:0});
   }catch(e){ status(e.msg||"Não consegui abrir a consulta.","erro"); }
 }
+// Idade ao lado do nome; sem data na agenda, pede a data uma vez e grava na consulta.
+function mostraIdade(idade,nasc){
+  const tem=idade!=null&&!isNaN(idade);
+  $("#pac-idade").textContent=tem?`${idade} ${idade===1?"ano":"anos"} · nasc. ${nasc}`:"";
+  $("#nasc-box").hidden=tem; $("#nasc-in").value=""; $("#nasc-msg").textContent="Sem data de nascimento na agenda."; $("#nasc-msg").style.color="";
+}
+async function gravaNascimento(){
+  const t=v("nasc-in"); if(!t||!atual) return;
+  try{ const r=await api(`/api/prontuario/consulta/${atual}/nascimento`,{method:"POST",body:JSON.stringify({nascimento:t})}); mostraIdade(r.idade,r.nascimento); }
+  catch(e){ $("#nasc-msg").textContent=e.msg||"Não consegui gravar."; $("#nasc-msg").style.color="var(--warn)"; }
+}
+$("#nasc-ok").addEventListener("click",gravaNascimento);
+$("#nasc-in").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); gravaNascimento(); } });
 async function salvar(silencioso){
   if(!atual) return false;
   try{ const r=await api("/api/prontuario/consulta/"+atual,{method:"POST",body:JSON.stringify({dados:coletar(),texto:textoIclinic()})});

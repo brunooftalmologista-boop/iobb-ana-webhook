@@ -10142,10 +10142,44 @@ app.get("/api/prontuario/consulta/:id", requireMedico, async (req, res) => {
           .filter(t => !/^(confirmo|ok|obrigad|sim|bom dia|boa tarde|boa noite)\W*$/i.test(t.trim()));
       }
     } catch (_) { /* as falas são só contexto: sem elas a tela abre igual */ }
-    res.json({ consulta: { ...ag, ...(idadeDe(ag.observacoes) || {}) }, registro: reg || null, historico, falas, conversa });
+    // IDADE NO CABEÇALHO (Dr. Bruno, 15/10/2026). Consulta marcada pela secretária
+    // costuma vir sem "Nascimento:" — procura nas OUTRAS consultas do mesmo
+    // telefone (de preferência com o mesmo primeiro nome: família divide número).
+    let idade = idadeDe(ag.observacoes);
+    if (!idade && f8) {
+      try {
+        const { data: outras } = await supabase.from("appointments").select("paciente_nome, observacoes")
+          .like("paciente_telefone", `%${f8}`).ilike("observacoes", "%nascimento%").neq("id", ag.id).limit(20);
+        const prim = (t) => String(t || "").trim().split(/\s+/)[0].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const mesma = (outras || []).find(o => prim(o.paciente_nome) === prim(ag.paciente_nome));
+        if (mesma) idade = idadeDe(mesma.observacoes);
+      } catch (_) { /* sem idade: a tela pede a data */ }
+    }
+    res.json({ consulta: { ...ag, ...(idade || {}) }, registro: reg || null, historico, falas, conversa });
   } catch (e) {
     console.error("[Prontuário] /consulta falhou:", e.message);
     res.status(500).json({ error: "Não consegui abrir a consulta." });
+  }
+});
+// Data de nascimento digitada na ficha → grava na consulta ("Nascimento: dd/mm/aaaa"),
+// no mesmo formato que a Ana usa, para servir às próximas consultas do paciente.
+app.post("/api/prontuario/consulta/:id/nascimento", requireMedico, async (req, res) => {
+  try {
+    const m = String(req.body?.nascimento || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return res.status(400).json({ error: "Use o formato dd/mm/aaaa." });
+    const nasc = `${m[1].padStart(2, "0")}/${m[2].padStart(2, "0")}/${m[3]}`;
+    const info = idadeDe(`Nascimento: ${nasc}`);
+    if (!info || info.idade < 0 || info.idade > 120) return res.status(400).json({ error: "Data de nascimento inválida." });
+    const { data: ag, error } = await supabase.from("appointments").select("id, observacoes").eq("id", req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada." });
+    const resto = String(ag.observacoes || "").split("|").map(t => t.trim()).filter(t => t && !/^nascimento:/i.test(t));
+    const { error: e2 } = await supabase.from("appointments").update({ observacoes: [`Nascimento: ${nasc}`, ...resto].join(" | ") }).eq("id", ag.id);
+    if (e2) throw e2;
+    res.json({ ok: true, ...info });
+  } catch (e) {
+    console.error("[Prontuário] nascimento falhou:", e.message);
+    res.status(500).json({ error: "Não consegui gravar a data de nascimento." });
   }
 });
 // Salva (cria ou atualiza) o registro da consulta e marca o comparecimento.
