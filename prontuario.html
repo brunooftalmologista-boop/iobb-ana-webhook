@@ -169,7 +169,7 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
           </section>
 
           <section class="box">
-            <div class="sec-h"><h2>Refração estática <small>-250 ou -2.5 vira -2,50</small></h2><button type="button" id="transpor">Transpor cilindro</button></div>
+            <div class="sec-h"><h2>Refração <small>-250 ou -2.5 vira -2,50</small></h2><button type="button" id="transpor">Transpor cilindro</button></div>
             <div class="ref">
               <span></span><span class="h">Esférico</span><span class="h">Cilíndrico</span><span class="h">Eixo</span><span class="h">AV</span>
               <span class="eye" style="color:var(--od)">OD</span><input id="re-od-esf" inputmode="decimal"><input id="re-od-cil" inputmode="decimal"><input id="re-od-eixo" inputmode="numeric"><input id="re-od-av" list="snellen">
@@ -346,7 +346,7 @@ function textoIclinic(){ const L=[];
   const avs=[["Acuidade visual sem correção",v("av-sc-od"),v("av-sc-oe")],["Acuidade visual com correção",v("av-cc-od"),v("av-cc-oe")],["Acuidade visual para perto",v("av-pt-od"),v("av-pt-oe")]]
     .map(([r,a,b])=>par(r,a,b)).filter(Boolean); if(avs.length) L.push(avs.join("\n"));
   const rod=refr("od"),roe=refr("oe");
-  if(rod||roe) L.push(`Refração estática:\n${cap(OD)}: ${rod||"não realizada"}.\n${cap(OE)}: ${roe||"não realizada"}.`+(v("re-add")?`\nAdição: ${v("re-add")}.`:""));
+  if(rod||roe) L.push(`Refração:\n${cap(OD)}: ${rod||"não realizada"}.\n${cap(OE)}: ${roe||"não realizada"}.`+(v("re-add")?`\nAdição: ${v("re-add")}.`:""));
   const bio=grade("bio",BIO,"Biomicroscopia"); if(bio) L.push(bio);
   if(v("pio-od")||v("pio-oe")) L.push(`Pressão intraocular (${v("pio-met")}${v("pio-hora")?", às "+v("pio-hora"):""}): ${OD} ${v("pio-od")||"não aferida"}${v("pio-od")?" mmHg":""}; ${OE} ${v("pio-oe")||"não aferida"}${v("pio-oe")?" mmHg":""}.`);
   const fo=grade("fo",FO,"Fundoscopia"); if(fo) L.push(fo);
