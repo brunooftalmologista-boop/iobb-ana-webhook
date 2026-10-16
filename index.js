@@ -10116,9 +10116,14 @@ app.get("/api/prontuario/consulta/:id", requireMedico, async (req, res) => {
     let historico = [];
     if (f8) {
       const { data: hs } = await supabase.from("prontuario_consultas")
-        .select("id, data_consulta, texto").like("paciente_telefone", `%${f8}`)
-        .neq("appointment_id", ag.id).order("data_consulta", { ascending: false }).limit(10);
-      historico = hs || [];
+        .select("id, data_consulta, texto, paciente_nome").like("paciente_telefone", `%${f8}`)
+        .neq("appointment_id", ag.id).order("data_consulta", { ascending: false }).limit(30);
+      // FAMÍLIA NO MESMO TELEFONE (16/10/2026): o telefone sozinho misturava o
+      // histórico — o filho veria as consultas da mãe. Só entra quem tem o mesmo
+      // primeiro nome (o mesmo critério da idade).
+      const prim = (t) => String(t || "").trim().split(/\s+/)[0].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      historico = (hs || []).filter(h => prim(h.paciente_nome) === prim(ag.paciente_nome)).slice(0, 10)
+        .map(({ paciente_nome, ...h }) => h);
     }
     let falas = [], conversa = [];
     try {

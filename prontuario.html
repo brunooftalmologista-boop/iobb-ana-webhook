@@ -134,6 +134,10 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
           </div>
         </div>
 
+        <section class="box hist" id="hist-box" hidden>
+          <div class="sec-h"><h2>Consultas anteriores <small id="hist-n"></small></h2></div>
+          <div id="hist"></div>
+        </section>
         <div id="form" style="display:grid;gap:12px">
           <section class="box">
             <div class="sec-h"><h2>Queixa principal</h2></div>
@@ -226,10 +230,6 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
             <div class="row"><label>Retorno <select id="retorno"><option value="">—</option><option>7 dias</option><option>30 dias</option><option>3 meses</option><option>6 meses</option><option>1 ano</option></select></label></div>
           </section>
 
-          <section class="box hist" id="hist-box" hidden>
-            <div class="sec-h"><h2>Consultas anteriores registradas aqui</h2></div>
-            <div id="hist"></div>
-          </section>
         </div>
       </div>
     </main>
@@ -571,7 +571,10 @@ async function abrir(id){
       $("#pac-ana-msgs").innerHTML=conv.map(m=>`<div class="msg ${m.role==="user"?"pac":"ana-r"}"><small>${quem[m.role]||""} · ${new Date(/Z|[+-]\d\d:?\d\d$/.test(m.quando)?m.quando:m.quando+"Z").toLocaleString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</small>${esc(m.texto)}</div>`).join("");
       $("#pac-ana").addEventListener("toggle",()=>{ if($("#pac-ana").open){ const b=$("#pac-ana-msgs"); b.scrollTop=b.scrollHeight; } },{once:true});
     } else $("#pac-ana").hidden=true;
-    if(r.historico&&r.historico.length){ $("#hist-box").hidden=false; $("#hist").innerHTML=r.historico.map(h=>`<details><summary>${new Date(h.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ})}</summary><pre>${esc(h.texto)}</pre></details>`).join(""); } else $("#hist-box").hidden=true;
+    // Histórico logo abaixo do cabeçalho, a mais recente já aberta (16/10/2026).
+    if(r.historico&&r.historico.length){ $("#hist-box").hidden=false; $("#hist-n").textContent=`(${r.historico.length})`;
+      $("#hist").innerHTML=r.historico.map((h,i)=>`<details${i===0?" open":""}><summary>${new Date(h.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"})}</summary><pre>${esc(h.texto)}</pre></details>`).join(""); }
+    else $("#hist-box").hidden=true;
     let dados=r.registro?r.registro.dados:null;
     try{ const loc=JSON.parse(localStorage.getItem(chaveLocal(id))||"null"); if(loc&&(!r.registro||loc.ts>new Date(r.registro.updated_at).getTime())) dados=loc.dados; }catch(_){}
     aplicar(dados); if(!dados) horaPio();
