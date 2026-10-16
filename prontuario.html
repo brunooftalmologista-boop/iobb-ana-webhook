@@ -328,13 +328,17 @@ const v=id=>($("#"+id)?.value||"").trim();
 // Texto POR EXTENSO, sem abreviações (Dr. Bruno, 14/10/2026).
 const OD="olho direito", OE="olho esquerdo", AO="ambos os olhos";
 const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
-function par(rot,od,oe){ if(!od&&!oe) return ""; if(od&&od===oe) return `${rot}: ${AO} ${od}.`; return `${rot}: ${OD} ${od||"não aferido"}; ${OE} ${oe||"não aferido"}.`; }
+// OLHO POR OLHO, sempre (Dr. Bruno, 16/10/2026): "Olho direito: descrição
+// completa" e, embaixo, "Olho esquerdo: descrição completa" — mesmo quando os
+// dois são iguais (nada de "ambos os olhos").
+function par(rot,od,oe){ if(!od&&!oe) return ""; return `${rot}:\n${cap(OD)}: ${od||"não aferido"}.\n${cap(OE)}: ${oe||"não aferido"}.`; }
 function refr(o){ const e=v(`re-${o}-esf`),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`),a=v(`re-${o}-av`); if(!e&&!c) return "";
   let s=`esférico ${e?(e==="Plano"?"plano":e):"plano"}`; if(c) s+=`, cilíndrico ${c}, eixo ${x||"?"}°`; if(a) s+=`, acuidade visual ${a}`; return s; }
-function grade(id,itens,rot){ const ls=[]; let igual=true;
-  for(const [k,nome] of itens){ const a=v(`${id}-${k}-od`),b=v(`${id}-${k}-oe`); if(!a&&!b) continue; if(a!==b) igual=false; ls.push([nome,a,b]); }
-  if(!ls.length) return ""; if(igual) return `${rot} de ${AO}: `+ls.map(([n,a])=>`${n.toLowerCase()} ${a}`).join("; ")+".";
-  return `${rot}:\n`+ls.map(([n,a,b])=>a===b?`${n}: ${AO} ${a}.`:`${n}: ${OD} ${a||"não avaliado"}; ${OE} ${b||"não avaliado"}.`).join("\n"); }
+function grade(id,itens,rot){ const ls=[];
+  for(const [k,nome] of itens){ const a=v(`${id}-${k}-od`),b=v(`${id}-${k}-oe`); if(!a&&!b) continue; ls.push([nome,a,b]); }
+  if(!ls.length) return "";
+  const olho=(i,nomeOlho)=>`${cap(nomeOlho)}: `+ls.map(l=>`${l[0].toLowerCase()} ${l[i]||"não avaliado"}`).join("; ")+".";
+  return `${rot}:\n${olho(1,OD)}\n${olho(2,OE)}`; }
 // Itens = opções clicadas + cada LINHA da caixa de texto. Um item fica na mesma
 // linha do título; dois ou mais saem um por linha (Dr. Bruno, 15/10/2026).
 const linhas=id=>v(id).split(/\n+/).map(t=>t.trim()).filter(Boolean);
@@ -348,7 +352,7 @@ function textoIclinic(){ const L=[];
   const rod=refr("od"),roe=refr("oe");
   if(rod||roe) L.push(`Refração:\n${cap(OD)}: ${rod||"não realizada"}.\n${cap(OE)}: ${roe||"não realizada"}.`+(v("re-add")?`\nAdição: ${v("re-add")}.`:""));
   const bio=grade("bio",BIO,"Biomicroscopia"); if(bio) L.push(bio);
-  if(v("pio-od")||v("pio-oe")) L.push(`Pressão intraocular (${v("pio-met")}${v("pio-hora")?", às "+v("pio-hora"):""}): ${OD} ${v("pio-od")||"não aferida"}${v("pio-od")?" mmHg":""}; ${OE} ${v("pio-oe")||"não aferida"}${v("pio-oe")?" mmHg":""}.`);
+  if(v("pio-od")||v("pio-oe")) L.push(`Pressão intraocular (${v("pio-met")}${v("pio-hora")?", às "+v("pio-hora"):""}):\n${cap(OD)}: ${v("pio-od")?v("pio-od")+" mmHg":"não aferida"}.\n${cap(OE)}: ${v("pio-oe")?v("pio-oe")+" mmHg":"não aferida"}.`);
   const fo=grade("fo",FO,"Fundoscopia"); if(fo) L.push(fo);
   const hd=bloco("Hipótese diagnóstica",[...marcados("hd").map(c=>`${nomeChip(c)} (CID ${c.dataset.cid})`),...linhas("hd-txt")]); if(hd) L.push(hd);
   const cd=bloco("Conduta",[...marcados("cd").map(nomeChip),...linhas("cd-txt")]); if(cd) L.push(cd);
