@@ -3654,7 +3654,7 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     let idParaCancelar = null;
     try {
       const { data: existentes } = await supabase.from("appointments")
-        .select("id, inicio, paciente_nome, motivo")
+        .select("id, inicio, paciente_nome, motivo, created_at")
         .eq("conversation_id", String(conversationId))
         .eq("origem", "ana")
         .in("status", ["reservado", "confirmado"])
@@ -3769,10 +3769,28 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
           let cortesia = false;
           if (prosaTemHora && new Date(doMesmoPaciente[0].inicio).getTime() !== ini.getTime()) {
             try {
-              const { data: ult } = await supabase.from("messages")
+              // 🔭 A CONVERSA DESDE QUE A CONSULTA FOI MARCADA, não só a última troca
+              // (16/10/2026 — caso Maria Cristina). Olhar só a última mensagem
+              // dela falhou no sentido oposto ao da Lohana: ela pediu "Pode ser na
+              // segunda?", aceitou o 10h40 de 19/10, deu nome e nascimento e, no
+              // fim, respondeu "Confirmo" à pergunta de identidade. A guarda viu só
+              // o "Confirmo", sem pedido nem oferta, e descartou a remarcação — a
+              // paciente saiu ouvindo "Agendado para segunda" e a agenda ficou com
+              // a sexta. Conserto: a OFERTA da Ana conta em qualquer ponto DEPOIS de
+              // a consulta atual ser criada (não só a última fala dela). Mas só
+              // OFERTA — "tenho… pode ser?" —, nunca o cartão "Confira seus dados":
+              // as 4 barragens CERTAS desde 01/10 (Saulo 2×, Raissa, Abnor) foram
+              // justamente cartões de cortesia com o horário errado, e um cartão
+              // errado anterior não pode legitimar a re-emissão seguinte.
+              // O pedido do paciente continua lido só na ÚLTIMA fala dele: "até
+              // amanhã" numa despedida antiga não pode destravar remarcação.
+              const desdeCriada = doMesmoPaciente[0].created_at
+                ? new Date(doMesmoPaciente[0].created_at).toISOString().replace("Z", "") : null;
+              let qMsgs = supabase.from("messages")
                 .select("content, role").eq("conversation_id", conversationId)
-                .in("role", ["user", "assistant"])
-                .order("timestamp", { ascending: false }).limit(6);
+                .in("role", ["user", "assistant"]);
+              if (desdeCriada) qMsgs = qMsgs.gt("timestamp", desdeCriada);
+              const { data: ult } = await qMsgs.order("timestamp", { ascending: false }).limit(30);
               const linhas = ult || [];
               const iUser = linhas.findIndex(m => m.role === "user");
               const txt = String(linhas[iUser]?.content || "").trim();
@@ -3782,11 +3800,12 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
               // sempre cita o horário do bloco → aceitouOferta sempre verdadeiro e
               // esta guarda nunca disparava. Caso Lohana (01/10): respondeu "Isso"
               // ao cartão das 14h00 e a Ana remarcou sozinha para as 15h00.
-              const ultimaDaAna = String((iUser >= 0 ? linhas.slice(iUser + 1) : []).find(m => m.role === "assistant")?.content || "");
+              const falasDaAna = (iUser >= 0 ? linhas.slice(iUser + 1) : []).filter(m => m.role === "assistant").map(m => String(m.content || ""));
               // (a) o paciente pediu a mudança? horário, data, dia da semana ou verbo
               const pediuMudanca = /\d{1,2}\s*[h:]\s*\d{0,2}|\d{1,2}\/\d{1,2}|\b(segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|amanh[ãa]|hoje|semana que vem|pr[óo]xima semana)|\b(remarc|desmarc|cancel|adiar|antecip|mud|troc|transfer|outro hor[áa]rio|outra data|mais cedo|mais tarde)\w*/i.test(txt);
               // (b) ou aceitou uma troca que a ANA acabou de propor com ESTE horário
-              const aceitouOferta = horariosOferecidos(ultimaDaAna).includes(horaDoBloco);
+              const RE_OFERTA = /\b(tenho|consigo|posso (reservar|marcar|agendar|deixar)|reservo|pode ser\?|serve (para|pra) (voc[êe]|a senhora|o senhor)|que tal)/i;
+              const aceitouOferta = falasDaAna.some(f => RE_OFERTA.test(f) && !/confira seus dados/i.test(f) && horariosOferecidos(f).includes(horaDoBloco));
               cortesia = !pediuMudanca && !aceitouOferta;
             } catch (e) { console.error("[Agendar] Não consegui ler a última mensagem do paciente:", e.message); }
           }
