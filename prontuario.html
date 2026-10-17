@@ -4,88 +4,168 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Prontuário — IOBB</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Prontuário do Dr. Bruno — fase 1: gera o texto para colar no iClinic.
-   Layout: consultas do dia | formulário | texto pronto + receita. */
+/* Prontuário do Dr. Bruno — v2, no fluxo do iClinic (17/10/2026):
+   lista → ficha (cabeçalho + antecedentes + linha do tempo) → atendimento
+   (cronômetro + seções) → finalizar (trava; depois só "inserir informações"). */
 :root{
-  --bg:#f3f5f6; --surface:#fff; --ink:#18242b; --muted:#5d6b73; --line:#d9e0e3;
-  --accent:#1d6b74; --accent-soft:#e1eff0; --od:#8a4b2a; --oe:#2a5a8a; --chip:#eef2f3; --warn:#9a5b00; --ok:#2d7a3e;
-  --f-display:"Source Serif 4", Georgia, serif;
-  --f-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --bg:#f2f4f7; --surface:#fff; --ink:#263238; --muted:#6b7a85; --line:#dfe4ea;
+  --pri:#1565c0; --pri-soft:#e3eefb; --danger:#d32f2f; --ok:#2e7d32; --warn:#9a5b00; --note:#fff8e1; --note-line:#f1e2a8;
+  --od:#8a4b2a; --oe:#2a5a8a; --chip:#eef2f6; --side:#ffffff;
+  --f-body:"Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark){ :root{
-  --bg:#11181c; --surface:#182227; --ink:#e3eaed; --muted:#93a3ab; --line:#2b3a41;
-  --accent:#5fb3bb; --accent-soft:#1d3236; --od:#e0a07c; --oe:#8fb8e3; --chip:#203036; --warn:#e2a64a; --ok:#6cc27e; color-scheme:dark } }
+  --bg:#12181d; --surface:#1a2228; --ink:#e3e9ee; --muted:#93a3ae; --line:#2c3a43;
+  --pri:#6aa9f0; --pri-soft:#1c2f45; --danger:#ef6b6b; --ok:#6cc27e; --warn:#e2a64a; --note:#3a3220; --note-line:#5a4c26;
+  --od:#e0a07c; --oe:#8fb8e3; --chip:#22303a; --side:#161e24; color-scheme:dark } }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body)}
-.top{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
-.top b{font-family:var(--f-display);font-size:18px}
-.top .r{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.wrap{max-width:1500px;margin:0 auto;padding:16px;display:grid;gap:16px;grid-template-columns:240px minmax(0,1fr) minmax(0,380px);align-items:start}
-@media (max-width:1180px){.wrap{grid-template-columns:220px minmax(0,1fr)} aside.saida{grid-column:1/-1}}
-@media (max-width:760px){.wrap{grid-template-columns:minmax(0,1fr)}}
-.lista{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:sticky;top:64px}
-@media (max-width:760px){.lista{position:static}}
-.lista h3{margin:0;padding:10px 12px;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
-.item{display:grid;grid-template-columns:44px minmax(0,1fr);gap:2px 8px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;background:none;border-left:0;border-right:0;border-top:0;text-align:left;width:100%;font:inherit;color:inherit}
-.item:hover{background:var(--accent-soft)} .item.ativo{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
-.item .h{font:500 13px var(--f-mono);color:var(--muted)} .item .n{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.item .s{grid-column:2;font-size:12px;color:var(--muted)} .item .s .feito{color:var(--ok);font-weight:600}
-.vazio{padding:14px 12px;color:var(--muted);font-size:14px}
-button{font:500 14px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:7px 12px;cursor:pointer}
-button:hover{border-color:var(--accent)} button.pri{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+a{color:var(--pri)}
+button{font:500 14px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--pri)}
+button.pri{background:var(--pri);color:#fff;border-color:var(--pri)}
+button.perigo{background:var(--danger);color:#fff;border-color:var(--danger)}
+button.link{border:0;background:none;color:var(--pri);padding:4px 6px}
 button:disabled{opacity:.5;cursor:default}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.chip:focus-visible,.item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-main{display:grid;gap:12px;min-width:0}
-.pac{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:8px}
-.pac h1{font:600 24px/1.2 var(--f-display);margin:0;text-wrap:balance}
-.meta{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--muted);font-size:14px}
-.nome-linha{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
-.idade{font:600 20px var(--f-display);color:var(--accent)}
-.ana{font-size:14px;background:var(--accent-soft);border-radius:8px;padding:8px 10px}
-.ana b{color:var(--accent)} .ana p{margin:2px 0}
-.ana summary{cursor:pointer;color:var(--accent);font-weight:500}
-.conversa{display:grid;gap:6px;margin-top:8px;max-height:340px;overflow:auto;padding-right:4px}
-.msg{max-width:85%;padding:6px 9px;border-radius:8px;font-size:13.5px;white-space:pre-wrap;word-break:break-word;background:var(--surface);border:1px solid var(--line)}
-.msg.pac{justify-self:start} .msg.ana-r{justify-self:end;background:var(--chip)}
-.msg small{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
-.modelos{display:flex;flex-wrap:wrap;gap:8px}
-section.box{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 16px;display:grid;gap:10px;min-width:0}
-.sec-h{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between}
-h2{font:600 15px var(--f-body);margin:0} h2 small{font-weight:400;color:var(--muted);margin-left:6px}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{font-size:13px;padding:4px 10px;border-radius:999px;background:var(--chip);border:1px solid transparent;cursor:pointer;user-select:none}
-.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:500}
-.chip .cid{font-family:var(--f-mono);font-size:11px;color:var(--muted);margin-left:4px}
-textarea,input,select{font:15px var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%;min-width:0}
-textarea{min-height:54px;resize:vertical}
-textarea.itens{min-height:92px;line-height:1.45}
-.grid-olho{display:grid;grid-template-columns:minmax(90px,140px) minmax(0,1fr) minmax(0,1fr);gap:6px 10px;align-items:center}
-.grid-olho .h{font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.chip:focus-visible,.card-ante:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+textarea,input,select{font:15px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%;min-width:0}
+textarea{min-height:70px;resize:vertical;line-height:1.45}
+
+/* ---- barra do topo ---- */
+.topo{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line);height:52px;display:flex;align-items:center;gap:18px;padding:0 16px}
+.topo b{font-size:17px;color:var(--pri);letter-spacing:.01em}
+.topo nav{display:flex;gap:4px}
+.topo nav button{border:0;background:none;padding:6px 10px;border-radius:6px}
+.topo nav button.ativo{background:var(--pri-soft);color:var(--pri)}
+.topo .esp{margin-left:auto;display:flex;gap:12px;align-items:center;font-size:14px}
+
+/* ---- layout geral: lateral + conteúdo ---- */
+.app{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:calc(100vh - 52px)}
+@media (max-width:860px){.app{grid-template-columns:minmax(0,1fr)}}
+.lateral{background:var(--side);border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:12px;position:sticky;top:52px;height:calc(100vh - 52px);overflow:auto}
+@media (max-width:860px){.lateral{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}}
+.lateral h3{margin:0;font:400 18px var(--f-body);color:var(--muted)}
+.btn-atend{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;font-size:16px;border-radius:6px;border:0;color:#fff;background:var(--pri)}
+.btn-atend.fim{background:var(--danger)}
+.duracao{display:flex;justify-content:space-between;font-size:15px;color:var(--pri);font-weight:500}
+.duracao span:last-child{font-family:var(--f-mono);color:var(--ink)}
+.menu{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+.menu button{border:0;text-align:left;background:none;padding:10px 12px;border-radius:6px;font-size:15px;font-weight:500;color:var(--ink)}
+.menu button:hover{background:var(--chip)}
+.menu button.ativo{background:var(--pri-soft);color:var(--pri)}
+.lateral .rodape{margin-top:auto;font-size:12px;color:var(--muted)}
+.conteudo{padding:20px 24px 60px;min-width:0;display:grid;gap:16px;align-content:start}
+@media (max-width:600px){.conteudo{padding:14px 12px 40px}}
+
+/* ---- lista ---- */
+h1{font:400 24px var(--f-body);margin:0}
+.busca{position:relative}
+.busca input{font-size:17px;padding:12px 14px}
+.cartao{background:var(--surface);border:1px solid var(--line);border-radius:8px;min-width:0}
+.cartao-cab{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
+.cartao-cab h2{margin:0;font:500 16px var(--f-body)}
+.cartao-corpo{padding:14px 16px;display:grid;gap:12px;min-width:0}
+.tabela-wrap{overflow-x:auto}
+table.lista{width:100%;border-collapse:collapse;font-size:14px}
+table.lista th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.lista td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+table.lista tr.clica{cursor:pointer} table.lista tr.clica:hover td{background:var(--pri-soft)}
+table.lista td.nome{color:var(--pri);font-weight:500}
+.vazio{color:var(--muted);font-size:14px;padding:6px 0}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;background:var(--chip);color:var(--muted)}
+.tag.ok{background:#e6f4ea;color:var(--ok)} .tag.and{background:var(--pri-soft);color:var(--pri)}
+
+/* ---- ficha ---- */
+.cab-pac{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:16px;align-items:center;padding:18px}
+.avatar{width:84px;height:84px;border-radius:50%;background:#607d8b;color:#fff;display:grid;place-items:center;font-size:30px}
+.cab-pac h2{margin:0 0 4px;font:700 18px var(--f-body);text-transform:uppercase;letter-spacing:.01em}
+.cab-pac .dados{font-size:14px;line-height:1.6} .cab-pac .dados b{font-weight:500}
+.cab-pac .acoes{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+@media (max-width:600px){.cab-pac{grid-template-columns:auto minmax(0,1fr)} .cab-pac .acoes{grid-column:1/-1;flex-direction:row;flex-wrap:wrap;align-items:center}}
+.antes{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.card-ante{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 12px;cursor:pointer;min-height:76px;text-align:left;font:inherit;color:inherit}
+.card-ante:hover{border-color:var(--pri)}
+.card-ante small{display:block;font-size:12px;font-weight:500;color:var(--ink)}
+.card-ante span{display:block;font-size:14px;color:var(--muted);white-space:pre-wrap;overflow:hidden;max-height:4.4em}
+.card-ante span.cheio{color:var(--ink)}
+details.sec{background:var(--surface);border:1px solid var(--line);border-radius:8px}
+details.sec>summary{cursor:pointer;padding:12px 16px;font-size:13px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+details.sec>div{padding:0 16px 14px}
+.diag{display:flex;flex-wrap:wrap;gap:6px}
+.filtro{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.filtro select{width:auto;min-width:240px}
+
+/* ---- linha do tempo ---- */
+.timeline{display:grid;gap:18px}
+.item-t{display:grid;grid-template-columns:62px minmax(0,1fr);gap:14px}
+.data-t{background:var(--pri);color:#fff;border-radius:4px;text-align:center;align-self:start;overflow:hidden}
+.data-t.cinza{background:#8a9aa6}
+.data-t b{display:block;font:400 26px/1.1 var(--f-body);padding-top:6px}
+.data-t i{display:block;font-style:normal;font-size:14px;text-transform:uppercase}
+.data-t em{display:block;font-style:normal;font-size:13px;border-top:1px solid rgba(255,255,255,.35);padding:3px 0}
+.bloco-t{background:var(--surface);border:1px solid var(--line);border-radius:6px;min-width:0}
+.bloco-t .cab{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);font-size:14px}
+.bloco-t .cab .h{color:var(--pri)}
+.secao-t{border-bottom:1px solid var(--line)}
+.secao-t h4{margin:0;padding:10px 16px;background:var(--bg);font:500 14px var(--f-body);color:var(--pri)}
+.secao-t pre{margin:0;padding:12px 16px;font:14px/1.55 var(--f-body);white-space:pre-wrap;word-break:break-word}
+.anexos-t{display:flex;flex-wrap:wrap;gap:10px;padding:12px 16px}
+.arq{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:8px 10px;text-decoration:none;color:var(--ink);max-width:280px;font-size:13px}
+.arq .ic{width:34px;height:40px;border-radius:3px;background:var(--pri-soft);color:var(--pri);display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto}
+.arq span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adendo{margin:10px 16px;background:var(--note);border:1px solid var(--note-line);border-radius:4px;padding:10px 12px;font-size:14px;white-space:pre-wrap}
+.adendo small{display:block;color:var(--muted);font-size:12px;margin-bottom:2px}
+.rodape-t{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;padding:10px 16px}
+
+/* ---- atendimento ---- */
+.palco{background:#d7dde3;border-radius:6px;padding:20px;display:grid;gap:18px}
+@media (prefers-color-scheme: dark){.palco{background:#0f1418}}
+@media (max-width:600px){.palco{padding:8px}}
+.folha-sec{background:var(--surface);border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.12);min-width:0;scroll-margin-top:70px}
+.folha-sec>.t{display:flex;justify-content:space-between;gap:8px;padding:14px 18px;border-bottom:1px solid var(--line);font-weight:500;color:var(--muted)}
+.folha-sec>.t small{font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+.folha-sec>.c{padding:14px 18px;display:grid;gap:14px;min-width:0}
+.campo>label,.rot{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+.chips{display:flex;flex-wrap:wrap;gap:6px 14px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;user-select:none;padding:2px 0}
+.chip::before{content:"";width:15px;height:15px;border:1.5px solid var(--muted);border-radius:3px;flex:0 0 auto;background:var(--surface)}
+.chip[aria-pressed="true"]::before{background:var(--pri);border-color:var(--pri);box-shadow:inset 0 0 0 2px var(--surface)}
+.chip .cid{font-size:12px;color:var(--muted)}
+.grid-olho{display:grid;grid-template-columns:minmax(100px,170px) minmax(0,1fr) minmax(0,1fr);gap:6px 10px;align-items:center}
+.grid-olho .h{font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:700}
 .h.od{color:var(--od)} .h.oe{color:var(--oe)} .lbl{font-size:13px;color:var(--muted)}
-.ref{display:grid;grid-template-columns:40px repeat(4,minmax(0,1fr));gap:6px 8px;align-items:center}
-.ref input{font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
-.ref .h{font-size:12px;color:var(--muted);text-align:right} .ref .eye{font:600 13px var(--f-body)}
-.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.row>label{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted)} .row input,.row select{width:auto}
+@media (max-width:560px){.grid-olho{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} .grid-olho .rowlbl{grid-column:1/-1} .grid-olho .blank{display:none}}
+.ref{display:grid;grid-template-columns:44px repeat(4,minmax(0,1fr));gap:6px 8px;align-items:center}
+.ref input{font-family:var(--f-mono);text-align:right}
+.ref .h{font-size:12px;color:var(--muted);text-align:right} .ref .eye{font-weight:700;font-size:13px}
+.row{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.row>label{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.row input,.row select{width:auto}
 .hint{font-size:12px;color:var(--muted)}
-aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
-@media (max-width:1180px){aside.saida{position:static}}
-.out{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 16px;display:grid;gap:10px}
-.out pre{margin:0;font:13px/1.55 var(--f-mono);white-space:pre-wrap;word-break:break-word;background:var(--bg);border-radius:6px;padding:10px;max-height:46vh;overflow:auto}
-.rx{border:1px dashed var(--line);border-radius:8px;padding:10px;display:grid;gap:8px;background:var(--bg)}
-.rx table{width:100%;border-collapse:collapse;font:13px var(--f-mono);font-variant-numeric:tabular-nums}
-.rx th,.rx td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:right} .rx th:first-child,.rx td:first-child{text-align:left}
 .status{font-size:13px;min-height:1.2em} .status.ok{color:var(--ok)} .status.erro{color:var(--warn)}
-.hist details{border-top:1px solid var(--line);padding:6px 0} .hist summary{cursor:pointer;font-size:14px}
-.hist pre{font:12px/1.5 var(--f-mono);white-space:pre-wrap;margin:6px 0 0}
+.rx{border:1px solid var(--line);border-radius:6px;padding:12px;display:grid;gap:10px}
+.rx table{width:100%;border-collapse:collapse;font:14px var(--f-mono)}
+.rx th,.rx td{border:1px solid var(--line);padding:6px 8px;text-align:center} .rx th{font:500 13px var(--f-body);background:var(--bg)}
+.soltar{border:2px dashed var(--line);border-radius:6px;padding:22px;text-align:center;display:grid;gap:8px;justify-items:center}
+.soltar.sobre{border-color:var(--pri);background:var(--pri-soft)}
+pre.saida{margin:0;font:13px/1.55 var(--f-mono);white-space:pre-wrap;word-break:break-word;background:var(--bg);border-radius:6px;padding:12px;max-height:60vh;overflow:auto}
+
+/* ---- janelas ---- */
+.fundo{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:50;display:grid;place-items:center;padding:16px}
+.modal{background:var(--surface);border-radius:8px;width:min(680px,100%);max-height:90vh;overflow:auto;display:grid;gap:12px;padding:18px}
+.modal h3{margin:0;font:500 19px var(--f-body)}
+.modal .pe{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center}
+.gaveta{position:fixed;top:0;right:0;bottom:0;width:min(460px,100%);background:var(--surface);z-index:51;box-shadow:-4px 0 20px rgba(0,0,0,.2);display:flex;flex-direction:column;padding:24px;gap:14px}
+.gaveta h3{margin:0;font:700 22px var(--f-body)}
+.gaveta .pe{margin-top:auto;display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding-top:14px}
+.conversa{display:grid;gap:6px;max-height:340px;overflow:auto}
+.msg{max-width:85%;padding:6px 9px;border-radius:8px;font-size:13.5px;white-space:pre-wrap;word-break:break-word;background:var(--surface);border:1px solid var(--line)}
+.msg.pac{justify-self:start} .msg.ana{justify-self:end;background:var(--chip)}
+.msg small{display:block;font-size:11px;color:var(--muted)}
 .portao{max-width:520px;margin:12vh auto;padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:12px;display:grid;gap:12px}
-.portao h1{font:600 22px var(--f-display);margin:0}
-.portao a{color:var(--accent)}
-@media (max-width:520px){.grid-olho{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} .grid-olho .rowlbl{grid-column:1/-1} .grid-olho .h.blank{display:none}}
 </style>
 </head>
 <body>
@@ -96,165 +176,225 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
   <a href="/painel">Abrir o painel</a>
 </div>
 
-<div id="app" hidden>
-  <div class="top">
-    <b>Prontuário</b>
-    <div class="r">
-      <input type="date" id="dia" style="width:auto">
-      <button type="button" id="hoje">Hoje</button>
-      <a href="/painel" style="color:var(--muted);font-size:14px">Voltar ao painel</a>
-    </div>
-  </div>
+<div id="raiz" hidden>
+  <header class="topo">
+    <b>IOBB · Prontuário</b>
+    <nav><button type="button" id="nav-lista" class="ativo">Prontuários</button></nav>
+    <div class="esp"><a href="/painel">Voltar ao painel</a></div>
+  </header>
 
-  <div class="wrap">
-    <nav class="lista" aria-label="Consultas do dia">
-      <h3 id="lista-titulo">Consultas</h3>
-      <div id="lista"><div class="vazio">Carregando…</div></div>
-    </nav>
-
-    <main>
-      <div id="sem-consulta" class="pac"><h1>Escolha uma consulta</h1><div class="meta">Clique no paciente na lista ao lado.</div></div>
-
-      <div id="ficha" hidden style="display:grid;gap:12px">
-        <div class="pac">
-          <div class="meta" id="pac-topo"></div>
-          <div class="nome-linha"><h1 id="pac-nome"></h1><span id="pac-idade" class="idade"></span></div>
-          <div class="row" id="nasc-box" hidden><label>Data de nascimento <input id="nasc-in" placeholder="dd/mm/aaaa" inputmode="numeric" style="width:130px;font-family:var(--f-mono)"></label><button type="button" id="nasc-ok">Gravar</button><span class="hint" id="nasc-msg">Sem data de nascimento na agenda.</span></div>
-          <div class="meta" id="pac-meta"></div>
-          <details class="ana" id="pac-ana" hidden>
-            <summary id="pac-ana-resumo">Ver conversa com a Ana</summary>
-            <div id="pac-ana-msgs" class="conversa"></div>
-          </details>
-          <div class="modelos" aria-label="Modelos prontos">
-            <button type="button" data-modelo="rotina">Rotina normal</button>
-            <button type="button" data-modelo="lente">Retorno de lente</button>
-            <button type="button" data-modelo="ceratocone">Ceratocone</button>
-            <button type="button" data-modelo="catarata">Catarata</button>
-            <button type="button" id="limpar">Limpar</button>
-          </div>
-        </div>
-
-        <section class="box hist" id="hist-box" hidden>
-          <div class="sec-h"><h2>Consultas anteriores <small id="hist-n"></small></h2></div>
-          <div id="hist"></div>
-        </section>
-        <div id="form" style="display:grid;gap:12px">
-          <section class="box">
-            <div class="sec-h"><h2>Queixa principal</h2></div>
-            <div class="chips" data-grupo="qp">
-              <span class="chip" tabindex="0">Baixa visual para longe</span><span class="chip" tabindex="0">Baixa visual para perto</span>
-              <span class="chip" tabindex="0">Revisão de rotina</span><span class="chip" tabindex="0">Cefaleia</span><span class="chip" tabindex="0">Ardor</span>
-              <span class="chip" tabindex="0">Prurido</span><span class="chip" tabindex="0">Olho vermelho</span><span class="chip" tabindex="0">Desconforto com a lente</span>
-            </div>
-            <textarea id="qp-txt" class="itens" rows="3" placeholder="Detalhe (tempo, olho, piora)…"></textarea>
-          </section>
-
-          <section class="box">
-            <div class="sec-h"><h2>Antecedentes</h2></div>
-            <div class="chips" data-grupo="ap">
-              <span class="chip" tabindex="0">Usa óculos</span><span class="chip" tabindex="0">Usa lente de contato</span><span class="chip" tabindex="0">HAS</span>
-              <span class="chip" tabindex="0">DM</span><span class="chip" tabindex="0">Glaucoma na família</span><span class="chip" tabindex="0">Cirurgia ocular prévia</span><span class="chip" tabindex="0">Alergias</span>
-            </div>
-            <textarea id="ap-txt" class="itens" rows="4" placeholder="Um item por linha: medicações, alergias, cirurgias…"></textarea>
-          </section>
-
-          <section class="box">
-            <div class="sec-h"><h2>Acuidade visual <small>Snellen</small></h2></div>
-            <div class="grid-olho">
-              <span class="h blank"></span><span class="h od">OD</span><span class="h oe">OE</span>
-              <span class="lbl rowlbl">Sem correção</span><input id="av-sc-od" list="snellen"><input id="av-sc-oe" list="snellen">
-              <span class="lbl rowlbl">Com correção</span><input id="av-cc-od" list="snellen"><input id="av-cc-oe" list="snellen">
-              <span class="lbl rowlbl">Perto</span><input id="av-pt-od" list="jaeger"><input id="av-pt-oe" list="jaeger">
-            </div>
-          </section>
-
-          <section class="box">
-            <div class="sec-h"><h2>Refração <small>-250 ou -2.5 vira -2,50</small></h2><button type="button" id="transpor">Transpor cilindro</button></div>
-            <div class="ref">
-              <span></span><span class="h">Esférico</span><span class="h">Cilíndrico</span><span class="h">Eixo</span><span class="h">AV</span>
-              <span class="eye" style="color:var(--od)">OD</span><input id="re-od-esf" inputmode="decimal"><input id="re-od-cil" inputmode="decimal"><input id="re-od-eixo" inputmode="numeric"><input id="re-od-av" list="snellen">
-              <span class="eye" style="color:var(--oe)">OE</span><input id="re-oe-esf" inputmode="decimal"><input id="re-oe-cil" inputmode="decimal"><input id="re-oe-eixo" inputmode="numeric"><input id="re-oe-av" list="snellen">
-            </div>
-            <div class="row"><label>Adição <input id="re-add" inputmode="decimal" style="width:90px;font-family:var(--f-mono);text-align:right"></label><span class="hint" id="ref-aviso"></span></div>
-          </section>
-
-          <section class="box">
-            <div class="sec-h"><h2>Biomicroscopia</h2><button type="button" data-normal="bio">Normal AO</button></div>
-            <div class="grid-olho" id="bio"></div>
-          </section>
-
-          <section class="box">
-            <div class="sec-h"><h2>Pressão intraocular</h2></div>
-            <div class="row">
-              <label><span style="color:var(--od);font-weight:600">OD</span> <input id="pio-od" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label>
-              <label><span style="color:var(--oe);font-weight:600">OE</span> <input id="pio-oe" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label>
-              <span class="lbl">mmHg</span>
-              <select id="pio-met" aria-label="Método"><option>aplanação</option><option>tonômetro de rebote</option><option>sopro</option></select>
-              <label>às <input id="pio-hora" style="width:80px;font-family:var(--f-mono)"></label>
-            </div>
-          </section>
-
-          <section class="box">
-            <div class="sec-h"><h2>Fundoscopia</h2><button type="button" data-normal="fo">Normal AO</button></div>
-            <div class="grid-olho" id="fo"></div>
-          </section>
-
-          <section class="box">
-            <div class="sec-h"><h2>Hipótese diagnóstica</h2></div>
-            <div class="chips" data-grupo="hd">
-              <span class="chip" tabindex="0" data-cid="H52.1">Miopia</span><span class="chip" tabindex="0" data-cid="H52.0">Hipermetropia</span>
-              <span class="chip" tabindex="0" data-cid="H52.2">Astigmatismo</span><span class="chip" tabindex="0" data-cid="H52.4">Presbiopia</span>
-              <span class="chip" tabindex="0" data-cid="H18.6">Ceratocone</span><span class="chip" tabindex="0" data-cid="H25.9">Catarata senil</span>
-              <span class="chip" tabindex="0" data-cid="H04.1">Olho seco</span><span class="chip" tabindex="0" data-cid="H01.0">Blefarite</span>
-              <span class="chip" tabindex="0" data-cid="H10.1">Conjuntivite alérgica</span><span class="chip" tabindex="0" data-cid="H40.0">Suspeita de glaucoma</span>
-            </div>
-            <textarea id="hd-txt" class="itens" rows="3" placeholder="Outras hipóteses, uma por linha…"></textarea>
-          </section>
-
-          <section class="box">
-            <div class="sec-h"><h2>Conduta</h2></div>
-            <div class="chips" data-grupo="cd">
-              <span class="chip" tabindex="0">Prescrição de óculos</span><span class="chip" tabindex="0">Prescrição de óculos para perto</span><span class="chip" tabindex="0">Lubrificante ocular</span><span class="chip" tabindex="0">Compressa morna e higiene palpebral</span>
-              <span class="chip" tabindex="0">Teste de lente de contato</span><span class="chip" tabindex="0">Avaliação para cirurgia refrativa</span>
-              <span class="chip" tabindex="0">Orientado a não coçar os olhos</span><span class="chip" tabindex="0">Encaminhamento</span>
-            </div>
-            <div class="hint">Exames solicitados</div>
-            <div class="chips" data-grupo="ex">
-              <span class="chip" tabindex="0">Pentacam</span><span class="chip" tabindex="0">Topografia de córnea</span><span class="chip" tabindex="0">Paquimetria</span>
-              <span class="chip" tabindex="0">Microscopia especular</span><span class="chip" tabindex="0">Mapeamento de retina</span><span class="chip" tabindex="0">Retinografia</span>
-              <span class="chip" tabindex="0">OCT de mácula</span><span class="chip" tabindex="0">OCT de nervo óptico</span><span class="chip" tabindex="0">Campimetria visual</span>
-              <span class="chip" tabindex="0">Curva diária de pressão ocular</span><span class="chip" tabindex="0">Gonioscopia</span><span class="chip" tabindex="0">Teste de sobrecarga hídrica</span>
-              <span class="chip" tabindex="0">Biometria</span><span class="chip" tabindex="0">Ultrassonografia ocular</span>
-            </div>
-            <textarea id="cd-txt" class="itens" rows="4" placeholder="Um item por linha: orientações, colírios, encaminhamentos, outros exames…"></textarea>
-            <div class="row"><label>Retorno <select id="retorno"><option value="">—</option><option>7 dias</option><option>30 dias</option><option>3 meses</option><option>6 meses</option><option>1 ano</option></select></label></div>
-          </section>
-
-        </div>
+  <div class="app">
+    <aside class="lateral">
+      <h3>Prontuário</h3>
+      <div id="lat-ficha" hidden style="display:grid;gap:10px">
+        <button type="button" class="btn-atend" id="btn-atend">▶ Iniciar atendimento</button>
+        <div class="duracao"><span>⏱ Duração</span><span id="duracao">00:00:00</span></div>
+        <div class="status" id="status-lat"></div>
+        <nav class="menu" id="menu">
+          <button type="button" data-ir="historico" class="ativo">Histórico de Consulta</button>
+          <button type="button" data-ir="s-evolucao" data-at hidden>Evolução</button>
+          <button type="button" data-ir="s-hd" data-at hidden>Hipótese diagnóstica / Conduta</button>
+          <button type="button" data-ir="s-exames" data-at hidden>Exames complementares</button>
+          <button type="button" data-ir="s-anamnese" data-at hidden>Anamnese e exame oftalmológico</button>
+          <button type="button" data-ir="s-anexos" data-at hidden>Imagens e anexos</button>
+          <button type="button" data-ir="s-iclinic" data-at hidden>Texto para o iClinic</button>
+        </nav>
       </div>
-    </main>
-
-    <aside class="saida" id="saida-box" hidden>
-      <div class="out">
-        <div class="sec-h"><h2>Texto para o iClinic</h2>
-          <div class="row"><button type="button" id="salvar">Salvar</button><button type="button" class="pri" id="copiar">Copiar</button></div></div>
-        <pre id="saida" aria-live="polite"></pre>
-        <div class="status" id="status"></div>
-        <div class="hint">Copiar também salva. Salvar marca o paciente como atendido na agenda.</div>
-      </div>
-      <div class="out">
-        <div class="sec-h"><h2>Receita de óculos</h2><div class="row"><button type="button" id="copiar-rx">Copiar</button><button type="button" class="pri" id="gerar-rx">Gerar prescrição</button></div></div>
-        <div class="rx">
-          <div class="row"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="perto">Óculos para perto</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option></select></label></div>
-          <div style="overflow-x:auto"><table aria-label="Receita"><thead><tr><th></th><th>Esf</th><th>Cil</th><th>Eixo</th></tr></thead><tbody id="rx-body"></tbody></table></div>
-          <div class="hint" id="rx-add"></div>
-          <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="rx-timbrado" style="width:auto"> Imprimir no papel timbrado (sem logotipo)</label>
-          <div class="status" id="status-rx" aria-live="polite"></div>
-          <label class="hint" for="rx-sug">Lentes sugeridas (pode editar)</label>
-          <textarea id="rx-sug" style="min-height:48px;font-size:13px"></textarea>
-        </div>
-      </div>
+      <div id="lat-lista" class="hint">Escolha um paciente na agenda do dia ou busque pelo nome ou telefone.</div>
+      <div class="rodape">Só o seu login vê o prontuário. No computador da clínica, saia do painel ao terminar.</div>
     </aside>
+
+    <main class="conteudo">
+      <!-- ===== LISTA ===== -->
+      <section id="v-lista" style="display:grid;gap:16px">
+        <h1>Prontuários</h1>
+        <div class="busca"><input id="busca" placeholder="Digite o nome ou telefone…" autocomplete="off"></div>
+        <div class="cartao" id="res-busca" hidden>
+          <div class="cartao-cab"><h2>Resultado da busca</h2></div>
+          <div class="cartao-corpo"><div class="tabela-wrap"><table class="lista"><thead><tr><th>Nome</th><th>Telefone</th><th>Última consulta</th><th>Próxima</th><th>Nascimento</th><th>Convênio</th></tr></thead><tbody id="busca-corpo"></tbody></table></div></div>
+        </div>
+        <div class="cartao">
+          <div class="cartao-cab"><h2 id="dia-titulo">Agenda de hoje</h2><div class="row"><input type="date" id="dia"><button type="button" id="hoje">Hoje</button></div></div>
+          <div class="cartao-corpo"><div class="tabela-wrap"><table class="lista"><thead><tr><th>Hora</th><th>Nome</th><th>Convênio</th><th>Unidade</th><th>Prontuário</th></tr></thead><tbody id="dia-corpo"><tr><td colspan="5" class="vazio">Carregando…</td></tr></tbody></table></div></div>
+        </div>
+      </section>
+
+      <!-- ===== FICHA ===== -->
+      <section id="v-ficha" hidden style="display:grid;gap:16px">
+        <div class="cartao cab-pac">
+          <div class="avatar" id="p-ini">--</div>
+          <div>
+            <h2 id="p-nome"></h2>
+            <div class="dados">
+              <div><b>Idade:</b> <span id="p-idade">—</span></div>
+              <div><b>Convênio:</b> <span id="p-conv">—</span></div>
+              <div><b>Primeira consulta:</b> <span id="p-prim">—</span></div>
+              <div><b>Telefone:</b> <span id="p-tel">—</span></div>
+            </div>
+            <div class="row" id="nasc-box" hidden style="margin-top:6px"><label>Data de nascimento <input id="nasc-in" placeholder="dd/mm/aaaa" style="width:130px;font-family:var(--f-mono)"></label><button type="button" id="nasc-ok">Gravar</button><span class="hint" id="nasc-msg"></span></div>
+          </div>
+          <div class="acoes"><button type="button" class="link" id="voltar-lista">← Voltar à lista</button><span class="hint" id="p-hoje"></span></div>
+        </div>
+
+        <div class="antes" id="antes"></div>
+
+        <details class="sec" id="sec-diag"><summary>Últimos diagnósticos</summary><div class="diag" id="diag"></div></details>
+        <details class="sec" id="sec-iclinic"><summary>Prontuário anterior (iClinic)</summary><div style="display:grid;gap:10px"><div class="anexos-t" id="iclinic-arqs" style="padding:0"></div><div class="row"><button type="button" id="anexar-iclinic">Anexar prontuário anterior (PDF)</button><span class="status" id="st-iclinic"></span></div></div></details>
+        <details class="sec" id="sec-ana" hidden><summary id="ana-resumo">Conversa com a Ana</summary><div class="conversa" id="ana-msgs"></div></details>
+
+        <!-- histórico -->
+        <div id="historico" style="display:grid;gap:14px">
+          <div class="filtro"><label class="hint" for="filtro">Filtrar:</label>
+            <select id="filtro"><option value="">Todos</option><option>Evolução</option><option>Queixa principal</option><option>Acuidade visual</option><option>Refração</option><option>Biomicroscopia</option><option>Pressão intraocular</option><option>Fundoscopia</option><option>Exames complementares</option><option>Hipótese diagnóstica</option><option>Conduta</option><option>Exames solicitados</option><option>Imagens e anexos</option></select></div>
+          <div class="timeline" id="timeline"></div>
+        </div>
+
+        <!-- atendimento -->
+        <div id="atendimento" class="palco" hidden>
+          <article class="folha-sec" id="s-evolucao">
+            <div class="t"><span>Evolução</span><small id="data-at"></small></div>
+            <div class="c"><div class="campo"><label for="evol-txt">Ao exame:</label><textarea id="evol-txt" rows="5" placeholder="Texto livre da evolução…"></textarea></div></div>
+          </article>
+
+          <article class="folha-sec" id="s-hd">
+            <div class="t"><span>Hipótese diagnóstica / Conduta</span></div>
+            <div class="c">
+              <div><span class="rot">Diagnóstico</span>
+                <div class="chips" data-grupo="hd">
+                  <span class="chip" tabindex="0" data-cid="H52.1">Miopia</span><span class="chip" tabindex="0" data-cid="H52.2">Astigmatismo</span>
+                  <span class="chip" tabindex="0" data-cid="H52.0">Hipermetropia</span><span class="chip" tabindex="0" data-cid="H52.4">Presbiopia</span>
+                  <span class="chip" tabindex="0" data-cid="H18.6">Ceratocone</span><span class="chip" tabindex="0" data-cid="H25.9">Catarata senil</span>
+                  <span class="chip" tabindex="0" data-cid="H04.1">Olho seco</span><span class="chip" tabindex="0" data-cid="H01.0">Blefarite</span>
+                  <span class="chip" tabindex="0" data-cid="H10.1">Conjuntivite alérgica</span><span class="chip" tabindex="0" data-cid="H40.0">Suspeita de glaucoma</span>
+                </div></div>
+              <div class="campo"><label for="hd-txt">Outros diagnósticos (um por linha)</label><textarea id="hd-txt" rows="2"></textarea></div>
+              <div><span class="rot">Conduta</span>
+                <div class="chips" data-grupo="cd">
+                  <span class="chip" tabindex="0">Prescrição de óculos</span><span class="chip" tabindex="0">Prescrição de óculos para perto</span><span class="chip" tabindex="0">Lubrificante ocular</span>
+                  <span class="chip" tabindex="0">Compressa morna e higiene palpebral</span><span class="chip" tabindex="0">Teste de lente de contato</span><span class="chip" tabindex="0">Avaliação para cirurgia refrativa</span>
+                  <span class="chip" tabindex="0">Orientado a não coçar os olhos</span><span class="chip" tabindex="0">Encaminhamento</span><span class="chip" tabindex="0">Orientações</span>
+                </div></div>
+              <div><span class="rot">Exames solicitados</span>
+                <div class="chips" data-grupo="ex">
+                  <span class="chip" tabindex="0">Pentacam</span><span class="chip" tabindex="0">Topografia de córnea</span><span class="chip" tabindex="0">Paquimetria</span>
+                  <span class="chip" tabindex="0">Microscopia especular</span><span class="chip" tabindex="0">Mapeamento de retina</span><span class="chip" tabindex="0">Retinografia</span>
+                  <span class="chip" tabindex="0">OCT de mácula</span><span class="chip" tabindex="0">OCT de nervo óptico</span><span class="chip" tabindex="0">Campimetria visual</span>
+                  <span class="chip" tabindex="0">Curva diária de pressão ocular</span><span class="chip" tabindex="0">Gonioscopia</span><span class="chip" tabindex="0">Teste de sobrecarga hídrica</span>
+                  <span class="chip" tabindex="0">Biometria</span><span class="chip" tabindex="0">Ultrassonografia ocular</span>
+                </div></div>
+              <div class="campo"><label for="cd-txt">Observações da conduta (um item por linha)</label><textarea id="cd-txt" rows="3" placeholder="Orientações, colírios, encaminhamentos…"></textarea></div>
+              <div class="row"><label>Retorno <select id="retorno"><option value="">—</option><option>7 dias</option><option>30 dias</option><option>3 meses</option><option>6 meses</option><option>1 ano</option></select></label></div>
+
+              <div class="rx">
+                <span class="rot" style="margin:0">Prescrição de óculos <span class="hint">— preenchida a partir da refração</span></span>
+                <div style="overflow-x:auto"><table aria-label="Receita"><thead><tr><th></th><th>Esférico</th><th>Cilíndrico</th><th>Eixo</th></tr></thead><tbody id="rx-body"></tbody></table></div>
+                <div class="hint" id="rx-add"></div>
+                <div class="row"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="perto">Óculos para perto</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option></select></label>
+                  <label style="gap:6px"><input type="checkbox" id="rx-timbrado" style="width:auto"> Papel timbrado (sem logotipo)</label></div>
+                <div class="campo"><label for="rx-sug">Lentes sugeridas (pode editar)</label><textarea id="rx-sug" rows="2" style="min-height:48px;font-size:14px"></textarea></div>
+                <div class="row"><button type="button" class="pri" id="gerar-rx">Imprimir prescrição</button><button type="button" id="copiar-rx">Copiar receita</button><span class="status" id="status-rx"></span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="folha-sec" id="s-exames">
+            <div class="t"><span>Exames complementares</span></div>
+            <div class="c">
+              <div><span class="rot">Topografia de córnea</span>
+                <div class="chips" data-grupo="topo"><span class="chip" tabindex="0">Córnea regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular e simétrico em ambos os olhos</span></div>
+                <textarea id="topo-txt" rows="2" style="margin-top:6px" placeholder="Descrição da topografia…"></textarea></div>
+              <div><span class="rot">Microscopia especular de córnea</span>
+                <div class="chips" data-grupo="micro"><span class="chip" tabindex="0">Densidade endotelial estimada normal para a idade em ambos os olhos</span><span class="chip" tabindex="0">Predominância de células de arquitetura e disposição regulares em ambos os olhos</span></div>
+                <div class="row" style="margin-top:6px"><label>Densidade endotelial olho direito <input id="micro-od" inputmode="numeric" style="width:110px"> células/mm²</label><label>olho esquerdo <input id="micro-oe" inputmode="numeric" style="width:110px"> células/mm²</label></div></div>
+              <div class="row"><label>Paquimetria central média olho direito <input id="paqui-od" inputmode="numeric" style="width:90px"> µm</label><label>olho esquerdo <input id="paqui-oe" inputmode="numeric" style="width:90px"> µm</label></div>
+              <div><span class="rot">Mapeamento de retina</span>
+                <div class="chips" data-grupo="mapa"><span class="chip" tabindex="0">Vítreo posterior transparente em ambos os olhos</span><span class="chip" tabindex="0">Papila rósea, de limites bem definidos, escavação fisiológica em ambos os olhos</span><span class="chip" tabindex="0">Mácula com reflexo fisiológico em ambos os olhos</span><span class="chip" tabindex="0">Vasos com contorno e calibre dentro da normalidade em ambos os olhos</span><span class="chip" tabindex="0">Periferia retiniana sem lesões ou anormalidades em ambos os olhos</span></div>
+                <textarea id="mapa-txt" rows="2" style="margin-top:6px" placeholder="Descrição do mapeamento…"></textarea></div>
+              <div class="campo"><label for="exc-txt">Outros exames (um por linha)</label><textarea id="exc-txt" rows="2"></textarea></div>
+            </div>
+          </article>
+
+          <article class="folha-sec" id="s-anamnese">
+            <div class="t"><span>Anamnese e exame oftalmológico</span><span><button type="button" class="link" data-modelo="rotina">Modelo: rotina normal</button><button type="button" class="link" data-modelo="lente">Retorno de lente</button><button type="button" class="link" data-modelo="ceratocone">Ceratocone</button><button type="button" class="link" data-modelo="catarata">Catarata</button></span></div>
+            <div class="c" id="form-anamnese">
+              <div><span class="rot">Queixa principal</span>
+                <div class="chips" data-grupo="qp">
+                  <span class="chip" tabindex="0">Baixa visual para longe</span><span class="chip" tabindex="0">Baixa visual para perto</span><span class="chip" tabindex="0">Baixa visual para longe e perto</span>
+                  <span class="chip" tabindex="0">Óculos fracos</span><span class="chip" tabindex="0">Revisão de rotina</span><span class="chip" tabindex="0">Irritação</span><span class="chip" tabindex="0">Dor de cabeça</span>
+                  <span class="chip" tabindex="0">Prurido</span><span class="chip" tabindex="0">Olho vermelho</span><span class="chip" tabindex="0">Lacrimejamento</span><span class="chip" tabindex="0">Desconforto com a lente</span>
+                </div></div>
+              <div class="campo"><label for="qp-txt">História da moléstia atual (um item por linha)</label><textarea id="qp-txt" rows="3"></textarea></div>
+              <div><span class="rot">Acuidade visual</span>
+                <div class="grid-olho">
+                  <span class="blank"></span><span class="h od">Olho direito</span><span class="h oe">Olho esquerdo</span>
+                  <span class="lbl rowlbl">Sem correção</span><input id="av-sc-od" list="snellen"><input id="av-sc-oe" list="snellen">
+                  <span class="lbl rowlbl">Com correção</span><input id="av-cc-od" list="snellen"><input id="av-cc-oe" list="snellen">
+                  <span class="lbl rowlbl">Perto</span><input id="av-pt-od" list="jaeger"><input id="av-pt-oe" list="jaeger">
+                </div></div>
+              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Refração <span class="hint">— -250 ou -2.5 vira -2,50</span></span><span><button type="button" class="link" id="repetir-ref" hidden>Repetir a refração anterior</button><button type="button" class="link" id="transpor">Transpor cilindro</button></span></div>
+                <div class="ref">
+                  <span></span><span class="h">Esférico</span><span class="h">Cilíndrico</span><span class="h">Eixo</span><span class="h">AV</span>
+                  <span class="eye" style="color:var(--od)">OD</span><input id="re-od-esf" inputmode="decimal"><input id="re-od-cil" inputmode="decimal"><input id="re-od-eixo" inputmode="numeric"><input id="re-od-av" list="snellen">
+                  <span class="eye" style="color:var(--oe)">OE</span><input id="re-oe-esf" inputmode="decimal"><input id="re-oe-cil" inputmode="decimal"><input id="re-oe-eixo" inputmode="numeric"><input id="re-oe-av" list="snellen">
+                </div>
+                <div class="row" style="margin-top:6px"><label>Adição <input id="re-add" inputmode="decimal" style="width:90px;font-family:var(--f-mono);text-align:right"></label><span class="hint" id="ref-aviso"></span></div></div>
+              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Biomicroscopia</span><button type="button" class="link" data-normal="bio">Sem alterações em ambos os olhos</button></div><div class="grid-olho" id="bio"></div></div>
+              <div><span class="rot">Pressão intraocular</span>
+                <div class="row"><label><b style="color:var(--od)">OD</b> <input id="pio-od" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label><label><b style="color:var(--oe)">OE</b> <input id="pio-oe" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label><span class="lbl">mmHg</span>
+                  <select id="pio-met" aria-label="Método"><option>aplanação</option><option>tonômetro de rebote</option><option>sopro</option></select><label>às <input id="pio-hora" style="width:80px;font-family:var(--f-mono)"></label></div></div>
+              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Fundoscopia</span><button type="button" class="link" data-normal="fo">Sem alterações em ambos os olhos</button></div><div class="grid-olho" id="fo"></div></div>
+            </div>
+          </article>
+
+          <article class="folha-sec" id="s-anexos">
+            <div class="t"><span>Imagens e anexos</span></div>
+            <div class="c">
+              <div class="soltar" id="soltar"><span>Arraste os arquivos para cá</span><span class="hint">ou</span>
+                <button type="button" class="pri" id="escolher">Selecione os arquivos do seu computador</button><span class="hint">PDF ou imagem, até 30 MB cada.</span>
+                <input type="file" id="arquivo" multiple accept="application/pdf,image/*" hidden></div>
+              <div class="row"><label>Tipo <select id="anexo-tipo"><option value="exame">Exame</option><option value="iclinic">Prontuário anterior (iClinic)</option></select></label><label style="flex:1">Observação <input id="anexo-obs" placeholder="Ex.: Pentacam OD e OE"></label></div>
+              <div class="status" id="st-anexo"></div>
+              <div class="anexos-t" id="anexos-at" style="padding:0"></div>
+            </div>
+          </article>
+
+          <article class="folha-sec" id="s-iclinic">
+            <div class="t"><span>Texto para o iClinic</span><button type="button" class="pri" id="copiar">Copiar</button></div>
+            <div class="c"><pre class="saida" id="saida"></pre><div class="status" id="status"></div></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- antecedentes -->
+<div class="fundo" id="m-ante" hidden>
+  <div class="modal" role="dialog" aria-labelledby="ma-t">
+    <div class="row" style="justify-content:space-between"><h3 id="ma-t">Antecedentes</h3><button type="button" class="link" id="ma-fechar">Fechar</button></div>
+    <textarea id="ma-txt" rows="7" placeholder="Digite aqui"></textarea>
+    <div class="status" id="ma-st"></div>
+    <div class="pe"><button type="button" id="ma-ant">‹ Anterior</button><span class="hint">Salva sozinho ao trocar ou fechar</span><button type="button" id="ma-prox">Próximo ›</button></div>
+  </div>
+</div>
+<!-- inserir informações (adendo) -->
+<div class="fundo" id="m-adendo" hidden>
+  <div class="modal" role="dialog" aria-labelledby="md-t">
+    <h3 id="md-t">Inserir informações</h3>
+    <p class="hint" style="margin:0">O atendimento finalizado não se altera. O texto abaixo é acrescentado com data e hora.</p>
+    <textarea id="md-txt" rows="5"></textarea>
+    <div class="status" id="md-st"></div>
+    <div class="pe"><button type="button" id="md-cancelar">Cancelar</button><button type="button" class="pri" id="md-ok">Salvar</button></div>
+  </div>
+</div>
+<!-- finalizar -->
+<div class="fundo" id="g-fim" hidden style="place-items:stretch;padding:0;background:rgba(0,0,0,.25)">
+  <div class="gaveta" role="dialog" aria-labelledby="gf-t">
+    <h3 id="gf-t">Finalizar atendimento</h3>
+    <p style="margin:0;color:var(--muted)">Ao finalizar um atendimento, você não poderá alterá-lo novamente. Depois, só será possível <b>inserir informações</b>, com data e hora. Deseja prosseguir?</p>
+    <label class="row" style="color:var(--ink)"><input type="checkbox" id="gf-copiar" style="width:auto" checked> Copiar o texto para colar no iClinic</label>
+    <div class="status" id="gf-st"></div>
+    <div class="pe"><button type="button" class="link" id="gf-voltar">← Voltar</button><button type="button" class="pri" id="gf-ok">Finalizar</button></div>
   </div>
 </div>
 
@@ -265,8 +405,9 @@ aside.saida{display:grid;gap:12px;min-width:0;position:sticky;top:64px}
 (function(){
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const TZ="America/Sao_Paulo";
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-/* ===== sessão: a mesma do painel (mesmo endereço, mesmo armazenamento) ===== */
+/* ===== sessão: a mesma do painel ===== */
 let AUTH=localStorage.getItem('iobb_at')||'';
 function sync(){ const at=localStorage.getItem('iobb_at')||''; if(at&&at!==AUTH){AUTH=at;return true;} return false; }
 async function refresh(){
@@ -281,23 +422,37 @@ async function refresh(){
 }
 async function api(path,opts={},again){
   sync();
-  const r=await fetch(path,{headers:{'Content-Type':'application/json','Authorization':'Bearer '+AUTH},...opts});
+  const h={'Authorization':'Bearer '+AUTH}; if(!opts.raw) h['Content-Type']='application/json'; else h['Content-Type']='application/octet-stream';
+  const r=await fetch(path,{...opts,headers:h});
   if(r.status===401&&!again&&await refresh()) return api(path,opts,true);
   if(!r.ok){ const e=new Error('HTTP '+r.status); e.status=r.status; try{ e.msg=(await r.json()).error; }catch(_){} throw e; }
   return r.json();
 }
-function portao(msg){ $("#app").hidden=true; $("#portao").hidden=false; if(msg) $("#portao-msg").innerHTML=msg; }
+function portao(msg){ $("#raiz").hidden=true; $("#portao").hidden=false; if(msg) $("#portao-msg").innerHTML=msg; }
+const MSG_SESSAO="Sua sessão caiu. O que você digitou está guardado neste navegador: entre de novo no painel (Dr. Bruno) e volte aqui.";
 
-/* ===== formulário (mesma lógica do modelo aprovado) ===== */
+/* ===== datas ===== */
+const hhmm=iso=>new Date(iso).toLocaleTimeString("pt-BR",{timeZone:TZ,hour:"2-digit",minute:"2-digit"});
+const ddmmaa=iso=>new Date(iso).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+const hojeBR=()=>new Date().toLocaleDateString("en-CA",{timeZone:TZ});
+const MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const MES3=["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
+const tsMsg=q=>new Date(/Z|[+-]\d\d:?\d\d$/.test(q)?q:q+"Z");
+const fmtDur=s=>{ s=Math.max(0,Math.round(s||0)); const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60; return [h,m,x].map(n=>String(n).padStart(2,"0")).join(":"); };
+const durTexto=s=>{ s=Math.round(s||0); if(s<60) return `${s} segundos`; const m=Math.round(s/60); if(m<60) return `${m} minuto${m>1?"s":""}`; const h=Math.floor(m/60),r=m%60; return `${h} hora${h>1?"s":""}${r?` e ${r} minutos`:""}`; };
+
+/* ===== formulário (mesma lógica aprovada) ===== */
 const BIO=[["pal","Pálpebras e cílios","sem alterações"],["conj","Conjuntiva","calma"],["cor","Córnea","transparente"],["ca","Câmara anterior","formada, sem reação"],["iris","Íris e pupila","isocórica, fotorreagente"],["crist","Cristalino","transparente"]];
 const FO=[["disco","Disco óptico","corado, bordos nítidos, relação escavação/disco 0,3"],["mac","Mácula","brilho foveal presente"],["vasos","Vasos","sem alterações"],["perif","Periferia","retina aplicada"]];
-function montaGrade(id,itens){ const g=$("#"+id); g.innerHTML='<span class="h blank"></span><span class="h od">OD</span><span class="h oe">OE</span>';
+function montaGrade(id,itens){ const g=$("#"+id); g.innerHTML='<span class="blank"></span><span class="h od">Olho direito</span><span class="h oe">Olho esquerdo</span>';
   for(const [k,nome] of itens) g.insertAdjacentHTML("beforeend",`<span class="lbl rowlbl">${nome}</span><input id="${id}-${k}-od"><input id="${id}-${k}-oe">`); }
 montaGrade("bio",BIO); montaGrade("fo",FO);
 function dioptria(v,ehEsf){
   let t=String(v||"").trim().replace(",",".").replace(/\s/g,""); if(!t) return "";
   if(/^(pl|plano|0+(\.0*)?)$/i.test(t)) return ehEsf?"Plano":"";
   if(/^[+-]?\d{3}$/.test(t)) t=(t[0]==="-"||t[0]==="+"?t[0]:"")+(Number(t.replace(/[+-]/,""))/100);
+  // "-75", "-50", "-25" digitados sem a vírgula viram -0,75 / -0,50 / -0,25.
+  else if(/^[+-]?\d{2}$/.test(t)){ const n2=Number(t.replace(/[+-]/,"")); if([25,50,75].includes(n2)) t=(t[0]==="-"||t[0]==="+"?t[0]:"")+(n2/100); }
   const n=Number(t); if(!isFinite(n)) return v;
   const q=Math.round(n*4)/4; return (q>0?"+":q<0?"-":"")+Math.abs(q).toFixed(2).replace(".",",");
 }
@@ -311,26 +466,22 @@ function normalizaCampo(el){ const id=el.id;
 $("#transpor").addEventListener("click",()=>{ for(const o of ["od","oe"]){ const e=$(`#re-${o}-esf`),c=$(`#re-${o}-cil`),x=$(`#re-${o}-eixo`); const cil=num(c.value); if(!cil) continue;
   e.value=dioptria(String(num(e.value)+cil),true); c.value=dioptria(String(-cil),false); let ax=parseInt(x.value||"0",10); x.value=String(ax>90?ax-90:ax+90); } atualiza(); });
 function liga(c){ c.setAttribute("aria-pressed",c.getAttribute("aria-pressed")==="true"?"false":"true"); atualiza(); }
-$$(".chip").forEach(c=>{ c.setAttribute("role","button"); c.setAttribute("aria-pressed","false");
-  if(c.dataset.cid) c.insertAdjacentHTML("beforeend",`<span class="cid">${c.dataset.cid}</span>`);
+$$(".chip").forEach(c=>{ c.setAttribute("role","checkbox"); c.setAttribute("aria-pressed","false");
+  if(c.dataset.cid) c.insertAdjacentHTML("beforeend",`<span class="cid">(${c.dataset.cid})</span>`);
   c.addEventListener("click",()=>liga(c)); c.addEventListener("keydown",e=>{ if(e.key===" "||e.key==="Enter"){ e.preventDefault(); liga(c);} }); });
 const nomeChip=c=>c.childNodes[0].textContent.trim();
 const marcados=g=>$$(`[data-grupo="${g}"] .chip[aria-pressed="true"]`);
 function normal(id){ for(const [k,,txt] of (id==="bio"?BIO:FO)) for(const o of ["od","oe"]){ const el=$(`#${id}-${k}-${o}`); if(!el.value) el.value=txt; } atualiza(); }
 $$("[data-normal]").forEach(b=>b.addEventListener("click",()=>normal(b.dataset.normal)));
-const campos=()=>$$("#form input, #form select, #form textarea");
-document.addEventListener("keydown",e=>{ if(e.key!=="Enter"||e.target.tagName!=="INPUT"||!e.target.closest("#form")) return;
+const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>!["anexo-obs","anexo-tipo"].includes(el.id));
+document.addEventListener("keydown",e=>{ if(e.key!=="Enter"||e.target.tagName!=="INPUT"||!e.target.closest("#atendimento")||e.target.id==="anexo-obs") return;
   e.preventDefault(); normalizaCampo(e.target); const l=campos(),i=l.indexOf(e.target); if(i>=0&&l[i+1]) l[i+1].focus(); atualiza(); });
-document.addEventListener("focusout",e=>{ if(e.target.matches("#form input")){ normalizaCampo(e.target); atualiza(); } });
-document.addEventListener("input",e=>{ if(e.target.closest("#form")) atualiza(); });
+document.addEventListener("focusout",e=>{ if(e.target.matches("#atendimento input")){ normalizaCampo(e.target); atualiza(); } });
+document.addEventListener("input",e=>{ if(e.target.closest("#atendimento")&&!["anexo-obs"].includes(e.target.id)) atualiza(); });
 
 const v=id=>($("#"+id)?.value||"").trim();
-// Texto POR EXTENSO, sem abreviações (Dr. Bruno, 14/10/2026).
-const OD="olho direito", OE="olho esquerdo", AO="ambos os olhos";
+const OD="olho direito", OE="olho esquerdo";
 const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
-// OLHO POR OLHO, sempre (Dr. Bruno, 16/10/2026): "Olho direito: descrição
-// completa" e, embaixo, "Olho esquerdo: descrição completa" — mesmo quando os
-// dois são iguais (nada de "ambos os olhos").
 function par(rot,od,oe){ if(!od&&!oe) return ""; return `${rot}:\n${cap(OD)}: ${od||"não aferido"}.\n${cap(OE)}: ${oe||"não aferido"}.`; }
 function refr(o){ const e=v(`re-${o}-esf`),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`),a=v(`re-${o}-av`); if(!e&&!c) return "";
   let s=`esférico ${e?(e==="Plano"?"plano":e):"plano"}`; if(c) s+=`, cilíndrico ${c}, eixo ${x||"?"}°`; if(a) s+=`, acuidade visual ${a}`; return s; }
@@ -339,14 +490,20 @@ function grade(id,itens,rot){ const ls=[];
   if(!ls.length) return "";
   const olho=(i,nomeOlho)=>`${cap(nomeOlho)}: `+ls.map(l=>`${l[0].toLowerCase()} ${l[i]||"não avaliado"}`).join("; ")+".";
   return `${rot}:\n${olho(1,OD)}\n${olho(2,OE)}`; }
-// Itens = opções clicadas + cada LINHA da caixa de texto. Um item fica na mesma
-// linha do título; dois ou mais saem um por linha (Dr. Bruno, 15/10/2026).
 const linhas=id=>v(id).split(/\n+/).map(t=>t.trim()).filter(Boolean);
 const ponto=t=>{ t=t.charAt(0).toUpperCase()+t.slice(1); return /[.!?:]$/.test(t)?t:t+"."; };
 function bloco(rot,itens){ if(!itens.length) return ""; if(itens.length===1) return `${rot}: ${ponto(itens[0])}`; return `${rot}:\n`+itens.map(ponto).join("\n"); }
+function exComp(){ const L=[];
+  const topo=[...marcados("topo").map(nomeChip),...linhas("topo-txt")]; if(topo.length) L.push(`Topografia de córnea: ${topo.map(ponto).join(" ")}`);
+  const mic=[...marcados("micro").map(nomeChip)]; if(v("micro-od")||v("micro-oe")) mic.push(`densidade endotelial: olho direito ${v("micro-od")||"não aferida"}${v("micro-od")?" células/mm²":""}; olho esquerdo ${v("micro-oe")||"não aferida"}${v("micro-oe")?" células/mm²":""}`);
+  if(mic.length) L.push(`Microscopia especular de córnea: ${mic.map(ponto).join(" ")}`);
+  if(v("paqui-od")||v("paqui-oe")) L.push(`Paquimetria central média: olho direito ${v("paqui-od")||"não aferida"}${v("paqui-od")?" µm":""}; olho esquerdo ${v("paqui-oe")||"não aferida"}${v("paqui-oe")?" µm":""}.`);
+  const mapa=[...marcados("mapa").map(nomeChip),...linhas("mapa-txt")]; if(mapa.length) L.push(`Mapeamento de retina: ${mapa.map(ponto).join(" ")}`);
+  for(const t of linhas("exc-txt")) L.push(ponto(t));
+  return L.length?`Exames complementares:\n${L.join("\n")}`:""; }
 function textoIclinic(){ const L=[];
+  const ev=linhas("evol-txt"); if(ev.length) L.push(`Evolução:\n${ev.join("\n")}`);
   const qp=bloco("Queixa principal",[...marcados("qp").map(nomeChip),...linhas("qp-txt")]); if(qp) L.push(qp);
-  const ap=bloco("Antecedentes",[...marcados("ap").map(nomeChip),...linhas("ap-txt")]); if(ap) L.push(ap);
   const avs=[["Acuidade visual sem correção",v("av-sc-od"),v("av-sc-oe")],["Acuidade visual com correção",v("av-cc-od"),v("av-cc-oe")],["Acuidade visual para perto",v("av-pt-od"),v("av-pt-oe")]]
     .map(([r,a,b])=>par(r,a,b)).filter(Boolean); if(avs.length) L.push(avs.join("\n"));
   const rod=refr("od"),roe=refr("oe");
@@ -354,63 +511,43 @@ function textoIclinic(){ const L=[];
   const bio=grade("bio",BIO,"Biomicroscopia"); if(bio) L.push(bio);
   if(v("pio-od")||v("pio-oe")) L.push(`Pressão intraocular (${v("pio-met")}${v("pio-hora")?", às "+v("pio-hora"):""}):\n${cap(OD)}: ${v("pio-od")?v("pio-od")+" mmHg":"não aferida"}.\n${cap(OE)}: ${v("pio-oe")?v("pio-oe")+" mmHg":"não aferida"}.`);
   const fo=grade("fo",FO,"Fundoscopia"); if(fo) L.push(fo);
+  const ec=exComp(); if(ec) L.push(ec);
   const hd=bloco("Hipótese diagnóstica",[...marcados("hd").map(c=>`${nomeChip(c)} (CID ${c.dataset.cid})`),...linhas("hd-txt")]); if(hd) L.push(hd);
   const cd=bloco("Conduta",[...marcados("cd").map(nomeChip),...linhas("cd-txt")]); if(cd) L.push(cd);
   const ex=bloco("Exames solicitados",marcados("ex").map(nomeChip)); if(ex) L.push(ex);
   if(v("retorno")) L.push(`Retorno em ${v("retorno")}.`);
-  return L.join("\n\n"); }   // linha em branco entre os itens (Dr. Bruno, 14/10)
+  return L.join("\n\n"); }
 function receita(){ const l=o=>{ const e=v(`re-${o}-esf`)||(v(`re-${o}-cil`)?"Plano":""),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`); return [e||"—",c||"—",c?(x?x+"°":"?"):"—"]; };
   return {od:l("od"),oe:l("oe"),add:v("re-add"),uso:$("#rx-uso").value}; }
 function avisos(){ const m=[]; for(const o of ["od","oe"]) if(v(`re-${o}-cil`)&&!v(`re-${o}-eixo`)) m.push(`${o.toUpperCase()}: cilindro sem eixo`);
   if(v("re-add")&&num(v("re-add"))>3.5) m.push("adição acima de +3,50, confira"); $("#ref-aviso").textContent=m.join(" · "); $("#ref-aviso").style.color=m.length?"var(--warn)":""; }
-let sujo=false;
-function atualiza(){
-  $("#saida").textContent=textoIclinic()||"Preencha a consulta: o texto aparece aqui, pronto para colar.";
-  const r=receita();
-  $("#rx-body").innerHTML=`<tr><td style="color:var(--od);font-weight:600">OD</td><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><td style="color:var(--oe);font-weight:600">OE</td><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
-  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir();
-  if(atual){ sujo=true; rascunhoLocal(); status("Alterações não salvas.",""); }
-}
-/* ===== prescrição no modelo da receita do Dr. Bruno (skill receita-oculos-iobb) ===== */
+
+/* ===== receita (modelo aprovado: logotipo ou papel timbrado) ===== */
 const SUGESTOES={
-  multifocais:{padrao:"Varilux XR Series, Zeiss SmartLife Individual 3 ou Hoyalux iD MyStyle V+",
-    alto:"Varilux XR Series 1.67/1.74, Zeiss SmartLife Individual 3 1.67/1.74 ou Hoyalux iD MyStyle V+ 1.67/1.74"},
-  monofocais:{padrao:"Hoya Nulux com Hi-Vision LongLife, Zeiss ClearView com DuraVision Platinum ou Essilor com Crizal Sapphire",
-    alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
-  // Monofocal de alto índice escolhida pelo médico (Dr. Bruno, 15/10/2026),
-  // independentemente do grau.
-  "monofocais-alto":{padrao:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR",
-    alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
-  perto:{padrao:"Hoya Nulux com Hi-Vision LongLife, Zeiss ClearView com DuraVision Platinum ou Essilor com Crizal Sapphire",
-    alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
-  ocupacionais:{padrao:"Zeiss OfficeLens, Hoya iD WorkStyle 3 ou Essilor Eyezen",
-    alto:"Zeiss OfficeLens 1.67, Hoya iD WorkStyle 3 1.67 ou Rodenstock Impression B.I.G. NORM Ergo 1.67"}
+  multifocais:{padrao:"Varilux XR Series, Zeiss SmartLife Individual 3 ou Hoyalux iD MyStyle V+",alto:"Varilux XR Series 1.67/1.74, Zeiss SmartLife Individual 3 1.67/1.74 ou Hoyalux iD MyStyle V+ 1.67/1.74"},
+  monofocais:{padrao:"Hoya Nulux com Hi-Vision LongLife, Zeiss ClearView com DuraVision Platinum ou Essilor com Crizal Sapphire",alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
+  "monofocais-alto":{padrao:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR",alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
+  perto:{padrao:"Hoya Nulux com Hi-Vision LongLife, Zeiss ClearView com DuraVision Platinum ou Essilor com Crizal Sapphire",alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
+  ocupacionais:{padrao:"Zeiss OfficeLens, Hoya iD WorkStyle 3 ou Essilor Eyezen",alto:"Zeiss OfficeLens 1.67, Hoya iD WorkStyle 3 1.67 ou Rodenstock Impression B.I.G. NORM Ergo 1.67"}
 };
-// Regra da receita: esférico OU cilíndrico acima de 4,00 em módulo, em qualquer olho → alto índice.
 const altoIndice=()=>["re-od-esf","re-od-cil","re-oe-esf","re-oe-cil"].some(id=>Math.abs(num(v(id)))>4);
 let sugEditada=false;
 function sugerir(){ if(sugEditada) return; const t=SUGESTOES[$("#rx-uso").value]||SUGESTOES.monofocais; $("#rx-sug").value=altoIndice()?t.alto:t.padrao; }
 $("#rx-sug").addEventListener("input",()=>{ sugEditada=true; });
 $("#rx-uso").addEventListener("change",()=>{ sugEditada=false; sugerir(); atualiza(); });
-// Área livre do papel timbrado A4 da clínica, em mm (medida na foto do papel, 15/10/2026).
-// Se a impressão sair deslocada, é só ajustar estes números.
 const MARGENS_TIMBRADO={topo:50, base:47, lado:20};
 const TIPO_TEXTO={"monofocais":"monofocais","monofocais-alto":"monofocais de alto índice","perto":"monofocais para perto","multifocais":"multifocais","ocupacionais":"ocupacionais"};
-const MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
-// Aviso da receita aparece JUNTO do botão (antes ia para a caixa do iClinic, lá
-// em cima, e parecia que o botão não fazia nada — 15/10).
 function statusRx(t,cls){ const s=$("#status-rx"); s.textContent=t; s.className="status "+(cls||""); }
+let consultaAtual=null;   // {inicio, paciente_nome} — usado pela receita
 function gerarPrescricao(){
   const status=statusRx;
-  if(!consultaAtual){ status("Abra uma consulta primeiro.","erro"); return; }
+  if(!consultaAtual){ status("Inicie o atendimento primeiro.","erro"); return; }
   let r=receita(); const tipo=$("#rx-uso").value; const perto=tipo==="perto";
   const mono=perto||String(tipo).startsWith("monofocais");
-  // ÓCULOS PARA PERTO: grau de perto = esférico de longe + adição, por olho
-  // (cilindro e eixo iguais). Sem adição, usa a refração como foi digitada.
   if(perto&&r.add){ const soma=(e)=>dioptria(String(num(e==="—"?"":e)+num(r.add)),true);
     r={...r, od:[soma(r.od[0]),r.od[1],r.od[2]], oe:[soma(r.oe[0]),r.oe[1],r.oe[2]]}; }
-  if(!v("re-od-esf")&&!v("re-od-cil")&&!v("re-oe-esf")&&!v("re-oe-cil")){ status("Preencha a refração antes de gerar a prescrição.","erro"); return; }
-  if(!mono&&!v("re-add")){ status("Lente multifocal ou ocupacional precisa de adição: preencha a adição na refração (ou escolha Monofocal).","erro"); $("#re-add").focus(); return; }
+  if(!v("re-od-esf")&&!v("re-od-cil")&&!v("re-oe-esf")&&!v("re-oe-cil")){ status("Preencha a refração (em Anamnese e exame oftalmológico) antes de imprimir.","erro"); return; }
+  if(!mono&&!v("re-add")){ status("Lente multifocal ou ocupacional precisa de adição: preencha a adição na refração (ou escolha Monofocal).","erro"); return; }
   const dt=new Date(consultaAtual.inicio);
   const dataExame=dt.toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   const [dd,mm,aa]=dataExame.split("/").map(Number);
@@ -502,133 +639,270 @@ ${timbrado?`<div class="folha"><div class="conteudo">${corpo}</div></div>${ajust
   const w=window.open("","_blank");
   if(!w){ status("O navegador bloqueou a janela da receita. Permita pop-ups para este site.","erro"); return; }
   w.document.open(); w.document.write(html); w.document.close();
-  status("Receita aberta em outra janela.","ok");
+  status("Prescrição aberta em outra janela.","ok");
 }
 $("#gerar-rx").addEventListener("click",gerarPrescricao);
 try{ $("#rx-timbrado").checked=localStorage.getItem("rx-timbrado")!=="0"; }catch(_){ $("#rx-timbrado").checked=true; }
 $("#rx-timbrado").addEventListener("change",()=>{ try{ localStorage.setItem("rx-timbrado",$("#rx-timbrado").checked?"1":"0"); }catch(_){} });
+function copiarTxt(txt,onOk,onFalha){ try{ navigator.clipboard.writeText(txt).then(onOk,onFalha); }catch(_){ onFalha&&onFalha(); } }
+$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiarTxt(`Receita de óculos (lentes ${TIPO_TEXTO[r.uso]||r.uso})\nOlho direito: esférico ${r.od[0]}, cilíndrico ${r.od[1]}, eixo ${r.od[2]}\nOlho esquerdo: esférico ${r.oe[0]}, cilíndrico ${r.oe[1]}, eixo ${r.oe[2]}${r.add?"\nAdição: "+r.add:""}`,()=>statusRx("Receita copiada.","ok"),()=>statusRx("Não consegui copiar.","erro")); });
+
+/* ===== modelos prontos ===== */
 const MODELOS={
-  rotina:{chips:{qp:["Revisão de rotina"],ap:["Usa óculos"],cd:["Prescrição de óculos"]},retorno:"1 ano"},
-  lente:{chips:{qp:["Desconforto com a lente"],ap:["Usa lente de contato"]},retorno:"6 meses",campos:{"cd-txt":"Mantenho a lente atual; orientações de higiene e tempo de uso."}},
+  rotina:{chips:{qp:["Revisão de rotina"],cd:["Prescrição de óculos"]},retorno:"1 ano"},
+  lente:{chips:{qp:["Desconforto com a lente"]},retorno:"6 meses",campos:{"cd-txt":"Mantenho a lente atual; orientações de higiene e tempo de uso."}},
   ceratocone:{chips:{qp:["Baixa visual para longe"],hd:["Ceratocone"],cd:["Teste de lente de contato","Orientado a não coçar os olhos"],ex:["Pentacam"]},retorno:"3 meses"},
   catarata:{chips:{qp:["Baixa visual para longe"],hd:["Catarata senil"],ex:["Mapeamento de retina"]},retorno:"6 meses",campos:{"bio-crist-od":"opacidade nuclear ++/4","bio-crist-oe":"opacidade nuclear +/4"}}
 };
-function limpar(){ campos().forEach(el=>{ if(el.tagName==="SELECT") el.selectedIndex=0; else el.value=""; }); $$(".chip").forEach(c=>c.setAttribute("aria-pressed","false")); $("#rx-uso").selectedIndex=0; $("#rx-sug").value=""; }
-function horaPio(){ const h=new Date(); $("#pio-hora").value=String(h.getHours()).padStart(2,"0")+"h"+String(h.getMinutes()).padStart(2,"0"); }
-$("#limpar").addEventListener("click",()=>{ limpar(); horaPio(); atualiza(); });
 $$("[data-modelo]").forEach(b=>b.addEventListener("click",()=>{ const m=MODELOS[b.dataset.modelo];
   for(const [g,lista] of Object.entries(m.chips)) $$(`[data-grupo="${g}"] .chip`).forEach(c=>{ if(lista.includes(nomeChip(c))) c.setAttribute("aria-pressed","true"); });
   normal("bio"); normal("fo"); for(const [id,val] of Object.entries(m.campos||{})){ const el=$("#"+id); if(el) el.value=val; }
   $("#retorno").value=m.retorno; atualiza(); }));
 
-/* ===== estado <-> objeto salvo ===== */
-function coletar(){ const d={campos:{},chips:$$('.chip[aria-pressed="true"]').map(c=>c.closest("[data-grupo]").dataset.grupo+"|"+nomeChip(c))};
-  campos().forEach(el=>d.campos[el.id]=el.value); d.campos["rx-uso"]=$("#rx-uso").value; d.campos["rx-sug"]=$("#rx-sug").value; return d; }
-function aplicar(d){ limpar(); sugEditada=false; if(!d) return; if(d.campos&&d.campos["rx-sug"]) sugEditada=true;
-  for(const [id,val] of Object.entries(d.campos||{})){ const el=$("#"+id); if(el) el.value=val; }
-  // Registros salvos antes de 15/10 guardavam "Longe/Perto/Multifocal/Visão intermediária".
+/* ===== estado do formulário ===== */
+function limpar(){ campos().forEach(el=>{ if(el.tagName==="SELECT") el.selectedIndex=0; else el.value=""; }); $$(".chip").forEach(c=>c.setAttribute("aria-pressed","false")); sugEditada=false; }
+function coletar(){ const d={campos:{},chips:$$('#atendimento .chip[aria-pressed="true"]').map(c=>c.closest("[data-grupo]").dataset.grupo+"|"+nomeChip(c))};
+  campos().forEach(el=>d.campos[el.id]=el.value); return d; }
+function aplicar(d){ limpar(); if(!d) return; if(d.campos&&d.campos["rx-sug"]) sugEditada=true;
+  for(const [id,val] of Object.entries(d.campos||{})){ const el=$("#"+id); if(el&&el.closest("#atendimento")) el.value=val; }
   const ANTIGO={"Longe":"monofocais","Perto":"monofocais","Multifocal":"multifocais","Visão intermediária":"ocupacionais"};
-  const uso=(d.campos||{})["rx-uso"]; $("#rx-uso").value=ANTIGO[uso]||uso||"monofocais";
-  if(!$("#rx-uso").value) $("#rx-uso").value="monofocais";
+  const uso=(d.campos||{})["rx-uso"]; $("#rx-uso").value=ANTIGO[uso]||uso||"monofocais"; if(!$("#rx-uso").value) $("#rx-uso").value="monofocais";
   for(const k of d.chips||[]){ const [g,n]=k.split("|"); $$(`[data-grupo="${g}"] .chip`).forEach(c=>{ if(nomeChip(c)===n) c.setAttribute("aria-pressed","true"); }); } }
-const chaveLocal=id=>"pront-rasc-"+id;
-function rascunhoLocal(){ try{ localStorage.setItem(chaveLocal(atual),JSON.stringify({ts:Date.now(),dados:coletar()})); }catch(_){} }
-function status(t,cls){ const s=$("#status"); s.textContent=t; s.className="status "+(cls||""); }
+function status(t,cls){ for(const id of ["status","status-lat"]){ const s=$("#"+id); s.textContent=t; s.className="status "+(cls||""); } }
 
-/* ===== dia e consultas ===== */
-let atual=null, consultas=[], consultaAtual=null;
-const hojeBR=()=>new Date().toLocaleDateString("en-CA",{timeZone:TZ});
-const hhmm=iso=>new Date(iso).toLocaleTimeString("pt-BR",{timeZone:TZ,hour:"2-digit",minute:"2-digit"});
-const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+/* ===== estado geral ===== */
+let ficha=null;            // resposta de /ficha
+let atend=null;            // consulta em atendimento (linha de prontuario_consultas)
+let sujo=false, t0=0, durBase=0, relogio=null;
+const chaveLocal=id=>"pront2-rasc-"+id;
+function rascunhoLocal(){ if(!atend) return; try{ localStorage.setItem(chaveLocal(atend.id),JSON.stringify({ts:Date.now(),dados:coletar()})); }catch(_){} }
+function durAtual(){ return durBase+(t0?(Date.now()-t0)/1000:0); }
+function atualiza(){
+  $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar.";
+  const r=receita();
+  $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
+  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir();
+  if(atend){ sujo=true; rascunhoLocal(); status("Alterações não salvas.",""); }
+}
+
+/* ===== LISTA ===== */
+function mostra(v){ $("#v-lista").hidden=v!=="lista"; $("#v-ficha").hidden=v!=="ficha"; $("#lat-ficha").hidden=v!=="ficha"; $("#lat-lista").hidden=v!=="lista"; window.scrollTo({top:0}); }
 async function carregaDia(ymd){
-  $("#lista").innerHTML='<div class="vazio">Carregando…</div>';
-  try{ const r=await api("/api/prontuario/dia?data="+ymd); consultas=r.consultas||[];
-    $("#lista-titulo").textContent=`${new Date(ymd+"T12:00:00-03:00").toLocaleDateString("pt-BR",{weekday:"short",day:"2-digit",month:"2-digit"})} · ${consultas.length} consulta(s)`;
-    if(!consultas.length){ $("#lista").innerHTML='<div class="vazio">Nenhuma consulta neste dia.</div>'; return; }
-    $("#lista").innerHTML=consultas.map(c=>`<button class="item${c.id===atual?" ativo":""}" data-id="${c.id}"><span class="h">${hhmm(c.inicio)}</span><span class="n">${esc(c.paciente_nome||"Sem nome")}</span>
-      <span class="s">${esc(c.unidade)}${c.encaixe?" · encaixe":""}${c.tem_registro?' · <span class="feito">registrado</span>':""}</span></button>`).join("");
-    $$(".item").forEach(b=>b.addEventListener("click",()=>abrir(b.dataset.id)));
-  }catch(e){
-    if(e.status===401||e.status===403) return portao(e.status===403?"Esta página é só para o login <b>Dr. Bruno</b>. Saia do painel e entre com o seu usuário.":null);
-    $("#lista").innerHTML='<div class="vazio">Não consegui carregar a agenda. Tente de novo em instantes.</div>';
-  }
+  $("#dia-corpo").innerHTML='<tr><td colspan="5" class="vazio">Carregando…</td></tr>';
+  try{ const r=await api("/api/prontuario/dia?data="+ymd); const cs=r.consultas||[];
+    const titulo=ymd===hojeBR()?"Agenda de hoje":"Agenda de "+new Date(ymd+"T12:00:00-03:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"2-digit"});
+    $("#dia-titulo").textContent=`${titulo} · ${cs.length} consulta(s)`;
+    if(!cs.length){ $("#dia-corpo").innerHTML='<tr><td colspan="5" class="vazio">Nenhuma consulta neste dia.</td></tr>'; return; }
+    $("#dia-corpo").innerHTML=cs.map((c,i)=>`<tr class="clica" data-i="${i}"><td>${hhmm(c.inicio)}</td><td class="nome">${esc(c.paciente_nome||"Sem nome")}${c.encaixe?' <span class="tag">encaixe</span>':""}</td><td>${esc(c.convenio||"")}</td><td>${esc(c.unidade||"")}</td><td>${c.tem_registro?'<span class="tag ok">registrado</span>':""}</td></tr>`).join("");
+    $$("#dia-corpo tr.clica").forEach(tr=>tr.addEventListener("click",()=>{ const c=cs[+tr.dataset.i]; abrirFicha(c.paciente_telefone,c.paciente_nome); }));
+  }catch(e){ if(e.status===401||e.status===403) return portao(e.status===403?"Esta página é só para o login <b>Dr. Bruno</b>.":null);
+    $("#dia-corpo").innerHTML='<tr><td colspan="5" class="vazio">Não consegui carregar a agenda.</td></tr>'; }
 }
-async function abrir(id){
-  if(atual&&sujo){ await salvar(true); }
-  atual=null; sujo=false;
-  $$(".item").forEach(b=>b.classList.toggle("ativo",b.dataset.id===id));
-  status("Abrindo…","");
-  try{
-    const r=await api("/api/prontuario/consulta/"+id); const c=r.consulta; consultaAtual=c;
-    $("#sem-consulta").hidden=true; $("#ficha").hidden=false; $("#saida-box").hidden=false;
-    $("#pac-topo").textContent=`${new Date(c.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"2-digit"})} · ${hhmm(c.inicio)} · ${c.unidade}`;
-    $("#pac-nome").textContent=c.paciente_nome||"Sem nome";
-    mostraIdade(c.idade,c.nascimento);
-    $("#pac-meta").innerHTML=[c.convenio?esc(c.convenio):"",c.motivo?"Motivo: "+esc(c.motivo):""].filter(Boolean).map(t=>`<span>${t}</span>`).join("");
-    // Conversa com a Ana: fica FECHADA; abre ao clicar (Dr. Bruno, 15/10/2026).
-    const conv=r.conversa||[];
-    $("#pac-ana").open=false;
-    if(conv.length){
-      $("#pac-ana").hidden=false;
-      $("#pac-ana-resumo").textContent=`Ver conversa com a Ana (${conv.length} mensagens recentes)`;
-      const quem={user:"Paciente",assistant:"Ana",human:"Equipe"};
-      $("#pac-ana-msgs").innerHTML=conv.map(m=>`<div class="msg ${m.role==="user"?"pac":"ana-r"}"><small>${quem[m.role]||""} · ${new Date(/Z|[+-]\d\d:?\d\d$/.test(m.quando)?m.quando:m.quando+"Z").toLocaleString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</small>${esc(m.texto)}</div>`).join("");
-      $("#pac-ana").addEventListener("toggle",()=>{ if($("#pac-ana").open){ const b=$("#pac-ana-msgs"); b.scrollTop=b.scrollHeight; } },{once:true});
-    } else $("#pac-ana").hidden=true;
-    // Histórico logo abaixo do cabeçalho, a mais recente já aberta (16/10/2026).
-    if(r.historico&&r.historico.length){ $("#hist-box").hidden=false; $("#hist-n").textContent=`(${r.historico.length})`;
-      $("#hist").innerHTML=r.historico.map((h,i)=>`<details${i===0?" open":""}><summary>${new Date(h.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"})}</summary><pre>${esc(h.texto)}</pre></details>`).join(""); }
-    else $("#hist-box").hidden=true;
-    let dados=r.registro?r.registro.dados:null;
-    try{ const loc=JSON.parse(localStorage.getItem(chaveLocal(id))||"null"); if(loc&&(!r.registro||loc.ts>new Date(r.registro.updated_at).getTime())) dados=loc.dados; }catch(_){}
-    aplicar(dados); if(!dados) horaPio();
-    atual=id; atualiza(); sujo=false;
-    status(r.registro?`Salvo às ${hhmm(r.registro.updated_at)}.`:"Ainda não salvo.",r.registro?"ok":"");
-    window.scrollTo({top:0});
-  }catch(e){ status(e.msg||"Não consegui abrir a consulta.","erro"); }
+let tBusca=null;
+$("#busca").addEventListener("input",()=>{ clearTimeout(tBusca); tBusca=setTimeout(buscar,350); });
+async function buscar(){ const q=v("busca"); if(q.length<2){ $("#res-busca").hidden=true; return; }
+  $("#res-busca").hidden=false; $("#busca-corpo").innerHTML='<tr><td colspan="6" class="vazio">Buscando…</td></tr>';
+  try{ const r=await api("/api/prontuario/busca?q="+encodeURIComponent(q)); const ps=r.pacientes||[];
+    if(!ps.length){ $("#busca-corpo").innerHTML='<tr><td colspan="6" class="vazio">Ninguém encontrado com esse nome ou telefone.</td></tr>'; return; }
+    $("#busca-corpo").innerHTML=ps.map((p,i)=>`<tr class="clica" data-i="${i}"><td class="nome">${esc(p.nome)}</td><td>${esc(p.telefone)}</td><td>${p.ultima?ddmmaa(p.ultima):"—"}</td><td>${p.proxima?ddmmaa(p.proxima):"—"}</td><td>${esc(p.nascimento||"—")}</td><td>${esc(p.convenio||"")}</td></tr>`).join("");
+    $$("#busca-corpo tr.clica").forEach(tr=>tr.addEventListener("click",()=>{ const p=ps[+tr.dataset.i]; abrirFicha(p.telefone,p.nome); }));
+  }catch(e){ $("#busca-corpo").innerHTML='<tr><td colspan="6" class="vazio">Não consegui buscar.</td></tr>'; }
 }
-// Idade ao lado do nome; sem data na agenda, pede a data uma vez e grava na consulta.
-function mostraIdade(idade,nasc){
-  const tem=idade!=null&&!isNaN(idade);
-  $("#pac-idade").textContent=tem?`${idade} ${idade===1?"ano":"anos"} · nasc. ${nasc}`:"";
-  $("#nasc-box").hidden=tem; $("#nasc-in").value=""; $("#nasc-msg").textContent="Sem data de nascimento na agenda."; $("#nasc-msg").style.color="";
-}
-async function gravaNascimento(){
-  const t=v("nasc-in"); if(!t||!atual) return;
-  try{ const r=await api(`/api/prontuario/consulta/${atual}/nascimento`,{method:"POST",body:JSON.stringify({nascimento:t})}); mostraIdade(r.idade,r.nascimento); }
-  catch(e){ $("#nasc-msg").textContent=e.msg||"Não consegui gravar."; $("#nasc-msg").style.color="var(--warn)"; }
-}
-$("#nasc-ok").addEventListener("click",gravaNascimento);
-$("#nasc-in").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); gravaNascimento(); } });
-async function salvar(silencioso){
-  if(!atual) return false;
-  try{ const r=await api("/api/prontuario/consulta/"+atual,{method:"POST",body:JSON.stringify({dados:coletar(),texto:textoIclinic()})});
-    sujo=false; try{ localStorage.removeItem(chaveLocal(atual)); }catch(_){}
-    status(`Salvo às ${hhmm(r.updated_at)}.`,"ok");
-    const it=consultas.find(c=>c.id===atual); if(it&&!it.tem_registro){ it.tem_registro=true; const b=$(`.item[data-id="${atual}"] .s`); if(b) b.insertAdjacentHTML("beforeend",' · <span class="feito">registrado</span>'); }
-    return true;
-  }catch(e){
-    if(e.status===401){ status("Sua sessão caiu. O que você digitou está guardado neste navegador: entre de novo no painel (usuário Dr. Bruno), volte aqui e clique em Salvar.","erro"); return false; }
-    if(!silencioso) status(e.msg||"Não consegui salvar. Copie o texto antes de sair.","erro"); return false; }
-}
-$("#salvar").addEventListener("click",()=>salvar());
-function copiar(txt,msg){ const ok=()=>status(msg,"ok");
-  try{ navigator.clipboard.writeText(txt).then(ok,()=>{ const r=document.createRange(); r.selectNodeContents($("#saida")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); status("Texto selecionado: use Ctrl+C / ⌘C.",""); }); }catch(_){} }
-$("#copiar").addEventListener("click",async()=>{ copiar(textoIclinic(),"Copiado. Cole no iClinic."); await salvar(); });
-$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiar(`Receita de óculos (lentes ${TIPO_TEXTO[r.uso]||r.uso})\nOlho direito: esférico ${r.od[0]}, cilíndrico ${r.od[1]}, eixo ${r.od[2]}\nOlho esquerdo: esférico ${r.oe[0]}, cilíndrico ${r.oe[1]}, eixo ${r.oe[2]}${r.add?"\nAdição: "+r.add:""}`,"Receita copiada."); });
-setInterval(()=>{ if(atual&&sujo) salvar(true); },60000);   // salva sozinho a cada minuto
-window.addEventListener("beforeunload",e=>{ if(sujo){ e.preventDefault(); e.returnValue=""; } });
-
 $("#dia").addEventListener("change",()=>carregaDia($("#dia").value));
 $("#hoje").addEventListener("click",()=>{ $("#dia").value=hojeBR(); carregaDia($("#dia").value); });
+$("#nav-lista").addEventListener("click",voltarLista);
+$("#voltar-lista").addEventListener("click",voltarLista);
+async function voltarLista(){ if(atend&&sujo) await salvar(true); pararRelogio(); atend=null; mostra("lista"); carregaDia($("#dia").value||hojeBR()); }
+
+/* ===== FICHA ===== */
+const ANTE=[["clinicos","Antec. clínicos"],["cirurgicos","Antec. cirúrgicos"],["familiares","Antec. familiares"],["habitos","Hábitos"],["alergias","Alergias"],["medicamentos","Medicamentos em uso"]];
+async function abrirFicha(tel,nome,manterAtend){
+  if(atend&&sujo&&!manterAtend) await salvar(true);
+  try{
+    const r=await api(`/api/prontuario/ficha?tel=${encodeURIComponent(tel)}&nome=${encodeURIComponent(nome)}`);
+    ficha=r; mostra("ficha"); desenhaFicha();
+    if(!manterAtend){ const aberta=(r.consultas||[]).find(c=>!c.finalizado_em&&(!r.hoje||c.appointment_id===r.hoje.id||!c.appointment_id));
+      pararRelogio(); atend=null; modoAtend(false);
+      if(aberta) $("#btn-atend").textContent="▶ Continuar atendimento"; }
+  }catch(e){ if(e.status===401) return status(MSG_SESSAO,"erro"); $("#lat-lista").textContent=e.msg||"Não consegui abrir a ficha."; }
+}
+function desenhaFicha(){
+  const p=ficha.paciente;
+  $("#p-nome").textContent=p.nome||"—";
+  $("#p-ini").textContent=String(p.nome||"?").trim().split(/\s+/).filter(Boolean).slice(0,2).map(t=>t[0]).join("").toUpperCase();
+  $("#p-idade").textContent=p.idade!=null?`${p.idade} ${p.idade===1?"ano":"anos"} (nasc. ${p.nascimento})`:"não informada";
+  $("#nasc-box").hidden=p.idade!=null||!ficha.hoje; $("#nasc-msg").textContent="";
+  $("#p-conv").textContent=p.convenio||"—";
+  $("#p-prim").textContent=p.primeira_consulta?ddmmaa(p.primeira_consulta):"—";
+  $("#p-tel").textContent=p.telefone||"—";
+  $("#p-hoje").textContent=ficha.hoje?`Consulta hoje às ${hhmm(ficha.hoje.inicio)} · ${ficha.hoje.unidade}`:"Sem consulta marcada para hoje";
+  // antecedentes
+  const a=ficha.antecedentes||{};
+  $("#antes").innerHTML=ANTE.map(([k,rot],i)=>`<button type="button" class="card-ante" data-i="${i}"><small>${rot}</small><span class="${a[k]?"cheio":""}">${esc(a[k]||"Inserir informação")}</span></button>`).join("");
+  $$("#antes .card-ante").forEach(b=>b.addEventListener("click",()=>abrirAnte(+b.dataset.i)));
+  // últimos diagnósticos
+  const ds=[]; for(const c of ficha.consultas||[]) for(const k of (c.dados?.chips||[])) if(k.startsWith("hd|")){ const n=k.slice(3); if(!ds.includes(n)) ds.push(n); }
+  $("#diag").innerHTML=ds.length?ds.map(d=>`<span class="tag">${esc(d)}</span>`).join(""):'<span class="vazio">Nenhum diagnóstico registrado aqui ainda.</span>';
+  // prontuário anterior iClinic
+  const icl=(ficha.anexos||[]).filter(x=>x.tipo==="iclinic");
+  $("#iclinic-arqs").innerHTML=icl.length?icl.map(arq).join(""):'<span class="vazio">Nenhum PDF do iClinic anexado.</span>';
+  $("#sec-iclinic").open=!!icl.length;
+  // conversa com a Ana
+  const conv=ficha.conversa||[]; $("#sec-ana").hidden=!conv.length; $("#sec-ana").open=false;
+  if(conv.length){ $("#ana-resumo").textContent=`Conversa com a Ana (${conv.length} mensagens recentes)`; const quem={user:"Paciente",assistant:"Ana",human:"Equipe"};
+    $("#ana-msgs").innerHTML=conv.map(m=>`<div class="msg ${m.role==="user"?"pac":"ana"}"><small>${quem[m.role]||""} · ${tsMsg(m.quando).toLocaleString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</small>${esc(m.texto)}</div>`).join(""); }
+  desenhaTimeline();
+  $("#repetir-ref").hidden=!(ficha.consultas||[]).some(c=>c.finalizado_em&&(c.dados?.campos?.["re-od-esf"]||c.dados?.campos?.["re-oe-esf"]));
+}
+function arq(x){ const ext=(String(x.nome||"").split(".").pop()||"").slice(0,4).toUpperCase();
+  return `<a class="arq" href="${esc(x.url||"#")}" target="_blank" rel="noopener" title="${esc(x.observacao||x.nome)}"><span class="ic">${esc(ext||"ARQ")}</span><span>${esc(x.nome)}<br><small class="hint">${ddmmaa(x.created_at)}${x.observacao?" · "+esc(x.observacao):""}</small></span></a>`; }
+function secoesDoTexto(t){ return String(t||"").split(/\n{2,}/).map(b=>b.trim()).filter(Boolean).map(b=>{
+  const m=b.match(/^([^:\n]{2,60}):\s*\n?([\s\S]*)$/); return m?{rot:m[1].trim(),corpo:m[2].trim()}:{rot:"",corpo:b}; }); }
+function desenhaTimeline(){
+  const f=$("#filtro").value;
+  const cs=(ficha.consultas||[]);
+  if(!cs.length){ $("#timeline").innerHTML='<div class="vazio">Nenhuma consulta registrada neste prontuário ainda. As anteriores estão no iClinic.</div>'; return; }
+  $("#timeline").innerHTML=cs.map(c=>{
+    const d=new Date(c.data_consulta); const dd=d.toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit"}), mm=Number(d.toLocaleDateString("pt-BR",{timeZone:TZ,month:"numeric"}))-1, aa=d.toLocaleDateString("pt-BR",{timeZone:TZ,year:"numeric"});
+    let secs=secoesDoTexto(c.texto); if(f) secs=secs.filter(s=>s.rot.startsWith(f));
+    const anexos=(ficha.anexos||[]).filter(x=>x.consulta_id===c.id);
+    const mostraAnexos=!f||f==="Imagens e anexos";
+    if(f&&!secs.length&&!(mostraAnexos&&anexos.length)) return "";
+    const fim=!!c.finalizado_em;
+    return `<div class="item-t"><div class="data-t ${fim?"":"cinza"}"><b>${dd}</b><i>${MES3[mm]}</i><em>${aa}</em></div>
+      <div class="bloco-t"><div class="cab"><span>Por: <b>Dr. Bruno Borges</b>${fim?"":' <span class="tag and">em andamento</span>'}</span><span class="h">⏱ ${hhmm(c.data_consulta)}${c.duracao_seg?` (${durTexto(c.duracao_seg)})`:""}</span></div>
+      ${secs.map(s=>`<div class="secao-t">${s.rot?`<h4>${esc(s.rot)}</h4>`:""}<pre>${esc(s.corpo)}</pre></div>`).join("")||(fim?"":'<div class="secao-t"><pre class="hint">Atendimento ainda sem conteúdo.</pre></div>')}
+      ${mostraAnexos&&anexos.length?`<div class="secao-t"><h4>Imagens e anexos</h4><div class="anexos-t">${anexos.map(arq).join("")}</div></div>`:""}
+      ${(c.adendos||[]).map(a=>`<div class="adendo"><small>Informações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`).join("")}
+      <div class="rodape-t">${fim?`<button type="button" data-copiar="${c.id}">Copiar texto</button><button type="button" data-adendo="${c.id}">+ Inserir informações</button>`:`<button type="button" class="pri" data-continuar="${c.id}">Continuar atendimento</button>`}</div>
+      </div></div>`; }).join("")||'<div class="vazio">Nada nesta seção.</div>';
+  $$("[data-copiar]").forEach(b=>b.addEventListener("click",()=>{ const c=cs.find(x=>x.id===b.dataset.copiar); const extra=(c.adendos||[]).map(a=>`\n\nInformações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}:\n${a.texto}`).join(""); copiarTxt((c.texto||"")+extra,()=>{ b.textContent="Copiado ✓"; setTimeout(()=>b.textContent="Copiar texto",2000); },()=>{}); }));
+  $$("[data-adendo]").forEach(b=>b.addEventListener("click",()=>abrirAdendo(b.dataset.adendo)));
+  $$("[data-continuar]").forEach(b=>b.addEventListener("click",()=>iniciar(b.dataset.continuar)));
+}
+$("#filtro").addEventListener("change",desenhaTimeline);
+
+/* antecedentes (modal com anterior/próximo, salva ao trocar ou fechar) */
+let anteI=0;
+function abrirAnte(i){ anteI=i; $("#ma-t").textContent=ANTE[i][1]; $("#ma-txt").value=(ficha.antecedentes||{})[ANTE[i][0]]||""; $("#ma-st").textContent="";
+  $("#ma-ant").textContent="‹ "+ANTE[(i+ANTE.length-1)%ANTE.length][1]; $("#ma-prox").textContent=ANTE[(i+1)%ANTE.length][1]+" ›";
+  $("#m-ante").hidden=false; setTimeout(()=>$("#ma-txt").focus(),30); }
+async function salvaAnte(){ const k=ANTE[anteI][0]; const novo=$("#ma-txt").value.trim(); const a={...(ficha.antecedentes||{})};
+  if((a[k]||"")===novo) return true; a[k]=novo;
+  try{ await api("/api/prontuario/antecedentes",{method:"POST",body:JSON.stringify({tel:ficha.paciente.telefone,nome:ficha.paciente.nome,antecedentes:a})});
+    ficha.antecedentes=a; $("#ma-st").textContent="As informações foram salvas."; $("#ma-st").className="status ok"; return true;
+  }catch(e){ $("#ma-st").textContent=e.status===401?MSG_SESSAO:(e.msg||"Não consegui salvar."); $("#ma-st").className="status erro"; return false; } }
+$("#ma-ant").addEventListener("click",async()=>{ if(await salvaAnte()) abrirAnte((anteI+ANTE.length-1)%ANTE.length); });
+$("#ma-prox").addEventListener("click",async()=>{ if(await salvaAnte()) abrirAnte((anteI+1)%ANTE.length); });
+$("#ma-fechar").addEventListener("click",async()=>{ if(await salvaAnte()){ $("#m-ante").hidden=true; desenhaFicha(); } });
+document.addEventListener("keydown",e=>{ if($("#m-ante").hidden) return; if(e.altKey&&e.key==="ArrowRight"){ e.preventDefault(); $("#ma-prox").click(); } if(e.altKey&&e.key==="ArrowLeft"){ e.preventDefault(); $("#ma-ant").click(); } if(e.key==="Escape") $("#ma-fechar").click(); });
+
+/* adendo */
+let adendoId=null;
+function abrirAdendo(id){ adendoId=id; $("#md-txt").value=""; $("#md-st").textContent=""; $("#m-adendo").hidden=false; setTimeout(()=>$("#md-txt").focus(),30); }
+$("#md-cancelar").addEventListener("click",()=>{ $("#m-adendo").hidden=true; });
+$("#md-ok").addEventListener("click",async()=>{ try{ const r=await api(`/api/prontuario/atendimento/${adendoId}/adendo`,{method:"POST",body:JSON.stringify({texto:$("#md-txt").value})});
+  const c=ficha.consultas.find(x=>x.id===adendoId); if(c) c.adendos=r.adendos; $("#m-adendo").hidden=true; desenhaTimeline();
+  }catch(e){ $("#md-st").textContent=e.status===401?MSG_SESSAO:(e.msg||"Não consegui salvar."); $("#md-st").className="status erro"; } });
+
+/* data de nascimento (grava na consulta de hoje, no formato da Ana) */
+async function gravaNascimento(){ const t=v("nasc-in"); if(!t||!ficha?.hoje) return;
+  try{ const r=await api(`/api/prontuario/consulta/${ficha.hoje.id}/nascimento`,{method:"POST",body:JSON.stringify({nascimento:t})}); ficha.paciente.idade=r.idade; ficha.paciente.nascimento=r.nascimento; desenhaFicha(); }
+  catch(e){ $("#nasc-msg").textContent=e.msg||"Não consegui gravar."; $("#nasc-msg").style.color="var(--warn)"; } }
+$("#nasc-ok").addEventListener("click",gravaNascimento);
+$("#nasc-in").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); gravaNascimento(); } });
+
+/* ===== ATENDIMENTO ===== */
+function modoAtend(on){
+  $("#atendimento").hidden=!on; $("#historico").hidden=on;
+  $$("#menu [data-at]").forEach(b=>b.hidden=!on);
+  $$("#menu button").forEach(b=>b.classList.toggle("ativo",b.dataset.ir===(on?"s-evolucao":"historico")));
+  const b=$("#btn-atend"); b.classList.toggle("fim",on); b.textContent=on?"■ Finalizar atendimento":"▶ Iniciar atendimento";
+  if(!on){ $("#duracao").textContent="00:00:00"; status("",""); }
+}
+function pararRelogio(){ if(relogio) clearInterval(relogio); relogio=null; t0=0; }
+async function iniciar(consultaId){
+  try{
+    let c=consultaId?(ficha.consultas||[]).find(x=>x.id===consultaId):null;
+    if(!c){ const r=await api("/api/prontuario/atendimento/iniciar",{method:"POST",body:JSON.stringify({tel:ficha.paciente.telefone,nome:ficha.paciente.nome,appointment_id:ficha.hoje?.id||null})}); c=r.consulta; }
+    if(c.finalizado_em){ status("Esta consulta já foi finalizada. Use “Inserir informações” na linha do tempo.","erro"); return; }
+    atend=c; consultaAtual={inicio:c.data_consulta,paciente_nome:ficha.paciente.nome};
+    let dados=c.dados&&Object.keys(c.dados).length?c.dados:null;
+    try{ const loc=JSON.parse(localStorage.getItem(chaveLocal(c.id))||"null"); if(loc&&(!c.updated_at||loc.ts>new Date(c.updated_at).getTime())) dados=loc.dados; }catch(_){}
+    aplicar(dados); if(!v("pio-hora")){ const h=new Date(); $("#pio-hora").value=String(h.getHours()).padStart(2,"0")+"h"+String(h.getMinutes()).padStart(2,"0"); }
+    $("#data-at").textContent=new Date(c.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
+    durBase=c.duracao_seg||0; t0=Date.now(); pararRelogio(); t0=Date.now(); relogio=setInterval(()=>{ $("#duracao").textContent=fmtDur(durAtual()); },1000);
+    modoAtend(true); atualiza(); sujo=false; status(c.updated_at&&c.texto?`Rascunho salvo às ${hhmm(c.updated_at)}.`:"Atendimento iniciado.","ok");
+    desenhaAnexosAt(); $("#s-evolucao").scrollIntoView({behavior:"smooth"});
+  }catch(e){ status(e.status===401?MSG_SESSAO:(e.msg||"Não consegui iniciar o atendimento."),"erro"); }
+}
+$("#btn-atend").addEventListener("click",()=>{ if(atend) abrirFinalizar(); else iniciar(); });
+$$("#menu button").forEach(b=>b.addEventListener("click",()=>{
+  $$("#menu button").forEach(x=>x.classList.toggle("ativo",x===b));
+  if(b.dataset.ir==="historico"){ $("#historico").hidden=false; $("#atendimento").hidden=true; if(atend&&sujo) salvar(true); desenhaTimeline(); $("#historico").scrollIntoView({behavior:"smooth"}); return; }
+  $("#historico").hidden=true; $("#atendimento").hidden=false; if(atend&&sujo) salvar(true);
+  $("#"+b.dataset.ir).scrollIntoView({behavior:"smooth"}); }));
+async function salvar(silencioso){
+  if(!atend) return false;
+  try{ const r=await api(`/api/prontuario/atendimento/${atend.id}`,{method:"POST",body:JSON.stringify({dados:coletar(),texto:textoIclinic(),duracao_seg:durAtual()})});
+    atend=r.consulta; sujo=false; try{ localStorage.removeItem(chaveLocal(atend.id)); }catch(_){}
+    status(`Rascunho salvo às ${hhmm(atend.updated_at)}.`,"ok"); return true;
+  }catch(e){ if(!silencioso||e.status===401) status(e.status===401?MSG_SESSAO:(e.msg||"Não consegui salvar."),"erro"); return false; }
+}
+setInterval(()=>{ if(atend&&sujo) salvar(true); },30000);
+window.addEventListener("beforeunload",e=>{ if(atend&&sujo){ e.preventDefault(); e.returnValue=""; } });
+$("#copiar").addEventListener("click",()=>copiarTxt(textoIclinic(),()=>status("Copiado. Cole no iClinic.","ok"),()=>status("Não consegui copiar: selecione o texto e use Ctrl+C.","erro")));
+// repetir a refração da última consulta finalizada
+$("#repetir-ref").addEventListener("click",()=>{ const c=(ficha.consultas||[]).find(x=>x.finalizado_em&&(x.dados?.campos?.["re-od-esf"]||x.dados?.campos?.["re-oe-esf"])); if(!c) return;
+  for(const id of ["re-od-esf","re-od-cil","re-od-eixo","re-oe-esf","re-oe-cil","re-oe-eixo","re-add"]){ const el=$("#"+id); if(el) el.value=c.dados.campos[id]||""; }
+  status(`Refração de ${ddmmaa(c.data_consulta)} copiada — ajuste o que mudou.`,"ok"); atualiza(); });
+
+/* finalizar */
+function abrirFinalizar(){ $("#gf-st").textContent=""; $("#g-fim").hidden=false; }
+$("#gf-voltar").addEventListener("click",()=>{ $("#g-fim").hidden=true; });
+$("#gf-ok").addEventListener("click",async()=>{
+  const txt=textoIclinic();
+  if($("#gf-copiar").checked) copiarTxt(txt,()=>{},()=>{});
+  try{ await api(`/api/prontuario/atendimento/${atend.id}/finalizar`,{method:"POST",body:JSON.stringify({dados:coletar(),texto:txt,duracao_seg:durAtual()})});
+    try{ localStorage.removeItem(chaveLocal(atend.id)); }catch(_){}
+    $("#g-fim").hidden=true; sujo=false; pararRelogio(); atend=null; consultaAtual=null; modoAtend(false);
+    await abrirFicha(ficha.paciente.telefone,ficha.paciente.nome,true);
+    status($("#gf-copiar").checked?"Atendimento finalizado. O texto foi copiado: cole no iClinic.":"Atendimento finalizado.","ok");
+  }catch(e){ $("#gf-st").textContent=e.status===401?MSG_SESSAO:(e.msg||"Não consegui finalizar."); $("#gf-st").className="status erro"; }
+});
+
+/* ===== ANEXOS ===== */
+function desenhaAnexosAt(){ const xs=(ficha.anexos||[]).filter(x=>atend&&x.consulta_id===atend.id); $("#anexos-at").innerHTML=xs.map(arq).join(""); }
+async function enviar(files,tipo,consultaId,stEl){
+  for(const f of files){
+    if(f.size>30*1024*1024){ stEl.textContent=`${f.name}: maior que 30 MB.`; stEl.className="status erro"; continue; }
+    stEl.textContent=`Enviando ${f.name}…`; stEl.className="status";
+    try{ const q=new URLSearchParams({tel:ficha.paciente.telefone,nome:ficha.paciente.nome,tipo,filename:f.name,mime:f.type||"application/octet-stream",obs:v("anexo-obs")});
+      if(consultaId) q.set("consulta",consultaId);
+      const r=await api("/api/prontuario/anexo?"+q.toString(),{method:"POST",raw:true,body:f});
+      ficha.anexos=[r.anexo,...(ficha.anexos||[])]; stEl.textContent=`${f.name} anexado.`; stEl.className="status ok";
+    }catch(e){ stEl.textContent=e.status===401?MSG_SESSAO:`${f.name}: ${e.msg||"não consegui enviar."}`; stEl.className="status erro"; }
+  }
+  desenhaAnexosAt(); desenhaFicha();
+}
+$("#escolher").addEventListener("click",()=>$("#arquivo").click());
+$("#arquivo").addEventListener("change",()=>{ const fs=[...$("#arquivo").files]; $("#arquivo").value=""; enviar(fs,$("#anexo-tipo").value,atend?.id,$("#st-anexo")); });
+const zona=$("#soltar");
+["dragenter","dragover"].forEach(ev=>zona.addEventListener(ev,e=>{ e.preventDefault(); zona.classList.add("sobre"); }));
+["dragleave","drop"].forEach(ev=>zona.addEventListener(ev,e=>{ e.preventDefault(); zona.classList.remove("sobre"); }));
+zona.addEventListener("drop",e=>{ const fs=[...(e.dataTransfer?.files||[])]; if(fs.length) enviar(fs,$("#anexo-tipo").value,atend?.id,$("#st-anexo")); });
+// prontuário anterior do iClinic (fora do atendimento, fixo no topo da ficha)
+const inIcl=document.createElement("input"); inIcl.type="file"; inIcl.accept="application/pdf,image/*"; inIcl.multiple=true; inIcl.hidden=true; document.body.appendChild(inIcl);
+$("#anexar-iclinic").addEventListener("click",()=>inIcl.click());
+inIcl.addEventListener("change",()=>{ const fs=[...inIcl.files]; inIcl.value=""; enviar(fs,"iclinic",null,$("#st-iclinic")); });
 
 /* ===== entrada ===== */
 (async()=>{
   if(!AUTH) return portao();
   try{ await api("/api/prontuario/eu"); }
   catch(e){ return portao(e.status===403?"Esta página é só para o login <b>Dr. Bruno</b>. Saia do painel e entre com o seu usuário.":null); }
-  $("#portao").hidden=true; $("#app").hidden=false;
-  $("#dia").value=hojeBR(); carregaDia($("#dia").value);
+  $("#portao").hidden=true; $("#raiz").hidden=false;
+  $("#dia").value=hojeBR(); mostra("lista"); carregaDia($("#dia").value);
 })();
 })();
 </script>

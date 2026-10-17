@@ -10234,6 +10234,238 @@ app.post("/api/prontuario/consulta/:id", requireMedico, async (req, res) => {
     res.status(500).json({ error: "Não consegui salvar. Copie o texto antes de sair da tela." });
   }
 });
+// ===== PRONTUÁRIO v2 — fluxo do iClinic (Dr. Bruno, 17/10/2026) ==============
+// Lista → ficha do paciente (cabeçalho + antecedentes + linha do tempo) →
+// "Iniciar atendimento" (cronômetro + seções) → "Finalizar" (trava; depois só
+// adendo). Paciente = telefone (8 últimos dígitos) + primeiro nome — o mesmo
+// critério do histórico, para família no mesmo número não se misturar.
+const primNome = (t) => String(t || "").trim().split(/\s+/)[0].toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const chavePaciente = (tel, nome) => `${ult8(tel)}|${primNome(nome)}`;
+const BUCKET_PRONTUARIO = "prontuario";
+let bucketProntuarioOk = false;
+async function garantirBucketProntuario() {
+  if (bucketProntuarioOk) return;
+  const { data } = await supabase.storage.getBucket(BUCKET_PRONTUARIO);
+  if (!data) {
+    const { error } = await supabase.storage.createBucket(BUCKET_PRONTUARIO, { public: false });
+    if (error && !/exist/i.test(error.message)) throw error;
+  }
+  bucketProntuarioOk = true;
+}
+async function consultasDoPaciente(tel, nome) {
+  const f8 = ult8(tel), pn = primNome(nome);
+  if (!f8) return [];
+  const { data } = await supabase.from("prontuario_consultas").select("*")
+    .like("paciente_telefone", `%${f8}`).order("data_consulta", { ascending: false }).limit(200);
+  return (data || []).filter(c => primNome(c.paciente_nome) === pn);
+}
+
+// Busca de pacientes por nome ou telefone (agenda + prontuário).
+app.get("/api/prontuario/busca", requireMedico, async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    if (q.length < 2) return res.json({ pacientes: [] });
+    const dig = q.replace(/\D/g, "");
+    let qa = supabase.from("appointments").select("paciente_nome, paciente_telefone, convenio, inicio, observacoes, status")
+      .neq("origem", "bloqueio").not("paciente_telefone", "is", null).order("inicio", { ascending: false }).limit(400);
+    qa = dig.length >= 4 ? qa.like("paciente_telefone", `%${dig.slice(-8)}%`) : qa.ilike("paciente_nome", `%${q.replace(/[%_]/g, "")}%`);
+    const { data: ags, error } = await qa;
+    if (error) throw error;
+    const agora = Date.now(), mapa = new Map();
+    for (const a of ags || []) {
+      const k = chavePaciente(a.paciente_telefone, a.paciente_nome);
+      const t = new Date(a.inicio).getTime();
+      const p = mapa.get(k) || { chave: k, nome: a.paciente_nome, telefone: a.paciente_telefone, convenio: a.convenio, ultima: null, proxima: null, nascimento: null };
+      if (String(a.paciente_nome || "").length > String(p.nome || "").length) p.nome = a.paciente_nome;
+      const n = idadeDe(a.observacoes); if (n && !p.nascimento) p.nascimento = n.nascimento;
+      if (a.status !== "cancelado") {
+        if (t <= agora && (!p.ultima || t > new Date(p.ultima).getTime())) p.ultima = a.inicio;
+        if (t > agora && (!p.proxima || t < new Date(p.proxima).getTime())) p.proxima = a.inicio;
+      }
+      mapa.set(k, p);
+    }
+    res.json({ pacientes: [...mapa.values()].slice(0, 40) });
+  } catch (e) {
+    console.error("[Prontuário] busca falhou:", e.message);
+    res.status(500).json({ error: "Não consegui buscar." });
+  }
+});
+
+// Ficha completa: cabeçalho, antecedentes, consultas (linha do tempo), anexos,
+// a consulta agendada para hoje (se houver) e a conversa com a Ana.
+app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
+  try {
+    const tel = String(req.query.tel || ""), nome = String(req.query.nome || "");
+    const f8 = ult8(tel), pn = primNome(nome);
+    if (!f8 || !pn) return res.status(400).json({ error: "Paciente inválido." });
+    const chave = chavePaciente(tel, nome);
+    const { data: ags } = await supabase.from("appointments")
+      .select("id, inicio, unidade, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, conversation_id, compareceu")
+      .like("paciente_telefone", `%${f8}`).neq("origem", "bloqueio").order("inicio", { ascending: true }).limit(300);
+    const meus = (ags || []).filter(a => primNome(a.paciente_nome) === pn);
+    const ativos = meus.filter(a => a.status !== "cancelado");
+    const hojeYmd = new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR });
+    const hoje = ativos.find(a => new Date(a.inicio).toLocaleDateString("en-CA", { timeZone: TZ_BR }) === hojeYmd) || null;
+    const ultimoAg = [...meus].reverse()[0] || null;
+    let idade = null;
+    for (const a of [...meus].reverse()) { idade = idadeDe(a.observacoes); if (idade) break; }
+    const { data: pac } = await supabase.from("prontuario_pacientes").select("*").eq("chave", chave).maybeSingle();
+    const consultas = await consultasDoPaciente(tel, nome);
+    const { data: anexosRaw } = await supabase.from("prontuario_anexos").select("*").eq("paciente_chave", chave).order("created_at", { ascending: false }).limit(200);
+    const anexos = [];
+    for (const a of anexosRaw || []) {
+      const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(a.path, 3600);
+      anexos.push({ ...a, url: s?.signedUrl || null });
+    }
+    let conversa = [];
+    try {
+      let convId = (hoje || ultimoAg)?.conversation_id || null;
+      if (!convId) {
+        const { data: ps } = await supabase.from("patients").select("id").like("phone", `%${f8}`).limit(1);
+        if (ps && ps[0]) {
+          const { data: cs } = await supabase.from("conversations").select("id").eq("patient_id", ps[0].id).order("updated_at", { ascending: false }).limit(1);
+          convId = cs && cs[0] ? cs[0].id : null;
+        }
+      }
+      if (convId) {
+        const { data: ms } = await supabase.from("messages").select("role, content, timestamp")
+          .eq("conversation_id", convId).in("role", ["user", "assistant", "human"]).order("timestamp", { ascending: false }).limit(40);
+        conversa = (ms || []).reverse().map(m => ({ role: m.role, quando: m.timestamp, texto: String(m.content || "").slice(0, 1500) }));
+      }
+    } catch (_) { /* conversa é só contexto */ }
+    res.json({
+      paciente: {
+        chave, nome: (ultimoAg && ultimoAg.paciente_nome) || pac?.nome || nome, telefone: tel,
+        convenio: ultimoAg?.convenio || null, primeira_consulta: meus[0]?.inicio || null,
+        ...(idade || {}),
+      },
+      antecedentes: pac?.antecedentes || {}, hoje, consultas, anexos, conversa,
+    });
+  } catch (e) {
+    console.error("[Prontuário] ficha falhou:", e.message);
+    res.status(500).json({ error: "Não consegui abrir a ficha." });
+  }
+});
+
+app.post("/api/prontuario/antecedentes", requireMedico, async (req, res) => {
+  try {
+    const { tel, nome, antecedentes } = req.body || {};
+    if (!ult8(tel) || !primNome(nome) || typeof antecedentes !== "object") return res.status(400).json({ error: "Dados inválidos." });
+    const linha = { chave: chavePaciente(tel, nome), nome, telefone: tel, antecedentes, updated_at: new Date().toISOString() };
+    const { error } = await supabase.from("prontuario_pacientes").upsert(linha, { onConflict: "chave" });
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[Prontuário] antecedentes falhou:", e.message);
+    res.status(500).json({ error: "Não consegui salvar os antecedentes." });
+  }
+});
+
+// Iniciar atendimento: reaproveita o rascunho aberto da consulta (se houver).
+app.post("/api/prontuario/atendimento/iniciar", requireMedico, async (req, res) => {
+  try {
+    const { tel, nome, appointment_id } = req.body || {};
+    if (!ult8(tel) || !primNome(nome)) return res.status(400).json({ error: "Paciente inválido." });
+    const chave = chavePaciente(tel, nome);
+    let ag = null;
+    if (appointment_id) {
+      const { data } = await supabase.from("appointments").select("id, inicio, paciente_nome, paciente_telefone").eq("id", appointment_id).maybeSingle();
+      ag = data || null;
+      if (ag) {
+        const { data: ex } = await supabase.from("prontuario_consultas").select("*").eq("appointment_id", ag.id).maybeSingle();
+        if (ex) {
+          if (!ex.paciente_chave) await supabase.from("prontuario_consultas").update({ paciente_chave: chave }).eq("id", ex.id);
+          return res.json({ consulta: { ...ex, paciente_chave: chave } });
+        }
+      }
+    } else {
+      const abertas = (await consultasDoPaciente(tel, nome)).filter(c => !c.finalizado_em && !c.appointment_id);
+      if (abertas[0]) return res.json({ consulta: abertas[0] });
+    }
+    const linha = {
+      appointment_id: ag?.id || null, paciente_chave: chave,
+      paciente_nome: ag?.paciente_nome || nome, paciente_telefone: ag?.paciente_telefone || tel,
+      data_consulta: ag?.inicio || new Date().toISOString(), dados: {}, texto: "", criado_por: "Dr. Bruno",
+    };
+    const { data: nova, error } = await supabase.from("prontuario_consultas").insert(linha).select("*").single();
+    if (error) throw error;
+    res.json({ consulta: nova });
+  } catch (e) {
+    console.error("[Prontuário] iniciar falhou:", e.message);
+    res.status(500).json({ error: "Não consegui iniciar o atendimento." });
+  }
+});
+async function salvarAtendimento(req, res, finalizar) {
+  try {
+    const { dados, texto, duracao_seg } = req.body || {};
+    const { data: c, error } = await supabase.from("prontuario_consultas").select("id, finalizado_em, appointment_id").eq("id", req.params.cid).maybeSingle();
+    if (error) throw error;
+    if (!c) return res.status(404).json({ error: "Atendimento não encontrado." });
+    if (c.finalizado_em) return res.status(409).json({ error: "Este atendimento já foi finalizado. Use “Inserir informações” para acrescentar." });
+    const upd = { updated_at: new Date().toISOString() };
+    if (dados && typeof dados === "object") upd.dados = dados;
+    if (typeof texto === "string") upd.texto = texto.slice(0, 30000);
+    if (Number.isFinite(Number(duracao_seg))) upd.duracao_seg = Math.max(0, Math.round(Number(duracao_seg)));
+    if (finalizar) upd.finalizado_em = new Date().toISOString();
+    const { data: salvo, error: e2 } = await supabase.from("prontuario_consultas").update(upd).eq("id", c.id).select("*").single();
+    if (e2) throw e2;
+    if (finalizar && c.appointment_id) {
+      await supabase.from("appointments").update({ compareceu: true, compareceu_em: new Date().toISOString(), compareceu_por: "Dr. Bruno (prontuário)" })
+        .eq("id", c.appointment_id).is("compareceu", null);
+    }
+    res.json({ ok: true, consulta: salvo });
+  } catch (e) {
+    console.error("[Prontuário] salvar atendimento falhou:", e.message);
+    res.status(500).json({ error: "Não consegui salvar. O rascunho continua guardado neste navegador." });
+  }
+}
+app.post("/api/prontuario/atendimento/:cid", requireMedico, (req, res) => salvarAtendimento(req, res, false));
+app.post("/api/prontuario/atendimento/:cid/finalizar", requireMedico, (req, res) => salvarAtendimento(req, res, true));
+// Adendo: depois de finalizado, só se ACRESCENTA (com data e hora), nunca se altera.
+app.post("/api/prontuario/atendimento/:cid/adendo", requireMedico, async (req, res) => {
+  try {
+    const t = String(req.body?.texto || "").trim();
+    if (!t) return res.status(400).json({ error: "Escreva a informação a acrescentar." });
+    const { data: c, error } = await supabase.from("prontuario_consultas").select("id, adendos").eq("id", req.params.cid).maybeSingle();
+    if (error) throw error;
+    if (!c) return res.status(404).json({ error: "Atendimento não encontrado." });
+    const adendos = [...(Array.isArray(c.adendos) ? c.adendos : []), { texto: t.slice(0, 5000), em: new Date().toISOString(), por: "Dr. Bruno" }];
+    const { error: e2 } = await supabase.from("prontuario_consultas").update({ adendos }).eq("id", c.id);
+    if (e2) throw e2;
+    res.json({ ok: true, adendos });
+  } catch (e) {
+    console.error("[Prontuário] adendo falhou:", e.message);
+    res.status(500).json({ error: "Não consegui acrescentar a informação." });
+  }
+});
+// Anexo (exame ou prontuário anterior do iClinic): corpo binário, como /api/upload,
+// mas em bucket PRÓPRIO e privado — o bucket "anexos" das conversas tem expurgo.
+app.post("/api/prontuario/anexo", requireMedico, express.raw({ type: () => true, limit: "30mb" }), async (req, res) => {
+  try {
+    if (!req.body || !req.body.length) return res.status(400).json({ error: "Arquivo vazio." });
+    const tel = String(req.query.tel || ""), nome = String(req.query.nome || "");
+    if (!ult8(tel) || !primNome(nome)) return res.status(400).json({ error: "Paciente inválido." });
+    const tipo = String(req.query.tipo || "exame") === "iclinic" ? "iclinic" : "exame";
+    const nomeArq = String(req.query.filename || "arquivo").slice(0, 160);
+    const mime = String(req.query.mime || req.headers["content-type"] || "application/octet-stream");
+    const chave = chavePaciente(tel, nome);
+    await garantirBucketProntuario();
+    const path = `${ult8(tel)}_${primNome(nome)}/${Date.now()}_${nomeArq.replace(/[^\w.\-]+/g, "_").slice(-100)}`;
+    const { error } = await supabase.storage.from(BUCKET_PRONTUARIO).upload(path, req.body, { contentType: mime, upsert: false });
+    if (error) throw error;
+    const consultaId = /^[0-9a-f-]{36}$/i.test(String(req.query.consulta || "")) ? String(req.query.consulta) : null;
+    const { data: reg, error: e2 } = await supabase.from("prontuario_anexos").insert({
+      paciente_chave: chave, consulta_id: consultaId, tipo, nome: nomeArq, path, mime, tamanho: req.body.length,
+      observacao: String(req.query.obs || "").slice(0, 500) || null,
+    }).select("*").single();
+    if (e2) throw e2;
+    const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(path, 3600);
+    res.json({ ok: true, anexo: { ...reg, url: s?.signedUrl || null } });
+  } catch (e) {
+    console.error("[Prontuário] anexo falhou:", e.message);
+    res.status(500).json({ error: "Não consegui guardar o arquivo." });
+  }
+});
 app.get("/prontuario/timbrado.jpg", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/timbrado-a4.jpg"); });
 app.get("/prontuario/logo.png", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/logo-receita.png"); });
 app.get("/prontuario", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/prontuario.html"); });
