@@ -10528,14 +10528,57 @@ REGRAS (formato já aprovado pelo Dr. Bruno — não invente nada):
 - IMPRESSÃO DIAGNÓSTICA: apenas o diagnóstico, uma ou duas frases, sem estadiamento por extenso, sem conduta, sem tratamento, sem outros exames. Tom aprovado: "Ectasia corneana bilateral e assimétrica, com padrão tomográfico compatível com ceratocone, mais avançado no olho direito do que no olho esquerdo." ou "Exame de tomografia de córnea dentro dos limites da normalidade em ambos os olhos, sem sinais tomográficos de ectasia corneana ou ceratocone." Achados isolados sem significado podem ser citados numa frase curta, sem alarmismo.
 - Se o arquivo trouxer outros exames (microscopia, topografia de outro aparelho), NÃO coloque no laudo; só mencione em "pendencias".
 ${REF_PENTACAM}`;
+// Laudos em TABELA ÚNICA (Parâmetro | OD | OS | Referência) — modelos aprovados
+// pelo Dr. Bruno em 17/10/2026 (laudo_*_paquimetria.pdf e _microscopia_especular.pdf
+// em Documents/Documentos Credenciamento IOBB/laudo exames).
+const LAUDO_TABELA = {
+  paquimetria: {
+    titulo: "LAUDO DE PAQUIMETRIA CORNEANA",
+    metodo: "Método: paquimetria por imagem de Scheimpflug (mapa de espessura corneana), Oculus Pentacam.",
+    secao: "Espessura corneana",
+    linhas: `"Centro pupilar" ref "540 – 560 μm" (mais espessa que 560 NÃO é alterado; abaixo de 540 é); "Ápice corneano" ref "540 – 560 μm" (mesma regra); "Ponto mais fino" ref "> 500 μm"; "Distância do ponto mais fino ao ápice" ref "< 1,0 mm" (valor em mm); "Localização do ponto mais fino" ref "—" (ex.: "Temporal", "Inferotemporal"); "Distribuição da espessura" ref "—" (ex.: "Regular, concêntrica").`,
+    onde: `Tela "Mapas" do Pentacam com "Espessura Corneana" selecionada (quadro Paq.: Centro Pupilar, Pachy Vertex N. = ápice, Ponto + fino com x/y em mm; a distância ao ápice é √(x²+y²) do ponto mais fino). Localização e distribuição você descreve olhando o mapa.`,
+    telas: `para cada olho, a tela "Mapas" com o mapa de espessura corneana; legenda "OD — Mapa de espessura corneana" / "OS — Mapa de espessura corneana".`,
+    tom: `"Córneas finas em ambos os olhos, com ponto mais fino de 486 μm no OD e 484 μm no OS, próximo ao ápice, distribuição de espessura regular e concêntrica e simetria entre os olhos (diferença de 2 μm entre os pontos mais finos)."`,
+  },
+  microscopia: {
+    titulo: "LAUDO DE MICROSCOPIA ESPECULAR DE CÓRNEA",
+    metodo: "Aparelho: microscópio especular de não contato Rexxam SPM-700, análise do endotélio central.",
+    secao: "Endotélio corneano",
+    linhas: `"Densidade celular (CD)" ref "> 2.000 cél/mm²"; "Área celular média (AVG)" ref "< 500 μm²"; "Desvio padrão da área (SD)" ref "—"; "Coeficiente de variação (CV)" ref "≤ 30%"; "Hexagonalidade (6A)" ref "≥ 60%"; "Área máxima" ref "—"; "Área mínima" ref "—"; "Células analisadas" ref "≥ 75"; "Espessura central (CCT)" ref "540 – 560 μm" (mais espessa que 560 NÃO é alterado). Milhar com ponto ("2.474 cél/mm²", "1.285 μm²"), "μm²", "%".`,
+    onde: `Relatório "Corneal endothelium analysis report": coluna da esquerda (RIGHT) = OD, da direita (LEFT) = OS; linhas CCT, Num (células analisadas), CD, AVG, SD, CV, Max, Min, 6A. Se o aparelho não for o Rexxam SPM-700, ajuste o "metodo" com o nome que aparece no relatório.`,
+    telas: `a página do relatório inteiro, uma vez só (olho "OD/OS"); legenda "Relatório da microscopia especular (Rexxam SPM-700): OD à esquerda, OS à direita".`,
+    tom: `"Densidade de células endoteliais dentro dos limites da normalidade em ambos os olhos, com polimegatismo e pleomorfismo acentuados (coeficiente de variação de 49% no OD e 50% no OS; hexagonalidade de 29% no OD e 31% no OS)."`,
+  },
+};
+function promptTabela(tipo) {
+  const t = LAUDO_TABELA[tipo];
+  return `Você é o assistente do Dr. Bruno Borges (oftalmologista, IOBB) para o ${t.titulo}.
+Leia o exame no arquivo anexado e devolva SOMENTE um JSON (sem texto antes ou depois), no formato:
+{"data_exame":"dd/mm/aaaa","sexo":"Feminino|Masculino|Não informado","metodo":"${t.metodo}",
+ "secoes":[{"titulo":"${t.secao}","linhas":[{"parametro":"...","od":"...","os":"...","referencia":"...","od_alterado":false,"os_alterado":false}]}],
+ "impressao_diagnostica":"...",
+ "telas":[{"pagina":1,"olho":"OD","legenda":"..."}],
+ "pendencias":["..."]}
+LINHAS, nesta ordem e com estes nomes e referências: ${t.linhas}
+ONDE ACHAR: ${t.onde}
+REGRAS (formato aprovado pelo Dr. Bruno — não invente nada):
+- Números com vírgula decimal e unidade em cada valor (ex.: "488 μm", "0,78 mm").
+- "od_alterado"/"os_alterado" = true só quando o valor está fora da referência; linhas com referência "—" nunca são alteradas.
+- Valor ilegível ou ausente: "?" e explique em "pendencias". NUNCA estime. Se só houver um olho, deixe o outro como "—" e avise em "pendencias".
+- "telas": ${t.telas} "pagina" = número da página do PDF (1 = primeira); se o arquivo for uma imagem, use pagina 1.
+- IMPRESSÃO DIAGNÓSTICA: o achado com os números principais, uma ou duas frases, sem conduta, sem tratamento, sem pedir outros exames. Tom aprovado: ${t.tom} Se tudo estiver normal, diga que está dentro dos limites da normalidade em ambos os olhos.
+- Se o arquivo trouxer outros exames, NÃO coloque no laudo; só mencione em "pendencias".`;
+}
+const TIPOS_LAUDO = ["pentacam", ...Object.keys(LAUDO_TABELA)];
 app.post("/api/prontuario/laudo/:anexoId", requireMedico, async (req, res) => {
   try {
     const tipo = String(req.body?.tipo || "pentacam");
-    if (tipo !== "pentacam") return res.status(400).json({ error: "Por enquanto só o laudo de Pentacam é gerado automaticamente." });
+    if (!TIPOS_LAUDO.includes(tipo)) return res.status(400).json({ error: "Tipo de laudo desconhecido." });
     const { data: ax, error } = await supabase.from("prontuario_anexos").select("*").eq("id", req.params.anexoId).maybeSingle();
     if (error) throw error;
     if (!ax) return res.status(404).json({ error: "Arquivo não encontrado." });
-    if (ax.laudo && !req.body?.refazer) return res.json({ laudo: ax.laudo, salvo: true });
+    if (ax.laudo && !req.body?.refazer && (ax.laudo.tipo || "pentacam") === tipo) return res.json({ laudo: ax.laudo, salvo: true });
     const { data: blob, error: e2 } = await supabase.storage.from(BUCKET_PRONTUARIO).download(ax.path);
     if (e2) throw e2;
     const buf = Buffer.from(await blob.arrayBuffer());
@@ -10545,7 +10588,7 @@ app.post("/api/prontuario/laudo/:anexoId", requireMedico, async (req, res) => {
       : { type: "image", source: { type: "base64", media_type: /png/.test(mime) ? "image/png" : "image/jpeg", data: buf.toString("base64") } };
     const pedir = (model) => anthropicMessages({
       model, max_tokens: 6000,
-      messages: [{ role: "user", content: [bloco, { type: "text", text: PROMPT_PENTACAM }] }],
+      messages: [{ role: "user", content: [bloco, { type: "text", text: tipo === "pentacam" ? PROMPT_PENTACAM : promptTabela(tipo) }] }],
     }, { origem: "laudo", tentativas: 1, timeout: 240000 });
     let r;
     try { r = await pedir(LAUDO_MODEL); }
@@ -10558,6 +10601,7 @@ app.post("/api/prontuario/laudo/:anexoId", requireMedico, async (req, res) => {
     const m = txt.match(/\{[\s\S]*\}/);
     if (!m) throw new Error("a IA não devolveu o laudo no formato esperado");
     const laudo = JSON.parse(m[0]);
+    laudo.tipo = tipo;
     laudo.gerado_em = new Date().toISOString();
     await supabase.from("prontuario_anexos").update({ laudo, laudo_em: laudo.gerado_em }).eq("id", ax.id);
     res.json({ laudo, salvo: false });

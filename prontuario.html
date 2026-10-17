@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Prontuário do Dr. Bruno — v2, no fluxo do iClinic (17/10/2026):
-   lista → ficha (cabeçalho + antecedentes + linha do tempo) → atendimento
+   lista → ficha (cabeçalho + pré-exame + linha do tempo) → atendimento
    (cronômetro + seções) → finalizar (trava; depois só "inserir informações"). */
 :root{
   --bg:#f2f4f7; --surface:#fff; --ink:#263238; --muted:#6b7a85; --line:#dfe4ea;
@@ -30,7 +30,7 @@ button.pri{background:var(--pri);color:#fff;border-color:var(--pri)}
 button.perigo{background:var(--danger);color:#fff;border-color:var(--danger)}
 button.link{border:0;background:none;color:var(--pri);padding:4px 6px}
 button:disabled{opacity:.5;cursor:default}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.chip:focus-visible,.card-ante:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.chip:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 textarea,input,select{font:15px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%;min-width:0}
 textarea{min-height:70px;resize:vertical;line-height:1.45}
 
@@ -85,12 +85,6 @@ table.lista td.nome{color:var(--pri);font-weight:500}
 .cab-pac .dados{font-size:14px;line-height:1.6} .cab-pac .dados b{font-weight:500}
 .cab-pac .acoes{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
 @media (max-width:600px){.cab-pac{grid-template-columns:auto minmax(0,1fr)} .cab-pac .acoes{grid-column:1/-1;flex-direction:row;flex-wrap:wrap;align-items:center}}
-.antes{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
-.card-ante{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 12px;cursor:pointer;min-height:76px;text-align:left;font:inherit;color:inherit}
-.card-ante:hover{border-color:var(--pri)}
-.card-ante small{display:block;font-size:12px;font-weight:500;color:var(--ink)}
-.card-ante span{display:block;font-size:14px;color:var(--muted);white-space:pre-wrap;overflow:hidden;max-height:4.4em}
-.card-ante span.cheio{color:var(--ink)}
 details.sec{background:var(--surface);border:1px solid var(--line);border-radius:8px}
 details.sec>summary{cursor:pointer;padding:12px 16px;font-size:13px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 details.sec>div{padding:0 16px 14px}
@@ -174,7 +168,7 @@ table.lau{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}
 table.lau th{background:#1a3a5c;color:#fff;text-align:left;padding:5px 8px;font-weight:500}
 table.lau td{border:1px solid var(--line);padding:3px 6px}
 table.lau input[type=text]{padding:3px 6px;font-size:13px}
-table.lau tr.alt td{color:#b02a2a;font-weight:700}
+table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;font-weight:700}
 .pend{background:var(--note);border:1px solid var(--note-line);border-radius:6px;padding:8px 12px;font-size:13px}
 .portao{max-width:520px;margin:12vh auto;padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:12px;display:grid;gap:12px}
 </style>
@@ -203,10 +197,10 @@ table.lau tr.alt td{color:#b02a2a;font-weight:700}
         <div class="status" id="status-lat"></div>
         <nav class="menu" id="menu">
           <button type="button" data-ir="historico" class="ativo">Histórico de Consulta</button>
-          <button type="button" data-ir="s-evolucao" data-at hidden>Evolução</button>
-          <button type="button" data-ir="s-hd" data-at hidden>Hipótese diagnóstica / Conduta</button>
-          <button type="button" data-ir="s-exames" data-at hidden>Exames complementares</button>
           <button type="button" data-ir="s-anamnese" data-at hidden>Anamnese e exame oftalmológico</button>
+          <button type="button" data-ir="s-exames" data-at hidden>Exames complementares</button>
+          <button type="button" data-ir="s-hd" data-at hidden>Hipótese diagnóstica / Conduta</button>
+          <button type="button" data-ir="s-evolucao" data-at hidden>Evolução</button>
           <button type="button" data-ir="s-anexos" data-at hidden>Imagens e anexos</button>
           <button type="button" data-ir="s-iclinic" data-at hidden>Texto para o iClinic</button>
         </nav>
@@ -247,7 +241,6 @@ table.lau tr.alt td{color:#b02a2a;font-weight:700}
           <div class="acoes"><button type="button" class="link" id="voltar-lista">← Voltar à lista</button><span class="hint" id="p-hoje"></span></div>
         </div>
 
-        <div class="antes" id="antes"></div>
 
         <details class="sec" id="sec-pre" hidden open><summary id="pre-resumo">Pré-exame</summary><div id="pre-corpo" style="display:grid;gap:8px"></div></details>
         <details class="sec" id="sec-diag"><summary>Últimos diagnósticos</summary><div class="diag" id="diag"></div></details>
@@ -263,9 +256,53 @@ table.lau tr.alt td{color:#b02a2a;font-weight:700}
 
         <!-- atendimento -->
         <div id="atendimento" class="palco" hidden>
-          <article class="folha-sec" id="s-evolucao">
-            <div class="t"><span>Evolução</span><small id="data-at"></small></div>
-            <div class="c"><div class="campo"><label for="evol-txt">Ao exame:</label><textarea id="evol-txt" rows="5" placeholder="Texto livre da evolução…"></textarea></div></div>
+          <article class="folha-sec" id="s-anamnese">
+            <div class="t"><span>Anamnese e exame oftalmológico</span><span><button type="button" class="link" data-modelo="rotina">Modelo: rotina normal</button><button type="button" class="link" data-modelo="lente">Retorno de lente</button><button type="button" class="link" data-modelo="ceratocone">Ceratocone</button><button type="button" class="link" data-modelo="catarata">Catarata</button></span></div>
+            <div class="c" id="form-anamnese">
+              <div><span class="rot">Queixa principal</span>
+                <div class="chips" data-grupo="qp">
+                  <span class="chip" tabindex="0">Baixa visual para longe</span><span class="chip" tabindex="0">Baixa visual para perto</span><span class="chip" tabindex="0">Baixa visual para longe e perto</span>
+                  <span class="chip" tabindex="0">Óculos fracos</span><span class="chip" tabindex="0">Revisão de rotina</span><span class="chip" tabindex="0">Irritação</span><span class="chip" tabindex="0">Dor de cabeça</span>
+                  <span class="chip" tabindex="0">Prurido</span><span class="chip" tabindex="0">Olho vermelho</span><span class="chip" tabindex="0">Lacrimejamento</span><span class="chip" tabindex="0">Desconforto com a lente</span>
+                </div></div>
+              <div class="campo"><label for="qp-txt">História da moléstia atual (um item por linha)</label><textarea id="qp-txt" rows="3"></textarea></div>
+              <div><span class="rot">Acuidade visual</span>
+                <div class="grid-olho">
+                  <span class="blank"></span><span class="h od">Olho direito</span><span class="h oe">Olho esquerdo</span>
+                  <span class="lbl rowlbl">Sem correção</span><input id="av-sc-od" list="snellen"><input id="av-sc-oe" list="snellen">
+                  <span class="lbl rowlbl">Com correção</span><input id="av-cc-od" list="snellen"><input id="av-cc-oe" list="snellen">
+                  <span class="lbl rowlbl">Perto</span><input id="av-pt-od" list="jaeger"><input id="av-pt-oe" list="jaeger">
+                </div></div>
+              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Refração <span class="hint">— -250 ou -2.5 vira -2,50</span></span><span><button type="button" class="link" id="repetir-ref" hidden>Repetir a refração anterior</button><button type="button" class="link" id="transpor">Transpor cilindro</button></span></div>
+                <div class="ref">
+                  <span></span><span class="h">Esférico</span><span class="h">Cilíndrico</span><span class="h">Eixo</span><span class="h">AV</span>
+                  <span class="eye" style="color:var(--od)">OD</span><input id="re-od-esf" inputmode="decimal"><input id="re-od-cil" inputmode="decimal"><input id="re-od-eixo" inputmode="numeric"><input id="re-od-av" list="snellen">
+                  <span class="eye" style="color:var(--oe)">OE</span><input id="re-oe-esf" inputmode="decimal"><input id="re-oe-cil" inputmode="decimal"><input id="re-oe-eixo" inputmode="numeric"><input id="re-oe-av" list="snellen">
+                </div>
+                <div class="row" style="margin-top:6px"><label>Adição <input id="re-add" inputmode="decimal" style="width:90px;font-family:var(--f-mono);text-align:right"></label><span class="hint" id="ref-aviso"></span></div></div>
+              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Biomicroscopia</span><button type="button" class="link" data-normal="bio">Sem alterações em ambos os olhos</button></div><div class="grid-olho" id="bio"></div></div>
+              <div><span class="rot">Pressão intraocular</span>
+                <div class="row"><label><b style="color:var(--od)">OD</b> <input id="pio-od" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label><label><b style="color:var(--oe)">OE</b> <input id="pio-oe" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label><span class="lbl">mmHg</span>
+                  <select id="pio-met" aria-label="Método"><option>aplanação</option><option>tonômetro de rebote</option><option>sopro</option></select><label>às <input id="pio-hora" style="width:80px;font-family:var(--f-mono)"></label></div></div>
+              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Fundoscopia</span><button type="button" class="link" data-normal="fo">Sem alterações em ambos os olhos</button></div><div class="grid-olho" id="fo"></div></div>
+            </div>
+          </article>
+
+          <article class="folha-sec" id="s-exames">
+            <div class="t"><span>Exames complementares</span></div>
+            <div class="c">
+              <div><span class="rot">Topografia de córnea</span>
+                <div class="chips" data-grupo="topo"><span class="chip" tabindex="0">Córnea regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular e simétrico em ambos os olhos</span></div>
+                <textarea id="topo-txt" rows="2" style="margin-top:6px" placeholder="Descrição da topografia…"></textarea></div>
+              <div><span class="rot">Microscopia especular de córnea</span>
+                <div class="chips" data-grupo="micro"><span class="chip" tabindex="0">Densidade endotelial estimada normal para a idade em ambos os olhos</span><span class="chip" tabindex="0">Predominância de células de arquitetura e disposição regulares em ambos os olhos</span></div>
+                <div class="row" style="margin-top:6px"><label>Densidade endotelial olho direito <input id="micro-od" inputmode="numeric" style="width:110px"> células/mm²</label><label>olho esquerdo <input id="micro-oe" inputmode="numeric" style="width:110px"> células/mm²</label></div></div>
+              <div class="row"><label>Paquimetria central média olho direito <input id="paqui-od" inputmode="numeric" style="width:90px"> µm</label><label>olho esquerdo <input id="paqui-oe" inputmode="numeric" style="width:90px"> µm</label></div>
+              <div><span class="rot">Mapeamento de retina</span>
+                <div class="chips" data-grupo="mapa"><span class="chip" tabindex="0">Vítreo posterior transparente em ambos os olhos</span><span class="chip" tabindex="0">Papila rósea, de limites bem definidos, escavação fisiológica em ambos os olhos</span><span class="chip" tabindex="0">Mácula com reflexo fisiológico em ambos os olhos</span><span class="chip" tabindex="0">Vasos com contorno e calibre dentro da normalidade em ambos os olhos</span><span class="chip" tabindex="0">Periferia retiniana sem lesões ou anormalidades em ambos os olhos</span></div>
+                <textarea id="mapa-txt" rows="2" style="margin-top:6px" placeholder="Descrição do mapeamento…"></textarea></div>
+              <div class="campo"><label for="exc-txt">Outros exames (um por linha)</label><textarea id="exc-txt" rows="2"></textarea></div>
+            </div>
           </article>
 
           <article class="folha-sec" id="s-hd">
@@ -309,53 +346,9 @@ table.lau tr.alt td{color:#b02a2a;font-weight:700}
             </div>
           </article>
 
-          <article class="folha-sec" id="s-exames">
-            <div class="t"><span>Exames complementares</span></div>
-            <div class="c">
-              <div><span class="rot">Topografia de córnea</span>
-                <div class="chips" data-grupo="topo"><span class="chip" tabindex="0">Córnea regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular e simétrico em ambos os olhos</span></div>
-                <textarea id="topo-txt" rows="2" style="margin-top:6px" placeholder="Descrição da topografia…"></textarea></div>
-              <div><span class="rot">Microscopia especular de córnea</span>
-                <div class="chips" data-grupo="micro"><span class="chip" tabindex="0">Densidade endotelial estimada normal para a idade em ambos os olhos</span><span class="chip" tabindex="0">Predominância de células de arquitetura e disposição regulares em ambos os olhos</span></div>
-                <div class="row" style="margin-top:6px"><label>Densidade endotelial olho direito <input id="micro-od" inputmode="numeric" style="width:110px"> células/mm²</label><label>olho esquerdo <input id="micro-oe" inputmode="numeric" style="width:110px"> células/mm²</label></div></div>
-              <div class="row"><label>Paquimetria central média olho direito <input id="paqui-od" inputmode="numeric" style="width:90px"> µm</label><label>olho esquerdo <input id="paqui-oe" inputmode="numeric" style="width:90px"> µm</label></div>
-              <div><span class="rot">Mapeamento de retina</span>
-                <div class="chips" data-grupo="mapa"><span class="chip" tabindex="0">Vítreo posterior transparente em ambos os olhos</span><span class="chip" tabindex="0">Papila rósea, de limites bem definidos, escavação fisiológica em ambos os olhos</span><span class="chip" tabindex="0">Mácula com reflexo fisiológico em ambos os olhos</span><span class="chip" tabindex="0">Vasos com contorno e calibre dentro da normalidade em ambos os olhos</span><span class="chip" tabindex="0">Periferia retiniana sem lesões ou anormalidades em ambos os olhos</span></div>
-                <textarea id="mapa-txt" rows="2" style="margin-top:6px" placeholder="Descrição do mapeamento…"></textarea></div>
-              <div class="campo"><label for="exc-txt">Outros exames (um por linha)</label><textarea id="exc-txt" rows="2"></textarea></div>
-            </div>
-          </article>
-
-          <article class="folha-sec" id="s-anamnese">
-            <div class="t"><span>Anamnese e exame oftalmológico</span><span><button type="button" class="link" data-modelo="rotina">Modelo: rotina normal</button><button type="button" class="link" data-modelo="lente">Retorno de lente</button><button type="button" class="link" data-modelo="ceratocone">Ceratocone</button><button type="button" class="link" data-modelo="catarata">Catarata</button></span></div>
-            <div class="c" id="form-anamnese">
-              <div><span class="rot">Queixa principal</span>
-                <div class="chips" data-grupo="qp">
-                  <span class="chip" tabindex="0">Baixa visual para longe</span><span class="chip" tabindex="0">Baixa visual para perto</span><span class="chip" tabindex="0">Baixa visual para longe e perto</span>
-                  <span class="chip" tabindex="0">Óculos fracos</span><span class="chip" tabindex="0">Revisão de rotina</span><span class="chip" tabindex="0">Irritação</span><span class="chip" tabindex="0">Dor de cabeça</span>
-                  <span class="chip" tabindex="0">Prurido</span><span class="chip" tabindex="0">Olho vermelho</span><span class="chip" tabindex="0">Lacrimejamento</span><span class="chip" tabindex="0">Desconforto com a lente</span>
-                </div></div>
-              <div class="campo"><label for="qp-txt">História da moléstia atual (um item por linha)</label><textarea id="qp-txt" rows="3"></textarea></div>
-              <div><span class="rot">Acuidade visual</span>
-                <div class="grid-olho">
-                  <span class="blank"></span><span class="h od">Olho direito</span><span class="h oe">Olho esquerdo</span>
-                  <span class="lbl rowlbl">Sem correção</span><input id="av-sc-od" list="snellen"><input id="av-sc-oe" list="snellen">
-                  <span class="lbl rowlbl">Com correção</span><input id="av-cc-od" list="snellen"><input id="av-cc-oe" list="snellen">
-                  <span class="lbl rowlbl">Perto</span><input id="av-pt-od" list="jaeger"><input id="av-pt-oe" list="jaeger">
-                </div></div>
-              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Refração <span class="hint">— -250 ou -2.5 vira -2,50</span></span><span><button type="button" class="link" id="repetir-ref" hidden>Repetir a refração anterior</button><button type="button" class="link" id="transpor">Transpor cilindro</button></span></div>
-                <div class="ref">
-                  <span></span><span class="h">Esférico</span><span class="h">Cilíndrico</span><span class="h">Eixo</span><span class="h">AV</span>
-                  <span class="eye" style="color:var(--od)">OD</span><input id="re-od-esf" inputmode="decimal"><input id="re-od-cil" inputmode="decimal"><input id="re-od-eixo" inputmode="numeric"><input id="re-od-av" list="snellen">
-                  <span class="eye" style="color:var(--oe)">OE</span><input id="re-oe-esf" inputmode="decimal"><input id="re-oe-cil" inputmode="decimal"><input id="re-oe-eixo" inputmode="numeric"><input id="re-oe-av" list="snellen">
-                </div>
-                <div class="row" style="margin-top:6px"><label>Adição <input id="re-add" inputmode="decimal" style="width:90px;font-family:var(--f-mono);text-align:right"></label><span class="hint" id="ref-aviso"></span></div></div>
-              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Biomicroscopia</span><button type="button" class="link" data-normal="bio">Sem alterações em ambos os olhos</button></div><div class="grid-olho" id="bio"></div></div>
-              <div><span class="rot">Pressão intraocular</span>
-                <div class="row"><label><b style="color:var(--od)">OD</b> <input id="pio-od" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label><label><b style="color:var(--oe)">OE</b> <input id="pio-oe" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label><span class="lbl">mmHg</span>
-                  <select id="pio-met" aria-label="Método"><option>aplanação</option><option>tonômetro de rebote</option><option>sopro</option></select><label>às <input id="pio-hora" style="width:80px;font-family:var(--f-mono)"></label></div></div>
-              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Fundoscopia</span><button type="button" class="link" data-normal="fo">Sem alterações em ambos os olhos</button></div><div class="grid-olho" id="fo"></div></div>
-            </div>
+          <article class="folha-sec" id="s-evolucao">
+            <div class="t"><span>Evolução</span><small id="data-at"></small></div>
+            <div class="c"><div class="campo"><label for="evol-txt">Ao exame:</label><textarea id="evol-txt" rows="5" placeholder="Texto livre da evolução…"></textarea></div></div>
           </article>
 
           <article class="folha-sec" id="s-anexos">
@@ -380,15 +373,6 @@ table.lau tr.alt td{color:#b02a2a;font-weight:700}
   </div>
 </div>
 
-<!-- antecedentes -->
-<div class="fundo" id="m-ante" hidden>
-  <div class="modal" role="dialog" aria-labelledby="ma-t">
-    <div class="row" style="justify-content:space-between"><h3 id="ma-t">Antecedentes</h3><button type="button" class="link" id="ma-fechar">Fechar</button></div>
-    <textarea id="ma-txt" rows="7" placeholder="Digite aqui"></textarea>
-    <div class="status" id="ma-st"></div>
-    <div class="pe"><button type="button" id="ma-ant">‹ Anterior</button><span class="hint">Salva sozinho ao trocar ou fechar</span><button type="button" id="ma-prox">Próximo ›</button></div>
-  </div>
-</div>
 <!-- inserir informações (adendo) -->
 <div class="fundo" id="m-adendo" hidden>
   <div class="modal" role="dialog" aria-labelledby="md-t">
@@ -413,15 +397,17 @@ table.lau tr.alt td{color:#b02a2a;font-weight:700}
 <!-- laudo -->
 <div class="fundo" id="m-laudo" hidden>
   <div class="modal grande" role="dialog" aria-labelledby="ml-t">
-    <div class="row" style="justify-content:space-between"><h3 id="ml-t">Laudo de tomografia de córnea (Pentacam)</h3><button type="button" class="link" id="ml-fechar">Fechar</button></div>
+    <div class="row" style="justify-content:space-between"><h3 id="ml-t">Laudo</h3><button type="button" class="link" id="ml-fechar">Fechar</button></div>
+    <div class="row"><label>Exame <select id="ml-tipo" style="width:auto"><option value="pentacam">Tomografia de córnea (Pentacam)</option><option value="paquimetria">Paquimetria corneana</option><option value="microscopia">Microscopia especular de córnea</option></select></label><button type="button" id="ml-gerar">Gerar laudo</button></div>
     <div class="status" id="ml-st"></div>
     <div id="ml-corpo" hidden style="display:grid;gap:10px">
-      <div class="row"><label>Exame realizado em <input id="ml-data" style="width:130px"></label><label>Sexo <select id="ml-sexo"><option>Não informado</option><option>Feminino</option><option>Masculino</option></select></label><span class="hint">Confira os valores com as telas do exame. Linhas marcadas como alteradas saem em vermelho.</span></div>
+      <div class="row"><label>Exame realizado em <input id="ml-data" style="width:130px"></label><label>Sexo <select id="ml-sexo"><option>Não informado</option><option>Feminino</option><option>Masculino</option></select></label><label>CPF <input id="ml-cpf" style="width:150px" placeholder="000.000.000-00"></label><label>Prontuário <input id="ml-pront" style="width:110px" placeholder="#000000"></label></div>
+      <div class="campo" id="ml-metodo-box"><label for="ml-metodo">Método / aparelho</label><input id="ml-metodo"></div>
       <div class="pend" id="ml-pend" hidden></div>
       <div id="ml-olhos"></div>
       <div class="campo"><label for="ml-imp">Impressão diagnóstica</label><textarea id="ml-imp" rows="3"></textarea></div>
       <div class="pe" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center">
-        <div class="row"><button type="button" id="ml-refazer">Ler o exame de novo</button><label style="gap:6px"><input type="checkbox" id="ml-timbrado" style="width:auto"> Papel timbrado</label><label style="gap:6px"><input type="checkbox" id="ml-imagens" style="width:auto" checked> Incluir as telas do exame</label></div>
+        <div class="row"><label style="gap:6px"><input type="checkbox" id="ml-timbrado" style="width:auto"> Papel timbrado</label><label style="gap:6px"><input type="checkbox" id="ml-imagens" style="width:auto" checked> Incluir as telas do exame</label></div>
         <div class="row"><button type="button" id="ml-salvar">Salvar revisão</button><button type="button" class="pri" id="ml-imprimir">Imprimir laudo</button></div>
       </div>
     </div>
@@ -745,7 +731,6 @@ $("#voltar-lista").addEventListener("click",voltarLista);
 async function voltarLista(){ if(atend&&sujo) await salvar(true); pararRelogio(); atend=null; mostra("lista"); carregaDia($("#dia").value||hojeBR()); }
 
 /* ===== FICHA ===== */
-const ANTE=[["clinicos","Antec. clínicos"],["cirurgicos","Antec. cirúrgicos"],["familiares","Antec. familiares"],["habitos","Hábitos"],["alergias","Alergias"],["medicamentos","Medicamentos em uso"]];
 async function abrirFicha(tel,nome,manterAtend){
   if(atend&&sujo&&!manterAtend) await salvar(true);
   try{
@@ -766,10 +751,6 @@ function desenhaFicha(){
   $("#p-prim").textContent=p.primeira_consulta?ddmmaa(p.primeira_consulta):"—";
   $("#p-tel").textContent=p.telefone||"—";
   $("#p-hoje").textContent=ficha.hoje?`Consulta hoje às ${hhmm(ficha.hoje.inicio)} · ${ficha.hoje.unidade}`:"Sem consulta marcada para hoje";
-  // antecedentes
-  const a=ficha.antecedentes||{};
-  $("#antes").innerHTML=ANTE.map(([k,rot],i)=>`<button type="button" class="card-ante" data-i="${i}"><small>${rot}</small><span class="${a[k]?"cheio":""}">${esc(a[k]||"Inserir informação")}</span></button>`).join("");
-  $$("#antes .card-ante").forEach(b=>b.addEventListener("click",()=>abrirAnte(+b.dataset.i)));
   // pré-exame (motivo da consulta + exames anexados por quem faz o pré-exame)
   const pre=preDoAgendamento(ficha.hoje?.id);
   const axPre=(ficha.anexos||[]).filter(x=>ficha.hoje&&x.appointment_id===ficha.hoje.id&&x.enviado_por);
@@ -837,20 +818,6 @@ function desenhaTimeline(){
 }
 $("#filtro").addEventListener("change",desenhaTimeline);
 
-/* antecedentes (modal com anterior/próximo, salva ao trocar ou fechar) */
-let anteI=0;
-function abrirAnte(i){ anteI=i; $("#ma-t").textContent=ANTE[i][1]; $("#ma-txt").value=(ficha.antecedentes||{})[ANTE[i][0]]||""; $("#ma-st").textContent="";
-  $("#ma-ant").textContent="‹ "+ANTE[(i+ANTE.length-1)%ANTE.length][1]; $("#ma-prox").textContent=ANTE[(i+1)%ANTE.length][1]+" ›";
-  $("#m-ante").hidden=false; setTimeout(()=>$("#ma-txt").focus(),30); }
-async function salvaAnte(){ const k=ANTE[anteI][0]; const novo=$("#ma-txt").value.trim(); const a={...(ficha.antecedentes||{})};
-  if((a[k]||"")===novo) return true; a[k]=novo;
-  try{ await api("/api/prontuario/antecedentes",{method:"POST",body:JSON.stringify({tel:ficha.paciente.telefone,nome:ficha.paciente.nome,antecedentes:a})});
-    ficha.antecedentes=a; $("#ma-st").textContent="As informações foram salvas."; $("#ma-st").className="status ok"; return true;
-  }catch(e){ $("#ma-st").textContent=e.status===401?MSG_SESSAO:(e.msg||"Não consegui salvar."); $("#ma-st").className="status erro"; return false; } }
-$("#ma-ant").addEventListener("click",async()=>{ if(await salvaAnte()) abrirAnte((anteI+ANTE.length-1)%ANTE.length); });
-$("#ma-prox").addEventListener("click",async()=>{ if(await salvaAnte()) abrirAnte((anteI+1)%ANTE.length); });
-$("#ma-fechar").addEventListener("click",async()=>{ if(await salvaAnte()){ $("#m-ante").hidden=true; desenhaFicha(); } });
-document.addEventListener("keydown",e=>{ if($("#m-ante").hidden) return; if(e.altKey&&e.key==="ArrowRight"){ e.preventDefault(); $("#ma-prox").click(); } if(e.altKey&&e.key==="ArrowLeft"){ e.preventDefault(); $("#ma-ant").click(); } if(e.key==="Escape") $("#ma-fechar").click(); });
 
 /* adendo */
 let adendoId=null;
@@ -871,7 +838,7 @@ $("#nasc-in").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefa
 function modoAtend(on){
   $("#atendimento").hidden=!on; $("#historico").hidden=on;
   $$("#menu [data-at]").forEach(b=>b.hidden=!on);
-  $$("#menu button").forEach(b=>b.classList.toggle("ativo",b.dataset.ir===(on?"s-evolucao":"historico")));
+  $$("#menu button").forEach(b=>b.classList.toggle("ativo",b.dataset.ir===(on?"s-anamnese":"historico")));
   const b=$("#btn-atend"); b.classList.toggle("fim",on); b.textContent=on?"■ Finalizar atendimento":"▶ Iniciar atendimento";
   if(!on){ $("#duracao").textContent="00:00:00"; status("",""); }
 }
@@ -889,7 +856,7 @@ async function iniciar(consultaId){
     $("#data-at").textContent=new Date(c.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
     durBase=c.duracao_seg||0; t0=Date.now(); pararRelogio(); t0=Date.now(); relogio=setInterval(()=>{ $("#duracao").textContent=fmtDur(durAtual()); },1000);
     modoAtend(true); atualiza(); sujo=false; status(c.updated_at&&c.texto?`Rascunho salvo às ${hhmm(c.updated_at)}.`:"Atendimento iniciado.","ok");
-    desenhaAnexosAt(); $("#s-evolucao").scrollIntoView({behavior:"smooth"});
+    desenhaAnexosAt(); $("#s-anamnese").scrollIntoView({behavior:"smooth"});
   }catch(e){ status(e.status===401?MSG_SESSAO:(e.msg||"Não consegui iniciar o atendimento."),"erro"); }
 }
 $("#btn-atend").addEventListener("click",()=>{ if(atend) abrirFinalizar(); else iniciar(); });
@@ -952,24 +919,57 @@ const inIcl=document.createElement("input"); inIcl.type="file"; inIcl.accept="ap
 $("#anexar-iclinic").addEventListener("click",()=>inIcl.click());
 inIcl.addEventListener("change",()=>{ const fs=[...inIcl.files]; inIcl.value=""; enviar(fs,"iclinic",null,$("#st-iclinic")); });
 
-/* ===== LAUDO (skill laudo-pentacam-iobb) ===== */
+/* ===== LAUDO =====
+   Pentacam: skill laudo-pentacam-iobb (tabelas por olho).
+   Paquimetria e microscopia especular: modelos aprovados em 17/10/2026 — uma
+   tabela só (Parâmetro | OD | OS | Referência), célula alterada em vermelho. */
+const TIPOS_LAUDO={pentacam:"Tomografia de córnea (Pentacam)",paquimetria:"Paquimetria corneana",microscopia:"Microscopia especular de córnea"};
+const TITULO_LAUDO={pentacam:"LAUDO DE TOMOGRAFIA DE CÓRNEA (PENTACAM)",paquimetria:"LAUDO DE PAQUIMETRIA CORNEANA",microscopia:"LAUDO DE MICROSCOPIA ESPECULAR DE CÓRNEA"};
 const SEC_LAUDO=[["cornea_anterior","Córnea anterior","Parâmetro"],["cornea_posterior","Córnea posterior","Parâmetro"],["paquimetria","Paquimetria","Parâmetro"],["elevacoes","Elevações (BFS float, zona de 8 mm)","Parâmetro"],["indices","Índices tomográficos (zona de 8 mm)","Índice"]];
 let laudoAx=null, laudo=null;
 try{ $("#ml-timbrado").checked=localStorage.getItem("laudo-timbrado")!=="0"; }catch(_){ $("#ml-timbrado").checked=true; }
 $("#ml-timbrado").addEventListener("change",()=>{ try{ localStorage.setItem("laudo-timbrado",$("#ml-timbrado").checked?"1":"0"); }catch(_){} });
 document.addEventListener("click",e=>{ const b=e.target.closest("[data-laudo]"); if(!b) return; e.preventDefault(); abrirLaudo(b.dataset.laudo); });
 function mlStatus(t,cls){ $("#ml-st").textContent=t; $("#ml-st").className="status "+(cls||""); }
-async function abrirLaudo(id,refazer){
+// Tipo pelo nome do exame (o pré-exame escolhe "Pentacam", "Paquimetria"…).
+function tipoDoExame(ax){ const t=(String(ax.observacao||"")+" "+String(ax.nome||"")).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+  return /microsc|especular|endotel|spm/.test(t)?"microscopia":/paquim|espessura/.test(t)?"paquimetria":/pentacam|tomograf/.test(t)?"pentacam":null; }
+async function abrirLaudo(id){
   laudoAx=(ficha.anexos||[]).find(x=>x.id===id); if(!laudoAx) return;
   $("#m-laudo").hidden=false; $("#ml-corpo").hidden=true;
-  mlStatus(refazer||!laudoAx.laudo?"Lendo o exame e montando o laudo… leva até um minuto.":"Abrindo…","");
-  try{ const r=await api(`/api/prontuario/laudo/${id}`,{method:"POST",body:JSON.stringify({tipo:"pentacam",refazer:!!refazer})});
-    laudo=r.laudo; laudoAx.laudo=laudo; desenhaLaudo(); mlStatus(r.salvo?`Laudo salvo${laudo.revisado_em?" (revisado em "+ddmmaa(laudo.revisado_em)+")":""}.`:"Laudo montado. Confira os valores antes de imprimir.","ok");
-  }catch(e){ mlStatus(e.status===401?MSG_SESSAO:(e.msg||"Não consegui gerar o laudo."),"erro"); }
+  const tipo=laudoAx.laudo?(laudoAx.laudo.tipo||"pentacam"):tipoDoExame(laudoAx);
+  $("#ml-tipo").value=tipo||"pentacam"; $("#ml-t").textContent="Laudo";
+  if(laudoAx.laudo){ laudo=laudoAx.laudo; desenhaLaudo(); mlStatus(`Laudo salvo${laudo.revisado_em?" (revisado em "+ddmmaa(laudo.revisado_em)+")":""}.`,"ok"); return; }
+  if(tipo) return gerarLaudo(false);
+  $("#ml-gerar").textContent="Gerar laudo"; mlStatus("Escolha qual exame é este e clique em Gerar laudo.","");
 }
+async function gerarLaudo(refazer){
+  const tipo=$("#ml-tipo").value; $("#ml-corpo").hidden=true; $("#ml-gerar").disabled=true;
+  mlStatus("Lendo o exame e montando o laudo… leva até um minuto.","");
+  try{ const r=await api(`/api/prontuario/laudo/${laudoAx.id}`,{method:"POST",body:JSON.stringify({tipo,refazer:!!refazer})});
+    laudo=r.laudo; laudo.tipo=laudo.tipo||tipo; laudoAx.laudo=laudo; desenhaLaudo();
+    mlStatus(r.salvo?"Laudo salvo.":"Laudo montado. Confira os valores antes de imprimir.","ok");
+  }catch(e){ mlStatus(e.status===401?MSG_SESSAO:(e.msg||"Não consegui gerar o laudo."),"erro"); }
+  finally{ $("#ml-gerar").disabled=false; }
+}
+$("#ml-gerar").addEventListener("click",()=>gerarLaudo(!!laudo&&laudoAx.laudo===laudo));
+$("#ml-tipo").addEventListener("change",()=>{ $("#ml-gerar").textContent=laudoAx?.laudo&&($("#ml-tipo").value!==(laudoAx.laudo.tipo||"pentacam"))?"Gerar com este tipo":(laudoAx?.laudo?"Ler o exame de novo":"Gerar laudo"); });
+// CPF e nº de prontuário: digitados uma vez, reaproveitados nos próximos laudos do paciente.
+function dadoDoPaciente(k){ for(const x of ficha.anexos||[]) if(x.laudo&&x.laudo[k]) return x.laudo[k]; return ""; }
 function desenhaLaudo(){
-  $("#ml-corpo").hidden=false; $("#ml-data").value=laudo.data_exame||""; $("#ml-sexo").value=laudo.sexo||"Não informado"; $("#ml-imp").value=laudo.impressao_diagnostica||"";
+  $("#ml-corpo").hidden=false; $("#ml-gerar").textContent="Ler o exame de novo";
+  $("#ml-t").textContent=TIPOS_LAUDO[laudo.tipo||"pentacam"]; $("#ml-tipo").value=laudo.tipo||"pentacam";
+  $("#ml-data").value=laudo.data_exame||""; $("#ml-sexo").value=laudo.sexo||"Não informado"; $("#ml-imp").value=laudo.impressao_diagnostica||"";
+  $("#ml-cpf").value=laudo.cpf||dadoDoPaciente("cpf"); $("#ml-pront").value=laudo.prontuario||dadoDoPaciente("prontuario");
+  $("#ml-metodo-box").hidden=(laudo.tipo||"pentacam")==="pentacam"; $("#ml-metodo").value=laudo.metodo||"";
   const pend=(laudo.pendencias||[]).filter(Boolean); $("#ml-pend").hidden=!pend.length; $("#ml-pend").innerHTML=pend.length?"<b>Atenção:</b> "+pend.map(esc).join(" · "):"";
+  if((laudo.tipo||"pentacam")!=="pentacam"){
+    const cel=(si,i,o,r)=>`<td class="${r[o+"_alterado"]?"alt-c":""}"><div style="display:flex;gap:4px;align-items:center"><input type="text" data-s="${si}" data-i="${i}" data-o="${o}" value="${esc(r[o])}"><input type="checkbox" data-s="${si}" data-i="${i}" data-o="${o}" data-alt ${r[o+"_alterado"]?"checked":""} style="width:auto" title="Alterado (sai em vermelho)"></div></td>`;
+    $("#ml-olhos").innerHTML=(laudo.secoes||[]).map((sc,si)=>`<div class="hint">${esc(sc.titulo)}</div><table class="lau"><tr><th>Parâmetro</th><th>OD</th><th>OS</th><th>Referência</th></tr>${(sc.linhas||[]).map((r,i)=>`<tr><td>${esc(r.parametro)}</td>${cel(si,i,"od",r)}${cel(si,i,"os",r)}<td>${esc(r.referencia||"")}</td></tr>`).join("")}</table>`).join("")+'<div class="hint">A caixinha ao lado de cada valor marca o alterado (sai em vermelho).</div>';
+    $$("#ml-olhos input").forEach(inp=>inp.addEventListener("change",()=>{ const r=laudo.secoes[+inp.dataset.s].linhas[+inp.dataset.i], o=inp.dataset.o;
+      if(inp.dataset.alt!==undefined){ r[o+"_alterado"]=inp.checked; inp.closest("td").classList.toggle("alt-c",inp.checked); } else r[o]=inp.value; }));
+    return;
+  }
   const linha=(o,k,i,r,comRef)=>`<tr class="${r.alterado?"alt":""}"><td>${esc(r.parametro||r.componente)}</td><td><input type="text" data-o="${o}" data-k="${k}" data-i="${i}" value="${esc(r.valor)}"></td>${comRef?`<td>${esc(r.referencia||"")}</td>`:""}<td style="text-align:center"><input type="checkbox" data-o="${o}" data-k="${k}" data-i="${i}" data-alt ${r.alterado?"checked":""} style="width:auto" title="Alterado"></td></tr>`;
   $("#ml-olhos").innerHTML=["OD","OS"].filter(o=>laudo.olhos?.[o]).map(o=>{ const d=laudo.olhos[o];
     return `<div class="lau-olho"><h4>${o==="OD"?"OLHO DIREITO (OD)":"OLHO ESQUERDO (OS)"}</h4>`+
@@ -978,24 +978,25 @@ function desenhaLaudo(){
   $$("#ml-olhos input").forEach(inp=>inp.addEventListener("change",()=>{ const r=laudo.olhos[inp.dataset.o][inp.dataset.k][+inp.dataset.i];
     if(inp.dataset.alt!==undefined){ r.alterado=inp.checked; inp.closest("tr").classList.toggle("alt",inp.checked); } else r.valor=inp.value; }));
 }
-function lerEdicao(){ laudo.data_exame=v("ml-data"); laudo.sexo=$("#ml-sexo").value; laudo.impressao_diagnostica=$("#ml-imp").value.trim(); }
+function lerEdicao(){ laudo.data_exame=v("ml-data"); laudo.sexo=$("#ml-sexo").value; laudo.impressao_diagnostica=$("#ml-imp").value.trim();
+  laudo.cpf=v("ml-cpf"); laudo.prontuario=v("ml-pront"); if((laudo.tipo||"pentacam")!=="pentacam") laudo.metodo=v("ml-metodo"); }
 $("#ml-fechar").addEventListener("click",()=>{ $("#m-laudo").hidden=true; desenhaFicha(); desenhaAnexosAt(); });
-$("#ml-refazer").addEventListener("click",()=>abrirLaudo(laudoAx.id,true));
 $("#ml-salvar").addEventListener("click",async()=>{ lerEdicao(); try{ await api(`/api/prontuario/laudo/${laudoAx.id}/salvar`,{method:"POST",body:JSON.stringify({laudo})}); mlStatus("Revisão salva.","ok"); }catch(e){ mlStatus(e.status===401?MSG_SESSAO:(e.msg||"Não consegui salvar."),"erro"); } });
-// Telas do exame (PDF) viram imagens com o pdf.js, na ordem da skill.
+// Telas do exame (PDF) viram imagens com o pdf.js.
 let pdfjsPronto=null;
 function carregaPdfjs(){ if(pdfjsPronto) return pdfjsPronto; pdfjsPronto=new Promise((ok,falha)=>{ const sc=document.createElement("script"); sc.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; sc.onload=()=>{ window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; ok(window.pdfjsLib); }; sc.onerror=falha; document.head.appendChild(sc); }); return pdfjsPronto; }
-const ORDEM_TELA=t=>{ const tp=String(t.tipo||"").toLowerCase(); return (t.olho==="OS"?10:0)+(tp.includes("topom")?1:tp.includes("ectasia")?2:tp.includes("4 mapas")||tp.includes("refrativ")?3:4); };
+const ORDEM_TELA=t=>{ const tp=String(t.tipo||t.legenda||"").toLowerCase(); return (t.olho==="OS"?10:0)+(tp.includes("topom")?1:tp.includes("ectasia")?2:tp.includes("4 mapas")||tp.includes("refrativ")?3:4); };
+const legTela=t=>t.legenda||`${t.olho} — ${t.tipo}`;
 async function telasDoExame(){
   if(!laudoAx?.url) return [];
-  const mime=String(laudoAx.mime||"");
-  if(mime.startsWith("image/")) return [{src:laudoAx.url,leg:laudoAx.observacao||"Exame"}];
-  const telas=[...(laudo.telas||[])].filter(t=>t&&t.pagina).sort((a,b)=>ORDEM_TELA(a)-ORDEM_TELA(b));
+  const mime=String(laudoAx.mime||""), telas=[...(laudo.telas||[])].filter(t=>t&&t.pagina);
+  if(mime.startsWith("image/")) return [{src:laudoAx.url,leg:telas[0]?legTela(telas[0]):(laudoAx.observacao||"Exame")}];
+  if((laudo.tipo||"pentacam")==="pentacam") telas.sort((a,b)=>ORDEM_TELA(a)-ORDEM_TELA(b));
   if(!telas.length) return [];
   const lib=await carregaPdfjs(); const doc=await lib.getDocument(laudoAx.url).promise; const out=[];
   for(const t of telas){ if(t.pagina>doc.numPages) continue; const pg=await doc.getPage(t.pagina); const vp=pg.getViewport({scale:1.6});
     const cv=document.createElement("canvas"); cv.width=vp.width; cv.height=vp.height; await pg.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise;
-    out.push({src:cv.toDataURL("image/jpeg",0.85),leg:`${t.olho} — ${t.tipo}`}); }
+    out.push({src:cv.toDataURL("image/jpeg",0.85),leg:legTela(t)}); }
   return out;
 }
 $("#ml-imprimir").addEventListener("click",async()=>{
@@ -1003,36 +1004,41 @@ $("#ml-imprimir").addEventListener("click",async()=>{
   if(!w){ mlStatus("O navegador bloqueou a janela do laudo. Permita pop-ups para este site.","erro"); return; }
   w.document.write("<p style='font:15px sans-serif;padding:20px'>Montando o laudo…</p>");
   let imgs=[]; if($("#ml-imagens").checked){ try{ mlStatus("Preparando as telas do exame…",""); imgs=await telasDoExame(); }catch(_){ mlStatus("Não consegui incluir as telas do exame; o laudo sai sem elas.","erro"); } }
-  const timb=$("#ml-timbrado").checked, M=MARGENS_TIMBRADO, p=ficha.paciente;
-  const tab=(rows,c1,ref)=>`<table><tr><th>${c1}</th><th>Valor</th>${ref?"<th>Referência</th>":""}</tr>${rows.map(r=>`<tr class="${r.alterado?"alt":""}"><td>${esc(r.parametro||r.componente)}</td><td>${esc(r.valor)}</td>${ref?`<td>${esc(r.referencia||"")}</td>`:""}</tr>`).join("")}</table>`;
-  const olhos=["OD","OS"].filter(o=>laudo.olhos?.[o]).map(o=>{ const d=laudo.olhos[o];
-    return `<h2>${o==="OD"?"OLHO DIREITO (OD)":"OLHO ESQUERDO (OS)"}</h2>`+SEC_LAUDO.filter(([k])=>d[k]).map(([k,rot,c1])=>`<div class="bl"><h3>${rot}</h3>${tab(d[k],c1,true)}</div>`).join("")+(d.belin?`<div class="bl"><h3>Belin/Ambrósio (BAD-D) e estadiamento</h3>${tab(d.belin,"Componente",false)}</div>`:""); }).join("");
-  const cab=timb?"":`<div class="cab"><div><b style="font-size:13pt">Dr. Bruno Borges</b><br>Médico Oftalmologista<br>CRM: 17877 - RQE: 9314<br>Telefones: (61)3033-6605 / (61)98406-0001<br>Shopping Conjunto Nacional sala 6017<br>Brasília - DF</div><img src="/prontuario/logo.png" alt="IOBB"></div><hr>`;
+  const timb=$("#ml-timbrado").checked, M=MARGENS_TIMBRADO, p=ficha.paciente, tipo=laudo.tipo||"pentacam";
+  let corpo;
+  if(tipo==="pentacam"){
+    const tab=(rows,c1,ref)=>`<table><tr><th>${c1}</th><th>Valor</th>${ref?"<th>Referência</th>":""}</tr>${rows.map(r=>`<tr class="${r.alterado?"alt":""}"><td>${esc(r.parametro||r.componente)}</td><td>${esc(r.valor)}</td>${ref?`<td>${esc(r.referencia||"")}</td>`:""}</tr>`).join("")}</table>`;
+    corpo=["OD","OS"].filter(o=>laudo.olhos?.[o]).map(o=>{ const d=laudo.olhos[o];
+      return `<h2>${o==="OD"?"OLHO DIREITO (OD)":"OLHO ESQUERDO (OS)"}</h2>`+SEC_LAUDO.filter(([k])=>d[k]).map(([k,rot,c1])=>`<div class="bl"><h3>${rot}</h3>${tab(d[k],c1,true)}</div>`).join("")+(d.belin?`<div class="bl"><h3>Belin/Ambrósio (BAD-D) e estadiamento</h3>${tab(d.belin,"Componente",false)}</div>`:""); }).join("");
+  } else {
+    corpo=(laudo.metodo?`<div class="met">${esc(laudo.metodo)}</div>`:"")+(laudo.secoes||[]).map(sc=>`<div class="bl"><h3 class="sec">${esc(sc.titulo)}</h3><table class="t4"><tr><th>Parâmetro</th><th>OD</th><th>OS</th><th>Referência</th></tr>${(sc.linhas||[]).map(r=>`<tr><td>${esc(r.parametro)}</td><td class="${r.od_alterado?"altc":""}">${esc(r.od)}</td><td class="${r.os_alterado?"altc":""}">${esc(r.os)}</td><td>${esc(r.referencia||"—")}</td></tr>`).join("")}</table></div>`).join("");
+  }
+  const cab=timb?"":`<div class="cab"><div><b style="font-size:13pt">Dr. Bruno Borges</b><br>Médico Oftalmologista<br>CRM: 17877 - RQE: 9314<br>Telefones: (61)3033-6605 / (61)98406-0001<br>Shopping Conjunto Nacional sala 6017<br>Brasília - DF</div><img src="/prontuario/logo.png" alt="IOBB"></div>`;
   const figs=imgs.length?`<div class="imgs"><h2>IMAGENS DO EXAME</h2>${imgs.map(i=>`<figure><figcaption>${esc(i.leg)}</figcaption><img src="${i.src}"></figure>`).join("")}</div>`:"";
-  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Laudo Pentacam - ${esc(p.nome)}</title>
+  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(TITULO_LAUDO[tipo].replace(/^LAUDO DE /,"Laudo - "))} - ${esc(p.nome)}</title>
 <style>
 @page{size:A4;margin:${timb?`${M.topo}mm ${M.lado}mm ${M.base}mm`:"16mm 20mm 18mm"}}
-body{font:9.5pt/1.35 "Liberation Sans",Arial,Helvetica,sans-serif;color:#222;margin:0}
+body{font:9.5pt/1.4 "Liberation Sans",Arial,Helvetica,sans-serif;color:#222;margin:0}
 .barra{display:flex;gap:10px;align-items:center;padding:10px;background:#eef2f3;font:14px system-ui,sans-serif}
 .barra button{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid #1d6b74;background:#1d6b74;color:#fff;cursor:pointer;margin-left:auto}
 @media print{.barra{display:none}}
 .folha{max-width:170mm;margin:0 auto;padding:6mm 4mm} @media print{.folha{padding:0}}
-.cab{display:flex;justify-content:space-between;align-items:flex-start;font-size:9pt;line-height:1.35} .cab img{width:42mm}
-hr{border:0;border-top:1px solid #1a3a5c;margin:6px 0 10px}
-.pac b{font-size:12pt} .pac div{font-size:9.5pt}
-h1{font-size:12.5pt;color:#1a3a5c;margin:10px 0 2px} h2{font-size:11.5pt;color:#1a3a5c;margin:12px 0 4px} h3{font-size:10pt;color:#1a3a5c;margin:8px 0 3px}
-table{width:100%;border-collapse:collapse;font-size:8.7pt} th{background:#1a3a5c;color:#fff;text-align:left;padding:3px 5px;font-weight:700} td{border:1px solid #bbb;padding:3px 5px} tr:nth-child(even) td{background:#f4f6f8}
-tr.alt td{color:#b02a2a;font-weight:700} .bl{break-inside:avoid}
-.imp{break-inside:avoid} .ass{margin-top:14mm;text-align:center;line-height:1.3;break-inside:avoid} .ass .l{width:70mm;border-top:1px solid #333;margin:0 auto 2mm}
+.cab{display:flex;justify-content:space-between;align-items:flex-start;font-size:9pt;line-height:1.35;border-top:1px solid #1a3a5c;padding-top:6mm;margin-bottom:8mm} .cab img{width:42mm}
+.pac{margin:0 0 8mm 2mm} .pac b{font-size:11pt;text-transform:uppercase} .pac div{font-size:9.5pt}
+h1{font-size:12pt;color:#1a3a5c;margin:0 0 3mm} h2{font-size:11.5pt;color:#1a3a5c;margin:12px 0 4px} h3{font-size:10pt;color:#1a3a5c;margin:8px 0 3px} h3.sec{color:#222;margin-top:6mm}
+.met{margin-top:2mm}
+table{width:100%;border-collapse:collapse;font-size:8.7pt} th{background:#1a3a5c;color:#fff;text-align:left;padding:4px 6px;font-weight:700} td{border:1px solid #c9ced4;padding:4px 6px} tr:nth-child(even) td{background:#f4f6f8}
+table.t4 td:first-child{width:36%}
+tr.alt td,td.altc{color:#b02a2a;font-weight:700} .bl{break-inside:avoid}
+.imp{break-inside:avoid}
 .imgs{break-before:page} figure{margin:0 0 6mm;break-inside:avoid;text-align:center} figure img{max-width:100%;max-height:${timb?"92mm":"118mm"};object-fit:contain} figcaption{font-size:9pt;color:#1a3a5c;font-weight:700;margin-bottom:2mm;text-align:left}
 </style></head><body>
 <div class="barra"><span>${timb?"Papel <b>timbrado</b> na impressora e escala <b>100%</b>. Confira antes de assinar.":"Confira antes de imprimir ou salvar como PDF."}</span><button onclick="print()">Imprimir</button></div>
 <div class="folha">${cab}
-<div class="pac"><b>${esc(p.nome)}</b><div>CPF: Não informado &nbsp;|&nbsp; Data de nascimento: ${esc(p.nascimento||"Não informado")}${p.idade!=null?` (${p.idade} anos)`:""}</div><div>Sexo: ${esc(laudo.sexo||"Não informado")} &nbsp;|&nbsp; Prontuário: Não informado</div></div>
-<h1>LAUDO DE TOMOGRAFIA DE CÓRNEA (PENTACAM)</h1><div>Exame realizado em: ${esc(laudo.data_exame||"")}</div>
-${olhos}
+<div class="pac"><b>${esc(p.nome)}</b><div>CPF: ${esc(laudo.cpf||"Não informado")}</div><div>Data de nascimento: ${esc(p.nascimento||"Não informado")}${p.idade!=null?` (${p.idade} anos)`:""} &nbsp;|&nbsp; Sexo: ${esc(laudo.sexo||"Não informado")}</div><div>Prontuário: ${esc(laudo.prontuario||"Não informado")}</div></div>
+<h1>${TITULO_LAUDO[tipo]}</h1><div>Exame realizado em: ${esc(laudo.data_exame||"")}</div>
+${corpo}
 <div class="imp"><h2>IMPRESSÃO DIAGNÓSTICA</h2><div>${esc(laudo.impressao_diagnostica||"")}</div></div>
-<div class="ass"><div class="l"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877 - RQE: 9314</div>
 ${figs}
 </div></body></html>`;
   w.document.open(); w.document.write(html); w.document.close(); mlStatus("Laudo aberto em outra janela.","ok");
