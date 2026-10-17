@@ -169,6 +169,8 @@ table.lau th{background:#1a3a5c;color:#fff;text-align:left;padding:5px 8px;font-
 table.lau td{border:1px solid var(--line);padding:3px 6px}
 table.lau input[type=text]{padding:3px 6px;font-size:13px}
 table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;font-weight:700}
+.ex-at{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.ex-at .imp-l{flex:1;min-width:220px;font-size:14px}
 .pend{background:var(--note);border:1px solid var(--note-line);border-radius:6px;padding:8px 12px;font-size:13px}
 .portao{max-width:520px;margin:12vh auto;padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:12px;display:grid;gap:12px}
 </style>
@@ -289,8 +291,9 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
           </article>
 
           <article class="folha-sec" id="s-exames">
-            <div class="t"><span>Exames complementares</span></div>
+            <div class="t"><span>Exames complementares</span><span><button type="button" class="link" id="exames-novos">Ver se chegaram exames novos</button></span></div>
             <div class="c">
+              <div id="exames-at-box"><span class="rot">Exames anexados nesta consulta</span><div id="exames-at" style="display:grid;gap:10px"></div><div class="status" id="st-exames"></div></div>
               <div><span class="rot">Topografia de córnea</span>
                 <div class="chips" data-grupo="topo"><span class="chip" tabindex="0">Córnea regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular e simétrico em ambos os olhos</span></div>
                 <textarea id="topo-txt" rows="2" style="margin-top:6px" placeholder="Descrição da topografia…"></textarea></div>
@@ -864,6 +867,7 @@ $$("#menu button").forEach(b=>b.addEventListener("click",()=>{
   $$("#menu button").forEach(x=>x.classList.toggle("ativo",x===b));
   if(b.dataset.ir==="historico"){ $("#historico").hidden=false; $("#atendimento").hidden=true; if(atend&&sujo) salvar(true); desenhaTimeline(); $("#historico").scrollIntoView({behavior:"smooth"}); return; }
   $("#historico").hidden=true; $("#atendimento").hidden=false; if(atend&&sujo) salvar(true);
+  if(b.dataset.ir==="s-exames") buscarExamesNovos();
   $("#"+b.dataset.ir).scrollIntoView({behavior:"smooth"}); }));
 async function salvar(silencioso){
   if(!atend) return false;
@@ -895,7 +899,33 @@ $("#gf-ok").addEventListener("click",async()=>{
 });
 
 /* ===== ANEXOS ===== */
-function desenhaAnexosAt(){ const xs=(ficha.anexos||[]).filter(x=>atend&&(x.consulta_id===atend.id||(atend.appointment_id&&x.appointment_id===atend.appointment_id))); $("#anexos-at").innerHTML=xs.map(arq).join(""); }
+function anexosDoAtend(){ return (ficha.anexos||[]).filter(x=>atend&&(x.consulta_id===atend.id||(atend.appointment_id&&x.appointment_id===atend.appointment_id))); }
+function desenhaAnexosAt(){ $("#anexos-at").innerHTML=anexosDoAtend().map(arq).join(""); desenhaExamesAt(); }
+// Exames da consulta (do pré-exame ou anexados aqui) no topo de "Exames
+// complementares", com o laudo e o botão que leva o resultado para o texto.
+function desenhaExamesAt(){
+  const xs=anexosDoAtend().filter(x=>x.tipo==="exame");
+  $("#exames-at").innerHTML=xs.length?xs.map(x=>`<div class="ex-at">${arq(x)}<div class="imp-l">${x.laudo?`<b>${esc(TIPOS_LAUDO[x.laudo.tipo||"pentacam"])}:</b> ${esc(x.laudo.impressao_diagnostica||"")}<br><button type="button" class="link" data-trazer="${esc(x.id)}" style="padding-left:0">Levar o resultado para o prontuário</button>`:'<span class="hint">Sem laudo ainda. Clique em Gerar laudo para ler o exame.</span>'}</div></div>`).join("")
+    :'<span class="vazio">Nenhum exame anexado nesta consulta. Os que o pré-exame enviar aparecem aqui.</span>';
+}
+const so=t=>String(t||"").replace(/\s*(cél|μm|µm).*$/i,"").trim();
+$("#exames-at").addEventListener("click",e=>{ const b=e.target.closest("[data-trazer]"); if(!b) return;
+  const x=(ficha.anexos||[]).find(a=>a.id===b.dataset.trazer); const l=x?.laudo; if(!l) return;
+  const tipo=l.tipo||"pentacam", linhas=(l.secoes||[]).flatMap(sc=>sc.linhas||[]), achar=re=>linhas.find(r=>re.test(r.parametro||""));
+  if(tipo==="microscopia"){ const cd=achar(/^Densidade/i); if(cd){ $("#micro-od").value=so(cd.od); $("#micro-oe").value=so(cd.os); } }
+  if(tipo==="paquimetria"){ const cp=achar(/^Centro pupilar/i); if(cp){ $("#paqui-od").value=so(cp.od); $("#paqui-oe").value=so(cp.os); } }
+  const nome={pentacam:"Tomografia de córnea (Pentacam)",paquimetria:"Paquimetria corneana",microscopia:"Microscopia especular de córnea"}[tipo];
+  const linha=`${nome} (laudo): ${l.impressao_diagnostica||""}`.trim(), atual=$("#exc-txt").value;
+  if(!atual.split("\n").some(t=>t.startsWith(nome+" (laudo)"))) $("#exc-txt").value=(atual?atual.replace(/\s+$/,"")+"\n":"")+linha;
+  atualiza(); st2("Resultado levado para o prontuário. Confira em “Outros exames”.","ok");
+});
+function st2(t,cls){ $("#st-exames").textContent=t; $("#st-exames").className="status "+(cls||""); }
+async function buscarExamesNovos(){
+  if(!ficha) return; try{ const r=await api(`/api/prontuario/ficha?tel=${encodeURIComponent(ficha.paciente.telefone)}&nome=${encodeURIComponent(ficha.paciente.nome)}`);
+    const antes=anexosDoAtend().length; ficha.anexos=r.anexos; ficha.preexames=r.preexames; desenhaAnexosAt();
+    const novos=anexosDoAtend().length-antes; st2(novos>0?`${novos} exame${novos>1?"s":""} novo${novos>1?"s":""}.`:"Nenhum exame novo.",novos>0?"ok":"");
+  }catch(e){ st2(e.status===401?MSG_SESSAO:(e.msg||"Não consegui buscar."),"erro"); } }
+$("#exames-novos").addEventListener("click",buscarExamesNovos);
 async function enviar(files,tipo,consultaId,stEl){
   for(const f of files){
     if(f.size>30*1024*1024){ stEl.textContent=`${f.name}: maior que 30 MB.`; stEl.className="status erro"; continue; }
