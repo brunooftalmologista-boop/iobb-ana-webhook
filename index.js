@@ -10476,6 +10476,7 @@ app.post("/api/prontuario/anexo", requireMedico, express.raw({ type: () => true,
       mime: String(req.query.mime || req.headers["content-type"] || "application/octet-stream"),
       buf: req.body, obs: req.query.obs, consultaId,
     });
+    anexo.laudo_status = await laudoAutomatico(anexo);
     res.json({ ok: true, anexo });
   } catch (e) {
     console.error("[Prontuário] anexo falhou:", e.message);
@@ -10570,14 +10571,18 @@ REGRAS (formato aprovado pelo Dr. Bruno — não invente nada):
 - Se o arquivo trouxer outros exames, NÃO coloque no laudo; só mencione em "pendencias".`;
 }
 const TIPOS_LAUDO = ["pentacam", ...Object.keys(LAUDO_TABELA)];
-app.post("/api/prontuario/laudo/:anexoId", requireMedico, async (req, res) => {
+// Gera (ou refaz) o laudo de um anexo e grava em prontuario_anexos.laudo.
+// laudo_status: "gerando" enquanto a IA lê, "erro" se falhar, null quando pronto.
+const laudosEmCurso = new Set();
+function tipoLaudoDoExame(ax) {
+  const t = `${ax.observacao || ""} ${ax.nome || ""}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return /microsc|especular|endotel|spm/.test(t) ? "microscopia" : /paquim|espessura/.test(t) ? "paquimetria"
+    : /topograf|ceratosc/.test(t) ? "topografia" : /pentacam|tomograf/.test(t) ? "pentacam" : null;
+}
+async function gerarLaudoAnexo(ax, tipo) {
+  laudosEmCurso.add(ax.id);
+  await supabase.from("prontuario_anexos").update({ laudo_status: "gerando", laudo_status_em: new Date().toISOString() }).eq("id", ax.id);
   try {
-    const tipo = String(req.body?.tipo || "pentacam");
-    if (!TIPOS_LAUDO.includes(tipo)) return res.status(400).json({ error: "Tipo de laudo desconhecido." });
-    const { data: ax, error } = await supabase.from("prontuario_anexos").select("*").eq("id", req.params.anexoId).maybeSingle();
-    if (error) throw error;
-    if (!ax) return res.status(404).json({ error: "Arquivo não encontrado." });
-    if (ax.laudo && !req.body?.refazer && (ax.laudo.tipo || "pentacam") === tipo) return res.json({ laudo: ax.laudo, salvo: true });
     const { data: blob, error: e2 } = await supabase.storage.from(BUCKET_PRONTUARIO).download(ax.path);
     if (e2) throw e2;
     const buf = Buffer.from(await blob.arrayBuffer());
@@ -10602,11 +10607,55 @@ app.post("/api/prontuario/laudo/:anexoId", requireMedico, async (req, res) => {
     const laudo = JSON.parse(m[0]);
     laudo.tipo = tipo;
     laudo.gerado_em = new Date().toISOString();
-    await supabase.from("prontuario_anexos").update({ laudo, laudo_em: laudo.gerado_em }).eq("id", ax.id);
+    await supabase.from("prontuario_anexos").update({ laudo, laudo_em: laudo.gerado_em, laudo_status: null, laudo_status_em: laudo.gerado_em }).eq("id", ax.id);
+    return laudo;
+  } catch (e) {
+    await supabase.from("prontuario_anexos").update({ laudo_status: "erro", laudo_status_em: new Date().toISOString() }).eq("id", ax.id);
+    throw e;
+  } finally { laudosEmCurso.delete(ax.id); }
+}
+// LAUDO AUTOMÁTICO (Dr. Bruno, 17/10/2026): exame anexado com nome reconhecível
+// (Pentacam, topografia, paquimetria, microscopia) já sai lendo, em segundo
+// plano; a descrição aparece sozinha no atendimento. Ele confere.
+async function laudoAutomatico(ax) {
+  if (!ax || ax.tipo !== "exame") return null;
+  const tipo = tipoLaudoDoExame(ax);
+  if (!tipo) return null;
+  gerarLaudoAnexo(ax, tipo).then(() => console.log(`[Laudo] automático pronto (${tipo}) ${ax.id}`))
+    .catch(e => console.error("[Laudo] automático falhou:", e?.response?.data ? JSON.stringify(e.response.data).slice(0, 300) : e.message));
+  return "gerando";
+}
+app.post("/api/prontuario/laudo/:anexoId", requireMedico, async (req, res) => {
+  try {
+    const tipo = String(req.body?.tipo || "pentacam");
+    if (!TIPOS_LAUDO.includes(tipo)) return res.status(400).json({ error: "Tipo de laudo desconhecido." });
+    const { data: ax, error } = await supabase.from("prontuario_anexos").select("*").eq("id", req.params.anexoId).maybeSingle();
+    if (error) throw error;
+    if (!ax) return res.status(404).json({ error: "Arquivo não encontrado." });
+    if (ax.laudo && !req.body?.refazer && (ax.laudo.tipo || "pentacam") === tipo) return res.json({ laudo: ax.laudo, salvo: true });
+    if (laudosEmCurso.has(ax.id)) return res.status(409).json({ error: "O laudo deste exame já está sendo gerado. Aparece em instantes." });
+    const laudo = await gerarLaudoAnexo(ax, tipo);
     res.json({ laudo, salvo: false });
   } catch (e) {
     console.error("[Laudo] falhou:", e?.response?.data ? JSON.stringify(e.response.data).slice(0, 300) : e.message);
     res.status(500).json({ error: "Não consegui gerar o laudo agora. Tente de novo em instantes." });
+  }
+});
+// Anexos do paciente (leve, para o atendimento aberto ver exames e laudos novos).
+app.get("/api/prontuario/anexos", requireMedico, async (req, res) => {
+  try {
+    const tel = String(req.query.tel || ""), nome = String(req.query.nome || "");
+    if (!ult8(tel) || !primNome(nome)) return res.status(400).json({ error: "Paciente inválido." });
+    const { data: raw } = await supabase.from("prontuario_anexos").select("*").eq("paciente_chave", chavePaciente(tel, nome)).order("created_at", { ascending: false }).limit(200);
+    const anexos = [];
+    for (const a of raw || []) {
+      const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(a.path, 3600);
+      anexos.push({ ...a, url: s?.signedUrl || null });
+    }
+    res.json({ anexos });
+  } catch (e) {
+    console.error("[Prontuário] anexos falhou:", e.message);
+    res.status(500).json({ error: "Não consegui ler os anexos." });
   }
 });
 // Laudo revisado pelo médico (edições na tela) — guarda a versão final.
@@ -10731,6 +10780,7 @@ app.post("/api/preexame/consulta/:id/anexo", requirePreExame, express.raw({ type
       mime: String(req.query.mime || req.headers["content-type"] || "application/octet-stream"),
       buf: req.body, obs: req.query.exame, appointmentId: ag.id, por: req.porPreExame,
     });
+    await laudoAutomatico(a);
     res.json({ ok: true, anexo: { id: a.id, nome: a.nome, mime: a.mime, observacao: a.observacao, enviado_por: a.enviado_por, created_at: a.created_at, url: a.url } });
   } catch (e) {
     console.error("[Pré-exame] anexo falhou:", e.message);
