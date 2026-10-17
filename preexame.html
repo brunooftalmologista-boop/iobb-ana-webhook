@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pré-exame — IOBB</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+<style>
+/* Pré-exame (17/10/2026): login próprio. Marca o motivo da consulta e anexa
+   os exames feitos; tudo aparece no prontuário do Dr. Bruno. Não lê prontuário. */
+:root{
+  --bg:#f2f4f7; --surface:#fff; --ink:#263238; --muted:#6b7a85; --line:#dfe4ea;
+  --pri:#00796b; --pri-soft:#e0f2ef; --danger:#d32f2f; --ok:#2e7d32; --chip:#eef2f6;
+  --f-body:"Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root{
+  --bg:#12181d; --surface:#1a2228; --ink:#e3e9ee; --muted:#93a3ae; --line:#2c3a43;
+  --pri:#4db6a6; --pri-soft:#173a36; --danger:#ef6b6b; --ok:#6cc27e; --chip:#22303a; color-scheme:dark } }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body)}
+button{font:500 15px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
+button:hover{border-color:var(--pri)}
+button.pri{background:var(--pri);color:#fff;border-color:var(--pri)}
+button.link{border:0;background:none;color:var(--pri);padding:4px 6px}
+button.perigo{color:var(--danger)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.chip:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+input,select,textarea{font:15px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+textarea{min-height:64px;resize:vertical}
+.topo{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:10px 16px;flex-wrap:wrap}
+.topo b{color:var(--pri);font-size:17px}
+.topo .esp{flex:1}
+.topo input{width:auto}
+main{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:16px;padding:16px;max-width:1280px;margin:0 auto}
+@media (max-width:820px){ main{grid-template-columns:1fr} body.com-paciente #lista-box{display:none} }
+.caixa{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:500}
+.lista{display:flex;flex-direction:column;gap:6px}
+.item{display:grid;grid-template-columns:52px 1fr;gap:8px;text-align:left;padding:9px 10px;border-radius:8px;width:100%}
+.item.ativo{border-color:var(--pri);background:var(--pri-soft)}
+.item .h{font-weight:700;font-variant-numeric:tabular-nums}
+.item small{color:var(--muted);display:block}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--chip);color:var(--muted);margin:2px 4px 0 0}
+.tag.ok{background:var(--pri-soft);color:var(--pri);font-weight:500}
+.vazio{color:var(--muted);font-size:14px;padding:6px 0}
+.cab{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
+.cab .nome{font-size:20px;font-weight:700}
+.cab .info{color:var(--muted);font-size:14px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--chip);border-radius:20px;padding:7px 14px;cursor:pointer;user-select:none;font-size:14.5px}
+.chip[aria-pressed="true"]{background:var(--pri);color:#fff;border-color:var(--pri)}
+.campo{display:flex;flex-direction:column;gap:4px;margin-top:10px}
+.campo label{font-size:13px;color:var(--muted)}
+.zona{border:2px dashed var(--line);border-radius:10px;padding:18px;text-align:center;color:var(--muted);margin-top:8px}
+.zona.sobre{border-color:var(--pri);background:var(--pri-soft)}
+.arqs{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.arq{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;flex-wrap:wrap}
+.arq a{color:var(--ink);font-weight:500;flex:1;min-width:0;word-break:break-word}
+.arq small{color:var(--muted)}
+.status{font-size:13.5px;min-height:20px;color:var(--muted)}
+.status.ok{color:var(--ok)} .status.erro{color:var(--danger)}
+.linha{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.linha > *{flex:1;min-width:160px}
+.portao{max-width:380px;margin:12vh auto;padding:0 16px}
+.portao .caixa{display:flex;flex-direction:column;gap:12px}
+</style>
+</head>
+<body>
+
+<div class="portao" id="portao" hidden>
+  <form class="caixa" id="f-login">
+    <h2>Pré-exame — IOBB</h2>
+    <div class="campo" style="margin:0"><label for="senha">Senha do pré-exame</label><input id="senha" type="password" autocomplete="current-password" required></div>
+    <button class="pri" type="submit">Entrar</button>
+    <div class="status" id="login-st"></div>
+  </form>
+</div>
+
+<div id="raiz" hidden>
+  <div class="topo">
+    <b>Pré-exame</b><span class="info" id="hoje-txt"></span>
+    <span class="esp"></span>
+    <input type="date" id="dia" aria-label="Dia da agenda"><button type="button" id="b-hoje">Hoje</button>
+    <button type="button" class="link" id="sair">Sair</button>
+  </div>
+  <main>
+    <section class="caixa" id="lista-box">
+      <h2 id="lista-tit">Pacientes do dia</h2>
+      <div class="lista" id="lista"><div class="vazio">Carregando…</div></div>
+    </section>
+    <section class="caixa" id="pac-box">
+      <div class="vazio" id="pac-vazio">Escolha um paciente na lista.</div>
+      <div id="pac" hidden>
+        <button type="button" class="link" id="voltar" style="padding-left:0">← Lista</button>
+        <div class="cab"><span class="nome" id="p-nome"></span><span class="info" id="p-info"></span></div>
+        <div class="info" id="p-ag" style="color:var(--muted);font-size:14px"></div>
+
+        <h3>Motivo da consulta</h3>
+        <div id="motivos"></div>
+        <div class="campo"><label for="m-outro">Outro motivo</label><input id="m-outro" placeholder="Escreva se não estiver nos botões"></div>
+        <div class="campo"><label for="m-obs">Observação para o Dr. Bruno</label><textarea id="m-obs" placeholder="Ex.: usa óculos há 2 anos; trouxe exames de outra clínica"></textarea></div>
+        <div class="linha" style="margin-top:10px"><div class="status" id="st-motivo"></div><button type="button" class="pri" id="salvar" style="flex:0 0 auto">Salvar</button></div>
+
+        <h3>Exames realizados</h3>
+        <div class="linha">
+          <div class="campo" style="margin:0"><label for="exame">Qual exame</label>
+            <select id="exame">
+              <option>Pentacam</option><option>Topografia / Ceratoscopia</option><option>Paquimetria</option>
+              <option>Microscopia especular</option><option>Retinografia</option><option>Curva diária de pressão ocular</option>
+              <option>Teste de sobrecarga hídrica</option><option>Autorrefração</option><option>Exame de outra clínica</option><option>Outro</option>
+            </select></div>
+          <button type="button" class="pri" id="b-arq" style="flex:0 0 auto">Escolher arquivo</button>
+          <input type="file" id="arquivo" accept="application/pdf,image/*" multiple hidden>
+        </div>
+        <div class="zona" id="zona">Ou arraste o PDF ou a imagem do exame para cá</div>
+        <div class="status" id="st-arq"></div>
+        <div class="arqs" id="arqs"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const TZ="America/Sao_Paulo";
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const hhmm=iso=>new Date(iso).toLocaleTimeString("pt-BR",{timeZone:TZ,hour:"2-digit",minute:"2-digit"});
+const hojeBR=()=>new Date().toLocaleDateString("en-CA",{timeZone:TZ});
+
+// Botões do motivo. Os da "Visão" e "Desconforto" usam os mesmos nomes da
+// queixa principal do prontuário, para já virem marcados lá.
+const MOTIVOS=[
+  ["Visão",["Revisão de rotina","Baixa visual para longe","Baixa visual para perto","Baixa visual para longe e perto","Óculos fracos","Visão embaçada","Visão dupla","Moscas volantes ou flashes"]],
+  ["Desconforto",["Dor de cabeça","Olho vermelho","Irritação","Coceira","Lacrimejamento","Olho seco","Dor no olho","Cisco ou trauma no olho"]],
+  ["Lente de contato",["Adaptação de lente de contato","Teste de lente de contato","Desconforto com a lente","Renovar a lente"]],
+  ["Acompanhamento",["Ceratocone","Avaliação para cirurgia refrativa","Catarata","Glaucoma / pressão do olho","Diabetes (fundo de olho)","Pós-operatório","Retorno para mostrar exames"]],
+];
+$("#motivos").innerHTML=MOTIVOS.map(([g,xs])=>`<div style="margin:8px 0 4px;font-size:13px;color:var(--muted)">${g}</div><div class="chips">${xs.map(x=>`<span class="chip" role="button" tabindex="0" aria-pressed="false">${esc(x)}</span>`).join("")}</div>`).join("");
+
+/* ===== sessão própria (não mistura com o painel das secretárias) ===== */
+const K_AT="iobb_pe_at", K_RT="iobb_pe_rt";
+const ler=k=>{ try{ return localStorage.getItem(k)||""; }catch(_){ return ""; } };
+const gravar=(k,v)=>{ try{ v?localStorage.setItem(k,v):localStorage.removeItem(k); }catch(_){} };
+let AUTH=ler(K_AT);
+async function refresh(){
+  const rt=ler(K_RT); if(!rt) return false;
+  try{ const r=await fetch("/api/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:rt})});
+    if(!r.ok) return false; const d=await r.json(); AUTH=d.access_token||""; gravar(K_AT,AUTH); if(d.refresh_token) gravar(K_RT,d.refresh_token); return !!AUTH;
+  }catch(_){ return false; }
+}
+async function api(path,opts={},again){
+  const h={"Authorization":"Bearer "+AUTH,"Content-Type":opts.raw?"application/octet-stream":"application/json"};
+  const r=await fetch(path,{...opts,headers:h});
+  if(r.status===401&&!again&&await refresh()) return api(path,opts,true);
+  if(r.status===401){ portao("Sua sessão terminou. Entre de novo."); throw Object.assign(new Error("401"),{status:401,msg:"Sessão terminou."}); }
+  if(!r.ok){ const e=new Error("HTTP "+r.status); e.status=r.status; try{ e.msg=(await r.json()).error; }catch(_){} throw e; }
+  return r.json();
+}
+function portao(msg){ $("#raiz").hidden=true; $("#portao").hidden=false; $("#login-st").textContent=msg||""; $("#login-st").className="status"+(msg?" erro":""); $("#senha").focus(); }
+$("#f-login").addEventListener("submit",async e=>{
+  e.preventDefault(); $("#login-st").textContent="Entrando…"; $("#login-st").className="status";
+  try{ const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:"Pré-exame",password:$("#senha").value})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error||"Não consegui entrar.");
+    AUTH=d.access_token; gravar(K_AT,AUTH); gravar(K_RT,d.refresh_token); $("#senha").value=""; entrar();
+  }catch(err){ $("#login-st").textContent=err.message; $("#login-st").className="status erro"; }
+});
+$("#sair").addEventListener("click",()=>{ AUTH=""; gravar(K_AT,""); gravar(K_RT,""); atual=null; portao(""); });
+
+/* ===== lista do dia ===== */
+let dia=[], atual=null, detalhe=null;
+$("#dia").addEventListener("change",()=>carregaDia());
+$("#b-hoje").addEventListener("click",()=>{ $("#dia").value=hojeBR(); carregaDia(); });
+async function carregaDia(){
+  const ymd=$("#dia").value||hojeBR();
+  $("#lista-tit").textContent=ymd===hojeBR()?"Pacientes de hoje":"Pacientes de "+ymd.split("-").reverse().join("/");
+  try{ const r=await api(`/api/preexame/dia?data=${ymd}`); dia=r.consultas||[]; desenhaLista(); }
+  catch(e){ if(e.status!==401) $("#lista").innerHTML=`<div class="vazio">${esc(e.msg||"Não consegui ler a agenda.")}</div>`; }
+}
+function desenhaLista(){
+  if(!dia.length){ $("#lista").innerHTML='<div class="vazio">Nenhum paciente agendado neste dia.</div>'; return; }
+  $("#lista").innerHTML=dia.map(c=>`<button type="button" class="item${atual===c.id?" ativo":""}" data-id="${esc(c.id)}"><span class="h">${hhmm(c.inicio)}</span><span>${esc(c.paciente_nome||"Sem nome")}
+    <small>${[c.idade!=null?c.idade+" anos":"",c.convenio||"",c.encaixe?"encaixe":""].filter(Boolean).map(esc).join(" · ")}</small>
+    ${c.motivos.length?'<span class="tag ok">motivo ✓</span>':'<span class="tag">sem motivo</span>'}${c.exames?`<span class="tag ok">${c.exames} exame${c.exames>1?"s":""}</span>`:""}</span></button>`).join("");
+  $$("#lista .item").forEach(b=>b.addEventListener("click",()=>abrir(b.dataset.id)));
+}
+
+/* ===== paciente ===== */
+let sujo=false;
+async function abrir(id){
+  if(sujo) await salvar();
+  try{ const r=await api(`/api/preexame/consulta/${id}`); atual=id; detalhe=r; desenha(); desenhaLista(); document.body.classList.add("com-paciente"); }
+  catch(e){ if(e.status!==401) $("#pac-vazio").textContent=e.msg||"Não consegui abrir."; }
+}
+function desenha(){
+  const c=detalhe.consulta, p=detalhe.preexame||{motivos:[],motivo_outro:"",observacao:""};
+  $("#pac-vazio").hidden=true; $("#pac").hidden=false;
+  $("#p-nome").textContent=c.paciente_nome||"Sem nome";
+  $("#p-info").textContent=[c.idade!=null?c.idade+" anos":"",c.convenio||""].filter(Boolean).join(" · ");
+  $("#p-ag").textContent=`${hhmm(c.inicio)} · ${c.unidade||""}${c.motivo?" · agendado como: "+c.motivo:""}`;
+  $$("#motivos .chip").forEach(ch=>ch.setAttribute("aria-pressed",p.motivos.includes(ch.textContent)?"true":"false"));
+  // motivo gravado que não é botão (lista mudou) volta para "Outro"
+  const fora=p.motivos.filter(m=>!$$("#motivos .chip").some(ch=>ch.textContent===m));
+  $("#m-outro").value=[...fora,p.motivo_outro].filter(Boolean).join("; ");
+  $("#m-obs").value=p.observacao||"";
+  st("#st-motivo",detalhe.preexame?`Salvo às ${hhmm(detalhe.preexame.updated_at)}${detalhe.preexame.feito_por?" ("+detalhe.preexame.feito_por+")":""}.`:"Ainda não preenchido.","");
+  sujo=false; desenhaArqs();
+}
+function st(sel,t,cls){ $(sel).textContent=t; $(sel).className="status "+(cls||""); }
+$("#motivos").addEventListener("click",e=>{ const ch=e.target.closest(".chip"); if(!ch) return; alterna(ch); });
+$("#motivos").addEventListener("keydown",e=>{ const ch=e.target.closest(".chip"); if(ch&&(e.key===" "||e.key==="Enter")){ e.preventDefault(); alterna(ch); } });
+let tSalvar=null;
+function alterna(ch){ ch.setAttribute("aria-pressed",ch.getAttribute("aria-pressed")==="true"?"false":"true"); mudou(); }
+function mudou(){ sujo=true; st("#st-motivo","Salvando…",""); clearTimeout(tSalvar); tSalvar=setTimeout(salvar,1200); }
+["#m-outro","#m-obs"].forEach(s=>$(s).addEventListener("input",mudou));
+$("#salvar").addEventListener("click",salvar);
+async function salvar(){
+  clearTimeout(tSalvar); if(!atual) return;
+  const corpo={ motivos:$$("#motivos .chip[aria-pressed=true]").map(c=>c.textContent), motivo_outro:$("#m-outro").value.trim(), observacao:$("#m-obs").value.trim() };
+  try{ const r=await api(`/api/preexame/consulta/${atual}`,{method:"POST",body:JSON.stringify(corpo)});
+    sujo=false; detalhe.preexame={...corpo,feito_por:"Pré-exame",updated_at:r.updated_at}; st("#st-motivo",`Salvo às ${hhmm(r.updated_at)}.`,"ok");
+    const c=dia.find(x=>x.id===atual); if(c){ c.motivos=[...corpo.motivos,...(corpo.motivo_outro?[corpo.motivo_outro]:[])]; desenhaLista(); }
+  }catch(e){ if(e.status!==401) st("#st-motivo",e.msg||"Não consegui salvar. Tente de novo.","erro"); }
+}
+$("#voltar").addEventListener("click",async()=>{ if(sujo) await salvar(); atual=null; document.body.classList.remove("com-paciente"); $("#pac").hidden=true; $("#pac-vazio").hidden=false; desenhaLista(); });
+
+/* ===== exames ===== */
+function desenhaArqs(){
+  const xs=detalhe.anexos||[];
+  $("#arqs").innerHTML=xs.length?xs.map(a=>`<div class="arq" data-id="${esc(a.id)}"><a href="${esc(a.url||"#")}" target="_blank" rel="noopener">${esc(a.observacao||"Exame")} — ${esc(a.nome)}</a><small>${hhmm(a.created_at)}${a.enviado_por?" · "+esc(a.enviado_por):""}</small>
+    ${a.enviado_por&&!a.tem_laudo?`<button type="button" class="link perigo" data-tirar>Tirar</button><span data-conf hidden>Tirar este arquivo? <button type="button" class="link perigo" data-sim>Sim, tirar</button><button type="button" class="link" data-nao>Não</button></span>`:""}</div>`).join("")
+    :'<div class="vazio">Nenhum exame anexado nesta consulta.</div>';
+}
+$("#arqs").addEventListener("click",async e=>{
+  const linha=e.target.closest(".arq"); if(!linha) return;
+  const conf=linha.querySelector("[data-conf]"), tirar=linha.querySelector("[data-tirar]");
+  if(e.target.matches("[data-tirar]")){ tirar.hidden=true; conf.hidden=false; return; }
+  if(e.target.matches("[data-nao]")){ tirar.hidden=false; conf.hidden=true; return; }
+  if(e.target.matches("[data-sim]")){
+    try{ await api(`/api/preexame/anexo/${linha.dataset.id}/remover`,{method:"POST",body:"{}"});
+      detalhe.anexos=detalhe.anexos.filter(a=>a.id!==linha.dataset.id); desenhaArqs(); st("#st-arq","Arquivo tirado.","ok");
+      const c=dia.find(x=>x.id===atual); if(c){ c.exames=detalhe.anexos.length; desenhaLista(); }
+    }catch(err){ if(err.status!==401) st("#st-arq",err.msg||"Não consegui tirar.","erro"); }
+  }
+});
+$("#b-arq").addEventListener("click",()=>$("#arquivo").click());
+$("#arquivo").addEventListener("change",()=>{ const fs=[...$("#arquivo").files]; $("#arquivo").value=""; enviar(fs); });
+const zona=$("#zona");
+["dragenter","dragover"].forEach(ev=>zona.addEventListener(ev,e=>{ e.preventDefault(); zona.classList.add("sobre"); }));
+["dragleave","drop"].forEach(ev=>zona.addEventListener(ev,e=>{ e.preventDefault(); zona.classList.remove("sobre"); }));
+zona.addEventListener("drop",e=>{ const fs=[...(e.dataTransfer?.files||[])]; if(fs.length) enviar(fs); });
+async function enviar(fs){
+  if(!atual||!fs.length) return;
+  const exame=$("#exame").value; let ok=0;
+  for(const f of fs){
+    if(f.size>30*1024*1024){ st("#st-arq",`${f.name} passa de 30 MB.`,"erro"); continue; }
+    st("#st-arq",`Enviando ${f.name}…`,"");
+    try{ const q=new URLSearchParams({filename:f.name,mime:f.type||"application/octet-stream",exame});
+      const r=await api(`/api/preexame/consulta/${atual}/anexo?${q}`,{method:"POST",raw:true,body:f});
+      detalhe.anexos=[...(detalhe.anexos||[]),r.anexo]; ok++; desenhaArqs();
+    }catch(e){ if(e.status!==401) st("#st-arq",`${f.name}: ${e.msg||"não consegui enviar."}`,"erro"); return; }
+  }
+  if(ok){ st("#st-arq",`${ok} arquivo${ok>1?"s":""} enviado${ok>1?"s":""}. Já está no prontuário do Dr. Bruno.`,"ok");
+    const c=dia.find(x=>x.id===atual); if(c){ c.exames=detalhe.anexos.length; desenhaLista(); } }
+}
+
+/* ===== entrada ===== */
+function entrar(){ $("#portao").hidden=true; $("#raiz").hidden=false;
+  $("#hoje-txt").textContent=new Date().toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"long"});
+  $("#dia").value=hojeBR(); carregaDia(); }
+if(AUTH||ler(K_RT)) entrar(); else portao("");
+setInterval(()=>{ if(!$("#raiz").hidden&&!sujo) carregaDia(); },60000);
+})();
+</script>
+</body>
+</html>

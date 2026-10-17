@@ -165,6 +165,17 @@ pre.saida{margin:0;font:13px/1.55 var(--f-mono);white-space:pre-wrap;word-break:
 .msg{max-width:85%;padding:6px 9px;border-radius:8px;font-size:13.5px;white-space:pre-wrap;word-break:break-word;background:var(--surface);border:1px solid var(--line)}
 .msg.pac{justify-self:start} .msg.ana{justify-self:end;background:var(--chip)}
 .msg small{display:block;font-size:11px;color:var(--muted)}
+.arq-w{display:inline-flex;flex-direction:column;gap:4px;align-items:stretch}
+.arq-w button{font-size:12px;padding:4px 8px}
+.modal.grande{width:min(980px,100%)}
+.lau-olho h4{margin:10px 0 4px;color:#1a3a5c;font:700 15px var(--f-body)}
+@media (prefers-color-scheme: dark){.lau-olho h4{color:var(--pri)}}
+table.lau{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}
+table.lau th{background:#1a3a5c;color:#fff;text-align:left;padding:5px 8px;font-weight:500}
+table.lau td{border:1px solid var(--line);padding:3px 6px}
+table.lau input[type=text]{padding:3px 6px;font-size:13px}
+table.lau tr.alt td{color:#b02a2a;font-weight:700}
+.pend{background:var(--note);border:1px solid var(--note-line);border-radius:6px;padding:8px 12px;font-size:13px}
 .portao{max-width:520px;margin:12vh auto;padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:12px;display:grid;gap:12px}
 </style>
 </head>
@@ -238,6 +249,7 @@ pre.saida{margin:0;font:13px/1.55 var(--f-mono);white-space:pre-wrap;word-break:
 
         <div class="antes" id="antes"></div>
 
+        <details class="sec" id="sec-pre" hidden open><summary id="pre-resumo">Pré-exame</summary><div id="pre-corpo" style="display:grid;gap:8px"></div></details>
         <details class="sec" id="sec-diag"><summary>Últimos diagnósticos</summary><div class="diag" id="diag"></div></details>
         <details class="sec" id="sec-iclinic"><summary>Prontuário anterior (iClinic)</summary><div style="display:grid;gap:10px"><div class="anexos-t" id="iclinic-arqs" style="padding:0"></div><div class="row"><button type="button" id="anexar-iclinic">Anexar prontuário anterior (PDF)</button><span class="status" id="st-iclinic"></span></div></div></details>
         <details class="sec" id="sec-ana" hidden><summary id="ana-resumo">Conversa com a Ana</summary><div class="conversa" id="ana-msgs"></div></details>
@@ -395,6 +407,24 @@ pre.saida{margin:0;font:13px/1.55 var(--f-mono);white-space:pre-wrap;word-break:
     <label class="row" style="color:var(--ink)"><input type="checkbox" id="gf-copiar" style="width:auto" checked> Copiar o texto para colar no iClinic</label>
     <div class="status" id="gf-st"></div>
     <div class="pe"><button type="button" class="link" id="gf-voltar">← Voltar</button><button type="button" class="pri" id="gf-ok">Finalizar</button></div>
+  </div>
+</div>
+
+<!-- laudo -->
+<div class="fundo" id="m-laudo" hidden>
+  <div class="modal grande" role="dialog" aria-labelledby="ml-t">
+    <div class="row" style="justify-content:space-between"><h3 id="ml-t">Laudo de tomografia de córnea (Pentacam)</h3><button type="button" class="link" id="ml-fechar">Fechar</button></div>
+    <div class="status" id="ml-st"></div>
+    <div id="ml-corpo" hidden style="display:grid;gap:10px">
+      <div class="row"><label>Exame realizado em <input id="ml-data" style="width:130px"></label><label>Sexo <select id="ml-sexo"><option>Não informado</option><option>Feminino</option><option>Masculino</option></select></label><span class="hint">Confira os valores com as telas do exame. Linhas marcadas como alteradas saem em vermelho.</span></div>
+      <div class="pend" id="ml-pend" hidden></div>
+      <div id="ml-olhos"></div>
+      <div class="campo"><label for="ml-imp">Impressão diagnóstica</label><textarea id="ml-imp" rows="3"></textarea></div>
+      <div class="pe" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center">
+        <div class="row"><button type="button" id="ml-refazer">Ler o exame de novo</button><label style="gap:6px"><input type="checkbox" id="ml-timbrado" style="width:auto"> Papel timbrado</label><label style="gap:6px"><input type="checkbox" id="ml-imagens" style="width:auto" checked> Incluir as telas do exame</label></div>
+        <div class="row"><button type="button" id="ml-salvar">Salvar revisão</button><button type="button" class="pri" id="ml-imprimir">Imprimir laudo</button></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -693,7 +723,7 @@ async function carregaDia(ymd){
     const titulo=ymd===hojeBR()?"Agenda de hoje":"Agenda de "+new Date(ymd+"T12:00:00-03:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"2-digit"});
     $("#dia-titulo").textContent=`${titulo} · ${cs.length} consulta(s)`;
     if(!cs.length){ $("#dia-corpo").innerHTML='<tr><td colspan="5" class="vazio">Nenhuma consulta neste dia.</td></tr>'; return; }
-    $("#dia-corpo").innerHTML=cs.map((c,i)=>`<tr class="clica" data-i="${i}"><td>${hhmm(c.inicio)}</td><td class="nome">${esc(c.paciente_nome||"Sem nome")}${c.encaixe?' <span class="tag">encaixe</span>':""}</td><td>${esc(c.convenio||"")}</td><td>${esc(c.unidade||"")}</td><td>${c.tem_registro?'<span class="tag ok">registrado</span>':""}</td></tr>`).join("");
+    $("#dia-corpo").innerHTML=cs.map((c,i)=>`<tr class="clica" data-i="${i}"><td>${hhmm(c.inicio)}</td><td class="nome">${esc(c.paciente_nome||"Sem nome")}${c.encaixe?' <span class="tag">encaixe</span>':""}</td><td>${esc(c.convenio||"")}</td><td>${esc(c.unidade||"")}</td><td>${c.tem_preexame?'<span class="tag">pré-exame</span> ':""}${c.tem_registro?'<span class="tag ok">registrado</span>':""}</td></tr>`).join("");
     $$("#dia-corpo tr.clica").forEach(tr=>tr.addEventListener("click",()=>{ const c=cs[+tr.dataset.i]; abrirFicha(c.paciente_telefone,c.paciente_nome); }));
   }catch(e){ if(e.status===401||e.status===403) return portao(e.status===403?"Esta página é só para o login <b>Dr. Bruno</b>.":null);
     $("#dia-corpo").innerHTML='<tr><td colspan="5" class="vazio">Não consegui carregar a agenda.</td></tr>'; }
@@ -740,6 +770,17 @@ function desenhaFicha(){
   const a=ficha.antecedentes||{};
   $("#antes").innerHTML=ANTE.map(([k,rot],i)=>`<button type="button" class="card-ante" data-i="${i}"><small>${rot}</small><span class="${a[k]?"cheio":""}">${esc(a[k]||"Inserir informação")}</span></button>`).join("");
   $$("#antes .card-ante").forEach(b=>b.addEventListener("click",()=>abrirAnte(+b.dataset.i)));
+  // pré-exame (motivo da consulta + exames anexados por quem faz o pré-exame)
+  const pre=preDoAgendamento(ficha.hoje?.id);
+  const axPre=(ficha.anexos||[]).filter(x=>ficha.hoje&&x.appointment_id===ficha.hoje.id&&x.enviado_por);
+  $("#sec-pre").hidden=!pre&&!axPre.length;
+  if(pre||axPre.length){
+    $("#pre-resumo").textContent=`Pré-exame de hoje${pre?.updated_at?" · "+hhmm(pre.updated_at):""}`;
+    const ms=[...(pre?.motivos||[]),...(pre?.motivo_outro?[pre.motivo_outro]:[])];
+    $("#pre-corpo").innerHTML=`<div><span class="rot">Motivo da consulta</span> ${ms.length?ms.map(m=>`<span class="tag">${esc(m)}</span>`).join(" "):'<span class="vazio">não marcado</span>'}</div>`+
+      (pre?.observacao?`<div><span class="rot">Observação</span> ${esc(pre.observacao)}</div>`:"")+
+      (axPre.length?`<div class="anexos-t" style="padding:0">${axPre.map(arq).join("")}</div>`:"");
+  }
   // últimos diagnósticos
   const ds=[]; for(const c of ficha.consultas||[]) for(const k of (c.dados?.chips||[])) if(k.startsWith("hd|")){ const n=k.slice(3); if(!ds.includes(n)) ds.push(n); }
   $("#diag").innerHTML=ds.length?ds.map(d=>`<span class="tag">${esc(d)}</span>`).join(""):'<span class="vazio">Nenhum diagnóstico registrado aqui ainda.</span>';
@@ -754,7 +795,21 @@ function desenhaFicha(){
   desenhaTimeline();
   $("#repetir-ref").hidden=!(ficha.consultas||[]).some(c=>c.finalizado_em&&(c.dados?.campos?.["re-od-esf"]||c.dados?.campos?.["re-oe-esf"]));
 }
+function preDoAgendamento(id){ return id?(ficha.preexames||[]).find(p=>p.appointment_id===id)||null:null; }
+// Motivo do pré-exame → queixa principal: o que tem botão igual já vem marcado;
+// o resto (e a observação) vai como linha da história.
+const ALIAS_QP={"Coceira":"Prurido"};
+function dadosDoPreExame(apptId){
+  const pre=preDoAgendamento(apptId); if(!pre) return null;
+  const botoes=$$('[data-grupo="qp"] .chip').map(nomeChip), chips=[], linhas=[];
+  for(const m of pre.motivos||[]){ const n=ALIAS_QP[m]||m; if(botoes.includes(n)) chips.push("qp|"+n); else linhas.push(m); }
+  if(pre.motivo_outro) linhas.push(pre.motivo_outro);
+  if(pre.observacao) linhas.push(pre.observacao);
+  return {chips,campos:linhas.length?{"qp-txt":linhas.join("\n")}:{}};
+}
 function arq(x){ const ext=(String(x.nome||"").split(".").pop()||"").slice(0,4).toUpperCase();
+  const a=arqLink(x,ext); return x.tipo==="exame"?`<span class="arq-w">${a}<button type="button" data-laudo="${esc(x.id)}">${x.laudo?"Ver laudo":"Gerar laudo"}</button></span>`:a; }
+function arqLink(x,ext){
   return `<a class="arq" href="${esc(x.url||"#")}" target="_blank" rel="noopener" title="${esc(x.observacao||x.nome)}"><span class="ic">${esc(ext||"ARQ")}</span><span>${esc(x.nome)}<br><small class="hint">${ddmmaa(x.created_at)}${x.observacao?" · "+esc(x.observacao):""}</small></span></a>`; }
 function secoesDoTexto(t){ return String(t||"").split(/\n{2,}/).map(b=>b.trim()).filter(Boolean).map(b=>{
   const m=b.match(/^([^:\n]{2,60}):\s*\n?([\s\S]*)$/); return m?{rot:m[1].trim(),corpo:m[2].trim()}:{rot:"",corpo:b}; }); }
@@ -765,7 +820,7 @@ function desenhaTimeline(){
   $("#timeline").innerHTML=cs.map(c=>{
     const d=new Date(c.data_consulta); const dd=d.toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit"}), mm=Number(d.toLocaleDateString("pt-BR",{timeZone:TZ,month:"numeric"}))-1, aa=d.toLocaleDateString("pt-BR",{timeZone:TZ,year:"numeric"});
     let secs=secoesDoTexto(c.texto); if(f) secs=secs.filter(s=>s.rot.startsWith(f));
-    const anexos=(ficha.anexos||[]).filter(x=>x.consulta_id===c.id);
+    const anexos=(ficha.anexos||[]).filter(x=>x.consulta_id===c.id||(c.appointment_id&&x.appointment_id===c.appointment_id));
     const mostraAnexos=!f||f==="Imagens e anexos";
     if(f&&!secs.length&&!(mostraAnexos&&anexos.length)) return "";
     const fim=!!c.finalizado_em;
@@ -829,6 +884,7 @@ async function iniciar(consultaId){
     atend=c; consultaAtual={inicio:c.data_consulta,paciente_nome:ficha.paciente.nome};
     let dados=c.dados&&Object.keys(c.dados).length?c.dados:null;
     try{ const loc=JSON.parse(localStorage.getItem(chaveLocal(c.id))||"null"); if(loc&&(!c.updated_at||loc.ts>new Date(c.updated_at).getTime())) dados=loc.dados; }catch(_){}
+    if(!dados) dados=dadosDoPreExame(c.appointment_id);
     aplicar(dados); if(!v("pio-hora")){ const h=new Date(); $("#pio-hora").value=String(h.getHours()).padStart(2,"0")+"h"+String(h.getMinutes()).padStart(2,"0"); }
     $("#data-at").textContent=new Date(c.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
     durBase=c.duracao_seg||0; t0=Date.now(); pararRelogio(); t0=Date.now(); relogio=setInterval(()=>{ $("#duracao").textContent=fmtDur(durAtual()); },1000);
@@ -872,7 +928,7 @@ $("#gf-ok").addEventListener("click",async()=>{
 });
 
 /* ===== ANEXOS ===== */
-function desenhaAnexosAt(){ const xs=(ficha.anexos||[]).filter(x=>atend&&x.consulta_id===atend.id); $("#anexos-at").innerHTML=xs.map(arq).join(""); }
+function desenhaAnexosAt(){ const xs=(ficha.anexos||[]).filter(x=>atend&&(x.consulta_id===atend.id||(atend.appointment_id&&x.appointment_id===atend.appointment_id))); $("#anexos-at").innerHTML=xs.map(arq).join(""); }
 async function enviar(files,tipo,consultaId,stEl){
   for(const f of files){
     if(f.size>30*1024*1024){ stEl.textContent=`${f.name}: maior que 30 MB.`; stEl.className="status erro"; continue; }
@@ -895,6 +951,92 @@ zona.addEventListener("drop",e=>{ const fs=[...(e.dataTransfer?.files||[])]; if(
 const inIcl=document.createElement("input"); inIcl.type="file"; inIcl.accept="application/pdf,image/*"; inIcl.multiple=true; inIcl.hidden=true; document.body.appendChild(inIcl);
 $("#anexar-iclinic").addEventListener("click",()=>inIcl.click());
 inIcl.addEventListener("change",()=>{ const fs=[...inIcl.files]; inIcl.value=""; enviar(fs,"iclinic",null,$("#st-iclinic")); });
+
+/* ===== LAUDO (skill laudo-pentacam-iobb) ===== */
+const SEC_LAUDO=[["cornea_anterior","Córnea anterior","Parâmetro"],["cornea_posterior","Córnea posterior","Parâmetro"],["paquimetria","Paquimetria","Parâmetro"],["elevacoes","Elevações (BFS float, zona de 8 mm)","Parâmetro"],["indices","Índices tomográficos (zona de 8 mm)","Índice"]];
+let laudoAx=null, laudo=null;
+try{ $("#ml-timbrado").checked=localStorage.getItem("laudo-timbrado")!=="0"; }catch(_){ $("#ml-timbrado").checked=true; }
+$("#ml-timbrado").addEventListener("change",()=>{ try{ localStorage.setItem("laudo-timbrado",$("#ml-timbrado").checked?"1":"0"); }catch(_){} });
+document.addEventListener("click",e=>{ const b=e.target.closest("[data-laudo]"); if(!b) return; e.preventDefault(); abrirLaudo(b.dataset.laudo); });
+function mlStatus(t,cls){ $("#ml-st").textContent=t; $("#ml-st").className="status "+(cls||""); }
+async function abrirLaudo(id,refazer){
+  laudoAx=(ficha.anexos||[]).find(x=>x.id===id); if(!laudoAx) return;
+  $("#m-laudo").hidden=false; $("#ml-corpo").hidden=true;
+  mlStatus(refazer||!laudoAx.laudo?"Lendo o exame e montando o laudo… leva até um minuto.":"Abrindo…","");
+  try{ const r=await api(`/api/prontuario/laudo/${id}`,{method:"POST",body:JSON.stringify({tipo:"pentacam",refazer:!!refazer})});
+    laudo=r.laudo; laudoAx.laudo=laudo; desenhaLaudo(); mlStatus(r.salvo?`Laudo salvo${laudo.revisado_em?" (revisado em "+ddmmaa(laudo.revisado_em)+")":""}.`:"Laudo montado. Confira os valores antes de imprimir.","ok");
+  }catch(e){ mlStatus(e.status===401?MSG_SESSAO:(e.msg||"Não consegui gerar o laudo."),"erro"); }
+}
+function desenhaLaudo(){
+  $("#ml-corpo").hidden=false; $("#ml-data").value=laudo.data_exame||""; $("#ml-sexo").value=laudo.sexo||"Não informado"; $("#ml-imp").value=laudo.impressao_diagnostica||"";
+  const pend=(laudo.pendencias||[]).filter(Boolean); $("#ml-pend").hidden=!pend.length; $("#ml-pend").innerHTML=pend.length?"<b>Atenção:</b> "+pend.map(esc).join(" · "):"";
+  const linha=(o,k,i,r,comRef)=>`<tr class="${r.alterado?"alt":""}"><td>${esc(r.parametro||r.componente)}</td><td><input type="text" data-o="${o}" data-k="${k}" data-i="${i}" value="${esc(r.valor)}"></td>${comRef?`<td>${esc(r.referencia||"")}</td>`:""}<td style="text-align:center"><input type="checkbox" data-o="${o}" data-k="${k}" data-i="${i}" data-alt ${r.alterado?"checked":""} style="width:auto" title="Alterado"></td></tr>`;
+  $("#ml-olhos").innerHTML=["OD","OS"].filter(o=>laudo.olhos?.[o]).map(o=>{ const d=laudo.olhos[o];
+    return `<div class="lau-olho"><h4>${o==="OD"?"OLHO DIREITO (OD)":"OLHO ESQUERDO (OS)"}</h4>`+
+      SEC_LAUDO.filter(([k])=>d[k]).map(([k,rot,c1])=>`<div class="hint">${rot}</div><table class="lau"><tr><th>${c1}</th><th>Valor</th><th>Referência</th><th>Alterado</th></tr>${d[k].map((r,i)=>linha(o,k,i,r,true)).join("")}</table>`).join("")+
+      (d.belin?`<div class="hint">Belin/Ambrósio (BAD-D) e estadiamento</div><table class="lau"><tr><th>Componente</th><th>Valor</th><th>Alterado</th></tr>${d.belin.map((r,i)=>linha(o,"belin",i,r,false)).join("")}</table>`:"")+`</div>`; }).join("");
+  $$("#ml-olhos input").forEach(inp=>inp.addEventListener("change",()=>{ const r=laudo.olhos[inp.dataset.o][inp.dataset.k][+inp.dataset.i];
+    if(inp.dataset.alt!==undefined){ r.alterado=inp.checked; inp.closest("tr").classList.toggle("alt",inp.checked); } else r.valor=inp.value; }));
+}
+function lerEdicao(){ laudo.data_exame=v("ml-data"); laudo.sexo=$("#ml-sexo").value; laudo.impressao_diagnostica=$("#ml-imp").value.trim(); }
+$("#ml-fechar").addEventListener("click",()=>{ $("#m-laudo").hidden=true; desenhaFicha(); desenhaAnexosAt(); });
+$("#ml-refazer").addEventListener("click",()=>abrirLaudo(laudoAx.id,true));
+$("#ml-salvar").addEventListener("click",async()=>{ lerEdicao(); try{ await api(`/api/prontuario/laudo/${laudoAx.id}/salvar`,{method:"POST",body:JSON.stringify({laudo})}); mlStatus("Revisão salva.","ok"); }catch(e){ mlStatus(e.status===401?MSG_SESSAO:(e.msg||"Não consegui salvar."),"erro"); } });
+// Telas do exame (PDF) viram imagens com o pdf.js, na ordem da skill.
+let pdfjsPronto=null;
+function carregaPdfjs(){ if(pdfjsPronto) return pdfjsPronto; pdfjsPronto=new Promise((ok,falha)=>{ const sc=document.createElement("script"); sc.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; sc.onload=()=>{ window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; ok(window.pdfjsLib); }; sc.onerror=falha; document.head.appendChild(sc); }); return pdfjsPronto; }
+const ORDEM_TELA=t=>{ const tp=String(t.tipo||"").toLowerCase(); return (t.olho==="OS"?10:0)+(tp.includes("topom")?1:tp.includes("ectasia")?2:tp.includes("4 mapas")||tp.includes("refrativ")?3:4); };
+async function telasDoExame(){
+  if(!laudoAx?.url) return [];
+  const mime=String(laudoAx.mime||"");
+  if(mime.startsWith("image/")) return [{src:laudoAx.url,leg:laudoAx.observacao||"Exame"}];
+  const telas=[...(laudo.telas||[])].filter(t=>t&&t.pagina).sort((a,b)=>ORDEM_TELA(a)-ORDEM_TELA(b));
+  if(!telas.length) return [];
+  const lib=await carregaPdfjs(); const doc=await lib.getDocument(laudoAx.url).promise; const out=[];
+  for(const t of telas){ if(t.pagina>doc.numPages) continue; const pg=await doc.getPage(t.pagina); const vp=pg.getViewport({scale:1.6});
+    const cv=document.createElement("canvas"); cv.width=vp.width; cv.height=vp.height; await pg.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise;
+    out.push({src:cv.toDataURL("image/jpeg",0.85),leg:`${t.olho} — ${t.tipo}`}); }
+  return out;
+}
+$("#ml-imprimir").addEventListener("click",async()=>{
+  lerEdicao(); const w=window.open("","_blank");
+  if(!w){ mlStatus("O navegador bloqueou a janela do laudo. Permita pop-ups para este site.","erro"); return; }
+  w.document.write("<p style='font:15px sans-serif;padding:20px'>Montando o laudo…</p>");
+  let imgs=[]; if($("#ml-imagens").checked){ try{ mlStatus("Preparando as telas do exame…",""); imgs=await telasDoExame(); }catch(_){ mlStatus("Não consegui incluir as telas do exame; o laudo sai sem elas.","erro"); } }
+  const timb=$("#ml-timbrado").checked, M=MARGENS_TIMBRADO, p=ficha.paciente;
+  const tab=(rows,c1,ref)=>`<table><tr><th>${c1}</th><th>Valor</th>${ref?"<th>Referência</th>":""}</tr>${rows.map(r=>`<tr class="${r.alterado?"alt":""}"><td>${esc(r.parametro||r.componente)}</td><td>${esc(r.valor)}</td>${ref?`<td>${esc(r.referencia||"")}</td>`:""}</tr>`).join("")}</table>`;
+  const olhos=["OD","OS"].filter(o=>laudo.olhos?.[o]).map(o=>{ const d=laudo.olhos[o];
+    return `<h2>${o==="OD"?"OLHO DIREITO (OD)":"OLHO ESQUERDO (OS)"}</h2>`+SEC_LAUDO.filter(([k])=>d[k]).map(([k,rot,c1])=>`<div class="bl"><h3>${rot}</h3>${tab(d[k],c1,true)}</div>`).join("")+(d.belin?`<div class="bl"><h3>Belin/Ambrósio (BAD-D) e estadiamento</h3>${tab(d.belin,"Componente",false)}</div>`:""); }).join("");
+  const cab=timb?"":`<div class="cab"><div><b style="font-size:13pt">Dr. Bruno Borges</b><br>Médico Oftalmologista<br>CRM: 17877 - RQE: 9314<br>Telefones: (61)3033-6605 / (61)98406-0001<br>Shopping Conjunto Nacional sala 6017<br>Brasília - DF</div><img src="/prontuario/logo.png" alt="IOBB"></div><hr>`;
+  const figs=imgs.length?`<div class="imgs"><h2>IMAGENS DO EXAME</h2>${imgs.map(i=>`<figure><figcaption>${esc(i.leg)}</figcaption><img src="${i.src}"></figure>`).join("")}</div>`:"";
+  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Laudo Pentacam - ${esc(p.nome)}</title>
+<style>
+@page{size:A4;margin:${timb?`${M.topo}mm ${M.lado}mm ${M.base}mm`:"16mm 20mm 18mm"}}
+body{font:9.5pt/1.35 "Liberation Sans",Arial,Helvetica,sans-serif;color:#222;margin:0}
+.barra{display:flex;gap:10px;align-items:center;padding:10px;background:#eef2f3;font:14px system-ui,sans-serif}
+.barra button{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid #1d6b74;background:#1d6b74;color:#fff;cursor:pointer;margin-left:auto}
+@media print{.barra{display:none}}
+.folha{max-width:170mm;margin:0 auto;padding:6mm 4mm} @media print{.folha{padding:0}}
+.cab{display:flex;justify-content:space-between;align-items:flex-start;font-size:9pt;line-height:1.35} .cab img{width:42mm}
+hr{border:0;border-top:1px solid #1a3a5c;margin:6px 0 10px}
+.pac b{font-size:12pt} .pac div{font-size:9.5pt}
+h1{font-size:12.5pt;color:#1a3a5c;margin:10px 0 2px} h2{font-size:11.5pt;color:#1a3a5c;margin:12px 0 4px} h3{font-size:10pt;color:#1a3a5c;margin:8px 0 3px}
+table{width:100%;border-collapse:collapse;font-size:8.7pt} th{background:#1a3a5c;color:#fff;text-align:left;padding:3px 5px;font-weight:700} td{border:1px solid #bbb;padding:3px 5px} tr:nth-child(even) td{background:#f4f6f8}
+tr.alt td{color:#b02a2a;font-weight:700} .bl{break-inside:avoid}
+.imp{break-inside:avoid} .ass{margin-top:14mm;text-align:center;line-height:1.3;break-inside:avoid} .ass .l{width:70mm;border-top:1px solid #333;margin:0 auto 2mm}
+.imgs{break-before:page} figure{margin:0 0 6mm;break-inside:avoid;text-align:center} figure img{max-width:100%;max-height:${timb?"92mm":"118mm"};object-fit:contain} figcaption{font-size:9pt;color:#1a3a5c;font-weight:700;margin-bottom:2mm;text-align:left}
+</style></head><body>
+<div class="barra"><span>${timb?"Papel <b>timbrado</b> na impressora e escala <b>100%</b>. Confira antes de assinar.":"Confira antes de imprimir ou salvar como PDF."}</span><button onclick="print()">Imprimir</button></div>
+<div class="folha">${cab}
+<div class="pac"><b>${esc(p.nome)}</b><div>CPF: Não informado &nbsp;|&nbsp; Data de nascimento: ${esc(p.nascimento||"Não informado")}${p.idade!=null?` (${p.idade} anos)`:""}</div><div>Sexo: ${esc(laudo.sexo||"Não informado")} &nbsp;|&nbsp; Prontuário: Não informado</div></div>
+<h1>LAUDO DE TOMOGRAFIA DE CÓRNEA (PENTACAM)</h1><div>Exame realizado em: ${esc(laudo.data_exame||"")}</div>
+${olhos}
+<div class="imp"><h2>IMPRESSÃO DIAGNÓSTICA</h2><div>${esc(laudo.impressao_diagnostica||"")}</div></div>
+<div class="ass"><div class="l"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877 - RQE: 9314</div>
+${figs}
+</div></body></html>`;
+  w.document.open(); w.document.write(html); w.document.close(); mlStatus("Laudo aberto em outra janela.","ok");
+});
 
 /* ===== entrada ===== */
 (async()=>{

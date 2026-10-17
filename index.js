@@ -8171,8 +8171,14 @@ const SECRETARIAS = [
   // — sem PANEL_PW_BRUNO o usuário simplesmente não existe; quem sabe a senha
   // das secretárias não entra como ele; (2) libera as rotas /api/prontuario.
   { nome: "Dr. Bruno",  email: "bruno@iobb.local",      pwEnv: "PANEL_PW_BRUNO", medico: true },
+  // 🔬 PRÉ-EXAME (17/10/2026): quem faz o pré-exame registra o motivo da
+  // consulta e anexa os exames, que o Dr. Bruno abre no prontuário. Senha
+  // própria (PANEL_PW_PREEXAME, sem cair na comum) e acesso SÓ a /api/preexame
+  // — não vê conversas, painel nem prontuário.
+  { nome: "Pré-exame",  email: "preexame@iobb.local",   pwEnv: "PANEL_PW_PREEXAME", preexame: true },
 ];
 const MEDICO_EMAIL = "bruno@iobb.local";
+const PREEXAME_EMAIL = "preexame@iobb.local";
 
 // Restaura o estado GLOBAL da Ana (settings.ai_enabled) ao subir, para que
 // ligar/desligar (pelo painel ou #ANA) persista entre reinícios do Render.
@@ -8191,7 +8197,7 @@ const MEDICO_EMAIL = "bruno@iobb.local";
     const { data: list, error: listErr } = await supabase.auth.admin.listUsers();
     if (listErr) { console.error("Auth listUsers:", listErr.message); return; }
     for (const s of SECRETARIAS) {
-      const senha = process.env[s.pwEnv] || (s.medico ? null : process.env.PANEL_PASSWORD);
+      const senha = process.env[s.pwEnv] || (s.medico || s.preexame ? null : process.env.PANEL_PASSWORD);
       if (!senha) { console.log(`Sem senha em env para ${s.nome} — usuária não criada.`); continue; }
       const existente = list.users.find(u => u.email === s.email);
       if (!existente) {
@@ -8269,6 +8275,7 @@ app.post("/api/login", loginRateLimit, async (req, res) => {
       expires_at: data.session.expires_at,
       agent: secretaria.nome,
       medico: !!secretaria.medico,
+      preexame: !!secretaria.preexame,
     });
   } catch (e) {
     console.error("Erro no login:", e.message);
@@ -8302,6 +8309,10 @@ async function requirePanelAuth(req, res, next) {
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data?.user) return res.status(401).json({ error: "Sessão inválida" });
     req.panelUser = data.user; // identidade da secretária (auditoria/LGPD)
+    // O login do pré-exame só enxerga as rotas dele (nada de conversas/painel).
+    if (String(data.user.email || "").toLowerCase() === PREEXAME_EMAIL && !req.path.startsWith("/preexame/")) {
+      return res.status(403).json({ error: "Este login é só para o pré-exame." });
+    }
     next();
   } catch (e) {
     return res.status(401).json({ error: "Falha na autenticação" });
@@ -10110,12 +10121,15 @@ app.get("/api/prontuario/dia", requireMedico, async (req, res) => {
       .order("inicio", { ascending: true });
     if (error) throw error;
     const ids = (ags || []).map(a => a.id);
-    let feitos = new Set();
+    let feitos = new Set(), pre = new Set();
     if (ids.length) {
       const { data: regs } = await supabase.from("prontuario_consultas").select("appointment_id").in("appointment_id", ids);
       feitos = new Set((regs || []).map(r => r.appointment_id));
+      const { data: ps } = await supabase.from("prontuario_preexame").select("appointment_id").in("appointment_id", ids);
+      const { data: xs } = await supabase.from("prontuario_anexos").select("appointment_id").in("appointment_id", ids);
+      pre = new Set([...(ps || []), ...(xs || [])].map(r => r.appointment_id));
     }
-    res.json({ data: ymd, consultas: (ags || []).map(a => ({ ...a, ...(idadeDe(a.observacoes) || {}), tem_registro: feitos.has(a.id) })) });
+    res.json({ data: ymd, consultas: (ags || []).map(a => ({ ...a, ...(idadeDe(a.observacoes) || {}), tem_registro: feitos.has(a.id), tem_preexame: pre.has(a.id) })) });
   } catch (e) {
     console.error("[Prontuário] /dia falhou:", e.message);
     res.status(500).json({ error: "Não consegui ler a agenda do dia." });
@@ -10311,6 +10325,12 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
     for (const a of [...meus].reverse()) { idade = idadeDe(a.observacoes); if (idade) break; }
     const { data: pac } = await supabase.from("prontuario_pacientes").select("*").eq("chave", chave).maybeSingle();
     const consultas = await consultasDoPaciente(tel, nome);
+    let preexames = [];
+    if (meus.length) {
+      const { data: ps } = await supabase.from("prontuario_preexame").select("appointment_id, motivos, motivo_outro, observacao, feito_por, updated_at")
+        .in("appointment_id", meus.map(a => a.id));
+      preexames = (ps || []).map(p => ({ ...p, inicio: meus.find(a => a.id === p.appointment_id)?.inicio || null }));
+    }
     const { data: anexosRaw } = await supabase.from("prontuario_anexos").select("*").eq("paciente_chave", chave).order("created_at", { ascending: false }).limit(200);
     const anexos = [];
     for (const a of anexosRaw || []) {
@@ -10339,7 +10359,7 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
         convenio: ultimoAg?.convenio || null, primeira_consulta: meus[0]?.inicio || null,
         ...(idade || {}),
       },
-      antecedentes: pac?.antecedentes || {}, hoje, consultas, anexos, conversa,
+      antecedentes: pac?.antecedentes || {}, hoje, consultas, anexos, conversa, preexames,
     });
   } catch (e) {
     console.error("[Prontuário] ficha falhou:", e.message);
@@ -10440,32 +10460,256 @@ app.post("/api/prontuario/atendimento/:cid/adendo", requireMedico, async (req, r
 });
 // Anexo (exame ou prontuário anterior do iClinic): corpo binário, como /api/upload,
 // mas em bucket PRÓPRIO e privado — o bucket "anexos" das conversas tem expurgo.
+// Grava o arquivo no bucket privado e a linha em prontuario_anexos (usado pelo
+// médico e pelo pré-exame).
+async function guardarAnexo({ tel, nome, tipo, nomeArq, mime, buf, obs, consultaId, appointmentId, por }) {
+  await garantirBucketProntuario();
+  const path = `${ult8(tel)}_${primNome(nome)}/${Date.now()}_${nomeArq.replace(/[^\w.\-]+/g, "_").slice(-100)}`;
+  const { error } = await supabase.storage.from(BUCKET_PRONTUARIO).upload(path, buf, { contentType: mime, upsert: false });
+  if (error) throw error;
+  const { data: reg, error: e2 } = await supabase.from("prontuario_anexos").insert({
+    paciente_chave: chavePaciente(tel, nome), consulta_id: consultaId || null, appointment_id: appointmentId || null,
+    tipo, nome: nomeArq, path, mime, tamanho: buf.length, observacao: String(obs || "").slice(0, 500) || null, enviado_por: por || null,
+  }).select("*").single();
+  if (e2) throw e2;
+  const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(path, 3600);
+  return { ...reg, url: s?.signedUrl || null };
+}
 app.post("/api/prontuario/anexo", requireMedico, express.raw({ type: () => true, limit: "30mb" }), async (req, res) => {
   try {
     if (!req.body || !req.body.length) return res.status(400).json({ error: "Arquivo vazio." });
     const tel = String(req.query.tel || ""), nome = String(req.query.nome || "");
     if (!ult8(tel) || !primNome(nome)) return res.status(400).json({ error: "Paciente inválido." });
-    const tipo = String(req.query.tipo || "exame") === "iclinic" ? "iclinic" : "exame";
-    const nomeArq = String(req.query.filename || "arquivo").slice(0, 160);
-    const mime = String(req.query.mime || req.headers["content-type"] || "application/octet-stream");
-    const chave = chavePaciente(tel, nome);
-    await garantirBucketProntuario();
-    const path = `${ult8(tel)}_${primNome(nome)}/${Date.now()}_${nomeArq.replace(/[^\w.\-]+/g, "_").slice(-100)}`;
-    const { error } = await supabase.storage.from(BUCKET_PRONTUARIO).upload(path, req.body, { contentType: mime, upsert: false });
-    if (error) throw error;
     const consultaId = /^[0-9a-f-]{36}$/i.test(String(req.query.consulta || "")) ? String(req.query.consulta) : null;
-    const { data: reg, error: e2 } = await supabase.from("prontuario_anexos").insert({
-      paciente_chave: chave, consulta_id: consultaId, tipo, nome: nomeArq, path, mime, tamanho: req.body.length,
-      observacao: String(req.query.obs || "").slice(0, 500) || null,
-    }).select("*").single();
-    if (e2) throw e2;
-    const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(path, 3600);
-    res.json({ ok: true, anexo: { ...reg, url: s?.signedUrl || null } });
+    const anexo = await guardarAnexo({
+      tel, nome, tipo: String(req.query.tipo || "exame") === "iclinic" ? "iclinic" : "exame",
+      nomeArq: String(req.query.filename || "arquivo").slice(0, 160),
+      mime: String(req.query.mime || req.headers["content-type"] || "application/octet-stream"),
+      buf: req.body, obs: req.query.obs, consultaId,
+    });
+    res.json({ ok: true, anexo });
   } catch (e) {
     console.error("[Prontuário] anexo falhou:", e.message);
     res.status(500).json({ error: "Não consegui guardar o arquivo." });
   }
 });
+// ===== GERAR LAUDO — Pentacam (Dr. Bruno, 17/10/2026) ==========================
+// Segue a skill laudo-pentacam-iobb (formato aprovado por ele): a IA lê o PDF/
+// imagem do exame e devolve os valores por olho com a referência padronizada; o
+// médico confere e edita na tela antes de imprimir. ⚠️ Única exceção ao "nada
+// clínico vai para a IA" do prontuário — decisão dele ("pode seguir a skill").
+const LAUDO_MODEL = readEnv("LAUDO_MODEL") || "claude-opus-5-5";
+const REF_PENTACAM = `VALORES DE REFERÊNCIA (use exatamente estes textos na "referencia"; "alterado"=true quando fora da faixa):
+Córnea anterior: K1 "41,0 – 46,0 D"; K2 "43,0 – 48,0 D"; Km "42,0 – 46,0 D"; Astigmatismo (eixo) "< 2,0 D"; Rmin "> 7,0 mm".
+Córnea posterior: K1 posterior "-6,0 a -6,5 D"; K2 posterior "até -7,0 D"; Astigmatismo posterior "< 0,3 D".
+Paquimetria: Paq. centro pupilar "540 – 560 μm" (mais espessa que 560 NÃO é alterado); Paq. ponto mais fino "> 500 μm"; Descentração do ponto fino "< 1,0 mm"; KMax "< 47,2 D".
+Elevações (BFS float, 8 mm): Elevação anterior "< 12 μm"; Elevação posterior "< 15–17 μm".
+Índices (8 mm): ISV "< 21"; IVA "< 0,32"; IHD "< 0,016"; KI "< 1,07"; CKI "< 1,03"; IHA "< 21°"; KISA% "< 60 (suspeito 60–100; KC > 100)" — se > 100 use "> 100 = KC estabelecido".
+Belin/Ambrósio: componentes "Df (elevação frontal)", "Db (elevação posterior)", "Dp (paquimetria)", "Dt (relação espessura)", "Da (progressão de espessura)", "D final" (valor no formato "7,95  (referência: > 1,6 = fortemente alterado)" quando alterado; "> 1,6" = alterado), "ARTmax" ("> 400 normal; < 340 suspeito" — ex.: "139  (referência: > 400 normal — muito reduzido)"), "Estadiamento ABCD" (alterado se qualquer letra > 0), "TKC (classificação topográfica)" (alterado se grau ≥ 1; vazio = "Não detectado"). Df, Db, Dp, Dt, Da: alterado quando o aparelho mostra em vermelho/amarelo ou quando o D final está alterado.`;
+const PROMPT_PENTACAM = `Você é o assistente do Dr. Bruno Borges (oftalmologista, IOBB) para LAUDO DE TOMOGRAFIA DE CÓRNEA (PENTACAM).
+Leia as telas do Pentacam no arquivo anexado e devolva SOMENTE um JSON (sem texto antes ou depois), no formato:
+{"data_exame":"dd/mm/aaaa","sexo":"Feminino|Masculino|Não informado",
+ "olhos":{"OD":{"cornea_anterior":[{"parametro":"K1","valor":"46,7 D","referencia":"41,0 – 46,0 D","alterado":true}, ...K2, Km, "Astigmatismo (eixo)" (ex.: "2,7 D (130,7°)"), Rmin],
+   "cornea_posterior":[K1 posterior, K2 posterior, Astigmatismo posterior],
+   "paquimetria":["Paq. centro pupilar","Paq. ponto mais fino","Descentração do ponto fino","KMax"],
+   "elevacoes":["Elevação anterior","Elevação posterior"],
+   "indices":[ISV, IVA, IHD, KI, CKI, IHA, "KISA%"],
+   "belin":[{"componente":"Df (elevação frontal)","valor":"6,98","alterado":true}, ...Db, Dp, Dt, Da, "D final", "ARTmax", "Estadiamento ABCD", "TKC (classificação topográfica)"]},
+  "OS":{...mesma estrutura...}},
+ "impressao_diagnostica":"...",
+ "telas":[{"pagina":1,"olho":"OD","tipo":"Topométrico / Estadiamento KC"}],
+ "pendencias":["..."]}
+REGRAS (formato já aprovado pelo Dr. Bruno — não invente nada):
+- Números com vírgula decimal, unidades como no exemplo (D, mm, μm, °).
+- Onde achar: Topométrico/Estadiamento KC → K1, K2, Km, astigmatismo e eixo, Rmin, córnea posterior, paquimetria, KMax, ISV, IVA, IHD, KI, CKI, IHA, KISA, ABCD e TKC. Ectasia Reforçada Belin/Ambrósio → elevações anterior e posterior, descentração (Dist. Vertex N.-Thin.Loc.), ARTmax, Df, Db, Dp, Dt, Da, D. 4 Mapas Refrativos → confirmação.
+- Se um valor estiver ilegível ou ausente, use "valor":"?" e descreva em "pendencias". NUNCA estime.
+- Se só houver um olho no arquivo, devolva só esse olho.
+- "telas": para cada página do PDF (1 = primeira) que seja Topométrico, Ectasia Reforçada ou 4 Mapas Refrativos do exame ATUAL, diga olho e tipo. Ignore telas "Mapas" e "Geral", exames antigos e outros exames.
+- IMPRESSÃO DIAGNÓSTICA: apenas o diagnóstico, uma ou duas frases, sem estadiamento por extenso, sem conduta, sem tratamento, sem outros exames. Tom aprovado: "Ectasia corneana bilateral e assimétrica, com padrão tomográfico compatível com ceratocone, mais avançado no olho direito do que no olho esquerdo." ou "Exame de tomografia de córnea dentro dos limites da normalidade em ambos os olhos, sem sinais tomográficos de ectasia corneana ou ceratocone." Achados isolados sem significado podem ser citados numa frase curta, sem alarmismo.
+- Se o arquivo trouxer outros exames (microscopia, topografia de outro aparelho), NÃO coloque no laudo; só mencione em "pendencias".
+${REF_PENTACAM}`;
+app.post("/api/prontuario/laudo/:anexoId", requireMedico, async (req, res) => {
+  try {
+    const tipo = String(req.body?.tipo || "pentacam");
+    if (tipo !== "pentacam") return res.status(400).json({ error: "Por enquanto só o laudo de Pentacam é gerado automaticamente." });
+    const { data: ax, error } = await supabase.from("prontuario_anexos").select("*").eq("id", req.params.anexoId).maybeSingle();
+    if (error) throw error;
+    if (!ax) return res.status(404).json({ error: "Arquivo não encontrado." });
+    if (ax.laudo && !req.body?.refazer) return res.json({ laudo: ax.laudo, salvo: true });
+    const { data: blob, error: e2 } = await supabase.storage.from(BUCKET_PRONTUARIO).download(ax.path);
+    if (e2) throw e2;
+    const buf = Buffer.from(await blob.arrayBuffer());
+    const mime = String(ax.mime || "").toLowerCase();
+    const bloco = mime.includes("pdf")
+      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: buf.toString("base64") } }
+      : { type: "image", source: { type: "base64", media_type: /png/.test(mime) ? "image/png" : "image/jpeg", data: buf.toString("base64") } };
+    const pedir = (model) => anthropicMessages({
+      model, max_tokens: 6000,
+      messages: [{ role: "user", content: [bloco, { type: "text", text: PROMPT_PENTACAM }] }],
+    }, { origem: "laudo", tentativas: 1, timeout: 240000 });
+    let r;
+    try { r = await pedir(LAUDO_MODEL); }
+    catch (e) {
+      const st = e?.response?.status;
+      if (LAUDO_MODEL !== ANA_MODEL && (st === 404 || st === 400)) { console.warn(`[Laudo] ${LAUDO_MODEL} recusado (${st}) — usando ${ANA_MODEL}.`); r = await pedir(ANA_MODEL); }
+      else throw e;
+    }
+    const txt = (r.data?.content || []).filter(c => c.type === "text").map(c => c.text).join("");
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("a IA não devolveu o laudo no formato esperado");
+    const laudo = JSON.parse(m[0]);
+    laudo.gerado_em = new Date().toISOString();
+    await supabase.from("prontuario_anexos").update({ laudo, laudo_em: laudo.gerado_em }).eq("id", ax.id);
+    res.json({ laudo, salvo: false });
+  } catch (e) {
+    console.error("[Laudo] falhou:", e?.response?.data ? JSON.stringify(e.response.data).slice(0, 300) : e.message);
+    res.status(500).json({ error: "Não consegui gerar o laudo agora. Tente de novo em instantes." });
+  }
+});
+// Laudo revisado pelo médico (edições na tela) — guarda a versão final.
+app.post("/api/prontuario/laudo/:anexoId/salvar", requireMedico, async (req, res) => {
+  try {
+    const laudo = req.body?.laudo;
+    if (!laudo || typeof laudo !== "object") return res.status(400).json({ error: "Laudo inválido." });
+    laudo.revisado_em = new Date().toISOString();
+    const { error } = await supabase.from("prontuario_anexos").update({ laudo }).eq("id", req.params.anexoId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[Laudo] salvar falhou:", e.message);
+    res.status(500).json({ error: "Não consegui salvar o laudo." });
+  }
+});
+// ===== PRÉ-EXAME (Dr. Bruno, 17/10/2026) =====================================
+// Login próprio (Pré-exame): vê a agenda do dia, marca o MOTIVO DA CONSULTA
+// (botões) e anexa os exames feitos. Tudo cai no prontuário do paciente — o
+// Dr. Bruno abre na ficha e no atendimento. O pré-exame NÃO lê o prontuário:
+// só o que é da consulta em que ele está trabalhando.
+function requirePreExame(req, res, next) {
+  const em = String(req.panelUser?.email || "").toLowerCase();
+  if (em !== PREEXAME_EMAIL && em !== MEDICO_EMAIL) return res.status(403).json({ error: "Acesso restrito ao pré-exame." });
+  req.porPreExame = em === PREEXAME_EMAIL ? "Pré-exame" : "Dr. Bruno";
+  next();
+}
+const PRE_JANELA_DIAS = 7;   // pré-exame trabalha na agenda de hoje (± uma semana para corrigir)
+async function agendamentoPreExame(id) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(id || ""))) return null;
+  const { data } = await supabase.from("appointments")
+    .select("id, inicio, unidade, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, encaixe")
+    .eq("id", id).neq("origem", "bloqueio").maybeSingle();
+  if (!data || !data.paciente_telefone) return null;
+  if (Math.abs(new Date(data.inicio).getTime() - Date.now()) > PRE_JANELA_DIAS * 864e5) return null;
+  return data;
+}
+app.get("/api/preexame/dia", requirePreExame, async (req, res) => {
+  try {
+    const hoje = new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR });
+    let ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.data || "")) ? String(req.query.data) : hoje;
+    const d0 = new Date(`${ymd}T00:00:00-03:00`), d1 = new Date(d0.getTime() + 864e5);
+    if (Math.abs(d0.getTime() - new Date(`${hoje}T00:00:00-03:00`).getTime()) > PRE_JANELA_DIAS * 864e5) {
+      return res.status(400).json({ error: `O pré-exame só abre a agenda de até ${PRE_JANELA_DIAS} dias antes ou depois de hoje.` });
+    }
+    const { data: ags, error } = await supabase.from("appointments")
+      .select("id, inicio, unidade, paciente_nome, paciente_telefone, convenio, motivo, observacoes, encaixe")
+      .gte("inicio", d0.toISOString()).lt("inicio", d1.toISOString())
+      .in("status", ["reservado", "confirmado"]).neq("origem", "bloqueio").order("inicio", { ascending: true });
+    if (error) throw error;
+    const ids = (ags || []).map(a => a.id);
+    let pres = [], axs = [];
+    if (ids.length) {
+      ({ data: pres } = await supabase.from("prontuario_preexame").select("appointment_id, motivos, motivo_outro").in("appointment_id", ids));
+      ({ data: axs } = await supabase.from("prontuario_anexos").select("appointment_id").in("appointment_id", ids));
+    }
+    const mp = new Map((pres || []).map(p => [p.appointment_id, p]));
+    res.json({ data: ymd, consultas: (ags || []).map(a => {
+      const p = mp.get(a.id);
+      return { id: a.id, inicio: a.inicio, unidade: a.unidade, paciente_nome: a.paciente_nome, convenio: a.convenio, motivo: a.motivo, encaixe: a.encaixe,
+        idade: idadeDe(a.observacoes)?.idade ?? null,
+        motivos: p ? [...(p.motivos || []), ...(p.motivo_outro ? [p.motivo_outro] : [])] : [],
+        exames: (axs || []).filter(x => x.appointment_id === a.id).length };
+    }) });
+  } catch (e) {
+    console.error("[Pré-exame] dia falhou:", e.message);
+    res.status(500).json({ error: "Não consegui ler a agenda." });
+  }
+});
+app.get("/api/preexame/consulta/:id", requirePreExame, async (req, res) => {
+  try {
+    const ag = await agendamentoPreExame(req.params.id);
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
+    const { data: pre } = await supabase.from("prontuario_preexame").select("*").eq("appointment_id", ag.id).maybeSingle();
+    const { data: axs } = await supabase.from("prontuario_anexos").select("id, nome, mime, observacao, enviado_por, created_at, path, laudo_em")
+      .eq("appointment_id", ag.id).order("created_at", { ascending: true });
+    const anexos = [];
+    for (const a of axs || []) {
+      const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(a.path, 1800);
+      anexos.push({ id: a.id, nome: a.nome, mime: a.mime, observacao: a.observacao, enviado_por: a.enviado_por, created_at: a.created_at, url: s?.signedUrl || null, tem_laudo: !!a.laudo_em });
+    }
+    res.json({
+      consulta: { id: ag.id, inicio: ag.inicio, unidade: ag.unidade, paciente_nome: ag.paciente_nome, convenio: ag.convenio, motivo: ag.motivo, encaixe: ag.encaixe, idade: idadeDe(ag.observacoes)?.idade ?? null },
+      preexame: pre ? { motivos: pre.motivos || [], motivo_outro: pre.motivo_outro || "", observacao: pre.observacao || "", feito_por: pre.feito_por, updated_at: pre.updated_at } : null,
+      anexos,
+    });
+  } catch (e) {
+    console.error("[Pré-exame] consulta falhou:", e.message);
+    res.status(500).json({ error: "Não consegui abrir a consulta." });
+  }
+});
+app.post("/api/preexame/consulta/:id", requirePreExame, async (req, res) => {
+  try {
+    const ag = await agendamentoPreExame(req.params.id);
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
+    const b = req.body || {};
+    const motivos = (Array.isArray(b.motivos) ? b.motivos : []).map(x => String(x).trim().slice(0, 80)).filter(Boolean).slice(0, 25);
+    const linha = {
+      appointment_id: ag.id, paciente_chave: chavePaciente(ag.paciente_telefone, ag.paciente_nome), motivos,
+      motivo_outro: String(b.motivo_outro || "").trim().slice(0, 300) || null,
+      observacao: String(b.observacao || "").trim().slice(0, 2000) || null,
+      feito_por: req.porPreExame, updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from("prontuario_preexame").upsert(linha, { onConflict: "appointment_id" });
+    if (error) throw error;
+    res.json({ ok: true, updated_at: linha.updated_at });
+  } catch (e) {
+    console.error("[Pré-exame] salvar falhou:", e.message);
+    res.status(500).json({ error: "Não consegui salvar o pré-exame." });
+  }
+});
+app.post("/api/preexame/consulta/:id/anexo", requirePreExame, express.raw({ type: () => true, limit: "30mb" }), async (req, res) => {
+  try {
+    if (!req.body || !req.body.length) return res.status(400).json({ error: "Arquivo vazio." });
+    const ag = await agendamentoPreExame(req.params.id);
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
+    const a = await guardarAnexo({
+      tel: ag.paciente_telefone, nome: ag.paciente_nome, tipo: "exame",
+      nomeArq: String(req.query.filename || "exame").slice(0, 160),
+      mime: String(req.query.mime || req.headers["content-type"] || "application/octet-stream"),
+      buf: req.body, obs: req.query.exame, appointmentId: ag.id, por: req.porPreExame,
+    });
+    res.json({ ok: true, anexo: { id: a.id, nome: a.nome, mime: a.mime, observacao: a.observacao, enviado_por: a.enviado_por, created_at: a.created_at, url: a.url } });
+  } catch (e) {
+    console.error("[Pré-exame] anexo falhou:", e.message);
+    res.status(500).json({ error: "Não consegui guardar o arquivo." });
+  }
+});
+// Tirar um arquivo enviado por engano: só o que veio do pré-exame, desta
+// consulta, ainda sem laudo.
+app.post("/api/preexame/anexo/:aid/remover", requirePreExame, async (req, res) => {
+  try {
+    const { data: ax } = await supabase.from("prontuario_anexos").select("id, path, appointment_id, enviado_por, laudo_em").eq("id", req.params.aid).maybeSingle();
+    if (!ax || !ax.appointment_id || !ax.enviado_por) return res.status(404).json({ error: "Arquivo não encontrado." });
+    if (ax.laudo_em) return res.status(409).json({ error: "Este exame já tem laudo; peça ao Dr. Bruno para tirar." });
+    if (!(await agendamentoPreExame(ax.appointment_id))) return res.status(404).json({ error: "Consulta fora da semana." });
+    await supabase.storage.from(BUCKET_PRONTUARIO).remove([ax.path]);
+    const { error } = await supabase.from("prontuario_anexos").delete().eq("id", ax.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[Pré-exame] remover falhou:", e.message);
+    res.status(500).json({ error: "Não consegui tirar o arquivo." });
+  }
+});
+app.get("/pre-exame", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/preexame.html"); });
 app.get("/prontuario/timbrado.jpg", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/timbrado-a4.jpg"); });
 app.get("/prontuario/logo.png", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/logo-receita.png"); });
 app.get("/prontuario", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/prontuario.html"); });
@@ -10488,6 +10732,7 @@ app.get("/version", (req, res) => {
     config: {
       painel_janela_horas: janelaEmHoras(readEnv("PAINEL_JANELA_HORAS")),   // null = lista inteira
       login_medico: !!process.env.PANEL_PW_BRUNO,                           // senha do Dr. Bruno configurada no Render
+      login_preexame: !!process.env.PANEL_PW_PREEXAME,                      // senha do login do pré-exame configurada no Render
       espelho_extra_numeros: WA_ESPELHO_EXTRA.length,                       // 0 = espelho extra desligado
       secretaria_espelho: WA_SECRETARIA_NUMBER ? "ligado" : "desligado",
       // 23/09 — estes três são CONFIGURAÇÃO, não segredo, e ficavam invisíveis
