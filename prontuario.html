@@ -406,7 +406,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 <div class="fundo" id="m-laudo" hidden>
   <div class="modal grande" role="dialog" aria-labelledby="ml-t">
     <div class="row" style="justify-content:space-between"><h3 id="ml-t">Laudo</h3><button type="button" class="link" id="ml-fechar">Fechar</button></div>
-    <div class="row"><label>Exame <select id="ml-tipo" style="width:auto"><option value="pentacam">Tomografia de córnea (Pentacam)</option><option value="paquimetria">Paquimetria corneana</option><option value="microscopia">Microscopia especular de córnea</option></select></label><button type="button" id="ml-gerar">Gerar laudo</button></div>
+    <div class="row"><label>Exame <select id="ml-tipo" style="width:auto"><option value="pentacam">Tomografia de córnea (Pentacam)</option><option value="topografia">Topografia corneana</option><option value="paquimetria">Paquimetria corneana</option><option value="microscopia">Microscopia especular de córnea</option></select></label><button type="button" id="ml-gerar">Gerar laudo</button></div>
     <div class="status" id="ml-st"></div>
     <div id="ml-corpo" hidden style="display:grid;gap:10px">
       <div class="row"><label>Exame realizado em <input id="ml-data" style="width:130px"></label><label>Sexo <select id="ml-sexo"><option>Não informado</option><option>Feminino</option><option>Masculino</option></select></label><label>CPF <input id="ml-cpf" style="width:150px" placeholder="000.000.000-00"></label><label>Prontuário <input id="ml-pront" style="width:110px" placeholder="#000000"></label></div>
@@ -921,6 +921,9 @@ $("#exames-at").addEventListener("click",e=>{ const b=e.target.closest("[data-tr
   const tipo=l.tipo||"pentacam", linhas=(l.secoes||[]).flatMap(sc=>sc.linhas||[]), achar=re=>linhas.find(r=>re.test(r.parametro||""));
   if(tipo==="microscopia"){ const cd=achar(/^Densidade/i); if(cd){ $("#micro-od").value=so(cd.od); $("#micro-oe").value=so(cd.os); } }
   if(tipo==="paquimetria"){ const cp=achar(/^Centro pupilar/i); if(cp){ $("#paqui-od").value=so(cp.od); $("#paqui-oe").value=so(cp.os); } }
+  if(tipo==="topografia"){ const imp=String(l.impressao_diagnostica||"").trim(), at=$("#topo-txt").value;
+    if(imp&&!at.includes(imp)) $("#topo-txt").value=(at?at.replace(/\s+$/,"")+"\n":"")+imp;
+    atualiza(); st2("Resultado levado para a Topografia de córnea.","ok"); return; }
   const nome={pentacam:"Tomografia de córnea (Pentacam)",paquimetria:"Paquimetria corneana",microscopia:"Microscopia especular de córnea"}[tipo];
   const linha=`${nome} (laudo): ${l.impressao_diagnostica||""}`.trim(), atual=$("#exc-txt").value;
   if(!atual.split("\n").some(t=>t.startsWith(nome+" (laudo)"))) $("#exc-txt").value=(atual?atual.replace(/\s+$/,"")+"\n":"")+linha;
@@ -968,8 +971,8 @@ inIcl.addEventListener("change",()=>{ const fs=[...inIcl.files]; inIcl.value="";
    Pentacam: skill laudo-pentacam-iobb (tabelas por olho).
    Paquimetria e microscopia especular: modelos aprovados em 17/10/2026 — uma
    tabela só (Parâmetro | OD | OS | Referência), célula alterada em vermelho. */
-const TIPOS_LAUDO={pentacam:"Tomografia de córnea (Pentacam)",paquimetria:"Paquimetria corneana",microscopia:"Microscopia especular de córnea"};
-const TITULO_LAUDO={pentacam:"LAUDO DE TOMOGRAFIA DE CÓRNEA (PENTACAM)",paquimetria:"LAUDO DE PAQUIMETRIA CORNEANA",microscopia:"LAUDO DE MICROSCOPIA ESPECULAR DE CÓRNEA"};
+const TIPOS_LAUDO={pentacam:"Tomografia de córnea (Pentacam)",topografia:"Topografia corneana",paquimetria:"Paquimetria corneana",microscopia:"Microscopia especular de córnea"};
+const TITULO_LAUDO={pentacam:"LAUDO DE TOMOGRAFIA DE CÓRNEA (PENTACAM)",topografia:"LAUDO DE TOPOGRAFIA CORNEANA",paquimetria:"LAUDO DE PAQUIMETRIA CORNEANA",microscopia:"LAUDO DE MICROSCOPIA ESPECULAR DE CÓRNEA"};
 const SEC_LAUDO=[["cornea_anterior","Córnea anterior","Parâmetro"],["cornea_posterior","Córnea posterior","Parâmetro"],["paquimetria","Paquimetria","Parâmetro"],["elevacoes","Elevações (BFS float, zona de 8 mm)","Parâmetro"],["indices","Índices tomográficos (zona de 8 mm)","Índice"]];
 let laudoAx=null, laudo=null;
 try{ $("#ml-timbrado").checked=localStorage.getItem("laudo-timbrado")!=="0"; }catch(_){ $("#ml-timbrado").checked=true; }
@@ -978,7 +981,7 @@ document.addEventListener("click",e=>{ const b=e.target.closest("[data-laudo]");
 function mlStatus(t,cls){ $("#ml-st").textContent=t; $("#ml-st").className="status "+(cls||""); }
 // Tipo pelo nome do exame (o pré-exame escolhe "Pentacam", "Paquimetria"…).
 function tipoDoExame(ax){ const t=(String(ax.observacao||"")+" "+String(ax.nome||"")).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
-  return /microsc|especular|endotel|spm/.test(t)?"microscopia":/paquim|espessura/.test(t)?"paquimetria":/pentacam|tomograf/.test(t)?"pentacam":null; }
+  return /microsc|especular|endotel|spm/.test(t)?"microscopia":/paquim|espessura/.test(t)?"paquimetria":/topograf|ceratosc/.test(t)?"topografia":/pentacam|tomograf/.test(t)?"pentacam":null; }
 async function abrirLaudo(id){
   laudoAx=(ficha.anexos||[]).find(x=>x.id===id); if(!laudoAx) return;
   $("#m-laudo").hidden=false; $("#ml-corpo").hidden=true;
