@@ -10530,16 +10530,15 @@ const LAUDO_TABELA = {
     telas: `para cada olho, a tela "Mapas" com o mapa de espessura corneana; legenda "OD — Mapa de espessura corneana" / "OS — Mapa de espessura corneana".`,
     tom: `"Córneas finas em ambos os olhos, com ponto mais fino de 486 μm no OD e 484 μm no OS, próximo ao ápice, distribuição de espessura regular e concêntrica e simetria entre os olhos (diferença de 2 μm entre os pontos mais finos)."`,
   },
-  // Topografia (pedido 17/10/2026): sem modelo próprio ainda — mesmo formato de
-  // tabela dos dois acima, referências iguais às da córnea anterior do Pentacam.
+  // Topografia: modelo aprovado em 17/10/2026 (laudo_*_topografia.pdf).
   topografia: {
-    titulo: "LAUDO DE TOPOGRAFIA CORNEANA",
-    metodo: "Método: topografia corneana computadorizada (ceratoscopia por discos de Plácido).",
-    secao: "Curvatura corneana anterior",
-    linhas: `"K1 (meridiano mais plano)" ref "41,0 – 46,0 D" (com o eixo, ex.: "43,25 D @ 178°"); "K2 (meridiano mais curvo)" ref "43,0 – 48,0 D" (com o eixo); "Km (ceratometria média)" ref "42,0 – 46,0 D"; "Astigmatismo corneano" ref "< 2,0 D" (com o eixo); "Ceratometria máxima (KMax)" ref "< 47,2 D"; "Assimetria inferior-superior (I-S)" ref "< 1,4 D"; "Padrão topográfico" ref "—" (descreva o mapa: ex.: "Astigmatismo regular simétrico (gravata-borboleta simétrica)", "Esférico", "Gravata-borboleta assimétrica com encurvamento inferior"). Se o aparelho não mostrar KMax ou I-S, NÃO inclua a linha.`,
-    onde: `Mapa de curvatura axial/sagital de cada olho e o quadro de ceratometria simulada (SimK: K1/Flat, K2/Steep, Km/Avg, Cyl/Astig, eixos). Escreva no "metodo" o nome do aparelho que aparece no relatório (ex.: "Método: topografia corneana computadorizada (ceratoscopia por discos de Plácido), Tomey TMS-4."); se o exame for do Pentacam, troque para "Método: topografia corneana por imagem de Scheimpflug, Oculus Pentacam.".`,
-    telas: `para cada olho, o mapa de curvatura; legenda "OD — Mapa de curvatura axial" / "OS — Mapa de curvatura axial".`,
-    tom: `"Córnea regular em ambos os olhos." / "Astigmatismo regular e simétrico em ambos os olhos, de 1,25 D no OD e 1,00 D no OS." / "Astigmatismo assimétrico com encurvamento inferior no olho direito; olho esquerdo dentro da normalidade."`,
+    titulo: "LAUDO DE TOPOGRAFIA DE CÓRNEA",
+    metodo: "Método: topografia da superfície anterior da córnea (curvatura axial/sagital) por imagem de Scheimpflug, Oculus Pentacam.",
+    secao: "Ceratometria e curvatura anterior",
+    linhas: `"K1 (meridiano mais plano)" ref "41,0 – 46,0 D"; "K2 (meridiano mais curvo)" ref "43,0 – 48,0 D"; "Km (ceratometria média)" ref "42,0 – 46,0 D" (acima de 46,0 é alterado); "Astigmatismo corneano" ref "< 2,0 D" (só o valor, ex.: "1,4 D"); "Eixo do meridiano mais curvo" ref "—" (ex.: "97,2°"); "KMax" ref "< 47,2 D"; "Rmin" ref "> 7,0 mm"; "Padrão topográfico" ref "—" (descreva o mapa, ex.: "Gravata-borboleta simétrica", "Gravata-borboleta assimétrica", "Esférico", "Encurvamento inferior"). Valores com uma casa decimal, como no Pentacam ("45,4 D", "7,17 mm").`,
+    onde: `Tela "Mapas" do Pentacam com "Curvatura Axial / Sagital [Anterior]" selecionada: quadro "Córnea Ant." (K1, K2, Km, Astig., Eixo (curvo), Rmin) e "K.Máx. (ant.)"; o padrão você descreve olhando o mapa. Se o exame for de outro aparelho (topógrafo de Plácido), troque o "metodo" pelo aparelho que aparece no relatório.`,
+    telas: `para cada olho, a tela "Mapas" com a curvatura axial/sagital anterior; legenda "OD — Curvatura axial/sagital anterior" / "OS — Curvatura axial/sagital anterior".`,
+    tom: `"Astigmatismo corneano regular a favor da regra em ambos os olhos, com padrão em gravata-borboleta simétrica e ceratometria média discretamente elevada (46,1 D em ambos os olhos), sem padrão topográfico sugestivo de ectasia."`,
   },
   microscopia: {
     titulo: "LAUDO DE MICROSCOPIA ESPECULAR DE CÓRNEA",

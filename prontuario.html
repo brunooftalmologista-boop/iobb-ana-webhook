@@ -406,7 +406,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 <div class="fundo" id="m-laudo" hidden>
   <div class="modal grande" role="dialog" aria-labelledby="ml-t">
     <div class="row" style="justify-content:space-between"><h3 id="ml-t">Laudo</h3><button type="button" class="link" id="ml-fechar">Fechar</button></div>
-    <div class="row"><label>Exame <select id="ml-tipo" style="width:auto"><option value="pentacam">Tomografia de córnea (Pentacam)</option><option value="topografia">Topografia corneana</option><option value="paquimetria">Paquimetria corneana</option><option value="microscopia">Microscopia especular de córnea</option></select></label><button type="button" id="ml-gerar">Gerar laudo</button></div>
+    <div class="row"><label>Exame <select id="ml-tipo" style="width:auto"><option value="pentacam">Tomografia de córnea (Pentacam)</option><option value="topografia">Topografia de córnea</option><option value="paquimetria">Paquimetria corneana</option><option value="microscopia">Microscopia especular de córnea</option></select></label><button type="button" id="ml-gerar">Gerar laudo</button></div>
     <div class="status" id="ml-st"></div>
     <div id="ml-corpo" hidden style="display:grid;gap:10px">
       <div class="row"><label>Exame realizado em <input id="ml-data" style="width:130px"></label><label>Sexo <select id="ml-sexo"><option>Não informado</option><option>Feminino</option><option>Masculino</option></select></label><label>CPF <input id="ml-cpf" style="width:150px" placeholder="000.000.000-00"></label><label>Prontuário <input id="ml-pront" style="width:110px" placeholder="#000000"></label></div>
@@ -971,8 +971,8 @@ inIcl.addEventListener("change",()=>{ const fs=[...inIcl.files]; inIcl.value="";
    Pentacam: skill laudo-pentacam-iobb (tabelas por olho).
    Paquimetria e microscopia especular: modelos aprovados em 17/10/2026 — uma
    tabela só (Parâmetro | OD | OS | Referência), célula alterada em vermelho. */
-const TIPOS_LAUDO={pentacam:"Tomografia de córnea (Pentacam)",topografia:"Topografia corneana",paquimetria:"Paquimetria corneana",microscopia:"Microscopia especular de córnea"};
-const TITULO_LAUDO={pentacam:"LAUDO DE TOMOGRAFIA DE CÓRNEA (PENTACAM)",topografia:"LAUDO DE TOPOGRAFIA CORNEANA",paquimetria:"LAUDO DE PAQUIMETRIA CORNEANA",microscopia:"LAUDO DE MICROSCOPIA ESPECULAR DE CÓRNEA"};
+const TIPOS_LAUDO={pentacam:"Tomografia de córnea (Pentacam)",topografia:"Topografia de córnea",paquimetria:"Paquimetria corneana",microscopia:"Microscopia especular de córnea"};
+const TITULO_LAUDO={pentacam:"LAUDO DE TOMOGRAFIA DE CÓRNEA (PENTACAM)",topografia:"LAUDO DE TOPOGRAFIA DE CÓRNEA",paquimetria:"LAUDO DE PAQUIMETRIA CORNEANA",microscopia:"LAUDO DE MICROSCOPIA ESPECULAR DE CÓRNEA"};
 const SEC_LAUDO=[["cornea_anterior","Córnea anterior","Parâmetro"],["cornea_posterior","Córnea posterior","Parâmetro"],["paquimetria","Paquimetria","Parâmetro"],["elevacoes","Elevações (BFS float, zona de 8 mm)","Parâmetro"],["indices","Índices tomográficos (zona de 8 mm)","Índice"]];
 let laudoAx=null, laudo=null;
 try{ $("#ml-timbrado").checked=localStorage.getItem("laudo-timbrado")!=="0"; }catch(_){ $("#ml-timbrado").checked=true; }
