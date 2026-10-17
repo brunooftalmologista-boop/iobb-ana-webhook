@@ -169,6 +169,7 @@ table.lau th{background:#1a3a5c;color:#fff;text-align:left;padding:5px 8px;font-
 table.lau td{border:1px solid var(--line);padding:3px 6px}
 table.lau input[type=text]{padding:3px 6px;font-size:13px}
 table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;font-weight:700}
+#exames-at-box.sobre{outline:2px dashed var(--pri);outline-offset:4px;border-radius:6px}
 .ex-at{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:6px;padding:8px 10px}
 .ex-at .imp-l{flex:1;min-width:220px;font-size:14px}
 .pend{background:var(--note);border:1px solid var(--note-line);border-radius:6px;padding:8px 12px;font-size:13px}
@@ -295,7 +296,9 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
           <article class="folha-sec" id="s-exames">
             <div class="t"><span>Exames complementares</span><span><button type="button" class="link" id="exames-novos">Ver se chegaram exames novos</button></span></div>
             <div class="c">
-              <div id="exames-at-box"><span class="rot">Exames anexados nesta consulta</span><div id="exames-at" style="display:grid;gap:10px"></div><div class="status" id="st-exames"></div></div>
+              <div id="exames-at-box"><span class="rot">Exames anexados nesta consulta</span><div id="exames-at" style="display:grid;gap:10px"></div>
+                <div class="row" style="margin-top:8px"><label>Exame <select id="ex-nome" style="width:auto"><option>Pentacam</option><option>Paquimetria</option><option>Microscopia especular</option><option>Topografia / Ceratoscopia</option><option>Retinografia</option><option>Curva diária de pressão ocular</option><option>Teste de sobrecarga hídrica</option><option>Exame de outra clínica</option><option>Outro</option></select></label><button type="button" id="ex-anexar">Anexar exame</button><span class="hint">ou arraste o arquivo para cá</span><input type="file" id="ex-arq" accept="application/pdf,image/*" multiple hidden></div>
+                <div class="status" id="st-exames"></div></div>
               <div><span class="rot">Topografia de córnea</span>
                 <div class="chips" data-grupo="topo"><span class="chip" tabindex="0">Córnea regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular e simétrico em ambos os olhos</span></div>
                 <textarea id="topo-txt" rows="2" style="margin-top:6px" placeholder="Descrição da topografia…"></textarea></div>
@@ -494,11 +497,11 @@ const nomeChip=c=>c.childNodes[0].textContent.trim();
 const marcados=g=>$$(`[data-grupo="${g}"] .chip[aria-pressed="true"]`);
 function normal(id){ for(const [k,,txt] of (id==="bio"?BIO:FO)) for(const o of ["od","oe"]){ const el=$(`#${id}-${k}-${o}`); if(!el.value) el.value=txt; } atualiza(); }
 $$("[data-normal]").forEach(b=>b.addEventListener("click",()=>normal(b.dataset.normal)));
-const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>!["anexo-obs","anexo-tipo"].includes(el.id));
+const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>!["anexo-obs","anexo-tipo","ex-nome"].includes(el.id));
 document.addEventListener("keydown",e=>{ if(e.key!=="Enter"||e.target.tagName!=="INPUT"||!e.target.closest("#atendimento")||e.target.id==="anexo-obs") return;
   e.preventDefault(); normalizaCampo(e.target); const l=campos(),i=l.indexOf(e.target); if(i>=0&&l[i+1]) l[i+1].focus(); atualiza(); });
 document.addEventListener("focusout",e=>{ if(e.target.matches("#atendimento input")){ normalizaCampo(e.target); atualiza(); } });
-document.addEventListener("input",e=>{ if(e.target.closest("#atendimento")&&!["anexo-obs"].includes(e.target.id)) atualiza(); });
+document.addEventListener("input",e=>{ if(e.target.closest("#atendimento")&&!["anexo-obs","ex-nome"].includes(e.target.id)) atualiza(); });
 
 const v=id=>($("#"+id)?.value||"").trim();
 const OD="olho direito", OE="olho esquerdo";
@@ -930,11 +933,11 @@ async function buscarExamesNovos(){
     const novos=anexosDoAtend().length-antes; st2(novos>0?`${novos} exame${novos>1?"s":""} novo${novos>1?"s":""}.`:"Nenhum exame novo.",novos>0?"ok":"");
   }catch(e){ st2(e.status===401?MSG_SESSAO:(e.msg||"Não consegui buscar."),"erro"); } }
 $("#exames-novos").addEventListener("click",buscarExamesNovos);
-async function enviar(files,tipo,consultaId,stEl){
+async function enviar(files,tipo,consultaId,stEl,obs){
   for(const f of files){
     if(f.size>30*1024*1024){ stEl.textContent=`${f.name}: maior que 30 MB.`; stEl.className="status erro"; continue; }
     stEl.textContent=`Enviando ${f.name}…`; stEl.className="status";
-    try{ const q=new URLSearchParams({tel:ficha.paciente.telefone,nome:ficha.paciente.nome,tipo,filename:f.name,mime:f.type||"application/octet-stream",obs:v("anexo-obs")});
+    try{ const q=new URLSearchParams({tel:ficha.paciente.telefone,nome:ficha.paciente.nome,tipo,filename:f.name,mime:f.type||"application/octet-stream",obs:obs??v("anexo-obs")});
       if(consultaId) q.set("consulta",consultaId);
       const r=await api("/api/prontuario/anexo?"+q.toString(),{method:"POST",raw:true,body:f});
       ficha.anexos=[r.anexo,...(ficha.anexos||[])]; stEl.textContent=`${f.name} anexado.`; stEl.className="status ok";
@@ -948,6 +951,14 @@ const zona=$("#soltar");
 ["dragenter","dragover"].forEach(ev=>zona.addEventListener(ev,e=>{ e.preventDefault(); zona.classList.add("sobre"); }));
 ["dragleave","drop"].forEach(ev=>zona.addEventListener(ev,e=>{ e.preventDefault(); zona.classList.remove("sobre"); }));
 zona.addEventListener("drop",e=>{ const fs=[...(e.dataTransfer?.files||[])]; if(fs.length) enviar(fs,$("#anexo-tipo").value,atend?.id,$("#st-anexo")); });
+// anexar direto em "Exames complementares" (o nome do exame escolhe o tipo de laudo)
+const anexarExame=fs=>{ if(fs.length) enviar(fs,"exame",atend?.id,$("#st-exames"),$("#ex-nome").value); };
+$("#ex-anexar").addEventListener("click",()=>$("#ex-arq").click());
+$("#ex-arq").addEventListener("change",()=>{ const fs=[...$("#ex-arq").files]; $("#ex-arq").value=""; anexarExame(fs); });
+const zonaEx=$("#exames-at-box");
+["dragenter","dragover"].forEach(ev=>zonaEx.addEventListener(ev,e=>{ e.preventDefault(); zonaEx.classList.add("sobre"); }));
+["dragleave","drop"].forEach(ev=>zonaEx.addEventListener(ev,e=>{ e.preventDefault(); zonaEx.classList.remove("sobre"); }));
+zonaEx.addEventListener("drop",e=>anexarExame([...(e.dataTransfer?.files||[])]));
 // prontuário anterior do iClinic (fora do atendimento, fixo no topo da ficha)
 const inIcl=document.createElement("input"); inIcl.type="file"; inIcl.accept="application/pdf,image/*"; inIcl.multiple=true; inIcl.hidden=true; document.body.appendChild(inIcl);
 $("#anexar-iclinic").addEventListener("click",()=>inIcl.click());
