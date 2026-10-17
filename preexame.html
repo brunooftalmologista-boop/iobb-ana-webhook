@@ -6,8 +6,9 @@
 <title>Pré-exame — IOBB</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
 <style>
-/* Pré-exame (17/10/2026): login próprio. Marca o motivo da consulta e anexa
-   os exames feitos; tudo aparece no prontuário do Dr. Bruno. Não lê prontuário. */
+/* Pré-exame (17/10/2026): feito pelas secretárias, com o MESMO login do painel.
+   Marca o motivo da consulta e anexa os exames feitos; tudo aparece no
+   prontuário do Dr. Bruno. Não lê o prontuário. */
 :root{
   --bg:#f2f4f7; --surface:#fff; --ink:#263238; --muted:#6b7a85; --line:#dfe4ea;
   --pri:#00796b; --pri-soft:#e0f2ef; --danger:#d32f2f; --ok:#2e7d32; --chip:#eef2f6;
@@ -70,7 +71,8 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
 <div class="portao" id="portao" hidden>
   <form class="caixa" id="f-login">
     <h2>Pré-exame — IOBB</h2>
-    <div class="campo" style="margin:0"><label for="senha">Senha do pré-exame</label><input id="senha" type="password" autocomplete="current-password" required></div>
+    <div class="campo" style="margin:0"><label for="quem">Usuário</label><select id="quem"><option>Aline</option><option>Mylla</option><option>Elaine</option><option>Secretaria</option><option>Dr. Bruno</option></select></div>
+    <div class="campo" style="margin:0"><label for="senha">Senha (a mesma do painel)</label><input id="senha" type="password" autocomplete="current-password" required></div>
     <button class="pri" type="submit">Entrar</button>
     <div class="status" id="login-st"></div>
   </form>
@@ -81,6 +83,7 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
     <b>Pré-exame</b><span class="info" id="hoje-txt"></span>
     <span class="esp"></span>
     <input type="date" id="dia" aria-label="Dia da agenda"><button type="button" id="b-hoje">Hoje</button>
+    <a href="/painel" class="link" style="color:var(--pri)">Painel</a>
     <button type="button" class="link" id="sair">Sair</button>
   </div>
   <main>
@@ -138,18 +141,23 @@ const MOTIVOS=[
 ];
 $("#motivos").innerHTML=MOTIVOS.map(([g,xs])=>`<div style="margin:8px 0 4px;font-size:13px;color:var(--muted)">${g}</div><div class="chips">${xs.map(x=>`<span class="chip" role="button" tabindex="0" aria-pressed="false">${esc(x)}</span>`).join("")}</div>`).join("");
 
-/* ===== sessão própria (não mistura com o painel das secretárias) ===== */
-const K_AT="iobb_pe_at", K_RT="iobb_pe_rt";
+/* ===== sessão: a MESMA do painel (mesmo login, mesmas chaves) ===== */
 const ler=k=>{ try{ return localStorage.getItem(k)||""; }catch(_){ return ""; } };
 const gravar=(k,v)=>{ try{ v?localStorage.setItem(k,v):localStorage.removeItem(k); }catch(_){} };
-let AUTH=ler(K_AT);
+let AUTH=ler("iobb_at");
+function sync(){ const at=ler("iobb_at"); if(at&&at!==AUTH){ AUTH=at; return true; } return false; }
 async function refresh(){
-  const rt=ler(K_RT); if(!rt) return false;
+  if(sync()) return true;
+  const rt=ler("iobb_rt"); if(!rt) return false;
+  // painel e prontuário podem estar abertos: só uma aba renova por vez
+  if(Date.now()-Number(ler("iobb_rt_ts")||0)<8000){ await new Promise(r=>setTimeout(r,1500)); return sync(); }
+  gravar("iobb_rt_ts",String(Date.now()));
   try{ const r=await fetch("/api/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:rt})});
-    if(!r.ok) return false; const d=await r.json(); AUTH=d.access_token||""; gravar(K_AT,AUTH); if(d.refresh_token) gravar(K_RT,d.refresh_token); return !!AUTH;
+    if(!r.ok) return sync(); const d=await r.json(); AUTH=d.access_token||""; gravar("iobb_at",AUTH); if(d.refresh_token) gravar("iobb_rt",d.refresh_token); return !!AUTH;
   }catch(_){ return false; }
 }
 async function api(path,opts={},again){
+  sync();
   const h={"Authorization":"Bearer "+AUTH,"Content-Type":opts.raw?"application/octet-stream":"application/json"};
   const r=await fetch(path,{...opts,headers:h});
   if(r.status===401&&!again&&await refresh()) return api(path,opts,true);
@@ -157,16 +165,17 @@ async function api(path,opts={},again){
   if(!r.ok){ const e=new Error("HTTP "+r.status); e.status=r.status; try{ e.msg=(await r.json()).error; }catch(_){} throw e; }
   return r.json();
 }
-function portao(msg){ $("#raiz").hidden=true; $("#portao").hidden=false; $("#login-st").textContent=msg||""; $("#login-st").className="status"+(msg?" erro":""); $("#senha").focus(); }
+function portao(msg){ $("#raiz").hidden=true; $("#portao").hidden=false; $("#login-st").textContent=msg||""; $("#login-st").className="status"+(msg?" erro":"");
+  const ag=ler("iobb_agent"); if(ag&&[...$("#quem").options].some(o=>o.text===ag)) $("#quem").value=ag; $("#senha").focus(); }
 $("#f-login").addEventListener("submit",async e=>{
   e.preventDefault(); $("#login-st").textContent="Entrando…"; $("#login-st").className="status";
-  try{ const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:"Pré-exame",password:$("#senha").value})});
+  try{ const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:$("#quem").value,password:$("#senha").value})});
     const d=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error||"Não consegui entrar.");
-    AUTH=d.access_token; gravar(K_AT,AUTH); gravar(K_RT,d.refresh_token); $("#senha").value=""; entrar();
+    AUTH=d.access_token; gravar("iobb_at",AUTH); gravar("iobb_rt",d.refresh_token); gravar("iobb_agent",d.agent||$("#quem").value); $("#senha").value=""; entrar();
   }catch(err){ $("#login-st").textContent=err.message; $("#login-st").className="status erro"; }
 });
-$("#sair").addEventListener("click",()=>{ AUTH=""; gravar(K_AT,""); gravar(K_RT,""); atual=null; portao(""); });
+$("#sair").addEventListener("click",()=>{ AUTH=""; gravar("iobb_at",""); gravar("iobb_rt",""); atual=null; portao(""); });
 
 /* ===== lista do dia ===== */
 let dia=[], atual=null, detalhe=null;
@@ -219,7 +228,7 @@ async function salvar(){
   clearTimeout(tSalvar); if(!atual) return;
   const corpo={ motivos:$$("#motivos .chip[aria-pressed=true]").map(c=>c.textContent), motivo_outro:$("#m-outro").value.trim(), observacao:$("#m-obs").value.trim() };
   try{ const r=await api(`/api/preexame/consulta/${atual}`,{method:"POST",body:JSON.stringify(corpo)});
-    sujo=false; detalhe.preexame={...corpo,feito_por:"Pré-exame",updated_at:r.updated_at}; st("#st-motivo",`Salvo às ${hhmm(r.updated_at)}.`,"ok");
+    sujo=false; detalhe.preexame={...corpo,feito_por:ler("iobb_agent")||"",updated_at:r.updated_at}; st("#st-motivo",`Salvo às ${hhmm(r.updated_at)}.`,"ok");
     const c=dia.find(x=>x.id===atual); if(c){ c.motivos=[...corpo.motivos,...(corpo.motivo_outro?[corpo.motivo_outro]:[])]; desenhaLista(); }
   }catch(e){ if(e.status!==401) st("#st-motivo",e.msg||"Não consegui salvar. Tente de novo.","erro"); }
 }
@@ -269,7 +278,7 @@ async function enviar(fs){
 function entrar(){ $("#portao").hidden=true; $("#raiz").hidden=false;
   $("#hoje-txt").textContent=new Date().toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"long"});
   $("#dia").value=hojeBR(); carregaDia(); }
-if(AUTH||ler(K_RT)) entrar(); else portao("");
+if(AUTH||ler("iobb_rt")) entrar(); else portao("");
 setInterval(()=>{ if(!$("#raiz").hidden&&!sujo) carregaDia(); },60000);
 })();
 </script>

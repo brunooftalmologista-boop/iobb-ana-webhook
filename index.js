@@ -8171,14 +8171,8 @@ const SECRETARIAS = [
   // — sem PANEL_PW_BRUNO o usuário simplesmente não existe; quem sabe a senha
   // das secretárias não entra como ele; (2) libera as rotas /api/prontuario.
   { nome: "Dr. Bruno",  email: "bruno@iobb.local",      pwEnv: "PANEL_PW_BRUNO", medico: true },
-  // 🔬 PRÉ-EXAME (17/10/2026): quem faz o pré-exame registra o motivo da
-  // consulta e anexa os exames, que o Dr. Bruno abre no prontuário. Senha
-  // própria (PANEL_PW_PREEXAME, sem cair na comum) e acesso SÓ a /api/preexame
-  // — não vê conversas, painel nem prontuário.
-  { nome: "Pré-exame",  email: "preexame@iobb.local",   pwEnv: "PANEL_PW_PREEXAME", preexame: true },
 ];
 const MEDICO_EMAIL = "bruno@iobb.local";
-const PREEXAME_EMAIL = "preexame@iobb.local";
 
 // Restaura o estado GLOBAL da Ana (settings.ai_enabled) ao subir, para que
 // ligar/desligar (pelo painel ou #ANA) persista entre reinícios do Render.
@@ -8197,7 +8191,7 @@ const PREEXAME_EMAIL = "preexame@iobb.local";
     const { data: list, error: listErr } = await supabase.auth.admin.listUsers();
     if (listErr) { console.error("Auth listUsers:", listErr.message); return; }
     for (const s of SECRETARIAS) {
-      const senha = process.env[s.pwEnv] || (s.medico || s.preexame ? null : process.env.PANEL_PASSWORD);
+      const senha = process.env[s.pwEnv] || (s.medico ? null : process.env.PANEL_PASSWORD);
       if (!senha) { console.log(`Sem senha em env para ${s.nome} — usuária não criada.`); continue; }
       const existente = list.users.find(u => u.email === s.email);
       if (!existente) {
@@ -8275,7 +8269,6 @@ app.post("/api/login", loginRateLimit, async (req, res) => {
       expires_at: data.session.expires_at,
       agent: secretaria.nome,
       medico: !!secretaria.medico,
-      preexame: !!secretaria.preexame,
     });
   } catch (e) {
     console.error("Erro no login:", e.message);
@@ -8309,10 +8302,6 @@ async function requirePanelAuth(req, res, next) {
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data?.user) return res.status(401).json({ error: "Sessão inválida" });
     req.panelUser = data.user; // identidade da secretária (auditoria/LGPD)
-    // O login do pré-exame só enxerga as rotas dele (nada de conversas/painel).
-    if (String(data.user.email || "").toLowerCase() === PREEXAME_EMAIL && !req.path.startsWith("/preexame/")) {
-      return res.status(403).json({ error: "Este login é só para o pré-exame." });
-    }
     next();
   } catch (e) {
     return res.status(401).json({ error: "Falha na autenticação" });
@@ -10625,14 +10614,16 @@ app.post("/api/prontuario/laudo/:anexoId/salvar", requireMedico, async (req, res
   }
 });
 // ===== PRÉ-EXAME (Dr. Bruno, 17/10/2026) =====================================
-// Login próprio (Pré-exame): vê a agenda do dia, marca o MOTIVO DA CONSULTA
-// (botões) e anexa os exames feitos. Tudo cai no prontuário do paciente — o
-// Dr. Bruno abre na ficha e no atendimento. O pré-exame NÃO lê o prontuário:
-// só o que é da consulta em que ele está trabalhando.
+// As próprias secretárias fazem o pré-exame, com o MESMO login do painel
+// (decisão do Dr. Bruno, 17/10): veem a agenda do dia, marcam o MOTIVO DA
+// CONSULTA (botões) e anexam os exames. Tudo cai no prontuário do paciente —
+// o Dr. Bruno abre na ficha e no atendimento. Elas NÃO leem o prontuário:
+// /api/prontuario continua só do médico; aqui só o que é da consulta em curso.
 function requirePreExame(req, res, next) {
   const em = String(req.panelUser?.email || "").toLowerCase();
-  if (em !== PREEXAME_EMAIL && em !== MEDICO_EMAIL) return res.status(403).json({ error: "Acesso restrito ao pré-exame." });
-  req.porPreExame = em === PREEXAME_EMAIL ? "Pré-exame" : "Dr. Bruno";
+  const quem = SECRETARIAS.find(s => s.email === em);
+  if (!quem) return res.status(403).json({ error: "Acesso restrito à equipe." });
+  req.porPreExame = quem.nome;
   next();
 }
 const PRE_JANELA_DIAS = 7;   // pré-exame trabalha na agenda de hoje (± uma semana para corrigir)
@@ -10776,7 +10767,6 @@ app.get("/version", (req, res) => {
     config: {
       painel_janela_horas: janelaEmHoras(readEnv("PAINEL_JANELA_HORAS")),   // null = lista inteira
       login_medico: !!process.env.PANEL_PW_BRUNO,                           // senha do Dr. Bruno configurada no Render
-      login_preexame: !!process.env.PANEL_PW_PREEXAME,                      // senha do login do pré-exame configurada no Render
       espelho_extra_numeros: WA_ESPELHO_EXTRA.length,                       // 0 = espelho extra desligado
       secretaria_espelho: WA_SECRETARIA_NUMBER ? "ligado" : "desligado",
       // 23/09 — estes três são CONFIGURAÇÃO, não segredo, e ficavam invisíveis
