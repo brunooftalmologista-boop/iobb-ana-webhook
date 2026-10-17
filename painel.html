@@ -20,11 +20,15 @@
 
   /* ===== Sidebar ===== */
   #sidebar{width:400px;min-width:340px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--panel);}
-  .side-header{height:60px;flex:0 0 60px;background:var(--header);display:flex;align-items:center;justify-content:space-between;padding:0 16px;}
+  .side-header{min-height:60px;flex:0 0 auto;background:var(--header);display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px 4px 16px;}
   .side-header .brand{display:flex;align-items:center;gap:10px;font-weight:600;}
   .side-header .brand .logo{width:38px;height:38px;border-radius:50%;background:var(--green-dark);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;}
   .side-header .brand small{display:block;font-weight:400;color:var(--muted);font-size:12px;}
-  .side-actions{display:flex;gap:4px;}
+  /* 17/10: com o 🔬 os ícones passaram dos 400px da coluna e os últimos (🩺 🩹 ⎋)
+     ficavam POR BAIXO da área da conversa — visíveis, mas sem clique. Agora a
+     fileira encolhe e, se ainda não couber, quebra em duas linhas DENTRO da coluna. */
+  .side-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:0 2px;flex:1;min-width:0;}
+  .side-actions .icon-btn{width:34px;height:34px;font-size:18px;}
   .icon-btn{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#54656f;font-size:20px;}
   .icon-btn:hover{background:rgba(0,0,0,.06);}
   .search-wrap{padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);}
