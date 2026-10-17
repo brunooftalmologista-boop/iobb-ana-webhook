@@ -296,7 +296,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
           <article class="folha-sec" id="s-exames">
             <div class="t"><span>Exames complementares</span><span><button type="button" class="link" id="exames-novos">Ver se chegaram exames novos</button></span></div>
             <div class="c">
-              <div id="exames-at-box"><input type="hidden" id="laudos-levados"><span class="rot">Exames anexados nesta consulta</span><div id="exames-at" style="display:grid;gap:10px"></div>
+              <div id="exames-at-box"><span class="rot">Exames anexados nesta consulta</span><div id="exames-at" style="display:grid;gap:10px"></div>
                 <div class="row" style="margin-top:8px"><label>Exame <select id="ex-nome" style="width:auto"><option>Pentacam</option><option>Paquimetria</option><option>Microscopia especular</option><option>Topografia / Ceratoscopia</option><option>Retinografia</option><option>Curva diária de pressão ocular</option><option>Teste de sobrecarga hídrica</option><option>Exame de outra clínica</option><option>Outro</option></select></label><button type="button" id="ex-anexar">Anexar exame</button><span class="hint">ou arraste o arquivo para cá</span><input type="file" id="ex-arq" accept="application/pdf,image/*" multiple hidden></div>
                 <div class="status" id="st-exames"></div></div>
               <div><span class="rot">Topografia de córnea</span>
@@ -907,64 +907,28 @@ $("#gf-ok").addEventListener("click",async()=>{
 
 /* ===== ANEXOS ===== */
 function anexosDoAtend(){ return (ficha.anexos||[]).filter(x=>atend&&(x.consulta_id===atend.id||(atend.appointment_id&&x.appointment_id===atend.appointment_id))); }
-function desenhaAnexosAt(){ $("#anexos-at").innerHTML=anexosDoAtend().map(arq).join(""); desenhaExamesAt(); vigiaExames(); }
+function desenhaAnexosAt(){ $("#anexos-at").innerHTML=anexosDoAtend().map(arq).join(""); desenhaExamesAt(); }
 // Exames da consulta (do pré-exame ou anexados aqui) no topo de "Exames
 // complementares", com o laudo e o botão que leva o resultado para o texto.
 function desenhaExamesAt(){
   const xs=anexosDoAtend().filter(x=>x.tipo==="exame");
-  const lev=levados();
-  $("#exames-at").innerHTML=xs.length?xs.map(x=>`<div class="ex-at">${arq(x)}<div class="imp-l">${x.laudo?`<b>${esc(TIPOS_LAUDO[x.laudo.tipo||"pentacam"])}:</b> ${esc(x.laudo.impressao_diagnostica||"")}<br>${lev.includes(x.id)?'<span class="hint">Já incluído no prontuário. Confira os valores em Ver laudo.</span>':`<button type="button" class="link" data-trazer="${esc(x.id)}" style="padding-left:0">Levar o resultado para o prontuário</button>`}`
-      :gerando(x)?'<span class="hint">⏳ Gerando o laudo sozinho… a descrição entra aqui em cerca de um minuto.</span>'
-      :x.laudo_status==="erro"?'<span class="hint">Não consegui gerar o laudo sozinho. Clique em Gerar laudo.</span>'
-      :'<span class="hint">Sem laudo ainda. Clique em Gerar laudo para ler o exame.</span>'}</div></div>`).join("")
+  $("#exames-at").innerHTML=xs.length?xs.map(x=>`<div class="ex-at">${arq(x)}<div class="imp-l">${x.laudo?`<b>${esc(TIPOS_LAUDO[x.laudo.tipo||"pentacam"])}:</b> ${esc(x.laudo.impressao_diagnostica||"")}<br><button type="button" class="link" data-trazer="${esc(x.id)}" style="padding-left:0">Levar o resultado para o prontuário</button>`:'<span class="hint">Sem laudo ainda. Clique em Gerar laudo para ler o exame.</span>'}</div></div>`).join("")
     :'<span class="vazio">Nenhum exame anexado nesta consulta. Os que o pré-exame enviar aparecem aqui.</span>';
-  incluirLaudosProntos(xs);
 }
-// Laudo automático: "gerando" vale por até 6 min (se o servidor reiniciar no meio, não fica preso).
-const gerando=x=>!x.laudo&&x.laudo_status==="gerando"&&Date.now()-new Date(x.laudo_status_em||x.created_at).getTime()<6*60e3;
-const levados=()=>String($("#laudos-levados").value||"").split(",").filter(Boolean);
-// Quando o laudo fica pronto com o atendimento aberto, a descrição entra sozinha
-// (uma vez por exame; se ele apagar o texto, não volta).
-function incluirLaudosProntos(xs){
-  if(!atend||atend.finalizado_em) return;
-  const lev=levados(), novos=xs.filter(x=>x.laudo&&!lev.includes(x.id));
-  if(!novos.length) return;
-  for(const x of novos) levarResultado(x);
-  $("#laudos-levados").value=[...lev,...novos.map(x=>x.id)].join(",");
-  atualiza(); desenhaExamesAt();
-  st2(`Laudo de ${novos.map(x=>TIPOS_LAUDO[x.laudo.tipo||"pentacam"]).join(", ")} incluído em Exames complementares. Confira os valores.`,"ok");
-}
-// Atendimento aberto: busca exames e laudos novos — a cada 20 s enquanto algum
-// laudo está sendo gerado, a cada 60 s no resto do tempo (exames do pré-exame).
-let tExames=null;
-function vigiaExames(){ clearTimeout(tExames); if(!atend||atend.finalizado_em) return;
-  const pend=anexosDoAtend().some(gerando);
-  tExames=setTimeout(async()=>{ if(atend&&!document.hidden) await atualizaAnexos(); vigiaExames(); }, pend?20e3:60e3); }
-// Voltou para a aba do prontuário (ex.: estava no iClinic): atualiza na hora.
-document.addEventListener("visibilitychange",()=>{ if(!document.hidden&&atend&&!atend.finalizado_em) atualizaAnexos(); });
-async function atualizaAnexos(){
-  try{ const r=await api(`/api/prontuario/anexos?tel=${encodeURIComponent(ficha.paciente.telefone)}&nome=${encodeURIComponent(ficha.paciente.nome)}`);
-    const antes=anexosDoAtend().map(x=>x.id+(x.laudo?"L":"")+(x.laudo_status||"")).join();
-    ficha.anexos=r.anexos;
-    if(anexosDoAtend().map(x=>x.id+(x.laudo?"L":"")+(x.laudo_status||"")).join()!==antes) desenhaAnexosAt();
-  }catch(_){ /* tenta de novo no próximo ciclo */ } }
 const so=t=>String(t||"").replace(/\s*(cél|μm|µm).*$/i,"").trim();
 $("#exames-at").addEventListener("click",e=>{ const b=e.target.closest("[data-trazer]"); if(!b) return;
-  const x=(ficha.anexos||[]).find(a=>a.id===b.dataset.trazer); if(!x?.laudo) return;
-  levarResultado(x); const lev=levados(); if(!lev.includes(x.id)) $("#laudos-levados").value=[...lev,x.id].join(",");
-  atualiza(); desenhaExamesAt(); st2("Resultado levado para o prontuário. Confira em Exames complementares.","ok");
-});
-function levarResultado(x){ const l=x.laudo;
+  const x=(ficha.anexos||[]).find(a=>a.id===b.dataset.trazer); const l=x?.laudo; if(!l) return;
   const tipo=l.tipo||"pentacam", linhas=(l.secoes||[]).flatMap(sc=>sc.linhas||[]), achar=re=>linhas.find(r=>re.test(r.parametro||""));
   if(tipo==="microscopia"){ const cd=achar(/^Densidade/i); if(cd){ $("#micro-od").value=so(cd.od); $("#micro-oe").value=so(cd.os); } }
   if(tipo==="paquimetria"){ const cp=achar(/^Centro pupilar/i); if(cp){ $("#paqui-od").value=so(cp.od); $("#paqui-oe").value=so(cp.os); } }
   if(tipo==="topografia"){ const imp=String(l.impressao_diagnostica||"").trim(), at=$("#topo-txt").value;
     if(imp&&!at.includes(imp)) $("#topo-txt").value=(at?at.replace(/\s+$/,"")+"\n":"")+imp;
-    return; }
+    atualiza(); st2("Resultado levado para a Topografia de córnea.","ok"); return; }
   const nome={pentacam:"Tomografia de córnea (Pentacam)",paquimetria:"Paquimetria corneana",microscopia:"Microscopia especular de córnea"}[tipo];
   const linha=`${nome} (laudo): ${l.impressao_diagnostica||""}`.trim(), atual=$("#exc-txt").value;
   if(!atual.split("\n").some(t=>t.startsWith(nome+" (laudo)"))) $("#exc-txt").value=(atual?atual.replace(/\s+$/,"")+"\n":"")+linha;
-}
+  atualiza(); st2("Resultado levado para o prontuário. Confira em “Outros exames”.","ok");
+});
 function st2(t,cls){ $("#st-exames").textContent=t; $("#st-exames").className="status "+(cls||""); }
 async function buscarExamesNovos(){
   if(!ficha) return; try{ const r=await api(`/api/prontuario/ficha?tel=${encodeURIComponent(ficha.paciente.telefone)}&nome=${encodeURIComponent(ficha.paciente.nome)}`);
@@ -1023,7 +987,6 @@ async function abrirLaudo(id){
   $("#m-laudo").hidden=false; $("#ml-corpo").hidden=true;
   const tipo=laudoAx.laudo?(laudoAx.laudo.tipo||"pentacam"):tipoDoExame(laudoAx);
   $("#ml-tipo").value=tipo||"pentacam"; $("#ml-t").textContent="Laudo";
-  if(!laudoAx.laudo&&gerando(laudoAx)){ mlStatus("O laudo deste exame está sendo gerado sozinho. Aparece em cerca de um minuto; feche e acompanhe em Exames complementares.",""); return; }
   if(laudoAx.laudo){ laudo=laudoAx.laudo; desenhaLaudo(); mlStatus(`Laudo salvo${laudo.revisado_em?" (revisado em "+ddmmaa(laudo.revisado_em)+")":""}.`,"ok"); return; }
   if(tipo) return gerarLaudo(false);
   $("#ml-gerar").textContent="Gerar laudo"; mlStatus("Escolha qual exame é este e clique em Gerar laudo.","");
@@ -1066,14 +1029,7 @@ function desenhaLaudo(){
 function lerEdicao(){ laudo.data_exame=v("ml-data"); laudo.sexo=$("#ml-sexo").value; laudo.impressao_diagnostica=$("#ml-imp").value.trim();
   laudo.cpf=v("ml-cpf"); laudo.prontuario=v("ml-pront"); if((laudo.tipo||"pentacam")!=="pentacam") laudo.metodo=v("ml-metodo"); }
 $("#ml-fechar").addEventListener("click",()=>{ $("#m-laudo").hidden=true; desenhaFicha(); desenhaAnexosAt(); });
-$("#ml-salvar").addEventListener("click",async()=>{ const antes=String(laudo.impressao_diagnostica||"").trim(); lerEdicao();
-  try{ await api(`/api/prontuario/laudo/${laudoAx.id}/salvar`,{method:"POST",body:JSON.stringify({laudo})});
-    // se a descrição já tinha entrado no atendimento, a revisão corrige o texto também
-    if(atend&&!atend.finalizado_em&&levados().includes(laudoAx.id)){ const novo=String(laudo.impressao_diagnostica||"").trim();
-      if(antes&&novo&&antes!==novo) for(const id of ["topo-txt","exc-txt"]) $("#"+id).value=$("#"+id).value.split(antes).join(novo);
-      levarResultado(laudoAx); atualiza(); mlStatus("Revisão salva e corrigida no atendimento.","ok"); }
-    else mlStatus("Revisão salva.","ok");
-  }catch(e){ mlStatus(e.status===401?MSG_SESSAO:(e.msg||"Não consegui salvar."),"erro"); } });
+$("#ml-salvar").addEventListener("click",async()=>{ lerEdicao(); try{ await api(`/api/prontuario/laudo/${laudoAx.id}/salvar`,{method:"POST",body:JSON.stringify({laudo})}); mlStatus("Revisão salva.","ok"); }catch(e){ mlStatus(e.status===401?MSG_SESSAO:(e.msg||"Não consegui salvar."),"erro"); } });
 // Telas do exame (PDF) viram imagens com o pdf.js.
 let pdfjsPronto=null;
 function carregaPdfjs(){ if(pdfjsPronto) return pdfjsPronto; pdfjsPronto=new Promise((ok,falha)=>{ const sc=document.createElement("script"); sc.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; sc.onload=()=>{ window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; ok(window.pdfjsLib); }; sc.onerror=falha; document.head.appendChild(sc); }); return pdfjsPronto; }
