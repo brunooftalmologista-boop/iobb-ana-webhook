@@ -10488,7 +10488,10 @@ app.post("/api/prontuario/anexo", requireMedico, express.raw({ type: () => true,
 // imagem do exame e devolve os valores por olho com a referência padronizada; o
 // médico confere e edita na tela antes de imprimir. ⚠️ Única exceção ao "nada
 // clínico vai para a IA" do prontuário — decisão dele ("pode seguir a skill").
-const LAUDO_MODEL = readEnv("LAUDO_MODEL") || "claude-opus-5-5";
+// Custo-benefício (Dr. Bruno, 17/10/2026): o sistema lê com o Sonnet (o mesmo
+// modelo da Ana); laudos que pedem mais detalhe/precisão ele faz com o Claude
+// à parte. Para trocar sem mexer no código: env LAUDO_MODEL no Render.
+const LAUDO_MODEL = readEnv("LAUDO_MODEL") || ANA_MODEL;
 const REF_PENTACAM = `VALORES DE REFERÊNCIA (use exatamente estes textos na "referencia"; "alterado"=true quando fora da faixa):
 Córnea anterior: K1 "41,0 – 46,0 D"; K2 "43,0 – 48,0 D"; Km "42,0 – 46,0 D"; Astigmatismo (eixo) "< 2,0 D"; Rmin "> 7,0 mm".
 Córnea posterior: K1 posterior "-6,0 a -6,5 D"; K2 posterior "até -7,0 D"; Astigmatismo posterior "< 0,3 D".
