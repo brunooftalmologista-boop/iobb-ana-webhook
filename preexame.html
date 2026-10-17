@@ -118,7 +118,7 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
         <div class="linha" style="margin-top:10px"><div class="status" id="st-motivo"></div><button type="button" class="pri" id="salvar" style="flex:0 0 auto">Salvar</button></div>
 
         <h3>Documentos do paciente</h3>
-        <div class="info" style="font-size:13.5px;color:var(--muted)">Carteirinha (frente e verso) e RG ou CNH. A leitura preenche os campos; confira antes de salvar.</div>
+        <div class="info" style="font-size:13.5px;color:var(--muted)">Anexe a carteirinha (frente e verso) e o RG ou CNH. Depois clique em “Ler documentos” uma vez: a leitura preenche os campos. Também dá para preencher à mão. Confira antes de salvar.</div>
         <div class="linha" style="margin-top:8px">
           <button type="button" class="pri" id="b-doc" style="flex:0 0 auto">Fotografar ou escolher arquivo</button>
           <button type="button" id="b-wa" style="flex:0 0 auto">Trazer do WhatsApp</button>
@@ -143,7 +143,7 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
             <div class="campo"><label for="d-validade">Validade</label><input id="d-validade" placeholder="dd/mm/aaaa"></div>
             <div class="campo"><label for="d-cns">Cartão Nacional de Saúde</label><input id="d-cns" inputmode="numeric"></div>
           </div>
-          <div class="linha" style="margin-top:10px"><div class="status" id="st-dados"></div><button type="button" id="b-ler" style="flex:0 0 auto">Ler de novo</button><button type="button" class="pri" id="b-dados" style="flex:0 0 auto">Conferi, salvar</button></div>
+          <div class="linha" style="margin-top:10px"><div class="status" id="st-dados"></div><button type="button" id="b-ler" style="flex:0 0 auto">Ler documentos</button><button type="button" class="pri" id="b-dados" style="flex:0 0 auto">Conferi, salvar</button></div>
         </div>
 
         <h3>Exames realizados</h3>
@@ -354,7 +354,7 @@ $("#doc-arq").addEventListener("change",async()=>{ const fs=[...$("#doc-arq").fi
     try{ const q=new URLSearchParams({filename:f.name,mime:f.type||"image/jpeg"});
       const r=await api(`/api/preexame/consulta/${atual}/documento?${q}`,{method:"POST",raw:true,body:f}); docs.push(r.documento); ok++; desenhaDocs();
     }catch(e){ if(e.status!==401) st("#st-doc",`${f.name}: ${e.msg||"não consegui enviar."}`,"erro"); return; } }
-  if(ok){ st("#st-doc",`${ok} documento${ok>1?"s":""} guardado${ok>1?"s":""}.`,"ok"); lerDocs(); }
+  if(ok){ st("#st-doc",`${ok} documento${ok>1?"s":""} guardado${ok>1?"s":""}. Quando todos estiverem anexados, clique em “Ler documentos”.`,"ok"); $("#dados-box").hidden=false; }
 });
 $("#b-wa").addEventListener("click",async()=>{
   $("#wa-box").hidden=false; $("#wa-lista").innerHTML='<div class="vazio">Procurando no WhatsApp do paciente…</div>';
@@ -368,7 +368,7 @@ $("#wa-trazer").addEventListener("click",async()=>{
   const ids=$$("#wa-lista input:checked").map(i=>i.value); if(!ids.length){ st("#st-doc","Marque as imagens dos documentos.","erro"); return; }
   st("#st-doc","Trazendo do WhatsApp…","");
   try{ const r=await api(`/api/preexame/consulta/${atual}/whatsapp`,{method:"POST",body:JSON.stringify({ids})});
-    docs.push(...(r.documentos||[])); desenhaDocs(); $("#wa-box").hidden=true; st("#st-doc",`${(r.documentos||[]).length} documento(s) trazido(s).`,"ok"); lerDocs();
+    docs.push(...(r.documentos||[])); desenhaDocs(); $("#wa-box").hidden=true; st("#st-doc",`${(r.documentos||[]).length} documento(s) trazido(s). Quando todos estiverem anexados, clique em “Ler documentos”.`,"ok"); $("#dados-box").hidden=false;
   }catch(e){ if(e.status!==401) st("#st-doc",e.msg||"Não consegui trazer.","erro"); }
 });
 
