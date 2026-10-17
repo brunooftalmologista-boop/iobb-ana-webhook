@@ -62,6 +62,19 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
 .status.ok{color:var(--ok)} .status.erro{color:var(--danger)}
 .linha{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
 .linha > *{flex:1;min-width:160px}
+.docs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.docs a{display:block;width:92px;height:68px;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--chip);color:var(--muted);font-size:12px;text-align:center;line-height:68px;text-decoration:none}
+.docs img{width:100%;height:100%;object-fit:cover}
+.grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px 12px;margin-top:10px}
+.grade .campo{margin:0}
+.pend{background:var(--pri-soft);border-radius:8px;padding:8px 12px;font-size:13.5px;margin-top:8px}
+.wa{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:8px}
+.wa label{border:2px solid var(--line);border-radius:8px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;font-size:12px;color:var(--muted)}
+.wa label:has(input:checked){border-color:var(--pri)}
+.wa img{width:100%;height:90px;object-fit:cover;background:var(--chip)}
+.wa .pdf{height:90px;display:flex;align-items:center;justify-content:center;background:var(--chip);font-weight:700}
+.wa span{padding:3px 6px;display:flex;gap:4px;align-items:center}
+.wa input{width:auto}
 .portao{max-width:380px;margin:12vh auto;padding:0 16px}
 .portao .caixa{display:flex;flex-direction:column;gap:12px}
 </style>
@@ -103,6 +116,35 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
         <div class="campo"><label for="m-outro">Outro motivo</label><input id="m-outro" placeholder="Escreva se não estiver nos botões"></div>
         <div class="campo"><label for="m-obs">Observação para o Dr. Bruno</label><textarea id="m-obs" placeholder="Ex.: usa óculos há 2 anos; trouxe exames de outra clínica"></textarea></div>
         <div class="linha" style="margin-top:10px"><div class="status" id="st-motivo"></div><button type="button" class="pri" id="salvar" style="flex:0 0 auto">Salvar</button></div>
+
+        <h3>Documentos do paciente</h3>
+        <div class="info" style="font-size:13.5px;color:var(--muted)">Carteirinha (frente e verso) e RG ou CNH. A leitura preenche os campos; confira antes de salvar.</div>
+        <div class="linha" style="margin-top:8px">
+          <button type="button" class="pri" id="b-doc" style="flex:0 0 auto">Fotografar ou escolher arquivo</button>
+          <button type="button" id="b-wa" style="flex:0 0 auto">Trazer do WhatsApp</button>
+          <input type="file" id="doc-arq" accept="image/*,application/pdf" multiple hidden>
+        </div>
+        <div id="wa-box" hidden>
+          <div class="wa" id="wa-lista"></div>
+          <div class="linha" style="margin-top:8px"><button type="button" class="pri" id="wa-trazer" style="flex:0 0 auto">Trazer as marcadas</button><button type="button" class="link" id="wa-fechar" style="flex:0 0 auto">Cancelar</button></div>
+        </div>
+        <div class="docs" id="docs"></div>
+        <div class="status" id="st-doc"></div>
+        <div id="dados-box" hidden>
+          <div class="pend" id="doc-pend" hidden></div>
+          <div class="grade">
+            <div class="campo"><label for="d-nome_completo">Nome completo</label><input id="d-nome_completo"></div>
+            <div class="campo"><label for="d-cpf">CPF</label><input id="d-cpf" inputmode="numeric" placeholder="000.000.000-00"></div>
+            <div class="campo"><label for="d-nascimento">Data de nascimento</label><input id="d-nascimento" inputmode="numeric" placeholder="dd/mm/aaaa"></div>
+            <div class="campo"><label for="d-rg">RG</label><input id="d-rg"></div>
+            <div class="campo"><label for="d-operadora">Operadora</label><input id="d-operadora"></div>
+            <div class="campo"><label for="d-plano">Plano</label><input id="d-plano"></div>
+            <div class="campo"><label for="d-carteirinha">Nº da carteirinha</label><input id="d-carteirinha"></div>
+            <div class="campo"><label for="d-validade">Validade</label><input id="d-validade" placeholder="dd/mm/aaaa"></div>
+            <div class="campo"><label for="d-cns">Cartão Nacional de Saúde</label><input id="d-cns" inputmode="numeric"></div>
+          </div>
+          <div class="linha" style="margin-top:10px"><div class="status" id="st-dados"></div><button type="button" id="b-ler" style="flex:0 0 auto">Ler de novo</button><button type="button" class="pri" id="b-dados" style="flex:0 0 auto">Conferi, salvar</button></div>
+        </div>
 
         <h3>Exames realizados</h3>
         <div class="linha">
@@ -215,6 +257,7 @@ function desenha(){
   $("#m-obs").value=p.observacao||"";
   st("#st-motivo",detalhe.preexame?`Salvo às ${hhmm(detalhe.preexame.updated_at)}${detalhe.preexame.feito_por?" ("+detalhe.preexame.feito_por+")":""}.`:"Ainda não preenchido.","");
   sujo=false; desenhaArqs();
+  docs=[]; desenhaDocs(); $("#wa-box").hidden=true; $("#dados-box").hidden=true; st("#st-doc","",""); carregaDocs();
 }
 function st(sel,t,cls){ $(sel).textContent=t; $(sel).className="status "+(cls||""); }
 $("#motivos").addEventListener("click",e=>{ const ch=e.target.closest(".chip"); if(!ch) return; alterna(ch); });
@@ -273,6 +316,61 @@ async function enviar(fs){
   if(ok){ st("#st-arq",`${ok} arquivo${ok>1?"s":""} enviado${ok>1?"s":""}. Já está no prontuário do Dr. Bruno.`,"ok");
     const c=dia.find(x=>x.id===atual); if(c){ c.exames=detalhe.anexos.length; desenhaLista(); } }
 }
+
+/* ===== documentos ===== */
+const CAMPOS=["nome_completo","cpf","nascimento","rg","operadora","plano","carteirinha","validade","cns"];
+let docs=[];
+async function carregaDocs(){
+  try{ const r=await api(`/api/preexame/consulta/${atual}/documentos`); docs=r.documentos||[]; desenhaDocs();
+    const d=r.dados||{}; preencheDados(d);
+    $("#dados-box").hidden=!docs.length&&!d.conferido_em;
+    st("#st-dados",d.conferido_em?`Conferido por ${d.conferido_por||"—"} em ${new Date(d.conferido_em).toLocaleDateString("pt-BR",{timeZone:TZ})}.`:"","ok"); $("#doc-pend").hidden=true;
+  }catch(e){ if(e.status!==401) st("#st-doc",e.msg||"Não consegui abrir os documentos.","erro"); }
+}
+function desenhaDocs(){ $("#docs").innerHTML=docs.map(d=>`<a href="${esc(d.url||"#")}" target="_blank" rel="noopener" title="${esc(d.nome)}">${String(d.mime||"").startsWith("image/")&&d.url?`<img src="${esc(d.url)}" alt="${esc(d.nome)}">`:"PDF"}</a>`).join(""); }
+function preencheDados(d){ for(const k of CAMPOS) $("#d-"+k).value=d[k]||""; }
+async function lerDocs(){
+  $("#dados-box").hidden=false; st("#st-dados","Lendo os documentos… leva alguns segundos.",""); $("#b-ler").disabled=true;
+  try{ const r=await api(`/api/preexame/consulta/${atual}/documentos/ler`,{method:"POST",body:"{}"}); const l=r.lido||{};
+    for(const k of CAMPOS) if(l[k]) $("#d-"+k).value=l[k];
+    const pend=(l.pendencias||[]).filter(Boolean); $("#doc-pend").hidden=!pend.length; $("#doc-pend").innerHTML=pend.length?"<b>Atenção:</b> "+pend.map(esc).join(" · "):"";
+    st("#st-dados","Confira cada campo com o documento e clique em “Conferi, salvar”.","");
+  }catch(e){ if(e.status!==401) st("#st-dados",e.msg||"Não consegui ler. Preencha à mão.","erro"); }
+  finally{ $("#b-ler").disabled=false; }
+}
+$("#b-ler").addEventListener("click",lerDocs);
+$("#b-dados").addEventListener("click",async()=>{
+  const dados={}; for(const k of CAMPOS) dados[k]=$("#d-"+k).value.trim();
+  try{ const r=await api(`/api/preexame/consulta/${atual}/dados`,{method:"POST",body:JSON.stringify({dados})});
+    st("#st-dados",`Salvo. Já aparece no prontuário do Dr. Bruno.`,"ok"); $("#doc-pend").hidden=true;
+    if(dados.nascimento){ const c=dia.find(x=>x.id===atual); if(c&&c.idade==null){ carregaDia(); } }
+  }catch(e){ if(e.status!==401) st("#st-dados",e.msg||"Não consegui salvar.","erro"); }
+});
+$("#b-doc").addEventListener("click",()=>$("#doc-arq").click());
+$("#doc-arq").addEventListener("change",async()=>{ const fs=[...$("#doc-arq").files]; $("#doc-arq").value=""; if(!fs.length||!atual) return;
+  let ok=0;
+  for(const f of fs){ if(f.size>20*1024*1024){ st("#st-doc",`${f.name} passa de 20 MB.`,"erro"); continue; }
+    st("#st-doc",`Enviando ${f.name}…`,"");
+    try{ const q=new URLSearchParams({filename:f.name,mime:f.type||"image/jpeg"});
+      const r=await api(`/api/preexame/consulta/${atual}/documento?${q}`,{method:"POST",raw:true,body:f}); docs.push(r.documento); ok++; desenhaDocs();
+    }catch(e){ if(e.status!==401) st("#st-doc",`${f.name}: ${e.msg||"não consegui enviar."}`,"erro"); return; } }
+  if(ok){ st("#st-doc",`${ok} documento${ok>1?"s":""} guardado${ok>1?"s":""}.`,"ok"); lerDocs(); }
+});
+$("#b-wa").addEventListener("click",async()=>{
+  $("#wa-box").hidden=false; $("#wa-lista").innerHTML='<div class="vazio">Procurando no WhatsApp do paciente…</div>';
+  try{ const r=await api(`/api/preexame/consulta/${atual}/whatsapp`); const ms=r.midias||[];
+    $("#wa-lista").innerHTML=ms.length?ms.map(m=>`<label>${String(m.mime).startsWith("image/")?`<img src="${esc(m.url)}" alt="">`:'<div class="pdf">PDF</div>'}<span><input type="checkbox" value="${esc(m.id)}">${new Date(/Z|[+-]\d\d:?\d\d$/.test(m.quando)?m.quando:m.quando+"Z").toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit"})}</span></label>`).join("")
+      :'<div class="vazio">O paciente não mandou foto nem PDF no WhatsApp nos últimos 30 dias.</div>';
+  }catch(e){ if(e.status!==401) $("#wa-lista").innerHTML=`<div class="vazio">${esc(e.msg||"Não consegui ler o WhatsApp.")}</div>`; }
+});
+$("#wa-fechar").addEventListener("click",()=>{ $("#wa-box").hidden=true; });
+$("#wa-trazer").addEventListener("click",async()=>{
+  const ids=$$("#wa-lista input:checked").map(i=>i.value); if(!ids.length){ st("#st-doc","Marque as imagens dos documentos.","erro"); return; }
+  st("#st-doc","Trazendo do WhatsApp…","");
+  try{ const r=await api(`/api/preexame/consulta/${atual}/whatsapp`,{method:"POST",body:JSON.stringify({ids})});
+    docs.push(...(r.documentos||[])); desenhaDocs(); $("#wa-box").hidden=true; st("#st-doc",`${(r.documentos||[]).length} documento(s) trazido(s).`,"ok"); lerDocs();
+  }catch(e){ if(e.status!==401) st("#st-doc",e.msg||"Não consegui trazer.","erro"); }
+});
 
 /* ===== entrada ===== */
 function entrar(){ $("#portao").hidden=true; $("#raiz").hidden=false;

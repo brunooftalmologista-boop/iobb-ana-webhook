@@ -237,6 +237,8 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
               <div><b>Convênio:</b> <span id="p-conv">—</span></div>
               <div><b>Primeira consulta:</b> <span id="p-prim">—</span></div>
               <div><b>Telefone:</b> <span id="p-tel">—</span></div>
+              <div id="p-cpf-l" hidden><b>CPF:</b> <span id="p-cpf"></span></div>
+              <div id="p-cart-l" hidden><b>Carteirinha:</b> <span id="p-cart"></span></div>
             </div>
             <div class="row" id="nasc-box" hidden style="margin-top:6px"><label>Data de nascimento <input id="nasc-in" placeholder="dd/mm/aaaa" style="width:130px;font-family:var(--f-mono)"></label><button type="button" id="nasc-ok">Gravar</button><span class="hint" id="nasc-msg"></span></div>
           </div>
@@ -753,6 +755,8 @@ function desenhaFicha(){
   $("#p-conv").textContent=p.convenio||"—";
   $("#p-prim").textContent=p.primeira_consulta?ddmmaa(p.primeira_consulta):"—";
   $("#p-tel").textContent=p.telefone||"—";
+  const dc=p.documentos||{}; $("#p-cpf-l").hidden=!dc.cpf; $("#p-cpf").textContent=dc.cpf||"";
+  $("#p-cart-l").hidden=!dc.carteirinha; $("#p-cart").textContent=[dc.carteirinha,dc.operadora,dc.plano,dc.validade?"validade "+dc.validade:""].filter(Boolean).join(" · ");
   $("#p-hoje").textContent=ficha.hoje?`Consulta hoje às ${hhmm(ficha.hoje.inicio)} · ${ficha.hoje.unidade}`:"Sem consulta marcada para hoje";
   // pré-exame (motivo da consulta + exames anexados por quem faz o pré-exame)
   const pre=preDoAgendamento(ficha.hoje?.id);
@@ -985,7 +989,7 @@ async function gerarLaudo(refazer){
 $("#ml-gerar").addEventListener("click",()=>gerarLaudo(!!laudo&&laudoAx.laudo===laudo));
 $("#ml-tipo").addEventListener("change",()=>{ $("#ml-gerar").textContent=laudoAx?.laudo&&($("#ml-tipo").value!==(laudoAx.laudo.tipo||"pentacam"))?"Gerar com este tipo":(laudoAx?.laudo?"Ler o exame de novo":"Gerar laudo"); });
 // CPF e nº de prontuário: digitados uma vez, reaproveitados nos próximos laudos do paciente.
-function dadoDoPaciente(k){ for(const x of ficha.anexos||[]) if(x.laudo&&x.laudo[k]) return x.laudo[k]; return ""; }
+function dadoDoPaciente(k){ const d=ficha.paciente?.documentos||{}; if(k==="cpf"&&d.cpf) return d.cpf; for(const x of ficha.anexos||[]) if(x.laudo&&x.laudo[k]) return x.laudo[k]; return ""; }
 function desenhaLaudo(){
   $("#ml-corpo").hidden=false; $("#ml-gerar").textContent="Ler o exame de novo";
   $("#ml-t").textContent=TIPOS_LAUDO[laudo.tipo||"pentacam"]; $("#ml-tipo").value=laudo.tipo||"pentacam";

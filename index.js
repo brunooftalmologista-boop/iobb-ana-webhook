@@ -10346,7 +10346,7 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
       paciente: {
         chave, nome: (ultimoAg && ultimoAg.paciente_nome) || pac?.nome || nome, telefone: tel,
         convenio: ultimoAg?.convenio || null, primeira_consulta: meus[0]?.inicio || null,
-        ...(idade || {}),
+        ...(idade || idadeDe(pac?.dados?.nascimento ? `Nascimento: ${pac.dados.nascimento}` : "") || {}), documentos: pac?.dados || {},
       },
       antecedentes: pac?.antecedentes || {}, hoje, consultas, anexos, conversa, preexames,
     });
@@ -10742,6 +10742,182 @@ app.post("/api/preexame/anexo/:aid/remover", requirePreExame, async (req, res) =
   } catch (e) {
     console.error("[Pré-exame] remover falhou:", e.message);
     res.status(500).json({ error: "Não consegui tirar o arquivo." });
+  }
+});
+// ----- Documentos do paciente (17/10/2026) -----------------------------------
+// Foto da carteirinha / RG / CNH, tirada no pré-exame ou trazida do WhatsApp
+// (o bucket "anexos" das conversas apaga em 30 dias; aqui a cópia é permanente).
+// A IA lê os campos, a secretária CONFERE e salva — nada é gravado sem ela.
+// Os dados ficam em prontuario_pacientes.dados (CPF, nascimento, carteirinha…),
+// base do cadastro, dos laudos e, depois, do pacote de autorização.
+const CAMPOS_DOC = ["nome_completo", "cpf", "nascimento", "rg", "operadora", "plano", "carteirinha", "validade", "cns"];
+const PROMPT_DOCS = `Leia os documentos de um paciente (carteirinha de plano de saúde, frente e/ou verso; RG; CNH; ou documento parecido) e devolva SOMENTE um JSON, sem texto antes ou depois:
+{"nome_completo":"","cpf":"000.000.000-00","nascimento":"dd/mm/aaaa","rg":"","operadora":"","plano":"","carteirinha":"","validade":"dd/mm/aaaa","cns":"","documentos":["carteirinha frente","RG"],"pendencias":[""]}
+REGRAS:
+- Copie exatamente o que está escrito. Campo que não aparece ou está ilegível fica "" e você explica em "pendencias". NUNCA estime um dígito.
+- "operadora": nome da operadora (ex.: "Unimed Central Nacional", "Saúde Caixa"); "plano": o produto/acomodação escrito na carteirinha; "carteirinha": o número do beneficiário com a pontuação da carteirinha; "cns": Cartão Nacional de Saúde, se houver.
+- Se aparecerem documentos de PESSOAS DIFERENTES, use o titular do atendimento (o que aparece na carteirinha) e avise em "pendencias".
+- Se a imagem não for documento (ex.: exame, receita), diga em "pendencias" e deixe os campos vazios.`;
+async function lerDocumentos(arquivos) {
+  const blocos = [];
+  for (const a of arquivos.slice(0, 6)) {
+    const { data: blob, error } = await supabase.storage.from(BUCKET_PRONTUARIO).download(a.path);
+    if (error) continue;
+    const b64 = Buffer.from(await blob.arrayBuffer()).toString("base64");
+    const mime = String(a.mime || "").toLowerCase();
+    blocos.push(mime.includes("pdf")
+      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }
+      : { type: "image", source: { type: "base64", media_type: /png/.test(mime) ? "image/png" : /webp/.test(mime) ? "image/webp" : "image/jpeg", data: b64 } });
+  }
+  if (!blocos.length) throw new Error("nenhum documento legível");
+  const r = await anthropicMessages({
+    model: ANA_MODEL, max_tokens: 1500,
+    messages: [{ role: "user", content: [...blocos, { type: "text", text: PROMPT_DOCS }] }],
+  }, { origem: "documentos", tentativas: 1, timeout: 120000 });
+  const txt = (r.data?.content || []).filter(c => c.type === "text").map(c => c.text).join("");
+  const m = txt.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error("a IA não devolveu os campos");
+  return JSON.parse(m[0]);
+}
+async function dadosDoPaciente(ag) {
+  const { data } = await supabase.from("prontuario_pacientes").select("dados").eq("chave", chavePaciente(ag.paciente_telefone, ag.paciente_nome)).maybeSingle();
+  return data?.dados || {};
+}
+async function documentosDaConsulta(ag) {
+  const { data } = await supabase.from("prontuario_anexos").select("id, nome, mime, path, created_at, enviado_por, observacao")
+    .eq("paciente_chave", chavePaciente(ag.paciente_telefone, ag.paciente_nome)).eq("tipo", "documento").order("created_at", { ascending: true });
+  const out = [];
+  for (const a of data || []) {
+    const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(a.path, 1800);
+    out.push({ id: a.id, nome: a.nome, mime: a.mime, created_at: a.created_at, enviado_por: a.enviado_por, observacao: a.observacao, url: s?.signedUrl || null });
+  }
+  return out;
+}
+app.get("/api/preexame/consulta/:id/documentos", requirePreExame, async (req, res) => {
+  try {
+    const ag = await agendamentoPreExame(req.params.id);
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
+    res.json({ documentos: await documentosDaConsulta(ag), dados: await dadosDoPaciente(ag) });
+  } catch (e) {
+    console.error("[Documentos] listar falhou:", e.message);
+    res.status(500).json({ error: "Não consegui abrir os documentos." });
+  }
+});
+app.post("/api/preexame/consulta/:id/documento", requirePreExame, express.raw({ type: () => true, limit: "20mb" }), async (req, res) => {
+  try {
+    if (!req.body || !req.body.length) return res.status(400).json({ error: "Arquivo vazio." });
+    const ag = await agendamentoPreExame(req.params.id);
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
+    const a = await guardarAnexo({
+      tel: ag.paciente_telefone, nome: ag.paciente_nome, tipo: "documento",
+      nomeArq: String(req.query.filename || "documento").slice(0, 160),
+      mime: String(req.query.mime || req.headers["content-type"] || "image/jpeg"),
+      buf: req.body, obs: "Documento", appointmentId: ag.id, por: req.porPreExame,
+    });
+    res.json({ ok: true, documento: { id: a.id, nome: a.nome, mime: a.mime, created_at: a.created_at, enviado_por: a.enviado_por, url: a.url } });
+  } catch (e) {
+    console.error("[Documentos] envio falhou:", e.message);
+    res.status(500).json({ error: "Não consegui guardar o documento." });
+  }
+});
+// Fotos e PDFs que o paciente mandou no WhatsApp (últimos 30 dias = o que o
+// expurgo ainda não apagou), para trazer como documento.
+async function conversasDoTelefone(tel) {
+  const f8 = ult8(tel);
+  if (!f8) return [];
+  const { data: ps } = await supabase.from("patients").select("id").like("phone", `%${f8}`).limit(5);
+  if (!ps || !ps.length) return [];
+  const { data: cs } = await supabase.from("conversations").select("id").in("patient_id", ps.map(p => p.id)).limit(20);
+  return (cs || []).map(c => c.id);
+}
+app.get("/api/preexame/consulta/:id/whatsapp", requirePreExame, async (req, res) => {
+  try {
+    const ag = await agendamentoPreExame(req.params.id);
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
+    const convs = await conversasDoTelefone(ag.paciente_telefone);
+    if (!convs.length) return res.json({ midias: [] });
+    const desde = new Date(Date.now() - 30 * 864e5).toISOString().replace("Z", "");
+    const { data: ms } = await supabase.from("messages").select("id, timestamp, media_path, media_type, media_name")
+      .in("conversation_id", convs).eq("role", "user").not("media_path", "is", null).gte("timestamp", desde)
+      .order("timestamp", { ascending: false }).limit(30);
+    const midias = [];
+    for (const m of ms || []) {
+      if (!/^image\/|pdf/i.test(String(m.media_type || ""))) continue;
+      const { data: s } = await supabase.storage.from("anexos").createSignedUrl(m.media_path, 900);
+      if (!s?.signedUrl) continue;   // já expurgado
+      midias.push({ id: m.id, quando: m.timestamp, mime: m.media_type, nome: m.media_name || null, url: s.signedUrl });
+    }
+    res.json({ midias });
+  } catch (e) {
+    console.error("[Documentos] WhatsApp falhou:", e.message);
+    res.status(500).json({ error: "Não consegui ler o WhatsApp do paciente." });
+  }
+});
+app.post("/api/preexame/consulta/:id/whatsapp", requirePreExame, async (req, res) => {
+  try {
+    const ag = await agendamentoPreExame(req.params.id);
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).filter(x => /^[0-9a-f-]{36}$/i.test(String(x))).slice(0, 6);
+    if (!ids.length) return res.status(400).json({ error: "Escolha ao menos uma imagem." });
+    const convs = await conversasDoTelefone(ag.paciente_telefone);
+    const { data: ms } = await supabase.from("messages").select("id, conversation_id, media_path, media_type, media_name").in("id", ids);
+    const trazidos = [];
+    for (const m of ms || []) {
+      if (!convs.includes(m.conversation_id) || !m.media_path) continue;   // só do próprio paciente
+      const { data: blob, error } = await supabase.storage.from("anexos").download(m.media_path);
+      if (error) continue;
+      const a = await guardarAnexo({
+        tel: ag.paciente_telefone, nome: ag.paciente_nome, tipo: "documento",
+        nomeArq: m.media_name || `whatsapp_${String(m.media_path).split("/").pop()}`,
+        mime: m.media_type || "image/jpeg", buf: Buffer.from(await blob.arrayBuffer()),
+        obs: "Documento (WhatsApp)", appointmentId: ag.id, por: req.porPreExame,
+      });
+      trazidos.push({ id: a.id, nome: a.nome, mime: a.mime, created_at: a.created_at, enviado_por: a.enviado_por, url: a.url });
+    }
+    res.json({ ok: true, documentos: trazidos });
+  } catch (e) {
+    console.error("[Documentos] trazer do WhatsApp falhou:", e.message);
+    res.status(500).json({ error: "Não consegui trazer as imagens." });
+  }
+});
+app.post("/api/preexame/consulta/:id/documentos/ler", requirePreExame, async (req, res) => {
+  try {
+    const ag = await agendamentoPreExame(req.params.id);
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
+    const { data: docs } = await supabase.from("prontuario_anexos").select("id, path, mime")
+      .eq("paciente_chave", chavePaciente(ag.paciente_telefone, ag.paciente_nome)).eq("tipo", "documento").order("created_at", { ascending: false }).limit(6);
+    if (!docs || !docs.length) return res.status(400).json({ error: "Nenhum documento para ler." });
+    const lido = await lerDocumentos(docs);
+    res.json({ lido });
+  } catch (e) {
+    console.error("[Documentos] leitura falhou:", e?.response?.data ? JSON.stringify(e.response.data).slice(0, 300) : e.message);
+    res.status(500).json({ error: "Não consegui ler os documentos. Tente de novo ou preencha à mão." });
+  }
+});
+// Salvar = a secretária conferiu. Data de nascimento também vai para a agenda
+// (observações), que é de onde o prontuário e a Ana tiram a idade.
+app.post("/api/preexame/consulta/:id/dados", requirePreExame, async (req, res) => {
+  try {
+    const ag = await agendamentoPreExame(req.params.id);
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
+    const b = req.body?.dados || {};
+    const dados = {};
+    for (const k of CAMPOS_DOC) dados[k] = String(b[k] || "").trim().slice(0, 120);
+    if (dados.cpf && dados.cpf.replace(/\D/g, "").length !== 11) return res.status(400).json({ error: "O CPF precisa ter 11 dígitos." });
+    if (dados.nascimento && !/^\d{2}\/\d{2}\/\d{4}$/.test(dados.nascimento)) return res.status(400).json({ error: "Data de nascimento no formato dd/mm/aaaa." });
+    dados.conferido_por = req.porPreExame; dados.conferido_em = new Date().toISOString();
+    const chave = chavePaciente(ag.paciente_telefone, ag.paciente_nome);
+    const { error } = await supabase.from("prontuario_pacientes").upsert(
+      { chave, nome: ag.paciente_nome, telefone: ag.paciente_telefone, dados, updated_at: dados.conferido_em }, { onConflict: "chave" });
+    if (error) throw error;
+    if (dados.nascimento && !idadeDe(ag.observacoes)) {
+      const obs = [String(ag.observacoes || "").trim(), `Nascimento: ${dados.nascimento}`].filter(Boolean).join("\n");
+      await supabase.from("appointments").update({ observacoes: obs }).eq("id", ag.id);
+    }
+    res.json({ ok: true, dados });
+  } catch (e) {
+    console.error("[Documentos] salvar falhou:", e.message);
+    res.status(500).json({ error: "Não consegui salvar os dados." });
   }
 });
 app.get("/pre-exame", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/preexame.html"); });
