@@ -10933,6 +10933,61 @@ app.post("/api/preexame/consulta/:id/dados", requirePreExame, async (req, res) =
     res.status(500).json({ error: "Não consegui salvar os dados." });
   }
 });
+// ===== CHAT DA EQUIPE (Dr. Bruno, 19/10/2026) =================================
+// Mensagens instantâneas entre o médico e as secretárias, como o chat do
+// iClinic: "Todos" (para = null) ou uma pessoa (para = nome). Interno — nada
+// vai para paciente, Ana ou IA. EGRESS: o widget pergunta a cada poucos
+// segundos se há novidade; como toda mensagem nova passa por ESTE servidor,
+// guardamos em memória o instante da última e só consultamos o banco quando
+// existe algo mais novo do que o cliente já tem. Poll vazio = zero Supabase.
+let ultimaMsgEquipe = null;   // ISO da mensagem mais recente (null = ainda não lido)
+async function ultimaEquipe() {
+  if (ultimaMsgEquipe === null) {
+    const { data } = await supabase.from("equipe_mensagens").select("created_at").order("created_at", { ascending: false }).limit(1);
+    ultimaMsgEquipe = data && data[0] ? data[0].created_at : "";
+  }
+  return ultimaMsgEquipe;
+}
+function quemEquipe(req) { return SECRETARIAS.find(s => s.email === String(req.panelUser?.email || "").toLowerCase())?.nome || null; }
+app.get("/api/equipe/mensagens", async (req, res) => {
+  try {
+    const eu = quemEquipe(req);
+    if (!eu) return res.status(403).json({ error: "Acesso restrito à equipe." });
+    const pessoas = SECRETARIAS.filter(s => process.env[s.pwEnv] || (!s.medico && process.env.PANEL_PASSWORD)).map(s => s.nome);
+    const desde = String(req.query.desde || "");
+    const ult = await ultimaEquipe();
+    if (desde && (!ult || new Date(ult).getTime() <= new Date(desde).getTime())) return res.json({ eu, pessoas, mensagens: [] });
+    let q = supabase.from("equipe_mensagens").select("id, de, para, texto, created_at")
+      .or(`para.is.null,para.eq."${eu}",de.eq."${eu}"`);
+    if (desde && !isNaN(new Date(desde))) q = q.gt("created_at", new Date(desde).toISOString()).order("created_at", { ascending: true }).limit(200);
+    else q = q.gte("created_at", new Date(Date.now() - 7 * 864e5).toISOString()).order("created_at", { ascending: false }).limit(300);
+    const { data, error } = await q;
+    if (error) throw error;
+    const mensagens = desde ? (data || []) : (data || []).reverse();
+    res.json({ eu, pessoas, mensagens });
+  } catch (e) {
+    console.error("[Equipe] ler falhou:", e.message);
+    res.status(500).json({ error: "Não consegui ler o chat." });
+  }
+});
+app.post("/api/equipe/mensagens", async (req, res) => {
+  try {
+    const eu = quemEquipe(req);
+    if (!eu) return res.status(403).json({ error: "Acesso restrito à equipe." });
+    const texto = String(req.body?.texto || "").trim().slice(0, 2000);
+    if (!texto) return res.status(400).json({ error: "Mensagem vazia." });
+    const para = req.body?.para ? String(req.body.para) : null;
+    if (para && !SECRETARIAS.some(s => s.nome === para)) return res.status(400).json({ error: "Destinatário inválido." });
+    const { data, error } = await supabase.from("equipe_mensagens").insert({ de: eu, para, texto }).select("id, de, para, texto, created_at").single();
+    if (error) throw error;
+    ultimaMsgEquipe = data.created_at;
+    res.json({ ok: true, mensagem: data });
+  } catch (e) {
+    console.error("[Equipe] enviar falhou:", e.message);
+    res.status(500).json({ error: "Não consegui enviar." });
+  }
+});
+app.get("/equipe-chat.js", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.type("application/javascript").sendFile(__dirname + "/equipe-chat.js"); });
 app.get("/pre-exame", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/preexame.html"); });
 app.get("/prontuario/timbrado.jpg", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/timbrado-a4.jpg"); });
 app.get("/prontuario/logo.png", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/logo-receita.png"); });

@@ -188,7 +188,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
   <header class="topo">
     <b>IOBB · Prontuário</b>
     <nav><button type="button" id="nav-lista" class="ativo">Prontuários</button></nav>
-    <div class="esp"><a href="/painel">Voltar ao painel</a></div>
+    <div class="esp"><button type="button" class="link" id="btn-chat" title="Chat da equipe" style="font-size:18px;padding:2px 8px">💬</button> <a href="/painel">Voltar ao painel</a></div>
   </header>
 
   <div class="app">
@@ -1102,5 +1102,7 @@ ${figs}
 })();
 })();
 </script>
+<script src="/equipe-chat.js"></script>
+<script>EquipeChat.montar(document.getElementById("btn-chat"));</script>
 </body>
 </html>

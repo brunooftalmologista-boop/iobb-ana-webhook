@@ -97,6 +97,7 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
     <span class="esp"></span>
     <input type="date" id="dia" aria-label="Dia da agenda"><button type="button" id="b-hoje">Hoje</button>
     <a href="/painel" class="link" style="color:var(--pri)">Painel</a>
+    <button type="button" class="link" id="btn-chat" title="Chat da equipe" style="font-size:18px;padding:2px 8px">💬</button>
     <button type="button" class="link" id="sair">Sair</button>
   </div>
   <main>
@@ -380,5 +381,7 @@ if(AUTH||ler("iobb_rt")) entrar(); else portao("");
 setInterval(()=>{ if(!$("#raiz").hidden&&!sujo) carregaDia(); },60000);
 })();
 </script>
+<script src="/equipe-chat.js"></script>
+<script>EquipeChat.montar(document.getElementById("btn-chat"));</script>
 </body>
 </html>

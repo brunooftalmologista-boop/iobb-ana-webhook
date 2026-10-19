@@ -267,6 +267,7 @@
         <button class="icon-btn" id="btn-refresh" title="Atualizar">⟳</button>
         <button class="icon-btn" id="btn-agenda" title="Agenda">🗓️</button>
         <button class="icon-btn" id="btn-config" title="Configurações">⚙️</button>
+        <button class="icon-btn" id="btn-chat" title="Chat da equipe">💬</button>
         <a class="icon-btn" id="btn-preexame" href="/pre-exame" target="_blank" title="Pré-exame: motivo da consulta e exames" style="text-decoration:none">🔬</a>
         <a class="icon-btn" id="btn-prontuario" href="/prontuario" target="_blank" title="Prontuário (só o Dr. Bruno)" style="text-decoration:none;display:none">🩺</a>
         <button class="icon-btn" id="btn-erros" title="O que a Ana errou">🩹<span id="erros-badge" class="erros-badge" hidden></span></button>
@@ -2081,5 +2082,7 @@ setInterval(atualizarContadorErros, 300000);
 setTimeout(atualizarContadorErros, 4000);
 mostrarProntuario();
 </script>
+<script src="/equipe-chat.js"></script>
+<script>EquipeChat.montar(document.getElementById("btn-chat"));</script>
 </body>
 </html>
