@@ -83,8 +83,11 @@
     for (const b of botoes) { let bd = b.querySelector(".ec-badge"); if (total) { if (!bd) { bd = document.createElement("span"); bd.className = "ec-badge"; b.appendChild(bd); } bd.textContent = total > 99 ? "99+" : String(total); } else if (bd) bd.remove(); }
   }
   $abas.addEventListener("click", e => { const b = e.target.closest("[data-c]"); if (!b) return; aba = b.dataset.c; marcarVisto(); desenhar(); $txt.focus(); });
-  g.querySelector(".ec-x").addEventListener("click", () => { g.hidden = true; });
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && !g.hidden) g.hidden = true; });
+  // a aba/botão que abriu o chat fica marcada enquanto ele está aberto
+  const marcaBotoes = () => botoes.forEach(b => b.classList.toggle("ec-ativo", !g.hidden));
+  const fechar = () => { g.hidden = true; marcaBotoes(); };
+  g.querySelector(".ec-x").addEventListener("click", fechar);
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !g.hidden) fechar(); });
 
   /* ---------- som (respeita o 🔔 do painel) ---------- */
   let actx = null;
@@ -101,7 +104,7 @@
   let tPoll = null, emCurso = false;
   async function buscar() {
     if (emCurso) return;
-    if (!ler("iobb_at")) { if (eu) { eu = null; msgs = []; ultima = ""; g.hidden = true; desenhar(); } return; }   // saiu do painel
+    if (!ler("iobb_at")) { if (eu) { eu = null; msgs = []; ultima = ""; fechar(); desenhar(); } return; }   // saiu do painel
     emCurso = true;
     try {
       const r = await api("/api/equipe/mensagens" + (ultima ? "?desde=" + encodeURIComponent(ultima) : ""));
@@ -132,10 +135,11 @@
   window.EquipeChat = {
     montar(botao) {
       if (!botao) return; botoes.push(botao); if (getComputedStyle(botao).position === "static") botao.style.position = "relative";
-      botao.addEventListener("click", e => { e.preventDefault(); g.hidden = !g.hidden; if (!g.hidden) { marcarVisto(); desenhar(); setTimeout(() => $txt.focus(), 30); buscar(); } agendar(); });
+      botao.addEventListener("click", e => { e.preventDefault(); g.hidden = !g.hidden; marcaBotoes(); if (!g.hidden) { marcarVisto(); desenhar(); setTimeout(() => $txt.focus(), 30); buscar(); } agendar(); });
       if (botoes.length === 1) { buscar(); agendar(); }
       desenhar();
     },
     atualizar() { primeiraCarga = !msgs.length; buscar(); },
+    fechar,
   };
 })();

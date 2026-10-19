@@ -39,7 +39,7 @@ textarea{min-height:70px;resize:vertical;line-height:1.45}
 .topo b{font-size:17px;color:var(--pri);letter-spacing:.01em}
 .topo nav{display:flex;gap:4px}
 .topo nav button{border:0;background:none;padding:6px 10px;border-radius:6px}
-.topo nav button.ativo{background:var(--pri-soft);color:var(--pri)}
+.topo nav button.ativo,.topo nav button.ec-ativo{background:var(--pri-soft);color:var(--pri)}
 .topo .esp{margin-left:auto;display:flex;gap:12px;align-items:center;font-size:14px}
 
 /* ---- layout geral: lateral + conteúdo ---- */
@@ -187,8 +187,8 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 <div id="raiz" hidden>
   <header class="topo">
     <b>IOBB · Prontuário</b>
-    <nav><button type="button" id="nav-lista" class="ativo">Prontuários</button></nav>
-    <div class="esp"><button type="button" class="link" id="btn-chat" title="Chat da equipe" style="font-size:18px;padding:2px 8px">💬</button> <a href="/painel">Voltar ao painel</a></div>
+    <nav><button type="button" id="nav-lista" class="ativo">Prontuários</button><button type="button" id="btn-chat">💬 Chat da equipe</button></nav>
+    <div class="esp"><a href="/painel">Voltar ao painel</a></div>
   </header>
 
   <div class="app">
@@ -1103,6 +1103,6 @@ ${figs}
 })();
 </script>
 <script src="/equipe-chat.js"></script>
-<script>EquipeChat.montar(document.getElementById("btn-chat"));</script>
+<script>EquipeChat.montar(document.getElementById("btn-chat")); document.getElementById("nav-lista").addEventListener("click",()=>EquipeChat.fechar());</script>
 </body>
 </html>

@@ -31,6 +31,9 @@ textarea{min-height:64px;resize:vertical}
 .topo{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:10px 16px;flex-wrap:wrap}
 .topo b{color:var(--pri);font-size:17px}
 .topo .esp{flex:1}
+.abas-topo{display:flex;gap:4px}
+.abas-topo button{border:0;background:none;padding:6px 10px;border-radius:8px;font-size:14px}
+.abas-topo button.ativo,.abas-topo button.ec-ativo{background:var(--pri-soft);color:var(--pri)}
 .topo input{width:auto}
 main{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:16px;padding:16px;max-width:1280px;margin:0 auto}
 @media (max-width:820px){ main{grid-template-columns:1fr} body.com-paciente #lista-box{display:none} }
@@ -93,11 +96,12 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
 
 <div id="raiz" hidden>
   <div class="topo">
-    <b>Pré-exame</b><span class="info" id="hoje-txt"></span>
+    <b>Pré-exame</b>
+    <nav class="abas-topo"><button type="button" id="aba-pacientes" class="ativo">Pacientes do dia</button><button type="button" id="btn-chat">💬 Chat da equipe</button></nav>
+    <span class="info" id="hoje-txt"></span>
     <span class="esp"></span>
     <input type="date" id="dia" aria-label="Dia da agenda"><button type="button" id="b-hoje">Hoje</button>
     <a href="/painel" class="link" style="color:var(--pri)">Painel</a>
-    <button type="button" class="link" id="btn-chat" title="Chat da equipe" style="font-size:18px;padding:2px 8px">💬</button>
     <button type="button" class="link" id="sair">Sair</button>
   </div>
   <main>
@@ -382,6 +386,6 @@ setInterval(()=>{ if(!$("#raiz").hidden&&!sujo) carregaDia(); },60000);
 })();
 </script>
 <script src="/equipe-chat.js"></script>
-<script>EquipeChat.montar(document.getElementById("btn-chat"));</script>
+<script>EquipeChat.montar(document.getElementById("btn-chat")); document.getElementById("aba-pacientes").addEventListener("click",()=>EquipeChat.fechar());</script>
 </body>
 </html>
