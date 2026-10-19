@@ -620,20 +620,20 @@ ${mono?"":`<tr><td>ADIÇÃO</td><td colspan="3">${esc(r.add||"-")}</td></tr>`}
 <p class="prox">Data da próxima consulta: ${prox}</p>
 <div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877</div>`;
   const cssComum=`
-body{font:11.5pt/1.35 "EB Garamond",Garamond,"Times New Roman",serif;color:#111;margin:0}
+body{font:500 11.5pt/1.35 "EB Garamond",Garamond,"Times New Roman",serif;color:#000;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .barra{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px;background:#eef2f3;font:14px system-ui,sans-serif}
 .barra button{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid #1d6b74;background:#1d6b74;color:#fff;cursor:pointer}
 @media print{.barra{display:none}}
 .cab{display:flex;justify-content:space-between;align-items:flex-end}
 .nome{font-size:1.09em}
-h1{text-align:center;font-size:1.3em;letter-spacing:.06em;font-weight:700}
+h1{text-align:center;font-size:1.3em;letter-spacing:.06em;font-weight:800}
 table{width:100%;border-collapse:collapse}
-th,td{border:1px solid #333;text-align:center}
-th{font-weight:600} td:first-child,th:first-child{text-align:left;font-weight:600;width:34%}
-h2{font-size:1.04em;letter-spacing:.04em}
-.prox{font-weight:600}
+th,td{border:1px solid #000;text-align:center}
+th{font-weight:700} td:first-child,th:first-child{text-align:left;font-weight:700;width:34%}
+h2{font-size:1.04em;letter-spacing:.04em;font-weight:700}
+.prox{font-weight:700}
 .ass{text-align:center;line-height:1.25}
-.ass .linha{width:70mm;border-top:1px solid #333;margin:0 auto 2mm}`;
+.ass .linha{width:70mm;border-top:1px solid #000;margin:0 auto 2mm}`;
   const cssLivre=`
 @page{size:A4;margin:16mm 20mm 18mm}
 .folha{max-width:170mm;margin:0 auto;padding:6mm 5mm}
@@ -659,7 +659,7 @@ html,body{background:#9aa5ab}
     function caber(){while(c.scrollHeight>c.clientHeight+1&&f>7.5){f-=.25;c.style.fontSize=f+'pt';}}
     if(document.fonts&&document.fonts.ready)document.fonts.ready.then(caber);caber();})();<\/script>`;
   const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Receita de Óculos - ${esc(nome)}</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700;800&display=swap">
 <style>${cssComum}${timbrado?cssTimbrado:cssLivre}</style></head><body>
 <div class="barra"><span style="margin-right:auto">${timbrado?"Coloque o <b>papel timbrado</b> na impressora. Na janela de impressão, use escala <b>100%</b> (sem “ajustar à página”). A foto do papel aparece só aqui na tela; ela não é impressa.":"Confira e use <b>Imprimir</b> (ou “Salvar como PDF”) para entregar ao paciente."}</span><button onclick="print()">Imprimir</button></div>
 ${timbrado?`<div class="folha"><div class="conteudo">${corpo}</div></div>${ajusta}`:`<div class="folha">${corpo}</div>`}
