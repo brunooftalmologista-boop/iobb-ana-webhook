@@ -418,7 +418,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
       <div class="campo"><label for="ml-imp">Impressão diagnóstica</label><textarea id="ml-imp" rows="3"></textarea></div>
       <div class="pe" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center">
         <div class="row"><label style="gap:6px"><input type="checkbox" id="ml-timbrado" style="width:auto"> Papel timbrado</label><label style="gap:6px"><input type="checkbox" id="ml-imagens" style="width:auto" checked> Incluir as telas do exame</label></div>
-        <div class="row"><button type="button" id="ml-salvar">Salvar revisão</button><button type="button" class="pri" id="ml-imprimir">Imprimir laudo</button></div>
+        <div class="row"><button type="button" id="ml-adendo" hidden title="A consulta já foi finalizada: o resultado entra como informação adicionada">Acrescentar ao prontuário</button><button type="button" id="ml-salvar">Salvar revisão</button><button type="button" class="pri" id="ml-imprimir">Imprimir laudo</button></div>
       </div>
     </div>
   </div>
@@ -824,12 +824,27 @@ function desenhaTimeline(){
       ${secs.map(s=>`<div class="secao-t">${s.rot?`<h4>${esc(s.rot)}</h4>`:""}<pre>${esc(s.corpo)}</pre></div>`).join("")||(fim?"":'<div class="secao-t"><pre class="hint">Atendimento ainda sem conteúdo.</pre></div>')}
       ${mostraAnexos&&anexos.length?`<div class="secao-t"><h4>Imagens e anexos</h4><div class="anexos-t">${anexos.map(arq).join("")}</div></div>`:""}
       ${(c.adendos||[]).map(a=>`<div class="adendo"><small>Informações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`).join("")}
-      <div class="rodape-t">${fim?`<button type="button" data-copiar="${c.id}">Copiar texto</button><button type="button" data-adendo="${c.id}">+ Inserir informações</button>`:`<button type="button" class="pri" data-continuar="${c.id}">Continuar atendimento</button>`}</div>
+      <div class="rodape-t">${fim?`<button type="button" data-copiar="${c.id}">Copiar texto</button><button type="button" data-adendo="${c.id}">+ Inserir informações</button><button type="button" data-anexar-ex="${c.id}">+ Anexar exame</button>`:`<button type="button" class="pri" data-continuar="${c.id}">Continuar atendimento</button>`}</div>
+      ${fim?`<div class="row anx-linha" data-anx="${c.id}" hidden style="margin-top:8px"><label>Exame <select style="width:auto">${$("#ex-nome").innerHTML}</select></label><button type="button" data-escolher="${c.id}">Escolher arquivo</button><span class="hint">ou arraste o arquivo para cá</span><span class="status"></span></div>`:""}
       </div></div>`; }).join("")||'<div class="vazio">Nada nesta seção.</div>';
   $$("[data-copiar]").forEach(b=>b.addEventListener("click",()=>{ const c=cs.find(x=>x.id===b.dataset.copiar); const extra=(c.adendos||[]).map(a=>`\n\nInformações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}:\n${a.texto}`).join(""); copiarTxt((c.texto||"")+extra,()=>{ b.textContent="Copiado ✓"; setTimeout(()=>b.textContent="Copiar texto",2000); },()=>{}); }));
   $$("[data-adendo]").forEach(b=>b.addEventListener("click",()=>abrirAdendo(b.dataset.adendo)));
   $$("[data-continuar]").forEach(b=>b.addEventListener("click",()=>iniciar(b.dataset.continuar)));
+  // consulta já finalizada: anexar exame continua possível (o texto não muda; o
+  // resultado do laudo entra como "informações adicionadas")
+  $$("[data-anexar-ex]").forEach(b=>b.addEventListener("click",()=>{ const l=$(`[data-anx="${b.dataset.anexarEx}"]`); l.hidden=!l.hidden; }));
+  $$("[data-escolher]").forEach(b=>b.addEventListener("click",()=>{ anxCid=b.dataset.escolher; $("#anx-arq").click(); }));
+  $$(".anx-linha").forEach(l=>{
+    ["dragenter","dragover"].forEach(ev=>l.addEventListener(ev,e=>{ e.preventDefault(); l.style.outline="2px dashed var(--pri)"; }));
+    ["dragleave","drop"].forEach(ev=>l.addEventListener(ev,e=>{ e.preventDefault(); l.style.outline=""; }));
+    l.addEventListener("drop",e=>{ const fs=[...(e.dataTransfer?.files||[])]; if(fs.length) anexarNaConsulta(l.dataset.anx,fs); });
+  });
 }
+let anxCid=null;
+const inAnx=document.createElement("input"); inAnx.type="file"; inAnx.id="anx-arq"; inAnx.accept="application/pdf,image/*"; inAnx.multiple=true; inAnx.hidden=true; document.body.appendChild(inAnx);
+inAnx.addEventListener("change",()=>{ const fs=[...inAnx.files]; inAnx.value=""; if(anxCid&&fs.length) anexarNaConsulta(anxCid,fs); });
+function anexarNaConsulta(cid,fs){ const l=$(`[data-anx="${cid}"]`); if(!l) return;
+  enviar(fs,"exame",cid,l.querySelector(".status"),l.querySelector("select").value); }
 $("#filtro").addEventListener("change",desenhaTimeline);
 
 
@@ -1009,7 +1024,7 @@ $("#ml-tipo").addEventListener("change",()=>{ $("#ml-gerar").textContent=laudoAx
 // CPF e nº de prontuário: digitados uma vez, reaproveitados nos próximos laudos do paciente.
 function dadoDoPaciente(k){ const d=ficha.paciente?.documentos||{}; if(k==="cpf"&&d.cpf) return d.cpf; for(const x of ficha.anexos||[]) if(x.laudo&&x.laudo[k]) return x.laudo[k]; return ""; }
 function desenhaLaudo(){
-  $("#ml-corpo").hidden=false; $("#ml-gerar").textContent="Ler o exame de novo";
+  $("#ml-corpo").hidden=false; $("#ml-gerar").textContent="Ler o exame de novo"; $("#ml-adendo").hidden=!consultaFinalDoAnexo(laudoAx);
   $("#ml-t").textContent=TIPOS_LAUDO[laudo.tipo||"pentacam"]; $("#ml-tipo").value=laudo.tipo||"pentacam";
   $("#ml-data").value=laudo.data_exame||""; $("#ml-sexo").value=laudo.sexo||"Não informado"; $("#ml-imp").value=laudo.impressao_diagnostica||"";
   $("#ml-cpf").value=laudo.cpf||dadoDoPaciente("cpf"); $("#ml-pront").value=laudo.prontuario||dadoDoPaciente("prontuario");
@@ -1032,6 +1047,12 @@ function desenhaLaudo(){
 }
 function lerEdicao(){ laudo.data_exame=v("ml-data"); laudo.sexo=$("#ml-sexo").value; laudo.impressao_diagnostica=$("#ml-imp").value.trim();
   laudo.cpf=v("ml-cpf"); laudo.prontuario=v("ml-pront"); if((laudo.tipo||"pentacam")!=="pentacam") laudo.metodo=v("ml-metodo"); }
+// exame de consulta já FINALIZADA: o resultado vai como "informações adicionadas"
+const consultaFinalDoAnexo=ax=>(ficha.consultas||[]).find(c=>c.finalizado_em&&(ax.consulta_id===c.id||(c.appointment_id&&ax.appointment_id===c.appointment_id)));
+$("#ml-adendo").addEventListener("click",async()=>{ const c=consultaFinalDoAnexo(laudoAx); if(!c) return; lerEdicao();
+  const texto=`${TIPOS_LAUDO[laudo.tipo||"pentacam"]} (laudo): ${laudo.impressao_diagnostica||""}`.trim();
+  try{ const r=await api(`/api/prontuario/atendimento/${c.id}/adendo`,{method:"POST",body:JSON.stringify({texto})}); c.adendos=r.adendos; desenhaTimeline(); mlStatus("Resultado acrescentado ao prontuário dessa consulta.","ok"); }
+  catch(e){ mlStatus(e.status===401?MSG_SESSAO:(e.msg||"Não consegui acrescentar."),"erro"); } });
 $("#ml-fechar").addEventListener("click",()=>{ $("#m-laudo").hidden=true; desenhaFicha(); desenhaAnexosAt(); });
 $("#ml-salvar").addEventListener("click",async()=>{ lerEdicao(); try{ await api(`/api/prontuario/laudo/${laudoAx.id}/salvar`,{method:"POST",body:JSON.stringify({laudo})}); mlStatus("Revisão salva.","ok"); }catch(e){ mlStatus(e.status===401?MSG_SESSAO:(e.msg||"Não consegui salvar."),"erro"); } });
 // Telas do exame (PDF) viram imagens com o pdf.js.
