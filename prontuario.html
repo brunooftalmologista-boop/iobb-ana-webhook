@@ -250,7 +250,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
             </div>
             <div class="row" id="nasc-box" hidden style="margin-top:6px"><label>Data de nascimento <input id="nasc-in" placeholder="dd/mm/aaaa" style="width:130px;font-family:var(--f-mono)"></label><button type="button" id="nasc-ok">Gravar</button><span class="hint" id="nasc-msg"></span></div>
           </div>
-          <div class="acoes"><button type="button" class="link" id="voltar-lista">← Voltar à lista</button><span class="hint" id="p-hoje"></span></div>
+          <div class="acoes"><button type="button" class="link" id="voltar-lista">← Voltar à lista</button><button type="button" class="link" id="btn-juntar">🔗 Juntar com outro cadastro</button><span class="hint" id="p-hoje"></span></div>
         </div>
 
 
@@ -414,6 +414,16 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
   </div>
 </div>
 
+<!-- juntar cadastros -->
+<div class="fundo" id="m-junt" hidden>
+  <div class="modal" role="dialog" aria-labelledby="mj-t" style="width:min(720px,100%)">
+    <div class="row" style="justify-content:space-between"><h3 id="mj-t">Juntar com outro cadastro</h3><button type="button" class="link" id="mj-fechar">Fechar</button></div>
+    <div class="hint">Use quando o mesmo paciente aparece em duas fichas (trocou de nome ou de telefone, ou veio do iClinic com outro número). As consultas, os anexos e os dados do outro cadastro passam para ESTA ficha. Nada é apagado.</div>
+    <div class="campo"><label for="mj-busca">Procure o outro cadastro por nome, telefone, CPF ou data de nascimento</label><input id="mj-busca" autocomplete="off" placeholder="Ex.: Maria, 61 9…, 000.000.000-00, 12/03/1990"></div>
+    <div id="mj-lista" style="display:grid;gap:6px"></div>
+    <div class="status" id="mj-st"></div>
+  </div>
+</div>
 <!-- importar do iClinic -->
 <div class="fundo" id="m-imp" hidden>
   <div class="modal" role="dialog" aria-labelledby="mi-t" style="width:min(720px,100%)">
@@ -801,6 +811,24 @@ $("#hd-cids-tags").addEventListener("click",e=>{ const b=e.target.closest("[data
 // Botões "Prescrição de óculos…" da conduta já escolhem o tipo de lente da receita.
 const LENTE_DO_CHIP={"Prescrição de óculos":"monofocais","Prescrição de óculos para perto":"perto","Prescrição de óculos multifocais":"multifocais","Prescrição de óculos ocupacionais":"ocupacionais"};
 $$('[data-grupo="cd"] .chip').forEach(c=>c.addEventListener("click",()=>{ const t=LENTE_DO_CHIP[nomeChip(c)]; if(t&&c.getAttribute("aria-pressed")==="true"){ $("#rx-uso").value=t; $("#rx-uso").dispatchEvent(new Event("change",{bubbles:true})); } }));
+
+/* ===== JUNTAR CADASTROS (Dr. Bruno, 20/10/2026) ===== */
+let tJunt=null, juntRes=[];
+function mjSt(t,cls){ $("#mj-st").textContent=t; $("#mj-st").className="status "+(cls||""); }
+$("#btn-juntar").addEventListener("click",()=>{ $("#m-junt").hidden=false; $("#mj-busca").value=""; $("#mj-lista").innerHTML=""; mjSt("",""); setTimeout(()=>$("#mj-busca").focus(),30); });
+$("#mj-fechar").addEventListener("click",()=>{ $("#m-junt").hidden=true; });
+$("#mj-busca").addEventListener("input",()=>{ clearTimeout(tJunt); tJunt=setTimeout(async()=>{ const q=v("mj-busca"); if(q.length<2){ $("#mj-lista").innerHTML=""; return; }
+  try{ const r=await api("/api/prontuario/busca?q="+encodeURIComponent(q)); juntRes=(r.pacientes||[]).filter(p=>p.chave!==ficha.paciente.chave);
+    $("#mj-lista").innerHTML=juntRes.length?juntRes.map((p,i)=>`<div class="row" data-i="${i}" style="justify-content:space-between;border:1px solid var(--line);border-radius:6px;padding:6px 10px"><span><b>${esc(p.nome)}</b>${p.importado?' <span class="tag">iClinic</span>':""}<br><small class="hint">${esc(p.telefone||"")}${p.nascimento?" · nasc. "+esc(p.nascimento):""}${p.ultima?" · última "+ddmmaa(p.ultima):""}</small></span><span><button type="button" data-juntar="${i}">Juntar nesta ficha</button><span data-conf hidden>Juntar o histórico de <b>${esc(p.nome)}</b> nesta ficha? <button type="button" class="pri" data-sim="${i}">Sim, juntar</button> <button type="button" class="link" data-nao>Não</button></span></span></div>`).join(""):'<div class="vazio">Nenhum outro cadastro encontrado.</div>';
+  }catch(e){ mjSt(e.msg||"Não consegui buscar.","erro"); } },350); });
+$("#mj-lista").addEventListener("click",async e=>{ const l=e.target.closest("[data-i]"); if(!l) return;
+  if(e.target.matches("[data-juntar]")){ e.target.hidden=true; l.querySelector("[data-conf]").hidden=false; return; }
+  if(e.target.matches("[data-nao]")){ l.querySelector("[data-juntar]").hidden=false; l.querySelector("[data-conf]").hidden=true; return; }
+  if(e.target.matches("[data-sim]")){ const p=juntRes[+e.target.dataset.sim]; mjSt("Juntando…","");
+    try{ const r=await api("/api/prontuario/juntar",{method:"POST",body:JSON.stringify({de_chave:p.chave,para_tel:ficha.paciente.telefone,para_nome:ficha.paciente.nome})});
+      mjSt(`Pronto: ${r.consultas} consulta(s) e os anexos passaram para esta ficha.`,"ok"); $("#mj-lista").innerHTML="";
+      await abrirFicha(ficha.paciente.telefone,ficha.paciente.nome,!!atend);
+    }catch(err){ mjSt(err.status===401?MSG_SESSAO:(err.msg||"Não consegui juntar."),"erro"); } } });
 
 /* ===== IMPORTAR DO iCLINIC (Dr. Bruno, 20/10/2026) ===== */
 let impToken=null, impTimer=null;

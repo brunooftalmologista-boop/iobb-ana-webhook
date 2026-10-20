@@ -10316,11 +10316,23 @@ app.get("/api/prontuario/busca", requireMedico, async (req, res) => {
     const q = String(req.query.q || "").trim();
     if (q.length < 2) return res.json({ pacientes: [] });
     const dig = q.replace(/\D/g, "");
-    let qa = supabase.from("appointments").select("paciente_nome, paciente_telefone, convenio, inicio, observacoes, status")
-      .neq("origem", "bloqueio").not("paciente_telefone", "is", null).order("inicio", { ascending: false }).limit(400);
-    qa = dig.length >= 4 ? qa.like("paciente_telefone", `%${dig.slice(-8)}%`) : qa.ilike("paciente_nome", `%${q.replace(/[%_]/g, "")}%`);
-    const { data: ags, error } = await qa;
-    if (error) throw error;
+    // Busca também por DATA DE NASCIMENTO (12/03/1990) e CPF (com pontos, ou
+    // 11 dígitos — aí procura como telefone E como CPF): são os dados que não
+    // mudam quando o paciente troca de nome ou de telefone (20/10/2026).
+    const mData = q.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    const nasc = mData ? `${mData[1].padStart(2, "0")}/${mData[2].padStart(2, "0")}/${mData[3]}` : null;
+    const cpfFmt = dig.length === 11 ? dig.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : null;
+    const soCpf = !!cpfFmt && /\./.test(q);
+    let ags = [];
+    if (!soCpf) {
+      let qa = supabase.from("appointments").select("paciente_nome, paciente_telefone, convenio, inicio, observacoes, status")
+        .neq("origem", "bloqueio").not("paciente_telefone", "is", null).order("inicio", { ascending: false }).limit(400);
+      qa = nasc ? qa.ilike("observacoes", `%Nascimento: ${nasc}%`)
+        : dig.length >= 4 ? qa.like("paciente_telefone", `%${dig.slice(-8)}%`) : qa.ilike("paciente_nome", `%${q.replace(/[%_]/g, "")}%`);
+      const { data, error } = await qa;
+      if (error) throw error;
+      ags = data || [];
+    }
     const agora = Date.now(), mapa = new Map();
     for (const a of ags || []) {
       const k = chavePaciente(a.paciente_telefone, a.paciente_nome);
@@ -10335,17 +10347,64 @@ app.get("/api/prontuario/busca", requireMedico, async (req, res) => {
       mapa.set(k, p);
     }
     // pacientes que só existem no prontuário (ex.: importados do iClinic, sem agenda)
-    let qp = supabase.from("prontuario_pacientes").select("chave, nome, telefone, dados").limit(60);
-    qp = dig.length >= 4 ? qp.like("telefone", `%${dig.slice(-8)}%`) : qp.ilike("nome", `%${q.replace(/[%_]/g, "")}%`);
-    const { data: pps } = await qp;
-    for (const pp of pps || []) {
-      if (mapa.has(pp.chave)) continue;
+    const base = () => supabase.from("prontuario_pacientes").select("chave, nome, telefone, dados").limit(60);
+    const consultasPP = [];
+    if (nasc) consultasPP.push(base().eq("dados->>nascimento", nasc));
+    else {
+      if (cpfFmt) consultasPP.push(base().eq("dados->>cpf", cpfFmt));
+      if (!soCpf) consultasPP.push(dig.length >= 4 ? base().like("telefone", `%${dig.slice(-8)}%`) : base().ilike("nome", `%${q.replace(/[%_]/g, "")}%`));
+    }
+    const pps = (await Promise.all(consultasPP)).flatMap((r) => r.data || []);
+    for (const pp of pps) {
+      if (pp.dados?.juntado_para) continue;   // cadastro já juntado a outra ficha
+      if (mapa.has(pp.chave)) { if (pp.dados?.iclinic_id) mapa.get(pp.chave).importado = true; continue; }
       mapa.set(pp.chave, { chave: pp.chave, nome: pp.nome, telefone: pp.telefone, convenio: pp.dados?.operadora || null, ultima: null, proxima: null, nascimento: pp.dados?.nascimento || null, importado: !!pp.dados?.iclinic_id });
     }
     res.json({ pacientes: [...mapa.values()].slice(0, 40) });
   } catch (e) {
     console.error("[Prontuário] busca falhou:", e.message);
     res.status(500).json({ error: "Não consegui buscar." });
+  }
+});
+
+// JUNTAR CADASTROS (Dr. Bruno, 20/10/2026): liga o histórico de outro cadastro
+// à ficha aberta — ex.: paciente do iClinic que trocou de nome ou de telefone.
+// Move consultas (guardando em dados.juntado_de o nome/telefone antigos),
+// anexos e pré-exames; o cadastro de origem não é apagado, só marcado como
+// juntado (some da busca) e o destino só COMPLETA o que estiver vazio.
+app.post("/api/prontuario/juntar", requireMedico, async (req, res) => {
+  try {
+    const { de_chave, para_tel, para_nome } = req.body || {};
+    const m = String(de_chave || "").match(/^(\d{8})\|(.+)$/);
+    if (!m || !ult8(para_tel) || !primNome(para_nome)) return res.status(400).json({ error: "Cadastros inválidos." });
+    const para = chavePaciente(para_tel, para_nome);
+    if (para === de_chave) return res.status(400).json({ error: "É o mesmo cadastro." });
+    const agora = new Date().toISOString();
+    const { data: cs } = await supabase.from("prontuario_consultas").select("id, paciente_nome, paciente_telefone, dados").like("paciente_telefone", `%${m[1]}`).limit(1000);
+    const delas = (cs || []).filter((c) => primNome(c.paciente_nome) === m[2]);
+    for (const c of delas) {
+      const { error } = await supabase.from("prontuario_consultas").update({
+        paciente_chave: para, paciente_nome: para_nome, paciente_telefone: para_tel,
+        dados: { ...(c.dados || {}), juntado_de: { nome: c.paciente_nome, telefone: c.paciente_telefone, chave: de_chave, em: agora } },
+      }).eq("id", c.id);
+      if (error) throw error;
+    }
+    await supabase.from("prontuario_anexos").update({ paciente_chave: para }).eq("paciente_chave", de_chave);
+    await supabase.from("prontuario_preexame").update({ paciente_chave: para }).eq("paciente_chave", de_chave);
+    const { data: ori } = await supabase.from("prontuario_pacientes").select("*").eq("chave", de_chave).maybeSingle();
+    if (ori) {
+      const { data: dst } = await supabase.from("prontuario_pacientes").select("*").eq("chave", para).maybeSingle();
+      const dados = { ...(dst?.dados || {}) }, ante = { ...(dst?.antecedentes || {}) };
+      for (const [k, v] of Object.entries(ori.dados || {})) if (v && !dados[k] && !/^juntado/.test(k)) dados[k] = v;
+      for (const [k, v] of Object.entries(ori.antecedentes || {})) if (v && !ante[k]) ante[k] = v;
+      await supabase.from("prontuario_pacientes").upsert({ chave: para, nome: dst?.nome || para_nome, telefone: dst?.telefone || para_tel, dados, antecedentes: ante, updated_at: agora }, { onConflict: "chave" });
+      await supabase.from("prontuario_pacientes").update({ dados: { ...(ori.dados || {}), juntado_para: para, juntado_em: agora } }).eq("chave", de_chave);
+    }
+    console.log(`[Prontuário] Cadastros juntados: ${de_chave} → ${para} (${delas.length} consultas).`);
+    res.json({ ok: true, consultas: delas.length });
+  } catch (e) {
+    console.error("[Prontuário] juntar falhou:", e.message);
+    res.status(500).json({ error: "Não consegui juntar os cadastros." });
   }
 });
 
