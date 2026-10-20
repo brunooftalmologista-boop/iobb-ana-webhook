@@ -195,7 +195,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
   <header class="topo">
     <b>IOBB · Prontuário</b>
     <nav><button type="button" id="nav-lista" class="ativo">Prontuários</button><button type="button" id="btn-chat">💬 Chat da equipe</button></nav>
-    <div class="esp"><a href="/painel">Voltar ao painel</a></div>
+    <div class="esp"><button type="button" class="link" id="btn-cert">🔏 Certificado digital</button> <a href="/painel">Voltar ao painel</a></div>
   </header>
 
   <div class="app">
@@ -356,7 +356,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                 <div class="campo"><label for="ex-txt">Outros exames (um por linha)</label><textarea id="ex-txt" rows="2" style="min-height:48px"></textarea></div>
                 <div class="campo"><label for="ex-ind">Indicação clínica</label><input id="ex-ind"></div>
                 <div class="row"><label>Olhos <select id="ex-olho" style="width:auto"><option>Ambos os olhos</option><option>Olho direito</option><option>Olho esquerdo</option></select></label><label style="gap:6px"><input type="checkbox" id="ex-separado" style="width:auto"> Um exame por folha (convênio)</label></div>
-                <div class="row"><button type="button" class="pri" id="gerar-ped">Imprimir pedido de exames</button><span class="status" id="status-ped"></span></div>
+                <div class="row"><button type="button" class="pri" id="gerar-ped">Imprimir pedido de exames</button><button type="button" id="assinar-ped">🔏 PDF assinado</button><span class="status" id="status-ped"></span></div>
               </div>
               <div class="campo"><label for="cd-txt">Observações da conduta (um item por linha)</label><textarea id="cd-txt" rows="3" placeholder="Orientações, colírios, encaminhamentos…"></textarea></div>
               <div class="row"><label>Retorno <select id="retorno"><option value="">—</option><option>7 dias</option><option>30 dias</option><option>3 meses</option><option>6 meses</option><option>1 ano</option></select></label></div>
@@ -368,7 +368,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                 <div class="row"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="perto">Óculos para perto</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option></select></label>
                   <label style="gap:6px"><input type="checkbox" id="rx-timbrado" style="width:auto"> Papel timbrado (sem logotipo)</label></div>
                 <div class="campo"><label for="rx-sug">Lentes sugeridas (pode editar)</label><textarea id="rx-sug" rows="2" style="min-height:48px;font-size:14px"></textarea></div>
-                <div class="row"><button type="button" class="pri" id="gerar-rx">Imprimir prescrição</button><button type="button" id="copiar-rx">Copiar receita</button><span class="status" id="status-rx"></span></div>
+                <div class="row"><button type="button" class="pri" id="gerar-rx">Imprimir prescrição</button><button type="button" id="assinar-rx">🔏 PDF assinado</button><button type="button" id="copiar-rx">Copiar receita</button><span class="status" id="status-rx"></span></div>
               </div>
               <div class="rx" id="col-bloco">
                 <span class="rot" style="margin:0">Receita de colírios e medicamentos <span class="hint">— digite o nome e a posologia</span></span>
@@ -382,7 +382,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                 </div>
                 <button type="button" class="link" id="col-mais" style="justify-self:start;padding-left:0">+ outro medicamento</button>
                 <div class="row"><label style="gap:6px"><input type="checkbox" id="col-2vias" style="width:auto"> Antibiótico (2 vias, com idade e sexo)</label><label id="col-sexo-l" hidden>Sexo <select id="col-sexo" style="width:auto"><option value="">—</option><option>Feminino</option><option>Masculino</option></select></label></div>
-                <div class="row"><button type="button" class="pri" id="gerar-col">Imprimir receita de colírios</button><span class="status" id="status-col"></span></div>
+                <div class="row"><button type="button" class="pri" id="gerar-col">Imprimir receita de colírios</button><button type="button" id="assinar-col">🔏 PDF assinado</button><span class="status" id="status-col"></span></div>
               </div>
             </div>
           </article>
@@ -414,6 +414,18 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
   </div>
 </div>
 
+<!-- certificado digital (A1) -->
+<div class="fundo" id="m-cert" hidden>
+  <div class="modal" role="dialog" aria-labelledby="mc-t">
+    <div class="row" style="justify-content:space-between"><h3 id="mc-t">Certificado digital</h3><button type="button" class="link" id="mc-fechar">Fechar</button></div>
+    <div id="mc-info" class="hint"></div>
+    <div class="campo"><label for="mc-arq">Arquivo do certificado A1 (.pfx ou .p12)</label><input type="file" id="mc-arq" accept=".pfx,.p12,application/x-pkcs12"></div>
+    <div class="campo"><label for="mc-senha">Senha do certificado</label><input type="password" id="mc-senha" autocomplete="off"></div>
+    <div class="hint">O arquivo e a senha ficam guardados criptografados no servidor e só servem para assinar os seus documentos. Ninguém mais vê.</div>
+    <div class="status" id="mc-st"></div>
+    <div class="pe" style="display:flex;justify-content:space-between;gap:8px"><button type="button" id="mc-remover" class="link" hidden>Remover certificado</button><button type="button" class="pri" id="mc-salvar">Cadastrar certificado</button></div>
+  </div>
+</div>
 <!-- inserir informações (adendo) -->
 <div class="fundo" id="m-adendo" hidden>
   <div class="modal" role="dialog" aria-labelledby="md-t">
@@ -632,7 +644,7 @@ const MARGENS_TIMBRADO={topo:50, base:47, lado:20};
 const TIPO_TEXTO={"monofocais":"monofocais","monofocais-alto":"monofocais de alto índice","perto":"monofocais para perto","multifocais":"multifocais","ocupacionais":"ocupacionais"};
 function statusRx(t,cls){ const s=$("#status-rx"); s.textContent=t; s.className="status "+(cls||""); }
 let consultaAtual=null;   // {inicio, paciente_nome} — usado pela receita
-function gerarPrescricao(){
+function gerarPrescricao(assinar){
   const status=statusRx;
   if(!consultaAtual){ status("Inicie o atendimento primeiro.","erro"); return; }
   let r=receita(); const tipo=$("#rx-uso").value; const perto=tipo==="perto";
@@ -654,7 +666,10 @@ function gerarPrescricao(){
   // e o conteúdo fica na área livre: 50 mm em cima, 47 mm embaixo, 20 mm dos
   // lados. Na tela aparece a foto do papel por trás, só para conferir o encaixe.
   const timbrado=$("#rx-timbrado").checked;
-  const M=MARGENS_TIMBRADO;
+  if(assinar===true){ const ex=x=>x&&x!=="—"?x.replace("°","")+"º":"";
+    return enviarAssinado("oculos",{nome,data:dataExame,titulo:`RECEITA DE ÓCULOS${perto?" PARA PERTO":""}`,
+      linhas:[["OLHO DIREITO",r.od[0],r.od[1]==="—"?"":r.od[1],ex(r.od[2])],["OLHO ESQUERDO",r.oe[0],r.oe[1]==="—"?"":r.oe[1],ex(r.oe[2])]],
+      adicao:mono?null:(r.add||"-"),sugestao:`Lentes ${TIPO_TEXTO[$("#rx-uso").value]||$("#rx-uso").value} sugeridas: ${v("rx-sug")}`,proxima:prox},status); }
   const corpo=`
 <div class="cab">${timbrado?"":`<img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges">`}<span>Brasília, ${dataExame}.</span></div>
 <p class="nome">Nome: ${esc(nome)}</p>
@@ -744,7 +759,8 @@ ${folhas.map(c=>timbrado?`<div class="folha"><div class="conteudo">${c}</div></d
   w.document.open(); w.document.write(html); w.document.close();
   status("Receita aberta em outra janela.","ok");
 }
-$("#gerar-rx").addEventListener("click",gerarPrescricao);
+$("#gerar-rx").addEventListener("click",()=>gerarPrescricao(false));
+$("#assinar-rx").addEventListener("click",()=>gerarPrescricao(true));
 
 /* ===== DIAGNÓSTICO COM CID — autocompletar como no iClinic (20/10/2026) =====
    Tabela oficial do CID-10 (DATASUS V2008): capítulo do olho (H00–H59) e
@@ -775,6 +791,39 @@ $("#hd-cids-tags").addEventListener("click",e=>{ const b=e.target.closest("[data
 const LENTE_DO_CHIP={"Prescrição de óculos":"monofocais","Prescrição de óculos para perto":"perto","Prescrição de óculos multifocais":"multifocais","Prescrição de óculos ocupacionais":"ocupacionais"};
 $$('[data-grupo="cd"] .chip').forEach(c=>c.addEventListener("click",()=>{ const t=LENTE_DO_CHIP[nomeChip(c)]; if(t&&c.getAttribute("aria-pressed")==="true"){ $("#rx-uso").value=t; $("#rx-uso").dispatchEvent(new Event("change",{bubbles:true})); } }));
 
+/* ===== ASSINATURA DIGITAL (Dr. Bruno, 20/10/2026) =====
+   "🔏 PDF assinado": o servidor monta o PDF e assina com o certificado A1 do
+   médico; o arquivo fica anexado à consulta e abre numa aba para baixar/enviar. */
+let certInfo=null;
+async function carregaCert(){ try{ certInfo=await api("/api/prontuario/certificado"); }catch(_){ certInfo=null; } return certInfo; }
+async function enviarAssinado(tipo,dados,stFn){
+  if(!certInfo?.cadastrado) await carregaCert();
+  if(!certInfo?.cadastrado){ stFn("Cadastre o certificado digital primeiro (🔏 Certificado digital, no topo).","erro"); return; }
+  const w=window.open("","_blank"); if(w) w.document.write("<p style='font:15px sans-serif;padding:20px'>Gerando o PDF assinado…</p>");
+  stFn("Gerando e assinando o PDF…","");
+  try{ const r=await api("/api/prontuario/documento-assinado",{method:"POST",body:JSON.stringify({tipo,dados,tel:ficha?.paciente?.telefone,nome:ficha?.paciente?.nome,consulta_id:atend?.id||null})});
+    let url=r.url; if(!url&&r.pdf_b64){ const b=Uint8Array.from(atob(r.pdf_b64),c=>c.charCodeAt(0)); url=URL.createObjectURL(new Blob([b],{type:"application/pdf"})); }
+    if(w) w.location.href=url; else window.open(url,"_blank");
+    if(r.anexo){ ficha.anexos=[r.anexo,...(ficha.anexos||[])]; desenhaAnexosAt(); }
+    stFn("PDF assinado pronto (abriu em outra aba e ficou anexado à consulta).","ok");
+  }catch(e){ if(w) w.close(); stFn(e.status===401?MSG_SESSAO:(e.msg||"Não consegui gerar o PDF assinado."),"erro"); }
+}
+function mcStatus(t,cls){ $("#mc-st").textContent=t; $("#mc-st").className="status "+(cls||""); }
+function desenhaCert(){ const c=certInfo;
+  $("#mc-info").innerHTML=c?.cadastrado?`Cadastrado: <b>${esc(c.titular)}</b>${c.emissor?" · "+esc(c.emissor):""} · válido até <b>${ddmmaa(c.validade)}</b>.${new Date(c.validade)-Date.now()<30*864e5?' <span style="color:var(--danger)">Vence em menos de 30 dias.</span>':""}`:"Nenhum certificado cadastrado.";
+  $("#mc-remover").hidden=!c?.cadastrado; $("#mc-salvar").textContent=c?.cadastrado?"Trocar certificado":"Cadastrar certificado"; }
+$("#btn-cert").addEventListener("click",async()=>{ $("#m-cert").hidden=false; mcStatus("",""); $("#mc-senha").value=""; $("#mc-arq").value=""; await carregaCert(); desenhaCert(); });
+$("#mc-fechar").addEventListener("click",()=>{ $("#m-cert").hidden=true; $("#mc-senha").value=""; });
+$("#mc-salvar").addEventListener("click",async()=>{
+  const f=$("#mc-arq").files[0], senha=$("#mc-senha").value;
+  if(!f){ mcStatus("Escolha o arquivo .pfx ou .p12.","erro"); return; } if(!senha){ mcStatus("Digite a senha do certificado.","erro"); return; }
+  mcStatus("Conferindo o certificado…","");
+  try{ const buf=new Uint8Array(await f.arrayBuffer()); let bin=""; for(let i=0;i<buf.length;i++) bin+=String.fromCharCode(buf[i]);
+    const r=await api("/api/prontuario/certificado",{method:"POST",body:JSON.stringify({pfx_b64:btoa(bin),senha})});
+    $("#mc-senha").value=""; $("#mc-arq").value=""; certInfo={cadastrado:true,...r}; desenhaCert(); mcStatus("Certificado cadastrado. Os botões 🔏 PDF assinado já funcionam.","ok");
+  }catch(e){ mcStatus(e.status===401?MSG_SESSAO:(e.msg||"Não consegui cadastrar."),"erro"); } });
+$("#mc-remover").addEventListener("click",async()=>{ try{ await api("/api/prontuario/certificado/remover",{method:"POST",body:"{}"}); certInfo={cadastrado:false}; desenhaCert(); mcStatus("Certificado removido.","ok"); }catch(e){ mcStatus(e.msg||"Não consegui remover.","erro"); } });
+
 /* ===== PEDIDO DE EXAMES (Dr. Bruno, 20/10/2026) =====
    Exames marcados em "Exames solicitados" + os escritos; indicação clínica
    vem da hipótese diagnóstica (com CID) se ele não escrever outra. Convênio
@@ -783,7 +832,9 @@ function examesPedidos(){ return [...marcados("ex").map(nomeChip),...linhas("ex-
 function hdComCid(){ return [...marcados("hd").map(c=>`${nomeChip(c)} (CID ${c.dataset.cid})`),...cidsEscolhidos().map(([c,d])=>`${d} (CID ${c})`),...linhas("hd-txt")]; }
 function indicacaoAuto(){ return hdComCid().join("; "); }
 function statusPed(t,cls){ const x=$("#status-ped"); x.textContent=t; x.className="status "+(cls||""); }
-$("#gerar-ped").addEventListener("click",()=>{
+$("#gerar-ped").addEventListener("click",()=>gerarPedido(false));
+$("#assinar-ped").addEventListener("click",()=>gerarPedido(true));
+function gerarPedido(assinar){
   if(!consultaAtual){ statusPed("Inicie o atendimento primeiro.","erro"); return; }
   const exs=examesPedidos(); if(!exs.length){ statusPed("Marque ou escreva ao menos um exame.","erro"); return; }
   const ind=v("ex-ind")||indicacaoAuto(), olho=$("#ex-olho").value, timbrado=$("#rx-timbrado").checked;
@@ -799,9 +850,10 @@ $("#gerar-ped").addEventListener("click",()=>{
 <ol class="meds">${lista.map(e=>`<li><div class="med-n"><span>${esc(e)}</span><span>${esc(olho)}</span></div></li>`).join("")}</ol>
 ${ind?`<p class="sug"><b>Indicação clínica:</b> ${esc(ind)}</p>`:""}
 <div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877 - RQE: 9314</div>`;
+  if(assinar) return enviarAssinado("pedido",{nome,data,idade:p.idade??null,convenio:temConv?conv:"",carteirinha:temConv?(doc.carteirinha||""):"",exames:exs,olho,indicacao:ind,separado:$("#ex-separado").checked},statusPed);
   const folhas=$("#ex-separado").checked?exs.map(e=>folha([e])):[folha(exs)];
   abrirReceita({titulo:`Pedido de exames - ${nome}`,folhas,timbrado,status:statusPed});
-});
+}
 
 /* ===== RECEITA DE COLÍRIOS (Dr. Bruno, 20/10/2026) =====
    Ele digita o colírio e a posologia; a receita sai na mesma folha da de
@@ -813,7 +865,9 @@ function mostraLinhasCol(){ let ult=0; for(let i=1;i<=NCOL;i++) if(v(`col-${i}-m
 $("#col-mais").addEventListener("click",()=>{ const l=$$(".col-linha").find(x=>x.hidden); if(l){ l.hidden=false; l.querySelector("input").focus(); } });
 $("#col-2vias").addEventListener("change",()=>{ $("#col-sexo-l").hidden=!$("#col-2vias").checked; });
 function statusCol(t,cls){ const x=$("#status-col"); x.textContent=t; x.className="status "+(cls||""); }
-$("#gerar-col").addEventListener("click",()=>{
+$("#gerar-col").addEventListener("click",()=>gerarColirios(false));
+$("#assinar-col").addEventListener("click",()=>gerarColirios(true));
+function gerarColirios(assinar){
   if(!consultaAtual){ statusCol("Inicie o atendimento primeiro.","erro"); return; }
   const ms=medicamentos();
   if(!ms.length){ statusCol("Digite ao menos um colírio ou medicamento.","erro"); return; }
@@ -830,8 +884,9 @@ $("#gerar-col").addEventListener("click",()=>{
 <h3 class="uso">USO OFTÁLMICO</h3>
 <ol class="meds">${ms.map(m=>`<li><div class="med-n"><span>${esc(m.med)}</span><span>${esc(m.qtd||"")}</span></div><div class="med-p">${esc(m.pos)}</div></li>`).join("")}</ol>
 <div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877</div>`;
+  if(assinar) return enviarAssinado("colirios",{nome,data,idade:idade??null,sexo,duas_vias:duasVias,meds:ms.map(m=>({med:m.med,qtd:m.qtd,pos:m.pos}))},statusCol);
   abrirReceita({titulo:`Receita - ${nome}`,folhas:duasVias?[folha("1ª via — farmácia"),folha("2ª via — paciente")]:[folha("")],timbrado,status:statusCol});
-});
+}
 try{ $("#rx-timbrado").checked=localStorage.getItem("rx-timbrado")!=="0"; }catch(_){ $("#rx-timbrado").checked=true; }
 $("#rx-timbrado").addEventListener("change",()=>{ try{ localStorage.setItem("rx-timbrado",$("#rx-timbrado").checked?"1":"0"); }catch(_){} });
 function copiarTxt(txt,onOk,onFalha){ try{ navigator.clipboard.writeText(txt).then(onOk,onFalha); }catch(_){ onFalha&&onFalha(); } }
