@@ -10869,6 +10869,12 @@ async function gravarImportacao(token) {
     // consultas + anexos
     for (const c of plano.consultas) {
       if (pksFeitos.has(String(c.iclinic_pk))) continue;
+      // a mesma consulta já veio de um PDF do iClinic? a do ZIP (com anexos) substitui
+      const t = new Date(c.data_consulta).getTime();
+      const { data: doPdf } = await supabase.from("prontuario_consultas").select("id, data_consulta")
+        .eq("paciente_chave", c.chave).eq("dados->>importado", "iclinic-pdf")
+        .gte("data_consulta", new Date(t - 2 * 60e3).toISOString()).lte("data_consulta", new Date(t + 2 * 60e3).toISOString());
+      for (const d of doPdf || []) await supabase.from("prontuario_consultas").delete().eq("id", d.id);
       const { data: nova, error } = await supabase.from("prontuario_consultas").insert({
         appointment_id: null, paciente_chave: c.chave, paciente_nome: c.nome, paciente_telefone: c.telefone,
         data_consulta: c.data_consulta, dados: c.dados, texto: c.texto, finalizado_em: c.data_consulta,
@@ -10902,6 +10908,50 @@ app.get("/api/prontuario/importar-iclinic/:token", requireMedico, (req, res) => 
   const imp = importacoes.get(req.params.token);
   if (!imp) return res.status(404).json({ error: "Importação não encontrada." });
   res.json({ status: imp.status });
+});
+
+// ===== PDF DO iCLINIC → LINHA DO TEMPO (Dr. Bruno, 20/10/2026) ================
+// O prontuário anterior em PDF (anexo tipo "iclinic") vira consultas, como na
+// importação do ZIP. Primeiro só lê e mostra o resumo; grava com "gravar".
+// Consulta que já existe no mesmo minuto (±2 min) para o paciente é pulada.
+const importaPdf = require("./importa-iclinic-pdf");
+async function consultasExistentes(tel, nome) {
+  return (await consultasDoPaciente(tel, nome)).map((c) => new Date(c.data_consulta).getTime());
+}
+const pertoDe = (t, lista) => lista.some((x) => Math.abs(x - t) <= 2 * 60e3);
+app.post("/api/prontuario/iclinic-pdf/:anexoId", requireMedico, async (req, res) => {
+  try {
+    const { tel, nome, gravar } = req.body || {};
+    const { data: ax } = await supabase.from("prontuario_anexos").select("id, path, paciente_chave, tipo, mime").eq("id", req.params.anexoId).maybeSingle();
+    if (!ax || ax.tipo !== "iclinic") return res.status(404).json({ error: "PDF do iClinic não encontrado." });
+    if (chavePaciente(tel, nome) !== ax.paciente_chave) return res.status(400).json({ error: "Este PDF é de outra ficha." });
+    const { data: blob, error } = await supabase.storage.from(BUCKET_PRONTUARIO).download(ax.path);
+    if (error) throw error;
+    const r = await importaPdf.analisarPdf(Buffer.from(await blob.arrayBuffer()), "prontuário em PDF");
+    const ja = await consultasExistentes(tel, nome);
+    const novas = r.consultas.filter((c) => !pertoDe(new Date(c.data_consulta).getTime(), ja));
+    const datas = r.consultas.map((c) => c.data_consulta).sort();
+    if (!gravar) return res.json({ total: r.consultas.length, novas: novas.length, ja_existiam: r.consultas.length - novas.length, periodo: datas.length ? [datas[0], datas[datas.length - 1]] : null });
+    for (const c of novas) {
+      const { error: e2 } = await supabase.from("prontuario_consultas").insert({
+        appointment_id: null, paciente_chave: ax.paciente_chave, paciente_nome: nome, paciente_telefone: tel,
+        data_consulta: c.data_consulta, dados: { ...c.dados, iclinic_pdf_anexo: ax.id }, texto: c.texto, finalizado_em: c.data_consulta,
+        duracao_seg: null, adendos: [], criado_por: "Importado do iClinic",
+      });
+      if (e2) throw e2;
+    }
+    // cadastro: completa só o que estiver vazio
+    const { data: pac } = await supabase.from("prontuario_pacientes").select("dados").eq("chave", ax.paciente_chave).maybeSingle();
+    const dados = { ...(pac?.dados || {}) };
+    for (const [k, v] of Object.entries(r.dados)) if (v && !dados[k]) dados[k] = v;
+    await supabase.from("prontuario_pacientes").upsert({ chave: ax.paciente_chave, nome, telefone: tel, dados, updated_at: new Date().toISOString() }, { onConflict: "chave" });
+    console.log(`[iClinic PDF] ${novas.length} consultas gravadas para ${ax.paciente_chave}.`);
+    res.json({ ok: true, gravadas: novas.length });
+  } catch (e) {
+    if (e.publico) return res.status(400).json({ error: e.message });
+    console.error("[iClinic PDF] falhou:", e.message);
+    res.status(500).json({ error: "Não consegui ler o PDF do iClinic." });
+  }
 });
 
 // ===== PRÉ-EXAME (Dr. Bruno, 17/10/2026) =====================================

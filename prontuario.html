@@ -812,6 +812,19 @@ $("#hd-cids-tags").addEventListener("click",e=>{ const b=e.target.closest("[data
 const LENTE_DO_CHIP={"Prescrição de óculos":"monofocais","Prescrição de óculos para perto":"perto","Prescrição de óculos multifocais":"multifocais","Prescrição de óculos ocupacionais":"ocupacionais"};
 $$('[data-grupo="cd"] .chip').forEach(c=>c.addEventListener("click",()=>{ const t=LENTE_DO_CHIP[nomeChip(c)]; if(t&&c.getAttribute("aria-pressed")==="true"){ $("#rx-uso").value=t; $("#rx-uso").dispatchEvent(new Event("change",{bubbles:true})); } }));
 
+/* ===== PDF DO iCLINIC → LINHA DO TEMPO (20/10/2026) ===== */
+document.addEventListener("click",async e=>{ const b=e.target.closest("[data-pdfic]"); if(!b) return; const id=b.dataset.pdfic, st=$(`[data-pdfic-st="${id}"]`);
+  const corpo=gravar=>JSON.stringify({tel:ficha.paciente.telefone,nome:ficha.paciente.nome,gravar});
+  try{
+    if(b.dataset.conf!=="1"){ st.textContent="Lendo o PDF…"; st.className="status";
+      const r=await api(`/api/prontuario/iclinic-pdf/${id}`,{method:"POST",body:corpo(false)});
+      if(!r.novas){ st.textContent=`As ${r.total} consultas deste PDF já estão na linha do tempo.`; st.className="status ok"; return; }
+      st.textContent=`${r.total} consultas (${ddmmaa(r.periodo[0])} a ${ddmmaa(r.periodo[1])})${r.ja_existiam?`, ${r.ja_existiam} já existiam`:""}. Clique de novo para colocar ${r.novas} na linha do tempo.`; st.className="status";
+      b.dataset.conf="1"; b.textContent=`Sim, colocar ${r.novas} consultas`; b.classList.add("pri"); return; }
+    st.textContent="Gravando…"; const r=await api(`/api/prontuario/iclinic-pdf/${id}`,{method:"POST",body:corpo(true)});
+    await abrirFicha(ficha.paciente.telefone,ficha.paciente.nome,!!atend); const st2=$(`[data-pdfic-st="${id}"]`); if(st2){ st2.textContent=`${r.gravadas} consultas colocadas na linha do tempo.`; st2.className="status ok"; }
+  }catch(err){ st.textContent=err.status===401?MSG_SESSAO:(err.msg||"Não consegui ler o PDF."); st.className="status erro"; } });
+
 /* ===== JUNTAR CADASTROS (Dr. Bruno, 20/10/2026) ===== */
 let tJunt=null, juntRes=[];
 function mjSt(t,cls){ $("#mj-st").textContent=t; $("#mj-st").className="status "+(cls||""); }
@@ -1063,7 +1076,7 @@ function desenhaFicha(){
   $("#diag").innerHTML=ds.length?ds.map(d=>`<span class="tag">${esc(d)}</span>`).join(""):'<span class="vazio">Nenhum diagnóstico registrado aqui ainda.</span>';
   // prontuário anterior iClinic
   const icl=(ficha.anexos||[]).filter(x=>x.tipo==="iclinic");
-  $("#iclinic-arqs").innerHTML=icl.length?icl.map(arq).join(""):'<span class="vazio">Nenhum PDF do iClinic anexado.</span>';
+  $("#iclinic-arqs").innerHTML=icl.length?icl.map(x=>`<span class="arq-w">${arq(x)}<button type="button" data-pdfic="${esc(x.id)}">Colocar na linha do tempo</button><span class="status" data-pdfic-st="${esc(x.id)}"></span></span>`).join(""):'<span class="vazio">Nenhum PDF do iClinic anexado.</span>';
   $("#sec-iclinic").open=!!icl.length;
   // conversa com a Ana
   const conv=ficha.conversa||[]; $("#sec-ana").hidden=!conv.length; $("#sec-ana").open=false;
