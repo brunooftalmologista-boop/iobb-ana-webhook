@@ -223,6 +223,7 @@ Um convênio pode ser citado pelo nome do plano, pela sigla do órgão, ou pelos
 - PRÓ-SOCIAL: qualquer grafia ("Pro Social", "PROSOCIAL", "Pró-Social") é o mesmo convênio atendido.
 - LUMINAR SAÚDE = E-VIDA: é o MESMO plano, que mudou de nome. É ATENDIDO. Aceite qualquer uma das grafias ("Luminar", "Luminar Saúde", "E-Vida", "Evida", "E Vida") sem hesitar e sem dizer que precisa verificar — paciente que ouve "não consta" desliga e não volta.
 - PRÓ-SAÚDE: é o plano da CÂMARA DOS DEPUTADOS e É ATENDIDO. Qualquer grafia vale ("Pro Saude", "PRÓ-SAÚDE", "Pró Saúde", "Pró-Saúde Câmara dos Deputados", "Pró-Saúde da Câmara"). ATENÇÃO: NÃO confunda com PRÓ-SOCIAL nem com PROASA — são três convênios DIFERENTES, todos atendidos.
+- PRÓ-SAÚDE DO TJDFT: o plano do Tribunal de Justiça do DF TAMBÉM se chama Pró-Saúde ("Pró-Saúde TJDFT", "TJDFT Pró-Saúde") — e o TJDFT É ATENDIDO (está na lista). Então "Pró-Saúde" pode ser o da Câmara OU o do TJDFT: os DOIS são atendidos. Se o paciente disser TJDFT, registre o convênio como **TJDFT (Pró-Saúde TJDFT)**, não como Câmara. 🚫 NUNCA conclua que "o Pró-Saúde que atendemos é só o da Câmara" para negar o do TJDFT. Caso real (20/10/2026): o paciente escreveu "Pro saúde tjdft" e você respondeu que o TJDFT "não consta na lista" e ofereceu particular — a secretária teve de desmentir ("atendemos sim").
 NOMES QUE **NÃO** SÃO CONVÊNIO ATENDIDO (negue de primeira, sem rodeio)
 A regra de "não negar por nome parecido" existe para não perder plano que atendemos — ela NÃO vale para os nomes abaixo, que já foram verificados. Nestes, NÃO pergunte o nome completo, NÃO diga "não encontrei esse nome exato" nem "pode ser que eu o conheça por outro nome": isso deixa o paciente esperando por um "sim" que não vem e ele desiste no meio. Vá direto ao caminho de convênio não atendido (particular R$ 200,00 + nota fiscal para reembolso) e ofereça um horário na mesma mensagem.
 - QUALITY / QUALLITY (qualquer grafia: "Quality", "Quallity", "Qualyty", "Quality Saúde"): NÃO atendemos.
@@ -10672,6 +10673,71 @@ app.post("/api/prontuario/laudo/:anexoId/salvar", requireMedico, async (req, res
     res.status(500).json({ error: "Não consegui salvar o laudo." });
   }
 });
+// ===== ASSINATURA DIGITAL (Dr. Bruno, 20/10/2026) ============================
+// Certificado A1 (.pfx) do médico: ele envia o arquivo e a senha pela tela do
+// prontuário; o servidor confere, guarda CRIPTOGRAFADO (assinatura.js) e
+// passa a gerar receitas e pedidos de exame em PDF já assinados (ICP-Brasil).
+// Sem IA/API. O PDF assinado fica anexado à consulta (tipo "assinado").
+const assin = require("./assinatura");
+let cacheCert = null;   // { pfx, senha, titular } em memória após a 1ª leitura
+async function certificadoDoMedico() {
+  if (cacheCert) return cacheCert;
+  const { data } = await supabase.from("medico_certificado").select("cofre, titular").eq("id", "medico").maybeSingle();
+  if (!data) return null;
+  const c = assin.decifrar(data.cofre, SUPABASE_KEY);
+  cacheCert = { pfx: Buffer.from(c.pfx, "base64"), senha: c.senha, titular: data.titular };
+  return cacheCert;
+}
+app.get("/api/prontuario/certificado", requireMedico, async (req, res) => {
+  try {
+    const { data } = await supabase.from("medico_certificado").select("titular, emissor, validade, updated_at").eq("id", "medico").maybeSingle();
+    res.json({ cadastrado: !!data, ...(data || {}) });
+  } catch (e) { res.status(500).json({ error: "Não consegui ler o certificado." }); }
+});
+app.post("/api/prontuario/certificado", requireMedico, async (req, res) => {
+  try {
+    const pfx = Buffer.from(String(req.body?.pfx_b64 || ""), "base64"), senha = String(req.body?.senha || "");
+    if (pfx.length < 500 || pfx.length > 60000) return res.status(400).json({ error: "Arquivo de certificado inválido (envie o .pfx ou .p12)." });
+    const info = assin.lerCertificado(pfx, senha);   // erra com mensagem clara se a senha/arquivo não servirem
+    const cofre = assin.cifrar({ pfx: pfx.toString("base64"), senha }, SUPABASE_KEY);
+    const { error } = await supabase.from("medico_certificado").upsert({ id: "medico", cofre, titular: info.titular, emissor: info.emissor, validade: info.validade, updated_at: new Date().toISOString() }, { onConflict: "id" });
+    if (error) throw error;
+    cacheCert = null;
+    console.log(`[Assinatura] Certificado cadastrado: ${info.titular} (${info.emissor}), válido até ${info.validade}.`);
+    res.json({ ok: true, titular: info.titular, emissor: info.emissor, validade: info.validade });
+  } catch (e) {
+    if (e.publico) return res.status(400).json({ error: e.message });
+    console.error("[Assinatura] cadastro falhou:", e.message);
+    res.status(500).json({ error: "Não consegui guardar o certificado." });
+  }
+});
+app.post("/api/prontuario/certificado/remover", requireMedico, async (req, res) => {
+  try { await supabase.from("medico_certificado").delete().eq("id", "medico"); cacheCert = null; res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: "Não consegui remover." }); }
+});
+app.post("/api/prontuario/documento-assinado", requireMedico, async (req, res) => {
+  try {
+    const { tipo, dados, tel, nome, consulta_id } = req.body || {};
+    if (!["oculos", "colirios", "pedido"].includes(tipo) || !dados || !dados.nome) return res.status(400).json({ error: "Documento inválido." });
+    const cert = await certificadoDoMedico();
+    if (!cert) return res.status(409).json({ error: "Cadastre o certificado digital primeiro (botão “Certificado digital”)." });
+    const pdf = await assin.documentoAssinado(tipo, dados, cert);
+    const rotulo = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames" }[tipo];
+    let anexo = null;
+    if (ult8(tel) && primNome(nome)) {
+      anexo = await guardarAnexo({
+        tel, nome, tipo: "assinado", nomeArq: `${rotulo} assinada - ${String(dados.nome).slice(0, 60)} - ${String(dados.data || "").replace(/\//g, "-")}.pdf`,
+        mime: "application/pdf", buf: pdf, obs: `${rotulo} (assinada digitalmente)`,
+        consultaId: /^[0-9a-f-]{36}$/i.test(String(consulta_id || "")) ? consulta_id : null,
+      });
+    }
+    res.json({ ok: true, anexo, url: anexo?.url || null, pdf_b64: anexo?.url ? null : pdf.toString("base64") });
+  } catch (e) {
+    console.error("[Assinatura] documento falhou:", e.message);
+    res.status(500).json({ error: "Não consegui gerar o documento assinado." });
+  }
+});
+
 // ===== PRÉ-EXAME (Dr. Bruno, 17/10/2026) =====================================
 // As próprias secretárias fazem o pré-exame, com o MESMO login do painel
 // (decisão do Dr. Bruno, 17/10): veem a agenda do dia, marcam o MOTIVO DA
