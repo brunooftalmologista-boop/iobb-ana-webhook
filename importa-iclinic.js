@@ -117,7 +117,8 @@ function analisar(zipBuf, rotuloOrigem) {
         const caminho = String(it.image || "");
         const noZip = anexosZip.get(caminho);
         const desc = it.description && it.description !== "None" ? String(it.description).trim() : "";
-        if (noZip) anexos.push({ zipPath: noZip, nome: `${desc || "Anexo"} - ${caminho.split("/").pop()}`, obs: desc ? cap(desc.toLowerCase()) : "Exame (iClinic)" });
+        const ext = caminho.split(".").pop().toLowerCase();
+        if (noZip) anexos.push({ zipPath: noZip, nome: `${desc ? cap(desc.toLowerCase()) : "Exame iClinic"} ${dmy(r.date)} (${anexos.length + 1}).${ext}`, obs: desc ? cap(desc.toLowerCase()) : "Exame (iClinic)" });
         else problemas.push(`Anexo citado na consulta ${r.pk} não veio no ZIP.`);
         continue;
       }
@@ -128,7 +129,8 @@ function analisar(zipBuf, rotuloOrigem) {
         continue;
       }
       if (it._k === "attest") { const t = semHtml(it.value); if (t) secoes.push(`${it.name || "Atestado"}:\n${t}`); continue; }
-      const rot = String(it.name || "").replace(/:\s*$/, "").trim(); if (!rot) continue;
+      // "HF: Histórico familiar" → "Histórico familiar"; outros ":" viram " -" (a linha do tempo usa o ":" para separar título e texto)
+      const rot = String(it.name || "").replace(/:\s*$/, "").replace(/^[A-Z]{1,4}:\s*/, "").replace(/:/g, " -").trim(); if (!rot) continue;
       const val = textoValor(it); if (!val) continue;
       secoes.push(`${rot}:${val.includes("\n") ? "\n" : " "}${val}`);
       // campos que o prontuário novo usa (refração anterior, últimos diagnósticos)
@@ -144,12 +146,16 @@ function analisar(zipBuf, rotuloOrigem) {
     const cabec = [`Consulta importada do iClinic (${rotuloOrigem})${conv && conv.name ? ` — ${conv.name}` : ""}.`];
     const texto = [...cabec, ...(secoes.length ? secoes : [soAnexo ? "Exames anexados no iClinic." : ""])].filter(Boolean).join("\n\n");
     const ini = `${r.date}T${(r.start_time || "08:00:00").slice(0, 8)}-03:00`;
-    const dur = r.start_time && r.end_time ? Math.max(0, (new Date(`${r.date}T${r.end_time}-03:00`) - new Date(ini)) / 1000) : null;
+    // duração NÃO é importada: no iClinic é o tempo que a ficha ficou aberta (horas), não a consulta
     consultas.push({ iclinic_pk: r.pk, chave: pac.chave, nome: pac.nome, telefone: pac.telefone, data_consulta: new Date(ini).toISOString(),
-      duracao_seg: dur && dur < 6 * 3600 ? Math.round(dur) : null, texto, dados: { campos, chips, importado: "iclinic", iclinic_pk: r.pk, iclinic_origem: rotuloOrigem }, anexos });
+      duracao_seg: null, texto, dados: { campos, chips, importado: "iclinic", iclinic_pk: r.pk, iclinic_origem: rotuloOrigem }, anexos });
   }
-  // última refração preenchida também vale para pacientes com várias consultas: nada a fazer — cada consulta guarda a sua.
-  const pacientes = [...porId.values()].filter((p) => consultas.some((c) => c.chave === p.chave) || true);
+  // convênio vazio no cadastro: usa o da consulta mais recente que não seja particular
+  const ultConv = new Map();
+  for (const r of [...registros].sort((a, b) => String(a.date).localeCompare(String(b.date)))) {
+    const c = pack(r.healthinsurance_pack); if (c && c.name && !/particular/i.test(c.name)) ultConv.set(r.patient_id, c.name); }
+  for (const [id, p] of porId) if (!p.dados.operadora && ultConv.get(id)) p.dados.operadora = ultConv.get(id);
+  const pacientes = [...porId.values()];
   return { zip, pacientes, consultas, problemas,
     resumo: { pacientes: pacientes.length, consultas: consultas.length, anexos: consultas.reduce((n, c) => n + c.anexos.length, 0),
       periodo: consultas.length ? [consultas.map((c) => c.data_consulta).sort()[0], consultas.map((c) => c.data_consulta).sort().slice(-1)[0]] : null } };
