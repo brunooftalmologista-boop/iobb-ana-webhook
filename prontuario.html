@@ -170,6 +170,8 @@ table.lau td{border:1px solid var(--line);padding:3px 6px}
 table.lau input[type=text]{padding:3px 6px;font-size:13px}
 table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;font-weight:700}
 #exames-at-box.sobre{outline:2px dashed var(--pri);outline-offset:4px;border-radius:6px}
+.faixa-pre{background:var(--note);border:1px solid var(--note-line);border-radius:8px;padding:10px 14px;display:grid;gap:4px;font-size:14px}
+.faixa-pre .tag{background:var(--surface)}
 .cid-box{position:relative}
 .cid-sug{position:absolute;left:0;right:0;top:100%;z-index:30;background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.15);max-height:300px;overflow-y:auto}
 .cid-sug div{padding:7px 10px;cursor:pointer;font-size:14px}
@@ -268,6 +270,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 
         <!-- atendimento -->
         <div id="atendimento" class="palco" hidden>
+          <div class="faixa-pre" id="faixa-pre" hidden></div>
           <article class="folha-sec" id="s-anamnese">
             <div class="t"><span>Anamnese e exame oftalmológico</span><span><button type="button" class="link" data-modelo="rotina">Modelo: rotina normal</button><button type="button" class="link" data-modelo="lente">Retorno de lente</button><button type="button" class="link" data-modelo="ceratocone">Ceratocone</button><button type="button" class="link" data-modelo="catarata">Catarata</button></span></div>
             <div class="c" id="form-anamnese">
@@ -1309,7 +1312,24 @@ $("#gf-ok").addEventListener("click",async()=>{
 
 /* ===== ANEXOS ===== */
 function anexosDoAtend(){ return (ficha.anexos||[]).filter(x=>atend&&(x.consulta_id===atend.id||(atend.appointment_id&&x.appointment_id===atend.appointment_id))); }
-function desenhaAnexosAt(){ $("#anexos-at").innerHTML=anexosDoAtend().map(arq).join(""); desenhaExamesAt(); }
+function desenhaAnexosAt(){ $("#anexos-at").innerHTML=anexosDoAtend().map(arq).join(""); desenhaExamesAt(); desenhaFaixaPre(); }
+// Faixa do PRÉ-EXAME no topo do atendimento (Dr. Bruno, 20/10/2026): o que a
+// secretária marcou/escreveu, quem fez, exames e documentos — sem precisar subir à ficha.
+function desenhaFaixaPre(){
+  const f=$("#faixa-pre"); if(!atend){ f.hidden=true; return; }
+  const pre=preDoAgendamento(atend.appointment_id);
+  const exs=anexosDoAtend().filter(x=>x.enviado_por&&x.tipo==="exame");
+  const docs=(ficha.anexos||[]).filter(x=>x.tipo==="documento"&&atend.appointment_id&&x.appointment_id===atend.appointment_id);
+  const d=ficha.paciente?.documentos||{};
+  if(!pre&&!exs.length&&!docs.length){ f.hidden=true; return; }
+  const ms=[...(pre?.motivos||[]),...(pre?.motivo_outro?[pre.motivo_outro]:[])];
+  f.innerHTML=`<div><b>Pré-exame</b>${pre?.feito_por?` · feito por ${esc(pre.feito_por)}`:""}${pre?.updated_at?` às ${hhmm(pre.updated_at)}`:""}</div>`+
+    `<div><span class="hint">Motivo da consulta:</span> ${ms.length?ms.map(m=>`<span class="tag">${esc(m)}</span>`).join(" "):'<span class="hint">não marcado</span>'}</div>`+
+    (pre?.observacao?`<div><span class="hint">Observação:</span> ${esc(pre.observacao)}</div>`:"")+
+    (exs.length?`<div><span class="hint">Exames anexados:</span> ${exs.map(x=>esc(x.observacao||x.nome)).join(", ")} <span class="hint">(em Exames complementares)</span></div>`:"")+
+    (docs.length||d.carteirinha||d.cpf?`<div><span class="hint">Documentos:</span> ${docs.length?`${docs.length} anexado(s)`:""}${d.conferido_por?` · conferidos por ${esc(d.conferido_por)}`:""}${d.operadora||d.carteirinha?` · ${esc([d.operadora,d.carteirinha].filter(Boolean).join(" "))}`:""}</div>`:"");
+  f.hidden=false;
+}
 // Exames da consulta (do pré-exame ou anexados aqui) no topo de "Exames
 // complementares", com o laudo e o botão que leva o resultado para o texto.
 function desenhaExamesAt(){
