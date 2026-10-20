@@ -1060,15 +1060,31 @@ function arq(x){ const ext=(String(x.nome||"").split(".").pop()||"").slice(0,4).
   const a=arqLink(x,ext); return x.tipo==="exame"?`<span class="arq-w">${a}<button type="button" data-laudo="${esc(x.id)}">${x.laudo?"Ver laudo":"Gerar laudo"}</button></span>`:a; }
 function arqLink(x,ext){
   return `<a class="arq" href="${esc(x.url||"#")}" target="_blank" rel="noopener" title="${esc(x.observacao||x.nome)}"><span class="ic">${esc(ext||"ARQ")}</span><span>${esc(x.nome)}<br><small class="hint">${ddmmaa(x.created_at)}${x.observacao?" · "+esc(x.observacao):""}</small></span></a>`; }
-function secoesDoTexto(t){ return String(t||"").split(/\n{2,}/).map(b=>b.trim()).filter(Boolean).map(b=>{
-  const m=b.match(/^([^:\n]{2,60}):\s*\n?([\s\S]*)$/); return m?{rot:m[1].trim(),corpo:m[2].trim()}:{rot:"",corpo:b}; }); }
+// Texto da consulta → seções (título + conteúdo), no visual do iClinic. Além do
+// título no começo de cada bloco, uma linha que é só título ("Acuidade visual
+// com correção:") abre seção nova, e "Retorno em 1 ano." vira a seção Retorno.
+function secoesDoTexto(t){ const out=[];
+  for(const b of String(t||"").split(/\n{2,}/).map(x=>x.trim()).filter(Boolean)){
+    let atual=null;
+    for(const l of b.split("\n")){
+      const m=l.match(/^([^:\n]{2,60}):\s*(.*)$/);
+      if(m&&(!atual||(m[2].trim()===""&&m[1].trim().length>=6))){ if(atual) out.push(atual); atual={rot:m[1].trim(),corpo:m[2].trim()}; continue; }
+      if(!atual){ const r=l.match(/^Retorno em (.+?)\.?$/i); if(r){ out.push({rot:"Retorno",corpo:r[1]}); continue; } atual={rot:"",corpo:l}; continue; }
+      atual.corpo+=(atual.corpo?"\n":"")+l;
+    }
+    if(atual) out.push(atual);
+  }
+  return out.map(x=>({rot:x.rot,corpo:x.corpo.trim()})); }
 function desenhaTimeline(){
   const f=$("#filtro").value;
   const cs=(ficha.consultas||[]);
   if(!cs.length){ $("#timeline").innerHTML='<div class="vazio">Nenhuma consulta registrada neste prontuário ainda. As anteriores estão no iClinic.</div>'; return; }
   $("#timeline").innerHTML=cs.map(c=>{
     const d=new Date(c.data_consulta); const dd=d.toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit"}), mm=Number(d.toLocaleDateString("pt-BR",{timeZone:TZ,month:"numeric"}))-1, aa=d.toLocaleDateString("pt-BR",{timeZone:TZ,year:"numeric"});
-    let secs=secoesDoTexto(c.texto); if(f) secs=secs.filter(s=>s.rot.startsWith(f));
+    let secs=secoesDoTexto(c.texto);
+    // nas consultas do prontuário novo, a Evolução aparece por último (mesma ordem da tela do atendimento)
+    if(!c.dados?.importado) secs=[...secs.filter(s=>s.rot!=="Evolução"),...secs.filter(s=>s.rot==="Evolução")];
+    if(f) secs=secs.filter(s=>s.rot.startsWith(f));
     const anexos=(ficha.anexos||[]).filter(x=>x.consulta_id===c.id||(c.appointment_id&&x.appointment_id===c.appointment_id));
     const mostraAnexos=!f||f==="Imagens e anexos";
     if(f&&!secs.length&&!(mostraAnexos&&anexos.length)) return "";
