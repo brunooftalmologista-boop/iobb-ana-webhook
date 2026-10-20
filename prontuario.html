@@ -844,12 +844,84 @@ $("#mj-lista").addEventListener("click",async e=>{ const l=e.target.closest("[da
     }catch(err){ mjSt(err.status===401?MSG_SESSAO:(err.msg||"Não consegui juntar."),"erro"); } } });
 
 /* ===== IMPORTAR DO iCLINIC (Dr. Bruno, 20/10/2026) ===== */
-let impToken=null, impTimer=null;
+let impToken=null, impTimer=null, impGrande=null;
+/* ---- Exportação GRANDE (GB): o navegador lê o ZIP e envia aos pouquinhos ----
+   As tabelas viram consultas aqui mesmo (mesmo conversor do servidor); o servidor
+   só recebe pacotes pequenos, e os anexos vão do computador DIRETO para o
+   armazenamento. Pode reenviar o mesmo arquivo: o que já entrou é pulado. */
+const carregaScript=src=>new Promise((ok,falha)=>{ const sc=document.createElement("script"); sc.src=src; sc.onload=ok; sc.onerror=()=>falha(new Error("não carregou "+src)); document.head.appendChild(sc); });
+async function libsGrande(){
+  if(!window.zip) await carregaScript("https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.57/dist/zip.min.js");
+  if(!window.Papa) await carregaScript("https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js");
+  if(!window.IclinicConv) await carregaScript("/prontuario/iclinic-conv.js");
+}
+const MIME_EXT={pdf:"application/pdf",png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",bmp:"image/bmp",gif:"image/gif",webp:"image/webp",doc:"application/msword",docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",zip:"application/zip",xps:"application/vnd.ms-xpsdocument",eml:"message/rfc822",txt:"text/plain"};
+const gb=b=>b>=1073741824?(b/1073741824).toFixed(1).replace(".",",")+" GB":Math.round(b/1048576)+" MB";
+async function analisarGrande(f){
+  impToken=null; $("#mi-res").hidden=true; $("#mi-conf").hidden=true;
+  try{
+    miSt("Abrindo o arquivo no seu computador…",""); await libsGrande();
+    const leitor=new zip.ZipReader(new zip.BlobReader(f)); const entradas=await leitor.getEntries();
+    const porNome=new Map(entradas.map(e=>[e.filename,e]));
+    const tabela=async suf=>{ const e=entradas.find(x=>!x.filename.includes("/")&&x.filename.endsWith(suf)); if(!e) return [];
+      miSt(`Lendo ${suf.replace(/^-/,"")}…`,""); const t=await e.getData(new zip.TextWriter());
+      return Papa.parse(t.replace(/^﻿/,""),{header:true,skipEmptyLines:true}).data; };
+    const pacientes=await tabela("-patient.csv"), registros=await tabela("-event_record.csv"), agenda=await tabela("-event_scheduling.csv");
+    const anexos=entradas.filter(e=>e.filename.startsWith("attachment/")&&!e.directory).map(e=>e.filename);
+    miSt("Convertendo as consultas…",""); await new Promise(r=>setTimeout(r,30));
+    const origem=v("mi-origem")||"iClinic", plano=IclinicConv.converter({pacientes,registros,agenda,anexos},origem);
+    const bytes=plano.consultas.reduce((n,c)=>n+c.anexos.reduce((m,a)=>m+(porNome.get(a.zipPath)?.uncompressedSize||0),0),0);
+    impGrande={plano,porNome,origem,bytes};
+    const rs=plano.resumo, per=rs.periodo?`${ddmmaa(rs.periodo[0])} a ${ddmmaa(rs.periodo[1])}`:"—";
+    $("#mi-res").innerHTML=`<div><b>${rs.pacientes}</b> pacientes · <b>${rs.consultas}</b> consultas · <b>${rs.anexos}</b> anexos (${gb(bytes)}) · período ${per}.</div>
+      <div class="hint">Os dados vão aos poucos, e os anexos sobem direto do seu computador. Deixe esta aba aberta e o computador ligado até o fim; se fechar, é só abrir de novo e importar o mesmo arquivo: continua de onde parou, sem repetir.</div>`+
+      (plano.problemas.length?`<details><summary>${plano.problemas.length} aviso(s)</summary><div class="pend">${plano.problemas.slice(0,80).map(esc).join("<br>")}</div></details>`:"")+
+      (plano.consultas.length?`<details><summary>Ver exemplo de consulta</summary><div class="secao-t"><pre>${esc(plano.consultas[Math.min(10,plano.consultas.length-1)].texto.slice(0,900))}</pre></div></details>`:"");
+    $("#mi-res").hidden=false; $("#mi-conf").hidden=false; miSt("Confira o resumo e clique em Importar agora.","ok");
+  }catch(e){ impGrande=null; miSt("Não consegui ler o arquivo: "+(e.message||e),"erro"); }
+}
+async function importarGrande(){
+  const G=impGrande; if(!G||G.rodando) return; G.rodando=true; $("#mi-confirmar").disabled=true;
+  let trava=null; try{ trava=await navigator.wakeLock?.request("screen"); }catch(_){}
+  const sair=e=>{ e.preventDefault(); e.returnValue=""; }; window.addEventListener("beforeunload",sair);
+  const P=G.plano, t0=Date.now(), est={pac:0,cons:0,anx:0,pul:0,mb:0,err:[]};
+  const mostra=fase=>{ const feito=est.anx+est.pul, total=P.resumo.anexos, seg=(Date.now()-t0)/1000;
+    const resta=feito&&fase==="anexos"?Math.round((total-feito)*seg/feito/60):null;
+    miSt(`${fase==="pronto"?"Pronto":"Importando"} — pacientes ${est.pac}/${P.pacientes.length} · consultas ${est.cons}/${P.consultas.length} · anexos ${feito}/${total} (${gb(est.mb)} enviados)${est.err.length?` · ${est.err.length} erro(s)`:""}${resta!=null&&fase!=="pronto"?` · faltam ~${resta} min`:""}`,fase==="pronto"?"ok":""); };
+  try{
+    for(let i=0;i<P.pacientes.length;i+=800){ await api("/api/prontuario/iclinic-lote",{method:"POST",body:JSON.stringify({pacientes:P.pacientes.slice(i,i+800)})}); est.pac=Math.min(i+800,P.pacientes.length); mostra("pacientes"); }
+    const idPorPk={};
+    for(let i=0;i<P.consultas.length;i+=200){ const lote=P.consultas.slice(i,i+200).map(({anexos,...c})=>c);
+      let r=null; for(let t=0;t<3&&!r;t++){ try{ r=await api("/api/prontuario/iclinic-lote",{method:"POST",body:JSON.stringify({consultas:lote})}); }catch(e){ if(t===2) throw e; await new Promise(z=>setTimeout(z,3000)); } }
+      Object.assign(idPorPk,r.ids); est.cons=Math.min(i+200,P.consultas.length); mostra("consultas"); }
+    const fila=[]; for(const c of P.consultas) for(const a of c.anexos) fila.push({c,a});
+    const sobe=async({c,a})=>{
+      for(let t=0;t<3;t++){ try{
+        const r=await api("/api/prontuario/iclinic-anexo/assinar",{method:"POST",body:JSON.stringify({origem_ref:a.zipPath,chave:c.chave,nome_arquivo:a.zipPath.split("/").pop()})});
+        if(r.ja){ est.pul++; return; }
+        const ext=a.zipPath.split(".").pop().toLowerCase(), mime=MIME_EXT[ext]||"application/octet-stream";
+        const blob=await G.porNome.get(a.zipPath).getData(new zip.BlobWriter(mime));
+        const fd=new FormData(); fd.append("cacheControl","3600"); fd.append("",blob);
+        const up=await fetch(r.url,{method:"PUT",body:fd,headers:{"x-upsert":"false"}});
+        if(!up.ok) throw new Error(`armazenamento ${up.status}: ${(await up.text()).slice(0,120)}`);
+        await api("/api/prontuario/iclinic-anexo/registrar",{method:"POST",body:JSON.stringify({origem_ref:a.zipPath,chave:c.chave,consulta_id:idPorPk[String(c.iclinic_pk)]||null,path:r.path,nome:a.nome,mime,tamanho:blob.size,obs:a.obs,origem:G.origem})});
+        est.anx++; est.mb+=blob.size; return;
+      }catch(e){ if(e.status===401){ await new Promise(z=>setTimeout(z,2000)); } if(t===2){ est.err.push(`${a.nome}: ${e.msg||e.message}`); return; } await new Promise(z=>setTimeout(z,2000*(t+1))); } }
+    };
+    let prox=0; const trab=async()=>{ while(prox<fila.length){ const it=fila[prox++]; await sobe(it); if((est.anx+est.pul)%10===0) mostra("anexos"); } };
+    await Promise.all([trab(),trab(),trab(),trab()]);
+    mostra("pronto");
+    if(est.err.length) $("#mi-res").insertAdjacentHTML("beforeend",`<details open><summary>${est.err.length} anexo(s) não enviados (reenviar o arquivo tenta de novo)</summary><div class="pend">${est.err.slice(0,100).map(esc).join("<br>")}</div></details>`);
+  }catch(e){ miSt(`Parou: ${e.msg||e.message}. Importe o mesmo arquivo de novo para continuar de onde parou.`,"erro"); }
+  finally{ window.removeEventListener("beforeunload",sair); try{ await trava?.release(); }catch(_){} G.rodando=false; $("#mi-confirmar").disabled=false; }
+}
 function miSt(t,cls){ $("#mi-st").textContent=t; $("#mi-st").className="status "+(cls||""); }
 $("#btn-imp").addEventListener("click",()=>{ $("#m-imp").hidden=false; });
 $("#mi-fechar").addEventListener("click",()=>{ $("#m-imp").hidden=true; });
 $("#mi-analisar").addEventListener("click",async()=>{
   const f=$("#mi-arq").files[0]; if(!f){ miSt("Escolha o arquivo .zip.","erro"); return; }
+  if(f.size>100*1048576||/[?&]grande=1/.test(location.search)) return analisarGrande(f);   // exportação de GB: tudo pelo navegador
+  impGrande=null;
   miSt(`Enviando e lendo ${(f.size/1048576).toFixed(0)} MB… pode levar um minuto.`,""); $("#mi-res").hidden=true; $("#mi-conf").hidden=true;
   try{ const r=await api(`/api/prontuario/importar-iclinic?origem=${encodeURIComponent(v("mi-origem")||"iClinic")}`,{method:"POST",raw:true,body:f});
     impToken=r.token; const rs=r.resumo, per=rs.periodo?`${ddmmaa(rs.periodo[0])} a ${ddmmaa(rs.periodo[1])}`:"—";
@@ -858,7 +930,7 @@ $("#mi-analisar").addEventListener("click",async()=>{
       (r.amostra.length?`<details><summary>Ver exemplo de como as consultas vão aparecer</summary>${r.amostra.map(a=>`<div class="secao-t"><h4>${esc(a.nome)} — ${ddmmaa(a.data)}${a.anexos?` · ${a.anexos} anexo(s)`:""}</h4><pre>${esc(a.texto)}</pre></div>`).join("")}</details>`:"");
     $("#mi-res").hidden=false; $("#mi-conf").hidden=!r.consultas_a_importar; miSt(r.consultas_a_importar?"Confira o resumo e clique em Importar agora.":"Nada novo para importar.","ok");
   }catch(e){ miSt(e.status===401?MSG_SESSAO:(e.msg||"Não consegui ler o arquivo."),"erro"); } });
-$("#mi-confirmar").addEventListener("click",async()=>{ if(!impToken) return; $("#mi-confirmar").disabled=true;
+$("#mi-confirmar").addEventListener("click",async()=>{ if(impGrande) return importarGrande(); if(!impToken) return; $("#mi-confirmar").disabled=true;
   try{ await api(`/api/prontuario/importar-iclinic/${impToken}/confirmar`,{method:"POST",body:"{}"}); acompanhaImp(); }
   catch(e){ $("#mi-confirmar").disabled=false; miSt(e.msg||"Não consegui iniciar a importação.","erro"); } });
 async function acompanhaImp(){ clearTimeout(impTimer);

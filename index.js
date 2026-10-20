@@ -29,7 +29,9 @@ const fs = require("fs");
 const googleAds = require("./googleAds");
 const app = express();
 // Captura o corpo CRU (rawBody) para validar a assinatura X-Hub-Signature-256 da Meta.
-app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
+const jsonPadrao = express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } });
+// A importação grande do iClinic manda pacotes de até 15 MB: tem parser próprio na rota.
+app.use((req, res, next) => (req.path === "/api/prontuario/iclinic-lote" ? next() : jsonPadrao(req, res, next)));
 
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
@@ -10887,7 +10889,8 @@ async function gravarImportacao(token) {
           const buf = plano.zip.getEntry(a.zipPath).getData();
           const ext = a.zipPath.split(".").pop().toLowerCase();
           const mime = ext === "pdf" ? "application/pdf" : ext === "png" ? "image/png" : /jpe?g/.test(ext) ? "image/jpeg" : "application/octet-stream";
-          await guardarAnexo({ tel: c.telefone, nome: c.nome, tipo: "exame", nomeArq: a.nome.slice(0, 160), mime, buf, obs: a.obs, consultaId: nova.id, por: `iClinic ${origem}` });
+          const ax = await guardarAnexo({ tel: c.telefone, nome: c.nome, tipo: "exame", nomeArq: a.nome.slice(0, 160), mime, buf, obs: a.obs, consultaId: nova.id, por: `iClinic ${origem}` });
+          await supabase.from("prontuario_anexos").update({ origem_ref: a.zipPath }).eq("id", ax.id);
           st.anexos++;
         } catch (e) { st.erros.push(`Anexo da consulta ${c.iclinic_pk}: ${e.message}`); }
       }
@@ -10908,6 +10911,89 @@ app.get("/api/prontuario/importar-iclinic/:token", requireMedico, (req, res) => 
   const imp = importacoes.get(req.params.token);
   if (!imp) return res.status(404).json({ error: "Importação não encontrada." });
   res.json({ status: imp.status });
+});
+
+// ===== IMPORTAÇÃO GRANDE DO iCLINIC, PELO NAVEGADOR (Dr. Bruno, 20/10/2026) =====
+// Exportações de GB (Conjunto Nacional 7,7 GB; Taguatinga 4,7 GB) não podem
+// passar pelo servidor (memória — o mesmo processo atende a Ana). O navegador
+// do médico lê o ZIP, converte com o MESMO iclinic-conv.js e manda aqui só
+// pacotes pequenos de pacientes/consultas; os anexos sobem do navegador DIRETO
+// para o Storage (URL de envio assinada), e aqui só se registra a linha.
+// Tudo idempotente: consulta por iclinic_pk, anexo por origem_ref (caminho no
+// ZIP) — reenviar o mesmo arquivo continua de onde parou.
+app.get("/prontuario/iclinic-conv.js", (req, res) => { res.set("Cache-Control", "no-store"); res.type("application/javascript").sendFile(__dirname + "/iclinic-conv.js"); });
+app.post("/api/prontuario/iclinic-lote", requireMedico, express.json({ limit: "15mb" }), async (req, res) => {
+  try {
+    const { pacientes = [], consultas = [] } = req.body || {};
+    if (pacientes.length > 1000 || consultas.length > 500) return res.status(400).json({ error: "Pacote grande demais." });
+    // pacientes: cria os novos em lote; os que já existem só COMPLETAM o que está vazio
+    if (pacientes.length) {
+      const { data: ex } = await supabase.from("prontuario_pacientes").select("chave, dados").in("chave", pacientes.map((p) => p.chave));
+      const mapa = new Map((ex || []).map((r) => [r.chave, r.dados || {}]));
+      const novos = [], vistos = new Set();
+      for (const p of pacientes) {
+        if (vistos.has(p.chave)) { const d = mapa.get(p.chave); if (d) for (const [k, v] of Object.entries(p.dados || {})) if (v && !d[k]) d[k] = v; continue; }
+        vistos.add(p.chave);
+        if (mapa.has(p.chave)) {
+          const d = { ...mapa.get(p.chave) }; let mudou = false;
+          for (const [k, v] of Object.entries(p.dados || {})) if (v && !d[k]) { d[k] = v; mudou = true; }
+          if (mudou) await supabase.from("prontuario_pacientes").update({ dados: d }).eq("chave", p.chave);
+        } else { novos.push({ chave: p.chave, nome: p.nome, telefone: p.telefone, dados: p.dados || {}, antecedentes: {}, updated_at: new Date().toISOString() }); mapa.set(p.chave, p.dados || {}); }
+      }
+      if (novos.length) { const { error } = await supabase.from("prontuario_pacientes").upsert(novos, { onConflict: "chave", ignoreDuplicates: true }); if (error) throw error; }
+    }
+    // consultas: pula as já importadas (iclinic_pk); a mesma consulta vinda de PDF no mesmo minuto é substituída
+    const ids = {};
+    if (consultas.length) {
+      const pks = consultas.map((c) => String(c.iclinic_pk));
+      const { data: ja } = await supabase.from("prontuario_consultas").select("id, dados->>iclinic_pk").in("dados->>iclinic_pk", pks);
+      for (const r of ja || []) ids[r.iclinic_pk] = r.id;
+      const novas = consultas.filter((c) => !ids[String(c.iclinic_pk)]);
+      if (novas.length) {
+        const chaves = [...new Set(novas.map((c) => c.chave))];
+        const { data: doPdf } = await supabase.from("prontuario_consultas").select("id, paciente_chave, data_consulta").in("paciente_chave", chaves).eq("dados->>importado", "iclinic-pdf");
+        const apagar = (doPdf || []).filter((d) => novas.some((c) => c.chave === d.paciente_chave && Math.abs(new Date(c.data_consulta) - new Date(d.data_consulta)) <= 2 * 60e3)).map((d) => d.id);
+        if (apagar.length) await supabase.from("prontuario_consultas").delete().in("id", apagar);
+        const linhas = novas.map((c) => ({ appointment_id: null, paciente_chave: c.chave, paciente_nome: c.nome, paciente_telefone: c.telefone,
+          data_consulta: c.data_consulta, dados: c.dados, texto: String(c.texto || "").slice(0, 60000), finalizado_em: c.data_consulta,
+          duracao_seg: null, adendos: [], criado_por: "Importado do iClinic" }));
+        const { data: ins, error } = await supabase.from("prontuario_consultas").insert(linhas).select("id, dados->>iclinic_pk");
+        if (error) throw error;
+        for (const r of ins || []) ids[r.iclinic_pk] = r.id;
+      }
+    }
+    res.json({ ok: true, ids, novas: Object.keys(ids).length });
+  } catch (e) {
+    console.error("[iClinic lote] falhou:", e.message);
+    res.status(500).json({ error: "Não consegui gravar este pacote: " + e.message });
+  }
+});
+// Anexo: 1) pede a URL de envio (ou diz que já foi); 2) o navegador envia direto; 3) registra.
+app.post("/api/prontuario/iclinic-anexo/assinar", requireMedico, async (req, res) => {
+  try {
+    const { origem_ref, chave, nome_arquivo } = req.body || {};
+    if (!origem_ref || !chave) return res.status(400).json({ error: "Dados do anexo incompletos." });
+    const { data: ja } = await supabase.from("prontuario_anexos").select("id").eq("origem_ref", origem_ref).maybeSingle();
+    if (ja) return res.json({ ja: true });
+    await garantirBucketProntuario();
+    const path = `${String(chave).split("|")[0]}_${String(chave).split("|")[1]}/ic_${Date.now()}_${String(nome_arquivo || "anexo").replace(/[^\w.\-]+/g, "_").slice(-80)}`;
+    const { data, error } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUploadUrl(path);
+    if (error) throw error;
+    res.json({ path, url: data.signedUrl });
+  } catch (e) { console.error("[iClinic anexo] assinar falhou:", e.message); res.status(500).json({ error: e.message }); }
+});
+app.post("/api/prontuario/iclinic-anexo/registrar", requireMedico, async (req, res) => {
+  try {
+    const { origem_ref, chave, consulta_id, path, nome, mime, tamanho, obs, origem } = req.body || {};
+    if (!origem_ref || !chave || !path) return res.status(400).json({ error: "Dados do anexo incompletos." });
+    const { error } = await supabase.from("prontuario_anexos").insert({
+      paciente_chave: chave, consulta_id: /^[0-9a-f-]{36}$/i.test(String(consulta_id || "")) ? consulta_id : null, tipo: "exame",
+      nome: String(nome || "anexo").slice(0, 160), path, mime: mime || "application/octet-stream", tamanho: Number(tamanho) || null,
+      observacao: String(obs || "").slice(0, 500) || null, enviado_por: `iClinic ${String(origem || "").slice(0, 40)}`, origem_ref,
+    });
+    if (error && !/duplicate|unique/i.test(error.message)) throw error;
+    res.json({ ok: true });
+  } catch (e) { console.error("[iClinic anexo] registrar falhou:", e.message); res.status(500).json({ error: e.message }); }
 });
 
 // ===== PDF DO iCLINIC → LINHA DO TEMPO (Dr. Bruno, 20/10/2026) ================
