@@ -353,6 +353,20 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                 <div class="campo"><label for="rx-sug">Lentes sugeridas (pode editar)</label><textarea id="rx-sug" rows="2" style="min-height:48px;font-size:14px"></textarea></div>
                 <div class="row"><button type="button" class="pri" id="gerar-rx">Imprimir prescrição</button><button type="button" id="copiar-rx">Copiar receita</button><span class="status" id="status-rx"></span></div>
               </div>
+              <div class="rx" id="col-bloco">
+                <span class="rot" style="margin:0">Receita de colírios e medicamentos <span class="hint">— digite o nome e a posologia</span></span>
+                <div style="display:grid;gap:6px">
+                  <div class="row col-linha" data-i="1" style="flex-wrap:wrap"><input id="col-1-med" list="lista-colirios" placeholder="1. Colírio / medicamento" style="flex:2 1 220px"><input id="col-1-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-1-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="2" style="flex-wrap:wrap"><input id="col-2-med" list="lista-colirios" placeholder="2. Colírio / medicamento" style="flex:2 1 220px"><input id="col-2-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-2-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="3" hidden style="flex-wrap:wrap"><input id="col-3-med" list="lista-colirios" placeholder="3. Colírio / medicamento" style="flex:2 1 220px"><input id="col-3-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-3-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="4" hidden style="flex-wrap:wrap"><input id="col-4-med" list="lista-colirios" placeholder="4. Colírio / medicamento" style="flex:2 1 220px"><input id="col-4-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-4-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="5" hidden style="flex-wrap:wrap"><input id="col-5-med" list="lista-colirios" placeholder="5. Colírio / medicamento" style="flex:2 1 220px"><input id="col-5-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-5-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="6" hidden style="flex-wrap:wrap"><input id="col-6-med" list="lista-colirios" placeholder="6. Colírio / medicamento" style="flex:2 1 220px"><input id="col-6-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-6-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                </div>
+                <button type="button" class="link" id="col-mais" style="justify-self:start;padding-left:0">+ outro medicamento</button>
+                <div class="row"><label style="gap:6px"><input type="checkbox" id="col-2vias" style="width:auto"> Antibiótico (2 vias, com idade e sexo)</label><label id="col-sexo-l" hidden>Sexo <select id="col-sexo" style="width:auto"><option value="">—</option><option>Feminino</option><option>Masculino</option></select></label></div>
+                <div class="row"><button type="button" class="pri" id="gerar-col">Imprimir receita de colírios</button><span class="status" id="status-col"></span></div>
+              </div>
             </div>
           </article>
 
@@ -424,6 +438,24 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
   </div>
 </div>
 
+<datalist id="lista-colirios">
+<option>Hialuronato de sódio 0,15% (Hyabak)</option><option>Carmelose sódica 0,5% (Fresh Tears)</option><option>Carmelose sódica 0,5% + glicerina 0,9% (Optive)</option>
+<option>Moxifloxacino 0,5% (Vigamox)</option><option>Gatifloxacino 0,3% (Zymar)</option><option>Tobramicina 0,3% (Tobrex)</option><option>Ciprofloxacino 0,3% (Ciloxan)</option>
+<option>Tobramicina 0,3% + dexametasona 0,1% (Tobradex)</option><option>Moxifloxacino 0,5% + dexametasona 0,1% (Vigadexa)</option><option>Gatifloxacino 0,3% + prednisolona 1% (Zypred)</option>
+<option>Acetato de prednisolona 1% (Pred Fort)</option><option>Fluormetolona 0,1% (Flumex)</option><option>Loteprednol 0,5% (Lotemax)</option><option>Dexametasona 0,1% (Maxidex)</option>
+<option>Cetorolaco de trometamol 0,4% (Acular LS)</option><option>Nepafenaco 0,1% (Nevanac)</option>
+<option>Olopatadina 0,2% (Patanol S)</option><option>Cetotifeno 0,025% (Zaditen)</option><option>Epinastina 0,05% (Relestat)</option>
+<option>Latanoprosta 0,005% (Xalatan)</option><option>Bimatoprosta 0,01% (Lumigan RC)</option><option>Travoprosta 0,004% (Travatan)</option><option>Maleato de timolol 0,5%</option><option>Dorzolamida 2% + timolol 0,5% (Cosopt)</option><option>Tartarato de brimonidina 0,2% (Alphagan)</option>
+<option>Pomada oftálmica Epitezan</option><option>Pomada oftálmica Regencel</option>
+</datalist>
+<datalist id="lista-qtd"><option>1 frasco</option><option>2 frascos</option><option>1 bisnaga</option><option>Uso contínuo</option></datalist>
+<datalist id="lista-posologia">
+<option>Pingar 1 gota em ambos os olhos de 4 em 4 horas por 7 dias</option><option>Pingar 1 gota em ambos os olhos de 6 em 6 horas por 7 dias</option><option>Pingar 1 gota em ambos os olhos de 8 em 8 horas por 7 dias</option>
+<option>Pingar 1 gota em ambos os olhos de 12 em 12 horas (uso contínuo)</option><option>Pingar 1 gota em ambos os olhos à noite, ao deitar (uso contínuo)</option>
+<option>Pingar 1 gota em ambos os olhos 4 vezes ao dia</option><option>Pingar 1 gota em ambos os olhos sempre que sentir os olhos secos ou irritados</option>
+<option>Pingar 1 gota no olho direito de 6 em 6 horas por 7 dias</option><option>Pingar 1 gota no olho esquerdo de 6 em 6 horas por 7 dias</option>
+<option>Aplicar pequena quantidade da pomada nos olhos à noite, ao deitar</option>
+</datalist>
 <datalist id="snellen"><option>20/20</option><option>20/25</option><option>20/30</option><option>20/40</option><option>20/50</option><option>20/60</option><option>20/70</option><option>20/80</option><option>20/100</option><option>20/200</option><option>20/400</option><option>CD 2m</option><option>CD 1m</option><option>MM</option><option>PL</option><option>SPL</option></datalist>
 <datalist id="jaeger"><option>J1</option><option>J2</option><option>J3</option><option>J4</option><option>J6</option></datalist>
 
@@ -557,6 +589,7 @@ function textoIclinic(){ const L=[];
   const ec=exComp(); if(ec) L.push(ec);
   const hd=bloco("Hipótese diagnóstica",[...marcados("hd").map(c=>`${nomeChip(c)} (CID ${c.dataset.cid})`),...linhas("hd-txt")]); if(hd) L.push(hd);
   const cd=bloco("Conduta",[...marcados("cd").map(nomeChip),...linhas("cd-txt")]); if(cd) L.push(cd);
+  const meds=medicamentos(); if(meds.length) L.push(bloco("Prescrição de medicamentos",meds.map(m=>`${m.med}${m.qtd?" ("+m.qtd+")":""}: ${m.pos||"posologia não informada"}`)));
   const ex=bloco("Exames solicitados",marcados("ex").map(nomeChip)); if(ex) L.push(ex);
   if(v("retorno")) L.push(`Retorno em ${v("retorno")}.`);
   return L.join("\n\n"); }
@@ -634,6 +667,12 @@ ${mono?"":`<tr><td>ADIÇÃO</td><td colspan="3">${esc(r.add||"-")}</td></tr>`}
 <li>Sr. Óptico favor manter as marcas originais de fábrica em caso de multifocais.</li></ul>
 <p class="prox">Data da próxima consulta: ${prox}</p>
 <div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877</div>`;
+  abrirReceita({titulo:`Receita de Óculos - ${nome}`,folhas:[corpo],timbrado,status});
+}
+// Janela de impressão das receitas (óculos e colírios): mesma folha, mesmo
+// papel timbrado, mesma fonte. "folhas" = uma página por item (2 vias = 2).
+function abrirReceita({titulo,folhas,timbrado,status}){
+  const M=MARGENS_TIMBRADO;
   const cssComum=`
 body{font:600 11.5pt/1.35 "EB Garamond",Garamond,"Times New Roman",serif;color:#000;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;-webkit-text-stroke:.25px #000}
 .barra{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px;background:#eef2f3;font:14px system-ui,sans-serif}
@@ -648,7 +687,10 @@ th{font-weight:800} td:first-child,th:first-child{text-align:left;font-weight:80
 h2{font-size:1.04em;letter-spacing:.04em;font-weight:800}
 .prox{font-weight:800}
 .ass{text-align:center;line-height:1.25}
-.ass .linha{width:70mm;border-top:1px solid #000;margin:0 auto 2mm}`;
+.ass .linha{width:70mm;border-top:1px solid #000;margin:0 auto 2mm}
+.via{text-align:right;font-size:.9em;margin:0 0 2mm}
+h3.uso{font-size:1.04em;letter-spacing:.04em;font-weight:800;margin:0 0 4mm}
+ol.meds{margin:0;padding-left:6mm} .meds li{margin:0 0 6mm} .med-n{display:flex;justify-content:space-between;gap:8mm} .med-p{margin-top:1.5mm}`;
   const cssLivre=`
 @page{size:A4;margin:16mm 20mm 18mm}
 .folha{max-width:170mm;margin:0 auto;padding:6mm 5mm}
@@ -656,7 +698,8 @@ h2{font-size:1.04em;letter-spacing:.04em;font-weight:800}
 .cab{margin-bottom:12mm} .cab img{width:48.6mm;height:auto} .cab{flex-direction:row-reverse}
 .nome{margin:0 0 8mm} h1{margin:0 0 6mm} table{margin-bottom:6mm} th,td{padding:6px 8px;font-size:12pt}
 .sug{margin:0 0 6mm} h2{margin:5mm 0 2mm} ul{margin:0;padding-left:5mm;font-size:10.5pt} li{margin:0 0 1mm}
-.prox{margin:7mm 0 0} .ass{margin-top:16mm}`;
+.prox{margin:7mm 0 0} .ass{margin-top:16mm}
+.folha+.folha{break-before:page}`;
   const cssTimbrado=`
 @page{size:A4;margin:0}
 html,body{background:#9aa5ab}
@@ -670,21 +713,51 @@ html,body{background:#9aa5ab}
 .prox{margin:4mm 0 0} .ass{margin-top:auto;padding-top:8mm}`;
   // Se o conteúdo não couber na área livre do timbrado, a fonte encolhe um pouco
   // até caber — nunca invade o logotipo nem o rodapé.
-  const ajusta=`<script>(function(){var c=document.querySelector('.conteudo');if(!c)return;var f=10.5;
+  const ajusta=`<script>(function(){document.querySelectorAll('.conteudo').forEach(function(c){var f=10.5;
     function caber(){while(c.scrollHeight>c.clientHeight+1&&f>7.5){f-=.25;c.style.fontSize=f+'pt';}}
-    if(document.fonts&&document.fonts.ready)document.fonts.ready.then(caber);caber();})();<\/script>`;
-  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Receita de Óculos - ${esc(nome)}</title>
+    if(document.fonts&&document.fonts.ready)document.fonts.ready.then(caber);caber();});})();<\/script>`;
+  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700;800&display=swap">
 <style>${cssComum}${timbrado?cssTimbrado:cssLivre}</style></head><body>
 <div class="barra"><span style="margin-right:auto">${timbrado?"Coloque o <b>papel timbrado</b> na impressora. Na janela de impressão, use escala <b>100%</b> (sem “ajustar à página”). A foto do papel aparece só aqui na tela; ela não é impressa.":"Confira e use <b>Imprimir</b> (ou “Salvar como PDF”) para entregar ao paciente."}</span><button onclick="(document.fonts?document.fonts.ready:Promise.resolve()).then(function(){print()})">Imprimir</button></div>
-${timbrado?`<div class="folha"><div class="conteudo">${corpo}</div></div>${ajusta}`:`<div class="folha">${corpo}</div>`}
+${folhas.map(c=>timbrado?`<div class="folha"><div class="conteudo">${c}</div></div>`:`<div class="folha">${c}</div>`).join("")}${timbrado?ajusta:""}
 </body></html>`;
   const w=window.open("","_blank");
   if(!w){ status("O navegador bloqueou a janela da receita. Permita pop-ups para este site.","erro"); return; }
   w.document.open(); w.document.write(html); w.document.close();
-  status("Prescrição aberta em outra janela.","ok");
+  status("Receita aberta em outra janela.","ok");
 }
 $("#gerar-rx").addEventListener("click",gerarPrescricao);
+
+/* ===== RECEITA DE COLÍRIOS (Dr. Bruno, 20/10/2026) =====
+   Ele digita o colírio e a posologia; a receita sai na mesma folha da de
+   óculos (timbrado ou logotipo). Antibiótico: 2 vias com idade e sexo. */
+const NCOL=6;
+function medicamentos(){ const out=[]; for(let i=1;i<=NCOL;i++){ const m=v(`col-${i}-med`); if(m) out.push({med:m,qtd:v(`col-${i}-qtd`),pos:v(`col-${i}-pos`)}); } return out; }
+function mostraLinhasCol(){ let ult=0; for(let i=1;i<=NCOL;i++) if(v(`col-${i}-med`)||v(`col-${i}-pos`)) ult=i;
+  $$(".col-linha").forEach(l=>{ const i=+l.dataset.i; if(i<=Math.max(2,ult+1)) l.hidden=false; }); }
+$("#col-mais").addEventListener("click",()=>{ const l=$$(".col-linha").find(x=>x.hidden); if(l){ l.hidden=false; l.querySelector("input").focus(); } });
+$("#col-2vias").addEventListener("change",()=>{ $("#col-sexo-l").hidden=!$("#col-2vias").checked; });
+function statusCol(t,cls){ const x=$("#status-col"); x.textContent=t; x.className="status "+(cls||""); }
+$("#gerar-col").addEventListener("click",()=>{
+  if(!consultaAtual){ statusCol("Inicie o atendimento primeiro.","erro"); return; }
+  const ms=medicamentos();
+  if(!ms.length){ statusCol("Digite ao menos um colírio ou medicamento.","erro"); return; }
+  const semPos=ms.find(m=>!m.pos); if(semPos){ statusCol(`Falta a posologia de “${semPos.med}”.`,"erro"); return; }
+  const duasVias=$("#col-2vias").checked, sexo=$("#col-sexo").value;
+  if(duasVias&&!sexo){ statusCol("Receita de antibiótico precisa do sexo do paciente.","erro"); return; }
+  const timbrado=$("#rx-timbrado").checked;
+  const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+  const nome=String(consultaAtual.paciente_nome||"").toUpperCase(), idade=ficha?.paciente?.idade;
+  const folha=via=>`${via?`<p class="via">${via}</p>`:""}
+<div class="cab">${timbrado?"":`<img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges">`}<span>Brasília, ${data}.</span></div>
+<p class="nome">Nome: ${esc(nome)}${duasVias?`<br>Idade: ${idade!=null?esc(idade)+" anos":"________"} &nbsp;&nbsp; Sexo: ${esc(sexo)}`:""}</p>
+<h1>RECEITUÁRIO</h1>
+<h3 class="uso">USO OFTÁLMICO</h3>
+<ol class="meds">${ms.map(m=>`<li><div class="med-n"><span>${esc(m.med)}</span><span>${esc(m.qtd||"")}</span></div><div class="med-p">${esc(m.pos)}</div></li>`).join("")}</ol>
+<div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877</div>`;
+  abrirReceita({titulo:`Receita - ${nome}`,folhas:duasVias?[folha("1ª via — farmácia"),folha("2ª via — paciente")]:[folha("")],timbrado,status:statusCol});
+});
 try{ $("#rx-timbrado").checked=localStorage.getItem("rx-timbrado")!=="0"; }catch(_){ $("#rx-timbrado").checked=true; }
 $("#rx-timbrado").addEventListener("change",()=>{ try{ localStorage.setItem("rx-timbrado",$("#rx-timbrado").checked?"1":"0"); }catch(_){} });
 function copiarTxt(txt,onOk,onFalha){ try{ navigator.clipboard.writeText(txt).then(onOk,onFalha); }catch(_){ onFalha&&onFalha(); } }
@@ -724,7 +797,7 @@ function atualiza(){
   $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar.";
   const r=receita();
   $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
-  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir();
+  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol();
   if(atend){ sujo=true; rascunhoLocal(); status("Alterações não salvas.",""); }
 }
 
