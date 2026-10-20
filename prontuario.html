@@ -280,7 +280,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                   <span class="lbl rowlbl">Com correção</span><input id="av-cc-od" list="snellen"><input id="av-cc-oe" list="snellen">
                   <span class="lbl rowlbl">Perto</span><input id="av-pt-od" list="jaeger"><input id="av-pt-oe" list="jaeger">
                 </div></div>
-              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Refração <span class="hint">— -250 ou -2.5 vira -2,50</span></span><span><button type="button" class="link" id="repetir-ref" hidden>Repetir a refração anterior</button><button type="button" class="link" id="transpor">Transpor cilindro</button></span></div>
+              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Refração <span class="hint">— -250 ou -2.5 vira -2,50</span></span><span><button type="button" class="link" id="repetir-ref" hidden>Repetir a refração anterior</button><button type="button" class="link" id="transpor" hidden>Transpor cilindro</button><span class="hint">cilindro sempre negativo</span><span class="status ok" id="aviso-cil" style="margin-left:8px"></span></span></div>
                 <div class="ref">
                   <span></span><span class="h">Esférico</span><span class="h">Cilíndrico</span><span class="h">Eixo</span><span class="h">AV</span>
                   <span class="eye" style="color:var(--od)">OD</span><input id="re-od-esf" inputmode="decimal"><input id="re-od-cil" inputmode="decimal"><input id="re-od-eixo" inputmode="numeric"><input id="re-od-av" list="snellen">
@@ -486,9 +486,24 @@ function eixo(v){ const n=parseInt(String(v||"").replace(/\D/g,""),10); if(isNaN
 function num(s){ if(!s||s==="Plano") return 0; return Number(String(s).replace(",",".")); }
 function normalizaCampo(el){ const id=el.id;
   if(/-esf$/.test(id)) el.value=dioptria(el.value,true);
-  else if(/-cil$/.test(id)) el.value=dioptria(el.value,false);
-  else if(/-eixo$/.test(id)) el.value=eixo(el.value);
+  else if(/-cil$/.test(id)) cilindroNegativo(el);
+  else if(/-eixo$/.test(id)){ el.value=eixo(el.value);
+    // eixo digitado depois de um cilindro positivo já transposto: gira 90°
+    const c=$("#"+id.replace(/-eixo$/,"-cil")); if(c&&c.dataset.girar&&el.value){ const ax=parseInt(el.value,10); el.value=String(ax>90?ax-90:ax+90); delete c.dataset.girar; } } 
   else if(id==="re-add"){ const d=dioptria(el.value,false); el.value=d?d.replace("-","+"):""; } }
+// CILINDRO SEMPRE NEGATIVO (Dr. Bruno, 20/10/2026): sem sinal vira negativo
+// ("75" → -0,75); positivo digitado com "+" é transposto na hora (esférico +
+// cilindro, cilindro com sinal trocado, eixo ± 90°).
+function cilindroNegativo(el){
+  const bruto=String(el.value||"").trim(); let d=dioptria(bruto,false); if(!d){ el.value=""; return; }
+  const positivoDigitado=/^\+/.test(bruto);
+  if(d.startsWith("+")&&!positivoDigitado){ el.value=d.replace("+","-"); return; }
+  if(!d.startsWith("+")){ el.value=d; return; }
+  const o=el.id.split("-")[1], e=$(`#re-${o}-esf`), x=$(`#re-${o}-eixo`), cil=num(d);
+  e.value=dioptria(String(num(e.value)+cil),true); el.value=dioptria(String(-cil),false);
+  if(x.value){ const ax=parseInt(x.value,10); x.value=String(ax>90?ax-90:ax+90); } else el.dataset.girar="1";
+  $("#aviso-cil").textContent=(`Cilindro positivo do ${o==="od"?"olho direito":"olho esquerdo"} transposto para negativo: ${e.value} ${el.value}${x.value?" x "+x.value+"°":" (o eixo digitado será girado 90°)"}.`);
+}
 $("#transpor").addEventListener("click",()=>{ for(const o of ["od","oe"]){ const e=$(`#re-${o}-esf`),c=$(`#re-${o}-cil`),x=$(`#re-${o}-eixo`); const cil=num(c.value); if(!cil) continue;
   e.value=dioptria(String(num(e.value)+cil),true); c.value=dioptria(String(-cil),false); let ax=parseInt(x.value||"0",10); x.value=String(ax>90?ax-90:ax+90); } atualiza(); });
 function liga(c){ c.setAttribute("aria-pressed",c.getAttribute("aria-pressed")==="true"?"false":"true"); atualiza(); }
