@@ -10334,6 +10334,14 @@ app.get("/api/prontuario/busca", requireMedico, async (req, res) => {
       }
       mapa.set(k, p);
     }
+    // pacientes que só existem no prontuário (ex.: importados do iClinic, sem agenda)
+    let qp = supabase.from("prontuario_pacientes").select("chave, nome, telefone, dados").limit(60);
+    qp = dig.length >= 4 ? qp.like("telefone", `%${dig.slice(-8)}%`) : qp.ilike("nome", `%${q.replace(/[%_]/g, "")}%`);
+    const { data: pps } = await qp;
+    for (const pp of pps || []) {
+      if (mapa.has(pp.chave)) continue;
+      mapa.set(pp.chave, { chave: pp.chave, nome: pp.nome, telefone: pp.telefone, convenio: pp.dados?.operadora || null, ultima: null, proxima: null, nascimento: pp.dados?.nascimento || null, importado: !!pp.dados?.iclinic_id });
+    }
     res.json({ pacientes: [...mapa.values()].slice(0, 40) });
   } catch (e) {
     console.error("[Prontuário] busca falhou:", e.message);
@@ -10392,7 +10400,8 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
     res.json({
       paciente: {
         chave, nome: (ultimoAg && ultimoAg.paciente_nome) || pac?.nome || nome, telefone: tel,
-        convenio: ultimoAg?.convenio || null, primeira_consulta: meus[0]?.inicio || null,
+        convenio: ultimoAg?.convenio || pac?.dados?.operadora || null,
+        primeira_consulta: [meus[0]?.inicio, consultas.length ? consultas[consultas.length - 1].data_consulta : null].filter(Boolean).sort()[0] || null,
         ...(idade || idadeDe(pac?.dados?.nascimento ? `Nascimento: ${pac.dados.nascimento}` : "") || {}), documentos: pac?.dados || {},
       },
       antecedentes: pac?.antecedentes || {}, hoje, consultas, anexos, conversa, preexames,
@@ -10736,6 +10745,104 @@ app.post("/api/prontuario/documento-assinado", requireMedico, async (req, res) =
     console.error("[Assinatura] documento falhou:", e.message);
     res.status(500).json({ error: "Não consegui gerar o documento assinado." });
   }
+});
+
+// ===== IMPORTAR DO iCLINIC (Dr. Bruno, 20/10/2026) ============================
+// O médico envia o ZIP da exportação completa; o servidor ANALISA (nada é
+// gravado) e mostra o resumo; só no "confirmar" grava pacientes, consultas
+// antigas (finalizadas, marcadas "importado do iClinic") e anexos. Pode rodar
+// de novo: consulta já importada (mesmo iclinic_pk) é pulada; dado de paciente
+// já preenchido/conferido não é sobrescrito.
+const importaIclinic = require("./importa-iclinic");
+const importacoes = new Map();   // token → { plano, origem, ts, status }
+setInterval(() => { const lim = Date.now() - 60 * 60e3; for (const [k, v] of importacoes) if (v.ts < lim && v.status?.fase !== "gravando") importacoes.delete(k); }, 10 * 60e3);
+app.post("/api/prontuario/importar-iclinic", requireMedico, express.raw({ type: () => true, limit: "120mb" }), async (req, res) => {
+  try {
+    if (!req.body || req.body.length < 100) return res.status(400).json({ error: "Envie o arquivo .zip da exportação do iClinic." });
+    const origem = String(req.query.origem || "iClinic").slice(0, 40);
+    const plano = importaIclinic.analisar(req.body, origem);
+    const chaves = plano.pacientes.map((p) => p.chave);
+    const conhecidos = new Set();
+    for (let i = 0; i < chaves.length; i += 200) {
+      const { data } = await supabase.from("prontuario_pacientes").select("chave").in("chave", chaves.slice(i, i + 200));
+      (data || []).forEach((r) => conhecidos.add(r.chave));
+    }
+    const naAgenda = new Set();
+    for (const p of plano.pacientes) {
+      const { data } = await supabase.from("appointments").select("paciente_nome").like("paciente_telefone", `%${ult8(p.telefone)}`).limit(20);
+      if ((data || []).some((a) => primNome(a.paciente_nome) === primNome(p.nome))) naAgenda.add(p.chave);
+    }
+    const { data: jaImp } = await supabase.from("prontuario_consultas").select("dados").eq("criado_por", "Importado do iClinic").limit(20000);
+    const pksFeitos = new Set((jaImp || []).map((c) => String(c.dados?.iclinic_pk || "")).filter(Boolean));
+    const novas = plano.consultas.filter((c) => !pksFeitos.has(String(c.iclinic_pk)));
+    const token = crypto.randomUUID();
+    importacoes.set(token, { plano, origem, ts: Date.now(), status: null, pksFeitos });
+    res.json({
+      token, origem, resumo: plano.resumo, problemas: plano.problemas.slice(0, 50),
+      pacientes_ja_no_sistema: plano.pacientes.filter((p) => conhecidos.has(p.chave) || naAgenda.has(p.chave)).length,
+      consultas_ja_importadas: plano.consultas.length - novas.length,
+      consultas_a_importar: novas.length, anexos_a_importar: novas.reduce((n, c) => n + c.anexos.length, 0),
+      amostra: novas.slice(0, 3).map((c) => ({ nome: c.nome, data: c.data_consulta, texto: c.texto.slice(0, 700), anexos: c.anexos.length })),
+    });
+  } catch (e) {
+    if (e.publico) return res.status(400).json({ error: e.message });
+    console.error("[iClinic] análise falhou:", e.message);
+    res.status(500).json({ error: "Não consegui ler o arquivo. Confira se é o ZIP da exportação do iClinic." });
+  }
+});
+async function gravarImportacao(token) {
+  const imp = importacoes.get(token); const { plano, origem, pksFeitos } = imp;
+  const st = imp.status = { fase: "gravando", pacientes: 0, consultas: 0, anexos: 0, erros: [] };
+  try {
+    // pacientes: cria ou completa só o que está vazio
+    for (const p of plano.pacientes) {
+      const { data: ex } = await supabase.from("prontuario_pacientes").select("dados").eq("chave", p.chave).maybeSingle();
+      if (ex) {
+        const dados = { ...(ex.dados || {}) };
+        for (const [k, v] of Object.entries(p.dados)) if (v && !dados[k]) dados[k] = v;
+        await supabase.from("prontuario_pacientes").update({ dados }).eq("chave", p.chave);
+      } else {
+        const { error } = await supabase.from("prontuario_pacientes").insert({ chave: p.chave, nome: p.nome, telefone: p.telefone, dados: p.dados, antecedentes: {}, updated_at: new Date().toISOString() });
+        if (error) { st.erros.push(`Paciente ${p.nome}: ${error.message}`); continue; }
+      }
+      st.pacientes++;
+    }
+    // consultas + anexos
+    for (const c of plano.consultas) {
+      if (pksFeitos.has(String(c.iclinic_pk))) continue;
+      const { data: nova, error } = await supabase.from("prontuario_consultas").insert({
+        appointment_id: null, paciente_chave: c.chave, paciente_nome: c.nome, paciente_telefone: c.telefone,
+        data_consulta: c.data_consulta, dados: c.dados, texto: c.texto, finalizado_em: c.data_consulta,
+        duracao_seg: c.duracao_seg, adendos: [], criado_por: "Importado do iClinic",
+      }).select("id").single();
+      if (error) { st.erros.push(`Consulta ${c.iclinic_pk}: ${error.message}`); continue; }
+      st.consultas++; pksFeitos.add(String(c.iclinic_pk));
+      for (const a of c.anexos) {
+        try {
+          const buf = plano.zip.getEntry(a.zipPath).getData();
+          const ext = a.zipPath.split(".").pop().toLowerCase();
+          const mime = ext === "pdf" ? "application/pdf" : ext === "png" ? "image/png" : /jpe?g/.test(ext) ? "image/jpeg" : "application/octet-stream";
+          await guardarAnexo({ tel: c.telefone, nome: c.nome, tipo: "exame", nomeArq: a.nome.slice(0, 160), mime, buf, obs: a.obs, consultaId: nova.id, por: `iClinic ${origem}` });
+          st.anexos++;
+        } catch (e) { st.erros.push(`Anexo da consulta ${c.iclinic_pk}: ${e.message}`); }
+      }
+    }
+    st.fase = "pronto";
+    console.log(`[iClinic] Importação ${origem}: ${st.pacientes} pacientes, ${st.consultas} consultas, ${st.anexos} anexos, ${st.erros.length} erros.`);
+  } catch (e) { st.fase = "erro"; st.erros.push(e.message); console.error("[iClinic] gravação falhou:", e.message); }
+  finally { imp.plano = null; imp.ts = Date.now(); }   // libera a memória do ZIP
+}
+app.post("/api/prontuario/importar-iclinic/:token/confirmar", requireMedico, (req, res) => {
+  const imp = importacoes.get(req.params.token);
+  if (!imp || !imp.plano) return res.status(404).json({ error: "Análise expirada. Envie o arquivo de novo." });
+  if (imp.status) return res.json({ ok: true, status: imp.status });
+  gravarImportacao(req.params.token);
+  res.json({ ok: true, status: importacoes.get(req.params.token).status });
+});
+app.get("/api/prontuario/importar-iclinic/:token", requireMedico, (req, res) => {
+  const imp = importacoes.get(req.params.token);
+  if (!imp) return res.status(404).json({ error: "Importação não encontrada." });
+  res.json({ status: imp.status });
 });
 
 // ===== PRÉ-EXAME (Dr. Bruno, 17/10/2026) =====================================

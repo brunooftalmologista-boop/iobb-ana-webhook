@@ -195,7 +195,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
   <header class="topo">
     <b>IOBB · Prontuário</b>
     <nav><button type="button" id="nav-lista" class="ativo">Prontuários</button><button type="button" id="btn-chat">💬 Chat da equipe</button></nav>
-    <div class="esp"><button type="button" class="link" id="btn-cert">🔏 Certificado digital</button> <a href="/painel">Voltar ao painel</a></div>
+    <div class="esp"><button type="button" class="link" id="btn-cert">🔏 Certificado digital</button> <button type="button" class="link" id="btn-imp">⬆ Importar iClinic</button> <a href="/painel">Voltar ao painel</a></div>
   </header>
 
   <div class="app">
@@ -414,6 +414,17 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
   </div>
 </div>
 
+<!-- importar do iClinic -->
+<div class="fundo" id="m-imp" hidden>
+  <div class="modal" role="dialog" aria-labelledby="mi-t" style="width:min(720px,100%)">
+    <div class="row" style="justify-content:space-between"><h3 id="mi-t">Importar prontuários do iClinic</h3><button type="button" class="link" id="mi-fechar">Fechar</button></div>
+    <div class="hint">Envie o arquivo .zip da exportação completa do iClinic. Primeiro o sistema só LÊ e mostra o resumo; nada é gravado até você confirmar. Pode enviar o mesmo arquivo de novo: o que já foi importado é pulado.</div>
+    <div class="row"><label style="flex:1">Arquivo .zip <input type="file" id="mi-arq" accept=".zip,application/zip"></label><label>Unidade <input id="mi-origem" value="Asa Sul" style="width:140px"></label></div>
+    <div class="row"><button type="button" class="pri" id="mi-analisar">Analisar</button><span class="status" id="mi-st"></span></div>
+    <div id="mi-res" hidden style="display:grid;gap:8px"></div>
+    <div class="row" id="mi-conf" hidden><button type="button" class="pri" id="mi-confirmar">Importar agora</button></div>
+  </div>
+</div>
 <!-- certificado digital (A1) -->
 <div class="fundo" id="m-cert" hidden>
   <div class="modal" role="dialog" aria-labelledby="mc-t">
@@ -791,6 +802,31 @@ $("#hd-cids-tags").addEventListener("click",e=>{ const b=e.target.closest("[data
 const LENTE_DO_CHIP={"Prescrição de óculos":"monofocais","Prescrição de óculos para perto":"perto","Prescrição de óculos multifocais":"multifocais","Prescrição de óculos ocupacionais":"ocupacionais"};
 $$('[data-grupo="cd"] .chip').forEach(c=>c.addEventListener("click",()=>{ const t=LENTE_DO_CHIP[nomeChip(c)]; if(t&&c.getAttribute("aria-pressed")==="true"){ $("#rx-uso").value=t; $("#rx-uso").dispatchEvent(new Event("change",{bubbles:true})); } }));
 
+/* ===== IMPORTAR DO iCLINIC (Dr. Bruno, 20/10/2026) ===== */
+let impToken=null, impTimer=null;
+function miSt(t,cls){ $("#mi-st").textContent=t; $("#mi-st").className="status "+(cls||""); }
+$("#btn-imp").addEventListener("click",()=>{ $("#m-imp").hidden=false; });
+$("#mi-fechar").addEventListener("click",()=>{ $("#m-imp").hidden=true; });
+$("#mi-analisar").addEventListener("click",async()=>{
+  const f=$("#mi-arq").files[0]; if(!f){ miSt("Escolha o arquivo .zip.","erro"); return; }
+  miSt(`Enviando e lendo ${(f.size/1048576).toFixed(0)} MB… pode levar um minuto.`,""); $("#mi-res").hidden=true; $("#mi-conf").hidden=true;
+  try{ const r=await api(`/api/prontuario/importar-iclinic?origem=${encodeURIComponent(v("mi-origem")||"iClinic")}`,{method:"POST",raw:true,body:f});
+    impToken=r.token; const rs=r.resumo, per=rs.periodo?`${ddmmaa(rs.periodo[0])} a ${ddmmaa(rs.periodo[1])}`:"—";
+    $("#mi-res").innerHTML=`<div><b>${rs.pacientes}</b> pacientes (${r.pacientes_ja_no_sistema} já estão no sistema e serão completados, sem apagar nada) · <b>${r.consultas_a_importar}</b> consultas a importar${r.consultas_ja_importadas?` (${r.consultas_ja_importadas} já importadas antes)`:""} · <b>${r.anexos_a_importar}</b> anexos · período ${per}.</div>`+
+      (r.problemas.length?`<div class="pend"><b>Atenção:</b> ${r.problemas.map(esc).join(" · ")}</div>`:"")+
+      (r.amostra.length?`<details><summary>Ver exemplo de como as consultas vão aparecer</summary>${r.amostra.map(a=>`<div class="secao-t"><h4>${esc(a.nome)} — ${ddmmaa(a.data)}${a.anexos?` · ${a.anexos} anexo(s)`:""}</h4><pre>${esc(a.texto)}</pre></div>`).join("")}</details>`:"");
+    $("#mi-res").hidden=false; $("#mi-conf").hidden=!r.consultas_a_importar; miSt(r.consultas_a_importar?"Confira o resumo e clique em Importar agora.":"Nada novo para importar.","ok");
+  }catch(e){ miSt(e.status===401?MSG_SESSAO:(e.msg||"Não consegui ler o arquivo."),"erro"); } });
+$("#mi-confirmar").addEventListener("click",async()=>{ if(!impToken) return; $("#mi-confirmar").disabled=true;
+  try{ await api(`/api/prontuario/importar-iclinic/${impToken}/confirmar`,{method:"POST",body:"{}"}); acompanhaImp(); }
+  catch(e){ $("#mi-confirmar").disabled=false; miSt(e.msg||"Não consegui iniciar a importação.","erro"); } });
+async function acompanhaImp(){ clearTimeout(impTimer);
+  try{ const r=await api(`/api/prontuario/importar-iclinic/${impToken}`); const s=r.status||{};
+    miSt(`${s.fase==="pronto"?"Pronto":"Gravando"}: ${s.pacientes||0} pacientes, ${s.consultas||0} consultas, ${s.anexos||0} anexos${s.erros?.length?` · ${s.erros.length} erro(s)`:""}.`,s.fase==="erro"?"erro":s.fase==="pronto"?"ok":"");
+    if(s.erros?.length&&s.fase!=="gravando") $("#mi-res").insertAdjacentHTML("beforeend",`<div class="pend"><b>Erros:</b> ${s.erros.slice(0,20).map(esc).join(" · ")}</div>`);
+    if(s.fase==="gravando") impTimer=setTimeout(acompanhaImp,3000); else { $("#mi-conf").hidden=true; $("#mi-confirmar").disabled=false; }
+  }catch(e){ impTimer=setTimeout(acompanhaImp,5000); } }
+
 /* ===== ASSINATURA DIGITAL (Dr. Bruno, 20/10/2026) =====
    "🔏 PDF assinado": o servidor monta o PDF e assina com o certificado A1 do
    médico; o arquivo fica anexado à consulta e abre numa aba para baixar/enviar. */
@@ -949,7 +985,7 @@ async function buscar(){ const q=v("busca"); if(q.length<2){ $("#res-busca").hid
   $("#res-busca").hidden=false; $("#busca-corpo").innerHTML='<tr><td colspan="6" class="vazio">Buscando…</td></tr>';
   try{ const r=await api("/api/prontuario/busca?q="+encodeURIComponent(q)); const ps=r.pacientes||[];
     if(!ps.length){ $("#busca-corpo").innerHTML='<tr><td colspan="6" class="vazio">Ninguém encontrado com esse nome ou telefone.</td></tr>'; return; }
-    $("#busca-corpo").innerHTML=ps.map((p,i)=>`<tr class="clica" data-i="${i}"><td class="nome">${esc(p.nome)}</td><td>${esc(p.telefone)}</td><td>${p.ultima?ddmmaa(p.ultima):"—"}</td><td>${p.proxima?ddmmaa(p.proxima):"—"}</td><td>${esc(p.nascimento||"—")}</td><td>${esc(p.convenio||"")}</td></tr>`).join("");
+    $("#busca-corpo").innerHTML=ps.map((p,i)=>`<tr class="clica" data-i="${i}"><td class="nome">${esc(p.nome)}${p.importado?' <span class="tag">iClinic</span>':""}</td><td>${esc(p.telefone)}</td><td>${p.ultima?ddmmaa(p.ultima):"—"}</td><td>${p.proxima?ddmmaa(p.proxima):"—"}</td><td>${esc(p.nascimento||"—")}</td><td>${esc(p.convenio||"")}</td></tr>`).join("");
     $$("#busca-corpo tr.clica").forEach(tr=>tr.addEventListener("click",()=>{ const p=ps[+tr.dataset.i]; abrirFicha(p.telefone,p.nome); }));
   }catch(e){ $("#busca-corpo").innerHTML='<tr><td colspan="6" class="vazio">Não consegui buscar.</td></tr>'; }
 }
@@ -1038,7 +1074,7 @@ function desenhaTimeline(){
     if(f&&!secs.length&&!(mostraAnexos&&anexos.length)) return "";
     const fim=!!c.finalizado_em;
     return `<div class="item-t"><div class="data-t ${fim?"":"cinza"}"><b>${dd}</b><i>${MES3[mm]}</i><em>${aa}</em></div>
-      <div class="bloco-t"><div class="cab"><span>Por: <b>Dr. Bruno Borges</b>${fim?"":' <span class="tag and">em andamento</span>'}</span><span class="h">⏱ ${hhmm(c.data_consulta)}${c.duracao_seg?` (${durTexto(c.duracao_seg)})`:""}</span></div>
+      <div class="bloco-t"><div class="cab"><span>Por: <b>Dr. Bruno Borges</b>${c.dados?.importado?` <span class="tag">importado do iClinic${c.dados.iclinic_origem?" · "+esc(c.dados.iclinic_origem):""}</span>`:""}${fim?"":' <span class="tag and">em andamento</span>'}</span><span class="h">⏱ ${hhmm(c.data_consulta)}${c.duracao_seg?` (${durTexto(c.duracao_seg)})`:""}</span></div>
       ${secs.map(s=>`<div class="secao-t">${s.rot?`<h4>${esc(s.rot)}</h4>`:""}<pre>${esc(s.corpo)}</pre></div>`).join("")||(fim?"":'<div class="secao-t"><pre class="hint">Atendimento ainda sem conteúdo.</pre></div>')}
       ${mostraAnexos&&anexos.length?`<div class="secao-t"><h4>Imagens e anexos</h4><div class="anexos-t">${anexos.map(arq).join("")}</div></div>`:""}
       ${(c.adendos||[]).map(a=>`<div class="adendo"><small>Informações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`).join("")}
