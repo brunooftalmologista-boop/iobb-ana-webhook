@@ -341,6 +341,13 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                   <span class="chip" tabindex="0">Curva diária de pressão ocular</span><span class="chip" tabindex="0">Gonioscopia</span><span class="chip" tabindex="0">Teste de sobrecarga hídrica</span>
                   <span class="chip" tabindex="0">Biometria</span><span class="chip" tabindex="0">Ultrassonografia ocular</span>
                 </div></div>
+              <div class="rx" id="ped-bloco">
+                <span class="rot" style="margin:0">Pedido de exames <span class="hint">— os exames marcados acima, mais os escritos aqui</span></span>
+                <div class="campo"><label for="ex-txt">Outros exames (um por linha)</label><textarea id="ex-txt" rows="2" style="min-height:48px"></textarea></div>
+                <div class="campo"><label for="ex-ind">Indicação clínica</label><input id="ex-ind"></div>
+                <div class="row"><label>Olhos <select id="ex-olho" style="width:auto"><option>Ambos os olhos</option><option>Olho direito</option><option>Olho esquerdo</option></select></label><label style="gap:6px"><input type="checkbox" id="ex-separado" style="width:auto"> Um exame por folha (convênio)</label></div>
+                <div class="row"><button type="button" class="pri" id="gerar-ped">Imprimir pedido de exames</button><span class="status" id="status-ped"></span></div>
+              </div>
               <div class="campo"><label for="cd-txt">Observações da conduta (um item por linha)</label><textarea id="cd-txt" rows="3" placeholder="Orientações, colírios, encaminhamentos…"></textarea></div>
               <div class="row"><label>Retorno <select id="retorno"><option value="">—</option><option>7 dias</option><option>30 dias</option><option>3 meses</option><option>6 meses</option><option>1 ano</option></select></label></div>
 
@@ -590,7 +597,7 @@ function textoIclinic(){ const L=[];
   const hd=bloco("Hipótese diagnóstica",[...marcados("hd").map(c=>`${nomeChip(c)} (CID ${c.dataset.cid})`),...linhas("hd-txt")]); if(hd) L.push(hd);
   const cd=bloco("Conduta",[...marcados("cd").map(nomeChip),...linhas("cd-txt")]); if(cd) L.push(cd);
   const meds=medicamentos(); if(meds.length) L.push(bloco("Prescrição de medicamentos",meds.map(m=>`${m.med}${m.qtd?" ("+m.qtd+")":""}: ${m.pos||"posologia não informada"}`)));
-  const ex=bloco("Exames solicitados",marcados("ex").map(nomeChip)); if(ex) L.push(ex);
+  const ex=bloco("Exames solicitados",examesPedidos()); if(ex) L.push(ex);
   if(v("retorno")) L.push(`Retorno em ${v("retorno")}.`);
   return L.join("\n\n"); }
 function receita(){ const l=o=>{ const e=v(`re-${o}-esf`)||(v(`re-${o}-cil`)?"Plano":""),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`); return [e||"—",c||"—",c?(x?x+"°":"?"):"—"]; };
@@ -729,6 +736,34 @@ ${folhas.map(c=>timbrado?`<div class="folha"><div class="conteudo">${c}</div></d
 }
 $("#gerar-rx").addEventListener("click",gerarPrescricao);
 
+/* ===== PEDIDO DE EXAMES (Dr. Bruno, 20/10/2026) =====
+   Exames marcados em "Exames solicitados" + os escritos; indicação clínica
+   vem da hipótese diagnóstica (com CID) se ele não escrever outra. Convênio
+   e carteirinha saem no pedido quando o paciente não é particular. */
+function examesPedidos(){ return [...marcados("ex").map(nomeChip),...linhas("ex-txt")]; }
+function hdComCid(){ return [...marcados("hd").map(c=>`${nomeChip(c)} (CID ${c.dataset.cid})`),...linhas("hd-txt")]; }
+function indicacaoAuto(){ return hdComCid().join("; "); }
+function statusPed(t,cls){ const x=$("#status-ped"); x.textContent=t; x.className="status "+(cls||""); }
+$("#gerar-ped").addEventListener("click",()=>{
+  if(!consultaAtual){ statusPed("Inicie o atendimento primeiro.","erro"); return; }
+  const exs=examesPedidos(); if(!exs.length){ statusPed("Marque ou escreva ao menos um exame.","erro"); return; }
+  const ind=v("ex-ind")||indicacaoAuto(), olho=$("#ex-olho").value, timbrado=$("#rx-timbrado").checked;
+  const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+  const nome=String(consultaAtual.paciente_nome||"").toUpperCase();
+  const p=ficha?.paciente||{}, doc=p.documentos||{}, conv=String(doc.operadora||p.convenio||"").trim();
+  const temConv=conv&&!/particular/i.test(conv);
+  const folha=lista=>`
+<div class="cab">${timbrado?"":`<img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges">`}<span>Brasília, ${data}.</span></div>
+<p class="nome">Nome: ${esc(nome)}${p.idade!=null?` &nbsp;&nbsp; Idade: ${esc(p.idade)} anos`:""}${temConv?`<br>Convênio: ${esc(conv)}${doc.carteirinha?` &nbsp;&nbsp; Carteirinha: ${esc(doc.carteirinha)}`:""}`:""}</p>
+<h1>SOLICITAÇÃO DE EXAMES</h1>
+<p>Solicito:</p>
+<ol class="meds">${lista.map(e=>`<li><div class="med-n"><span>${esc(e)}</span><span>${esc(olho)}</span></div></li>`).join("")}</ol>
+${ind?`<p class="sug"><b>Indicação clínica:</b> ${esc(ind)}</p>`:""}
+<div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877 - RQE: 9314</div>`;
+  const folhas=$("#ex-separado").checked?exs.map(e=>folha([e])):[folha(exs)];
+  abrirReceita({titulo:`Pedido de exames - ${nome}`,folhas,timbrado,status:statusPed});
+});
+
 /* ===== RECEITA DE COLÍRIOS (Dr. Bruno, 20/10/2026) =====
    Ele digita o colírio e a posologia; a receita sai na mesma folha da de
    óculos (timbrado ou logotipo). Antibiótico: 2 vias com idade e sexo. */
@@ -797,7 +832,7 @@ function atualiza(){
   $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar.";
   const r=receita();
   $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
-  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol();
+  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol(); $("#ex-ind").placeholder=indicacaoAuto()||"Hipótese diagnóstica (preenchida sozinha a partir do diagnóstico)";
   if(atend){ sujo=true; rascunhoLocal(); status("Alterações não salvas.",""); }
 }
 
