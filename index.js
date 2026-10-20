@@ -3034,6 +3034,27 @@ const RE_VAZOU_INSTRUCAO = /minha[s]?\s+instru[çc][õo]e?s?|meu\s+prompt|fui\s+
 // paciente pediu — antes disso pegávamos a primeira vaga da lista inteira, o que
 // mandava quem queria quinta-feira para a semana seguinte sem motivo, já que
 // costuma haver outra vaga no mesmo dia. Empate: a mais próxima da hora pedida.
+// 👨‍👩‍👦 QUANTOS PACIENTES O CONTATO PEDIU (20/10/2026 — família Moura Machado).
+// "Tem horário para 3 pacientes? De preferência seguidos" → a Ana ofereceu
+// 11h40, 12h00 e 12h20 (certo), a trava "um horário por vez" recusou por ser
+// mais de um, e a reescrita inventou 14h40 e 15h00 — ocupados. Só a mãe ficou
+// gravada; os filhos ouviram "confirmado". Pedido de N pacientes justifica N
+// horários. Lê só o que o PACIENTE escreveu, nas últimas mensagens.
+const NUM_PT = { um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6 };
+function quantosPacientesPediu(messages) {
+  const t = (messages || []).filter(m => m.role === "user").slice(-8)
+    .map(m => String(m.content || "")).join(" \n ")
+    .toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  let n = 1;
+  for (const m of t.matchAll(/\b(\d|dois|duas|tres|quatro|cinco|seis)\s+(pacientes|pessoas|consultas|horarios|vagas|filhos|filhas|criancas|irmaos)/g)) {
+    n = Math.max(n, NUM_PT[m[1]] || Number(m[1]) || 1);
+  }
+  // "eu e meu filho", "para nós dois", "meus filhos", "a família toda"
+  if (/\b(eu|mim) e (para |pro |pra )?(o |a )?(meu|minha)|\b(nos|nós) dois|\bmeus filhos|\bminhas filhas|\bmeus pais/.test(t)) n = Math.max(n, 2);
+  if (/\bfamilia\b/.test(t)) n = Math.max(n, 4);
+  return Math.min(n, 6);
+}
+
 function alternativaMaisProxima(slots, iniPedido, minTs) {
   const validos = (slots || []).filter(s => s.start.getTime() >= minTs);
   if (!validos.length) return null;
@@ -3513,6 +3534,23 @@ function extrairAgendar(reply) {
 // histórico — senão, no turno seguinte, a Ana relê a conversa, vê só o "remarcado"
 // e segue achando que deu certo; e o painel não mostra nada; e (2) ACENDER o sinal
 // da equipe, porque o paciente foi informado de um horário que não existe.
+// Família no mesmo turno: dois blocos falham juntos e cada um mandava a MESMA
+// correção ("esse horário… consigo 15:20") — duas vezes, oferecendo a mesma vaga
+// para duas pessoas, sem dizer de quem era (família Moura Machado, 20/10).
+// Guarda por conversa, por 2 min, as vagas já oferecidas nesta rajada.
+const alternativasOferecidas = new Map();   // conversationId → { ts, usadas: Set<ms> }
+function vagasJaOferecidas(conversationId) {
+  const reg = alternativasOferecidas.get(String(conversationId));
+  if (!reg || Date.now() - reg.ts > 2 * 60 * 1000) return new Set();
+  return reg.usadas;
+}
+function registrarVagaOferecida(conversationId, slot) {
+  if (!slot) return;
+  const k = String(conversationId);
+  const usadas = vagasJaOferecidas(k);
+  usadas.add(slot.start.getTime());
+  alternativasOferecidas.set(k, { ts: Date.now(), usadas });
+}
 async function avisarFalhaDeAgendamento(conversationId, from, texto) {
   await trySendWhatsApp(from, texto);
   await saveMessage(conversationId, "assistant", texto)
@@ -3893,9 +3931,12 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
         } catch (e) { console.error("[Agendar] Falha ao checar se a vaga já é do paciente (segue):", e.message); }
       }
       if (!existe) {
-        const prox = alternativaMaisProxima(vagasAtuais, ini, minTs);
-        const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve para você?` : `Vou verificar outra opção e já te retorno.`;
-        await avisarFalhaDeAgendamento(conversationId, from, `Peço desculpas — preciso corrigir: esse horário não está disponível, então ele NÃO ficou reservado. ${alt}`);
+        const usadas = vagasJaOferecidas(conversationId);
+        const prox = alternativaMaisProxima((vagasAtuais || []).filter(sl => !usadas.has(sl.start.getTime())), ini, minTs);
+        registrarVagaOferecida(conversationId, prox);
+        const dele = nome ? `o horário de *${String(nome).trim().split(/\s+/)[0]}* (${fmtHoraBR(ini.toISOString())})` : "esse horário";
+        const alt = prox ? `Para ${nome ? String(nome).trim().split(/\s+/)[0] : "você"}, consigo *${prox.dia} às ${prox.hora}*. Serve?` : `Vou verificar outra opção e já te retorno.`;
+        await avisarFalhaDeAgendamento(conversationId, from, `Peço desculpas — preciso corrigir: ${dele} não está disponível, então NÃO ficou reservado. ${alt}`);
         console.warn(`[Agendar] inicio ${ini.toISOString()} (${unidade}) FORA da lista vigente — não gravei; ofereci alternativa.`);
         await registrarErro("agendar_inicio_invalido", `unidade=${unidade} inicio=${ini.toISOString()}`, { conversationId, telefone });
         return { ok: false, invalido: true };
@@ -3907,9 +3948,12 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
       // Corrida: a vaga foi ocupada durante a conversa. Oferece a próxima livre.
       const slots = await fetchSlotsDB(unidade);
       const minTs = minTsAntecedencia(exigeAntecedencia(convenio));   // mesma antecedência (particular = mesmo dia)
-      const prox = alternativaMaisProxima(slots || [], ini, minTs);
-      const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve para você?` : `Vou verificar outra opção e já te retorno.`;
-      await avisarFalhaDeAgendamento(conversationId, from, `Peço desculpas — preciso corrigir: o horário de ${fmtDataHoraBR(ini.toISOString())} acabou de ser preenchido, então ele NÃO ficou reservado. ${alt}`);
+      const usadas = vagasJaOferecidas(conversationId);
+      const prox = alternativaMaisProxima((slots || []).filter(sl => !usadas.has(sl.start.getTime())), ini, minTs);
+      registrarVagaOferecida(conversationId, prox);
+      const quem = nome ? ` de *${String(nome).trim().split(/\s+/)[0]}*` : "";
+      const alt = prox ? `Consigo *${prox.dia} às ${prox.hora}*. Esse horário serve?` : `Vou verificar outra opção e já te retorno.`;
+      await avisarFalhaDeAgendamento(conversationId, from, `Peço desculpas — preciso corrigir: o horário${quem} de ${fmtDataHoraBR(ini.toISOString())} acabou de ser preenchido, então NÃO ficou reservado. ${alt}`);
       console.log(`[Agendar] Corrida: ${unidade} ${inicioRaw} já ocupado — ofereci alternativa.`);
       return { ok: false, taken: true };
     }
@@ -7433,7 +7477,9 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     // chamada extra, nunca entregamos frase remendada.
     try {
       const etapaDeOferta = !/\[(AGENDAR|PREAGENDAMENTO)\]/i.test(reply);
-      const horas = etapaDeOferta ? horariosOferecidos(reply) : [];
+      const horasBrutas = etapaDeOferta ? horariosOferecidos(reply) : [];
+      // N pacientes pedidos = até N horários na mesma oferta (ver quantosPacientesPediu).
+      const horas = horasBrutas.length <= quantosPacientesPediu(messages) ? horasBrutas.slice(0, 1) : horasBrutas;
       const vazouInstrucao = RE_VAZOU_INSTRUCAO.test(reply);
       const contradicao = contradizHojeAmanha(reply, slotsVigentes, meusAgendamentos);
       const virouVerbete = RE_VERBETE.test(reply);
