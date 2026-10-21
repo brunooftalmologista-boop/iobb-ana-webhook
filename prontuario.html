@@ -638,6 +638,9 @@ function textoIclinic(){ const L=[];
   if(rod||roe) L.push(`Refração:\n${cap(OD)}: ${rod||"não realizada"}.\n${cap(OE)}: ${roe||"não realizada"}.`+(v("re-add")?`\nAdição: ${v("re-add")}.`:""));
   const bio=grade("bio",BIO,"Biomicroscopia"); if(bio) L.push(bio);
   if(v("pio-od")||v("pio-oe")) L.push(`Pressão intraocular (${v("pio-met")}${v("pio-hora")?", às "+v("pio-hora"):""}):\n${cap(OD)}: ${v("pio-od")?v("pio-od")+" mmHg":"não aferida"}.\n${cap(OE)}: ${v("pio-oe")?v("pio-oe")+" mmHg":"não aferida"}.`);
+  // dilatação registrada no pré-exame entra logo antes da fundoscopia (21/10/2026)
+  const preAt=atend?preDoAgendamento(atend.appointment_id):null;
+  if(preAt?.colirio?.length) L.push(preAt.colirio.includes("Não usou")?"Pupilas não dilatadas (sem colírio midriático no pré-exame).":`Dilatação pupilar no pré-exame: ${preAt.colirio.map(c=>c.toLowerCase()).join(" e ")}.`);
   const fo=grade("fo",FO,"Fundoscopia"); if(fo) L.push(fo);
   const ec=exComp(); if(ec) L.push(ec);
   const hd=bloco("Hipótese diagnóstica",hdComCid()); if(hd) L.push(hd);
@@ -1325,6 +1328,7 @@ function desenhaFaixaPre(){
   const ms=[...(pre?.motivos||[]),...(pre?.motivo_outro?[pre.motivo_outro]:[])];
   f.innerHTML=`<div><b>Pré-exame</b>${pre?.feito_por?` · feito por ${esc(pre.feito_por)}`:""}${pre?.updated_at?` às ${hhmm(pre.updated_at)}`:""}</div>`+
     `<div><span class="hint">Motivo da consulta:</span> ${ms.length?ms.map(m=>`<span class="tag">${esc(m)}</span>`).join(" "):'<span class="hint">não marcado</span>'}</div>`+
+    `<div><span class="hint">Colírio para dilatação:</span> ${pre?.colirio?.length?pre.colirio.map(m=>`<span class="tag">${esc(m)}</span>`).join(" "):'<span class="hint">não informado</span>'}</div>`+
     (pre?.observacao?`<div><span class="hint">Observação:</span> ${esc(pre.observacao)}</div>`:"")+
     (exs.length?`<div><span class="hint">Exames anexados:</span> ${exs.map(x=>esc(x.observacao||x.nome)).join(", ")} <span class="hint">(em Exames complementares)</span></div>`:"")+
     (docs.length||d.carteirinha||d.cpf?`<div><span class="hint">Documentos:</span> ${docs.length?`${docs.length} anexado(s)`:""}${d.conferido_por?` · conferidos por ${esc(d.conferido_por)}`:""}${d.operadora||d.carteirinha?` · ${esc([d.operadora,d.carteirinha].filter(Boolean).join(" "))}`:""}</div>`:"");

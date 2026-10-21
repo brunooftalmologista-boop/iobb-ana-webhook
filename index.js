@@ -10432,7 +10432,7 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
     const consultas = await consultasDoPaciente(tel, nome);
     let preexames = [];
     if (meus.length) {
-      const { data: ps } = await supabase.from("prontuario_preexame").select("appointment_id, motivos, motivo_outro, observacao, feito_por, updated_at")
+      const { data: ps } = await supabase.from("prontuario_preexame").select("appointment_id, motivos, colirio, motivo_outro, observacao, feito_por, updated_at")
         .in("appointment_id", meus.map(a => a.id));
       preexames = (ps || []).map(p => ({ ...p, inicio: meus.find(a => a.id === p.appointment_id)?.inicio || null }));
     }
@@ -11109,7 +11109,7 @@ app.get("/api/preexame/consulta/:id", requirePreExame, async (req, res) => {
     }
     res.json({
       consulta: { id: ag.id, inicio: ag.inicio, unidade: ag.unidade, paciente_nome: ag.paciente_nome, convenio: ag.convenio, motivo: ag.motivo, encaixe: ag.encaixe, idade: idadeDe(ag.observacoes)?.idade ?? null },
-      preexame: pre ? { motivos: pre.motivos || [], motivo_outro: pre.motivo_outro || "", observacao: pre.observacao || "", feito_por: pre.feito_por, updated_at: pre.updated_at } : null,
+      preexame: pre ? { motivos: pre.motivos || [], colirio: pre.colirio || [], motivo_outro: pre.motivo_outro || "", observacao: pre.observacao || "", feito_por: pre.feito_por, updated_at: pre.updated_at } : null,
       anexos,
     });
   } catch (e) {
@@ -11123,8 +11123,10 @@ app.post("/api/preexame/consulta/:id", requirePreExame, async (req, res) => {
     if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
     const b = req.body || {};
     const motivos = (Array.isArray(b.motivos) ? b.motivos : []).map(x => String(x).trim().slice(0, 80)).filter(Boolean).slice(0, 25);
+    // colírio para dilatação (21/10/2026): Tropicamida / Fenilefrina / "Não usou"
+    const colirio = (Array.isArray(b.colirio) ? b.colirio : []).map(x => String(x).trim()).filter(x => ["Tropicamida", "Fenilefrina", "Não usou"].includes(x));
     const linha = {
-      appointment_id: ag.id, paciente_chave: chavePaciente(ag.paciente_telefone, ag.paciente_nome), motivos,
+      appointment_id: ag.id, paciente_chave: chavePaciente(ag.paciente_telefone, ag.paciente_nome), motivos, colirio,
       motivo_outro: String(b.motivo_outro || "").trim().slice(0, 300) || null,
       observacao: String(b.observacao || "").trim().slice(0, 2000) || null,
       feito_por: req.porPreExame, updated_at: new Date().toISOString(),

@@ -118,6 +118,8 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
 
         <h3>Motivo da consulta</h3>
         <div id="motivos"></div>
+        <h3>Colírio para dilatação</h3>
+        <div class="chips" id="colirio"><span class="chip" role="button" tabindex="0" aria-pressed="false">Tropicamida</span><span class="chip" role="button" tabindex="0" aria-pressed="false">Fenilefrina</span><span class="chip" role="button" tabindex="0" aria-pressed="false">Não usou</span></div>
         <div class="campo"><label for="m-outro">Outro motivo</label><input id="m-outro" placeholder="Escreva se não estiver nos botões"></div>
         <div class="campo"><label for="m-obs">Observação para o Dr. Bruno</label><textarea id="m-obs" placeholder="Ex.: usa óculos há 2 anos; trouxe exames de outra clínica"></textarea></div>
         <div class="linha" style="margin-top:10px"><div class="status" id="st-motivo"></div><button type="button" class="pri" id="salvar" style="flex:0 0 auto">Salvar</button></div>
@@ -250,7 +252,8 @@ async function abrir(id){
   catch(e){ if(e.status!==401) $("#pac-vazio").textContent=e.msg||"Não consegui abrir."; }
 }
 function desenha(){
-  const c=detalhe.consulta, p=detalhe.preexame||{motivos:[],motivo_outro:"",observacao:""};
+  const c=detalhe.consulta, p=detalhe.preexame||{motivos:[],colirio:[],motivo_outro:"",observacao:""};
+  $$("#colirio .chip").forEach(ch=>ch.setAttribute("aria-pressed",(p.colirio||[]).includes(ch.textContent)?"true":"false"));
   $("#pac-vazio").hidden=true; $("#pac").hidden=false;
   $("#p-nome").textContent=c.paciente_nome||"Sem nome";
   $("#p-info").textContent=[c.idade!=null?c.idade+" anos":"",c.convenio||""].filter(Boolean).join(" · ");
@@ -266,6 +269,13 @@ function desenha(){
 }
 function st(sel,t,cls){ $(sel).textContent=t; $(sel).className="status "+(cls||""); }
 $("#motivos").addEventListener("click",e=>{ const ch=e.target.closest(".chip"); if(!ch) return; alterna(ch); });
+// colírio: Tropicamida e Fenilefrina podem ir juntos; "Não usou" exclui os dois
+function alternaColirio(ch){ const on=ch.getAttribute("aria-pressed")!=="true";
+  if(on&&ch.textContent==="Não usou") $$("#colirio .chip").forEach(x=>x.setAttribute("aria-pressed","false"));
+  if(on&&ch.textContent!=="Não usou") $$("#colirio .chip").forEach(x=>{ if(x.textContent==="Não usou") x.setAttribute("aria-pressed","false"); });
+  ch.setAttribute("aria-pressed",on?"true":"false"); mudou(); }
+$("#colirio").addEventListener("click",e=>{ const ch=e.target.closest(".chip"); if(ch) alternaColirio(ch); });
+$("#colirio").addEventListener("keydown",e=>{ const ch=e.target.closest(".chip"); if(ch&&(e.key===" "||e.key==="Enter")){ e.preventDefault(); alternaColirio(ch); } });
 $("#motivos").addEventListener("keydown",e=>{ const ch=e.target.closest(".chip"); if(ch&&(e.key===" "||e.key==="Enter")){ e.preventDefault(); alterna(ch); } });
 let tSalvar=null;
 function alterna(ch){ ch.setAttribute("aria-pressed",ch.getAttribute("aria-pressed")==="true"?"false":"true"); mudou(); }
@@ -274,7 +284,7 @@ function mudou(){ sujo=true; st("#st-motivo","Salvando…",""); clearTimeout(tSa
 $("#salvar").addEventListener("click",salvar);
 async function salvar(){
   clearTimeout(tSalvar); if(!atual) return;
-  const corpo={ motivos:$$("#motivos .chip[aria-pressed=true]").map(c=>c.textContent), motivo_outro:$("#m-outro").value.trim(), observacao:$("#m-obs").value.trim() };
+  const corpo={ motivos:$$("#motivos .chip[aria-pressed=true]").map(c=>c.textContent), colirio:$$("#colirio .chip[aria-pressed=true]").map(c=>c.textContent), motivo_outro:$("#m-outro").value.trim(), observacao:$("#m-obs").value.trim() };
   try{ const r=await api(`/api/preexame/consulta/${atual}`,{method:"POST",body:JSON.stringify(corpo)});
     sujo=false; detalhe.preexame={...corpo,feito_por:ler("iobb_agent")||"",updated_at:r.updated_at}; st("#st-motivo",`Salvo às ${hhmm(r.updated_at)}.`,"ok");
     const c=dia.find(x=>x.id===atual); if(c){ c.motivos=[...corpo.motivos,...(corpo.motivo_outro?[corpo.motivo_outro]:[])]; desenhaLista(); }
