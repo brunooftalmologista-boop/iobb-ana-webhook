@@ -111,6 +111,12 @@
   /* Agendamentos feitos pela Ana: destaque em vermelho suave */
   .ag-slot.booked.ana,.ag-wslot.booked.ana{background:#fdeaea;box-shadow:inset 3px 0 0 #e5534b}
   .ag-slot.booked.ana:hover,.ag-wslot.booked.ana:hover{background:#fbdada}
+  .ag-enctag{background:#f59e0b;color:#fff;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:6px;margin-left:4px;vertical-align:middle;letter-spacing:.3px}
+  .ag-slot.booked.enc,.ag-wslot.booked.enc{box-shadow:inset 3px 0 0 #f59e0b}
+  .ag-enc-btn{border:0;background:none;color:#6b7b8c;font-size:17px;line-height:1;padding:2px 6px;cursor:pointer;border-radius:6px;font-family:inherit}
+  .ag-enc-btn:hover{background:rgba(245,158,11,.18);color:#b45309}
+  .ag-day-enc{display:block;margin:4px auto 0;border:1px dashed #f59e0b;background:#fff;color:#b45309;font-size:11px;font-weight:600;border-radius:6px;padding:1px 8px;cursor:pointer;font-family:inherit}
+  .ag-day-h.hoje .ag-day-enc{border-color:#fff}
   .ag-anatag{background:#e5534b;color:#fff;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:6px;margin-left:2px;vertical-align:middle}
   .ag-wslot .ag-hold{font-size:10px}
   .ag-day-empty{font-size:11px;color:var(--muted);text-align:center;padding:12px 4px}
@@ -172,6 +178,7 @@
     </span>
     <button class="btn ghost" id="ag-today">Hoje</button>
     <button class="btn ghost" id="ag-reload" title="Atualizar">⟳</button>
+    <button class="btn ghost" id="ag-encaixe" title="Marcar um paciente extra (horário ocupado ou fora da grade). A Ana não vê encaixes.">＋ Encaixe</button>
     <button class="btn ghost" id="ag-bloquear" title="Fechar horários (feriado, congresso, cirurgia…)">🚫 Bloquear</button>
     <button class="btn ghost" id="ag-indicacoes" title="Pacientes com procedimento indicado que ainda não decidiram">💰 Indicações</button>
   </span>
@@ -237,8 +244,13 @@
 <!-- Marcar horário a partir de uma vaga livre da grade -->
 <div class="modal-bg" id="agbook-modal">
   <div class="pmodal">
-    <h3>Marcar horário</h3>
+    <h3 id="agbook-titulo">Marcar horário</h3>
     <p id="agbook-slot"></p>
+    <div id="agbook-enc" hidden>
+      <label>Horário do encaixe</label>
+      <input id="agbook-hora" type="time" step="300">
+      <small style="display:block;color:#6b7b8c;margin-top:4px">Paciente extra: pode ser num horário já ocupado ou fora da grade (ex.: 12:10). Não tira vaga de ninguém e a Ana não oferece.</small>
+    </div>
     <label>Nome do paciente</label>
     <input id="agbook-nome" placeholder="Nome completo" autocomplete="off">
     <label>Telefone</label>
@@ -597,7 +609,8 @@ function agRender(){
     const hold=a.status==='reservado'?'<span class="ag-hold">reservando…</span>':'';
     const via=a.origem==='ana'?' · via Ana':'';
     if(a.origem==='bloqueio') return `<div class="ag-slot booked blk" data-id="${a.id}" title="Horário bloqueado — clique para liberar"><div><b>${hora}</b> · 🚫 Bloqueado<br><small>${esc(a.motivo||'')}</small></div></div>`;
-    return `<div class="ag-slot booked${a.origem==='ana'?' ana':''}" data-id="${a.id}" title="Ver detalhes"><div><b>${hora}</b> · ${nome} ${hold}${tagPresenca(a)}<br><small>${esc(a.convenio||'')}${via}</small></div><button class="ag-cancel" data-id="${a.id}" title="Cancelar">✕</button></div>`;
+    const enc=a.encaixe?'<span class="ag-enctag">ENCAIXE</span>':'';
+    return `<div class="ag-slot booked${a.origem==='ana'?' ana':''}${a.encaixe?' enc':''}" data-id="${a.id}" title="Ver detalhes"><div><b>${hora}</b> · ${nome} ${hold}${enc}${tagPresenca(a)}<br><small>${esc(a.convenio||'')}${via}</small></div><span style="display:flex;gap:2px"><button class="ag-enc-btn" data-enc-ini="${esc(a.inicio)}" title="Encaixar outro paciente neste horário">＋</button><button class="ag-cancel" data-id="${a.id}" title="Cancelar">✕</button></span></div>`;
   }).join('');
 }
 // Selo de comparecimento na própria grade — a secretária vê num relance quem
@@ -610,6 +623,8 @@ function tagPresenca(a){
 $('#ag-body').addEventListener('click', async e=>{
   const free=e.target.closest('.ag-slot.free');
   if(free){ openAgBook(free.dataset.ini); return; }
+  const encB=e.target.closest('[data-enc-ini]');
+  if(encB){ openAgBook(encB.dataset.encIni, null, true); return; }
   const cancel=e.target.closest('.ag-cancel');
   if(cancel){
     if(!confirm('Cancelar este agendamento? O horário volta a ficar livre.')) return;
@@ -662,14 +677,17 @@ function agRenderWeek(days){
       const a=it.a, hold=a.status==='reservado'?'<span class="ag-hold">•</span>':'';
       const anaTag=a.origem==='ana'?'<span class="ag-anatag">Ana</span>':'';
       if(a.origem==='bloqueio') return `<div class="ag-wslot booked blk" data-id="${a.id}" title="Horário bloqueado — clique para liberar"><b>${hora}</b> 🚫 Bloqueado</div>`;
-      return `<div class="ag-wslot booked${a.origem==='ana'?' ana':''}" data-id="${a.id}" title="Ver detalhes"><b>${hora}</b> ${esc(a.paciente_nome||'—')} ${hold}${anaTag}${tagPresenca(a)}</div>`;
+      const encTag=a.encaixe?'<span class="ag-enctag">ENC</span>':'';
+      return `<div class="ag-wslot booked${a.origem==='ana'?' ana':''}${a.encaixe?' enc':''}" data-id="${a.id}" title="Ver detalhes"><b>${hora}</b> ${esc(a.paciente_nome||'—')} ${hold}${anaTag}${encTag}${tagPresenca(a)}</div>`;
     }).join('') : '<div class="ag-day-empty">—</div>';
-    return `<div class="ag-day"><div class="ag-day-h${ds===hojeStr?' hoje':''}">${head}<small>${esc(unidade)}</small></div>${corpo}</div>`;
+    return `<div class="ag-day"><div class="ag-day-h${ds===hojeStr?' hoje':''}">${head}<small>${esc(unidade)}</small><button class="ag-day-enc" data-enc-dia="${ds}" data-unidade="${esc(unidade)}" title="Marcar um encaixe neste dia">＋ encaixe</button></div>${corpo}</div>`;
   }).join('');
 }
 $('#ag-week').addEventListener('click', e=>{
   const free=e.target.closest('.ag-wslot.free');
   if(free){ openAgBook(free.dataset.ini, free.dataset.unidade); return; }
+  const encD=e.target.closest('[data-enc-dia]');
+  if(encD){ openAgBook(encD.dataset.encDia+'T12:00:00-03:00', encD.dataset.unidade, true, true); return; }
   const booked=e.target.closest('.ag-wslot.booked');
   if(booked){ openAgDetails(booked.dataset.id); }
 });
@@ -711,6 +729,7 @@ function openAgDetails(id){
     linha('Motivo', a.motivo)+
     linha('Observações', a.observacoes)+
     linha('Registrado por', origem)+
+    (a.encaixe?linha('Tipo','Encaixe (paciente extra)'):'')+
     (a.status==='reservado'?linha('Status','Reserva temporária (aguardando confirmação)'):'');
   renderPresenca(a);
   renderIndicacaoNoDetalhe(a);
@@ -1083,20 +1102,26 @@ async function moverPara(ini, unidade){
 }
 
 // ----- marcar horário a partir de uma vaga livre --------------------------------
-function openAgBook(ini, unidade){
+// ENCAIXE (21/10/2026): encaixe=true → paciente extra (horário ocupado ou fora da
+// grade); semHora=true → veio só o dia e a secretária digita o horário.
+let agBookEnc=false;
+function openAgBook(ini, unidade, encaixe, semHora){
   // Em modo remarcação, a vaga livre move o paciente em vez de abrir o formulário.
-  if(agMoveId) return moverPara(ini, unidade);
-  agBookIni=ini;
+  if(agMoveId && !encaixe) return moverPara(ini, unidade);
+  agBookIni=ini; agBookEnc=!!encaixe;
   if(unidade) agUnidade=unidade;   // no modo semana, a unidade vem da coluna do dia
   const d=new Date(ini);
-  $('#agbook-slot').textContent=agUnidade+' — '+d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'})+' às '+d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+  const hhmm=d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
+  $('#agbook-titulo').textContent=agBookEnc?'Encaixe':'Marcar horário';
+  $('#agbook-enc').hidden=!agBookEnc; $('#agbook-hora').value=agBookEnc&&!semHora?hhmm:'';
+  $('#agbook-slot').textContent=agUnidade+' — '+d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'})+(agBookEnc?'':' às '+hhmm);
   if(!$('#agbook-conv').options.length){
     $('#agbook-conv').innerHTML='<option value="">Selecione o convênio…</option>'+CONVENIOS.map(c=>'<option>'+c+'</option>').join('');
   }
   $('#agbook-motivo').innerHTML=MOTIVO_HTML;   // recria = zera as marcações
   $('#agbook-nome').value=''; $('#agbook-tel').value=''; $('#agbook-conv').value=''; $('#agbook-obs').value='';
   $('#agbook-error').style.display='none';
-  $('#agbook-modal').classList.add('show'); $('#agbook-nome').focus();
+  $('#agbook-modal').classList.add('show'); (agBookEnc&&semHora?$('#agbook-hora'):$('#agbook-nome')).focus();
 }
 function closeAgBook(){ $('#agbook-modal').classList.remove('show'); }
 function agBookErr(m){ const el=$('#agbook-error'); el.textContent=m; el.style.display='block'; }
@@ -1120,6 +1145,10 @@ async function agBookSave(){
     nome:$('#agbook-nome').value.trim(), telefone:$('#agbook-tel').value.trim(),
     convenio:$('#agbook-conv').value.trim(), motivo:[...$('#agbook-motivo').querySelectorAll('input:checked')].map(c=>c.value).join(', '), observacoes:$('#agbook-obs').value.trim() };
   if(!body.nome){ agBookErr('Informe o nome do paciente.'); return; }
+  if(agBookEnc){
+    const h=$('#agbook-hora').value; if(!/^\d{2}:\d{2}$/.test(h)){ agBookErr('Informe o horário do encaixe.'); return; }
+    body.inicio=new Date(agDayStr(new Date(agBookIni))+'T'+h+':00-03:00').toISOString(); body.encaixe=true;
+  }
   if(!confirmaSemTelefone(body.telefone)) return;
   $('#agbook-save').disabled = true;
   try{
@@ -1131,7 +1160,7 @@ async function agBookSave(){
       return;
     }
     closeAgBook();
-    toast(d.aviso ? '⚠️ Agendado SEM telefone — não receberá a confirmação da véspera' : 'Horário marcado ✓');
+    toast(d.aviso ? '⚠️ '+d.aviso : (agBookEnc ? 'Encaixe marcado ✓' : 'Horário marcado ✓'));
     agRefresh();
   }catch(e){ if(String(e.message)!=='401') agBookErr('Falha de conexão.'); }
   finally{ $('#agbook-save').disabled = false; }
@@ -1232,6 +1261,14 @@ $('#ag-unidade').onchange=agRefresh;
 $('#ag-prev').onclick=()=>{ agDate.setDate(agDate.getDate()-(agView==='semana'?7:1)); agRefresh(); };
 $('#ag-next').onclick=()=>{ agDate.setDate(agDate.getDate()+(agView==='semana'?7:1)); agRefresh(); };
 $('#ag-today').onclick=()=>{ agDate=new Date(); agRefresh(); };
+$('#ag-encaixe').onclick=()=>{
+  if(agView==='semana'){
+    const dw=dowBR(new Date(agDayStr(agDate)+'T12:00:00-03:00'));
+    if(dw<1||dw>5){ toast('Use o “＋ encaixe” embaixo do dia desejado.'); return; }
+    return openAgBook(agDayStr(agDate)+'T12:00:00-03:00', UNIDADE_DA_COLUNA[dw-1], true, true);
+  }
+  openAgBook(agDayStr(agDate)+'T12:00:00-03:00', null, true, true);
+};
 $('#ag-reload').onclick=agRefresh;
 // fechar modais clicando fora
 document.querySelectorAll('.modal-bg').forEach(bg => bg.addEventListener('click', ev => { if(ev.target===bg) bg.classList.remove('show'); }));
