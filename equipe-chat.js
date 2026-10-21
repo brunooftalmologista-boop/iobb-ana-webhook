@@ -56,7 +56,7 @@
   /* ---------- gaveta ---------- */
   const g = document.createElement("div");
   g.className = "ec-gaveta"; g.hidden = true; g.setAttribute("role", "dialog"); g.setAttribute("aria-label", "Chat da equipe");
-  g.innerHTML = `<div class="ec-topo"><b>Chat da equipe</b><button type="button" class="ec-x" title="Fechar" aria-label="Fechar">×</button></div>
+  g.innerHTML = `<div class="ec-topo"><b>Chat da equipe</b><span><button type="button" class="ec-x ec-som"></button><button type="button" class="ec-x" title="Fechar" aria-label="Fechar">×</button></span></div>
     <div class="ec-abas"></div><div class="ec-lista"></div><div class="ec-st"></div>
     <div class="ec-pe"><textarea placeholder="Escreva… (Enter envia, Shift+Enter quebra linha)" aria-label="Mensagem"></textarea><button type="button">Enviar</button></div>`;
   document.body.appendChild(g);
@@ -86,14 +86,26 @@
   // a aba/botão que abriu o chat fica marcada enquanto ele está aberto
   const marcaBotoes = () => botoes.forEach(b => b.classList.toggle("ec-ativo", !g.hidden));
   const fechar = () => { g.hidden = true; marcaBotoes(); };
-  g.querySelector(".ec-x").addEventListener("click", fechar);
+  g.querySelector(".ec-x:not(.ec-som)").addEventListener("click", fechar);
+  const $som = g.querySelector(".ec-som");
+  const desenhaSom = () => { $som.textContent = somLigado() ? "🔔" : "🔕"; $som.title = somLigado() ? "Som de mensagem nova ligado (clique para desligar)" : "Som desligado (clique para ligar)"; $som.style.fontSize = "17px"; };
+  $som.addEventListener("click", () => { gravar("iobb_chat_som", somLigado() ? "0" : "1"); desenhaSom(); if (somLigado()) bip(); });
+  desenhaSom();
   document.addEventListener("keydown", e => { if (e.key === "Escape" && !g.hidden) fechar(); });
 
-  /* ---------- som (respeita o 🔔 do painel) ---------- */
+  /* ---------- som (21/10/2026) ----------
+     Próprio do chat (🔔 na gaveta), independente do 🔔 dos sons da Ana no painel.
+     O navegador só libera áudio depois de um clique/tecla na página: o contexto
+     é criado/destravado no primeiro gesto e o bip só toca a partir daí. */
   let actx = null;
+  function somLigado() { return ler("iobb_chat_som") !== "0"; }   // declaração (içada): a gaveta usa antes desta linha
+  function destravar() {
+    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (_) {}
+  }
+  ["pointerdown", "keydown"].forEach(ev => document.addEventListener(ev, destravar, { capture: true, passive: true }));
   function bip() {
-    if (ler("iobb_sound_on") === "0") return;
-    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (!somLigado()) return;
+    try { destravar(); if (!actx) return;
       [0, 0.18].forEach((t, i) => { const o = actx.createOscillator(), v = actx.createGain(); o.frequency.value = i ? 1046 : 784;
         v.gain.setValueAtTime(0.0001, actx.currentTime + t); v.gain.exponentialRampToValueAtTime(0.25, actx.currentTime + t + 0.02); v.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + t + 0.16);
         o.connect(v); v.connect(actx.destination); o.start(actx.currentTime + t); o.stop(actx.currentTime + t + 0.18); });
@@ -118,7 +130,7 @@
     } catch (e) { if (e.status === 403) { botoes.forEach(b => b.style.display = "none"); clearTimeout(tPoll); emCurso = false; return; } }
     emCurso = false;
   }
-  function agendar() { clearTimeout(tPoll); tPoll = setTimeout(async () => { await buscar(); agendar(); }, document.hidden ? 30000 : (g.hidden ? 10000 : 4000)); }
+  function agendar() { clearTimeout(tPoll); tPoll = setTimeout(async () => { await buscar(); agendar(); }, document.hidden ? 15000 : (g.hidden ? 10000 : 4000)); }
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { buscar(); agendar(); } });
 
   async function enviar() {
