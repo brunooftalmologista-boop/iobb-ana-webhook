@@ -10592,6 +10592,12 @@ async function salvarAtendimento(req, res, finalizar) {
 }
 app.post("/api/prontuario/atendimento/:cid", requireMedico, (req, res) => salvarAtendimento(req, res, false));
 app.post("/api/prontuario/atendimento/:cid/finalizar", requireMedico, (req, res) => salvarAtendimento(req, res, true));
+// Diagnóstico do prontuário (ver diag() no prontuario.html): grava no error_log.
+app.post("/api/prontuario/diag", requireMedico, async (req, res) => {
+  const ev = String(req.body?.evento || "").replace(/[^\w]/g, "").slice(0, 40) || "diag";
+  await registrarErro(`prontuario_${ev}`, `${String(req.body?.detalhe || "").slice(0, 800)} | atend=${String(req.body?.atend || "-").slice(0, 40)} | ua=${String(req.headers["user-agent"] || "").slice(0, 120)}`);
+  res.json({ ok: true });
+});
 // Reabrir (21/10/2026): o Dr. Bruno finaliza e às vezes precisa voltar a editar
 // (paciente volta da dilatação, finalizou antes da hora). Só NO MESMO DIA da
 // finalização (horário de Brasília) e nunca em consulta importada; a reabertura

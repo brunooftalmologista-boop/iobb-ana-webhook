@@ -1332,18 +1332,28 @@ $("#repetir-ref").addEventListener("click",()=>{ const c=(ficha.consultas||[]).f
 // O chat da equipe abre do lado direito, por cima de tudo: aberto, ele cobria o
 // botão "Finalizar" desta gaveta e o clique caía no chat (21/10/2026 — "não
 // consigo finalizar", várias vezes no dia). Abrir a gaveta fecha o chat.
-function abrirFinalizar(){ try{ window.EquipeChat&&EquipeChat.fechar(); }catch(_){} $("#gf-st").textContent=""; $("#g-fim").hidden=false; }
+function abrirFinalizar(){ try{ window.EquipeChat&&EquipeChat.fechar(); }catch(_){} $("#gf-st").textContent=""; $("#g-fim").hidden=false;
+  setTimeout(()=>{ try{ const c=quemCobre($("#gf-ok")); if(c) diag("finalizar_coberto",c); }catch(_){} },400); }
 $("#gf-voltar").addEventListener("click",()=>{ $("#g-fim").hidden=true; });
 $("#gf-ok").addEventListener("click",async()=>{
-  const txt=textoIclinic();
-  if($("#gf-copiar").checked) copiarTxt(txt,()=>{},()=>{});
+  let txt="";
+  try{ txt=textoIclinic(); if($("#gf-copiar").checked) copiarTxt(txt,()=>{},()=>{}); }
+  catch(e){ diag("finalizar_erro_texto",(e&&e.stack||String(e)).slice(0,600)); $("#gf-st").textContent="Erro ao montar o texto: "+(e&&e.message||e)+". Avise o suporte."; $("#gf-st").className="status erro"; return; }
+  if(!atend){ diag("finalizar_sem_atendimento","atend=null com a gaveta aberta"); $("#gf-st").textContent="O atendimento não está mais aberto nesta tela. Recarregue a página (F5) e clique em “Continuar atendimento”."; $("#gf-st").className="status erro"; return; }
   try{ await api(`/api/prontuario/atendimento/${atend.id}/finalizar`,{method:"POST",body:JSON.stringify({dados:coletar(),texto:txt,duracao_seg:durAtual()})});
     try{ localStorage.removeItem(chaveLocal(atend.id)); }catch(_){}
     $("#g-fim").hidden=true; sujo=false; pararRelogio(); atend=null; consultaAtual=null; modoAtend(false);
     await abrirFicha(ficha.paciente.telefone,ficha.paciente.nome,true);
     status($("#gf-copiar").checked?"Atendimento finalizado. O texto foi copiado: cole no iClinic.":"Atendimento finalizado.","ok");
-  }catch(e){ $("#gf-st").textContent=e.status===401?MSG_SESSAO:(e.msg||"Não consegui finalizar."); $("#gf-st").className="status erro"; }
+  }catch(e){ diag("finalizar_falhou",`status ${e.status||"?"}: ${e.msg||e.message||e}`); $("#gf-st").textContent=e.status===401?MSG_SESSAO:(e.msg||"Não consegui finalizar."); $("#gf-st").className="status erro"; }
 });
+// DIAGNÓSTICO (21/10/2026): "não consigo finalizar" aconteceu várias vezes sem
+// nenhuma requisição chegar ao servidor. Anota no error_log do servidor o que
+// estava por cima do botão ou o erro de JavaScript — para não depender de print.
+function diag(evento,detalhe){ try{ fetch("/api/prontuario/diag",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+(localStorage.getItem("iobb_at")||"")},body:JSON.stringify({evento,detalhe:String(detalhe||"").slice(0,800),atend:atend?.id||null})}).catch(()=>{}); }catch(_){} }
+window.addEventListener("error",e=>diag("erro_js",`${e.message} @${e.lineno}:${e.colno}`));
+window.addEventListener("unhandledrejection",e=>diag("promessa_rejeitada",String(e.reason&&(e.reason.stack||e.reason.message)||e.reason).slice(0,600)));
+function quemCobre(el){ const r=el.getBoundingClientRect(); if(!r.width) return "invisível"; const x=r.left+r.width/2,y=r.top+r.height/2; if(x<0||y<0||x>innerWidth||y>innerHeight) return `fora da tela (${Math.round(x)},${Math.round(y)} em ${innerWidth}x${innerHeight})`; const t=document.elementFromPoint(x,y); return !t||el.contains(t)?null:(t.id?"#"+t.id:"")+"."+String(t.className||t.tagName).slice(0,60)+" ("+(t.closest("[id]")?.id||"")+")"; }
 
 /* ===== ANEXOS ===== */
 function anexosDoAtend(){ return (ficha.anexos||[]).filter(x=>atend&&(x.consulta_id===atend.id||(atend.appointment_id&&x.appointment_id===atend.appointment_id))); }
