@@ -126,7 +126,7 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
         <div class="linha" style="margin-top:10px"><div class="status" id="st-motivo"></div><button type="button" class="pri" id="salvar" style="flex:0 0 auto">Salvar</button></div>
 
         <h3>Documentos do paciente</h3>
-        <div class="info" style="font-size:13.5px;color:var(--muted)">Anexe a carteirinha (frente e verso) e o RG ou CNH. Depois clique em “Ler documentos” uma vez: a leitura preenche os campos. Também dá para preencher à mão. Confira antes de salvar.</div>
+        <div class="info" style="font-size:13.5px;color:var(--muted)">Anexe a carteirinha (frente e verso) e o RG ou CNH. Depois clique em “Ler documentos” uma vez: a leitura preenche os campos. Também dá para preencher à mão, sem documento. CPF e endereço são opcionais. Confira antes de salvar.</div>
         <div class="linha" style="margin-top:8px">
           <button type="button" class="pri" id="b-doc" style="flex:0 0 auto">Fotografar ou escolher arquivo</button>
           <button type="button" id="b-wa" style="flex:0 0 auto">Trazer do WhatsApp</button>
@@ -138,7 +138,7 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
         </div>
         <div class="docs" id="docs"></div>
         <div class="status" id="st-doc"></div>
-        <div id="dados-box" hidden>
+        <div id="dados-box">
           <div class="pend" id="doc-pend" hidden></div>
           <div class="grade">
             <div class="campo"><label for="d-nome_completo">Nome completo</label><input id="d-nome_completo"></div>
@@ -150,6 +150,13 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
             <div class="campo"><label for="d-carteirinha">Nº da carteirinha</label><input id="d-carteirinha"></div>
             <div class="campo"><label for="d-validade">Validade</label><input id="d-validade" placeholder="dd/mm/aaaa"></div>
             <div class="campo"><label for="d-cns">Cartão Nacional de Saúde</label><input id="d-cns" inputmode="numeric"></div>
+          </div>
+          <div class="info" style="font-size:13px;color:var(--muted);margin-top:12px">Endereço (opcional, não precisa para marcar). Digite o CEP que a rua, o bairro e a cidade se preenchem.</div>
+          <div class="grade">
+            <div class="campo"><label for="d-cep">CEP</label><input id="d-cep" inputmode="numeric" placeholder="00000-000"></div>
+            <div class="campo" style="grid-column:span 2"><label for="d-endereco">Endereço (rua/quadra, número, complemento)</label><input id="d-endereco" placeholder="Ex.: SQN 210 Bloco A apto 101"></div>
+            <div class="campo"><label for="d-bairro">Bairro</label><input id="d-bairro"></div>
+            <div class="campo"><label for="d-cidade">Cidade / UF</label><input id="d-cidade" placeholder="Brasília / DF"></div>
           </div>
           <div class="linha" style="margin-top:10px"><div class="status" id="st-dados"></div><button type="button" id="b-ler" style="flex:0 0 auto">Ler documentos</button><button type="button" class="pri" id="b-dados" style="flex:0 0 auto">Conferi, salvar</button></div>
         </div>
@@ -269,7 +276,7 @@ function desenha(){
   $("#m-obs").value=p.observacao||"";
   st("#st-motivo",detalhe.preexame?`Salvo às ${hhmm(detalhe.preexame.updated_at)}${detalhe.preexame.feito_por?" ("+detalhe.preexame.feito_por+")":""}.`:"Ainda não preenchido.","");
   sujo=false; desenhaArqs();
-  docs=[]; desenhaDocs(); $("#wa-box").hidden=true; $("#dados-box").hidden=true; st("#st-doc","",""); carregaDocs();
+  docs=[]; desenhaDocs(); $("#wa-box").hidden=true; st("#st-doc","",""); carregaDocs();
 }
 function st(sel,t,cls){ $(sel).textContent=t; $(sel).className="status "+(cls||""); }
 $("#motivos").addEventListener("click",e=>{ const ch=e.target.closest(".chip"); if(!ch) return; alterna(ch); });
@@ -337,12 +344,11 @@ async function enviar(fs){
 }
 
 /* ===== documentos ===== */
-const CAMPOS=["nome_completo","cpf","nascimento","rg","operadora","plano","carteirinha","validade","cns"];
+const CAMPOS=["nome_completo","cpf","nascimento","rg","operadora","plano","carteirinha","validade","cns","cep","endereco","bairro","cidade"];
 let docs=[];
 async function carregaDocs(){
   try{ const r=await api(`/api/preexame/consulta/${atual}/documentos`); docs=r.documentos||[]; desenhaDocs();
     const d=r.dados||{}; preencheDados(d);
-    $("#dados-box").hidden=!docs.length&&!d.conferido_em;
     st("#st-dados",d.conferido_em?`Conferido por ${d.conferido_por||"—"} em ${new Date(d.conferido_em).toLocaleDateString("pt-BR",{timeZone:TZ})}.`:"","ok"); $("#doc-pend").hidden=true;
   }catch(e){ if(e.status!==401) st("#st-doc",e.msg||"Não consegui abrir os documentos.","erro"); }
 }
@@ -358,6 +364,16 @@ async function lerDocs(){
   finally{ $("#b-ler").disabled=false; }
 }
 $("#b-ler").addEventListener("click",lerDocs);
+// CEP → rua, bairro e cidade (ViaCEP, serviço público gratuito; só o CEP sai daqui)
+$("#d-cep").addEventListener("input",async()=>{ const c=$("#d-cep").value.replace(/\D/g,""); if(c.length!==8) return;
+  $("#d-cep").value=c.slice(0,5)+"-"+c.slice(5);
+  try{ const r=await (await fetch(`https://viacep.com.br/ws/${c}/json/`)).json(); if(r.erro) return st("#st-dados","CEP não encontrado. Preencha o endereço à mão.","");
+    if(!$("#d-endereco").value.trim()&&r.logradouro) $("#d-endereco").value=r.logradouro+(r.complemento?" "+r.complemento:"");
+    if(!$("#d-bairro").value.trim()) $("#d-bairro").value=r.bairro||"";
+    if(!$("#d-cidade").value.trim()&&r.localidade) $("#d-cidade").value=`${r.localidade} / ${r.uf}`;
+    $("#d-endereco").focus();
+  }catch(_){ /* sem internet/ViaCEP fora: preenche à mão */ } });
+$("#d-cpf").addEventListener("blur",()=>{ const c=$("#d-cpf").value.replace(/\D/g,""); if(c.length===11) $("#d-cpf").value=c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"); });
 $("#b-dados").addEventListener("click",async()=>{
   const dados={}; for(const k of CAMPOS) dados[k]=$("#d-"+k).value.trim();
   try{ const r=await api(`/api/preexame/consulta/${atual}/dados`,{method:"POST",body:JSON.stringify({dados})});

@@ -11236,13 +11236,14 @@ app.post("/api/preexame/anexo/:aid/remover", requirePreExame, async (req, res) =
 // A IA lê os campos, a secretária CONFERE e salva — nada é gravado sem ela.
 // Os dados ficam em prontuario_pacientes.dados (CPF, nascimento, carteirinha…),
 // base do cadastro, dos laudos e, depois, do pacote de autorização.
-const CAMPOS_DOC = ["nome_completo", "cpf", "nascimento", "rg", "operadora", "plano", "carteirinha", "validade", "cns"];
+const CAMPOS_DOC = ["nome_completo", "cpf", "nascimento", "rg", "operadora", "plano", "carteirinha", "validade", "cns", "cep", "endereco", "bairro", "cidade"];
 const PROMPT_DOCS = `Leia os documentos de um paciente (carteirinha de plano de saúde, frente e/ou verso; RG; CNH; ou documento parecido) e devolva SOMENTE um JSON, sem texto antes ou depois:
-{"nome_completo":"","cpf":"000.000.000-00","nascimento":"dd/mm/aaaa","rg":"","operadora":"","plano":"","carteirinha":"","validade":"dd/mm/aaaa","cns":"","documentos":["carteirinha frente","RG"],"pendencias":[""]}
+{"nome_completo":"","cpf":"000.000.000-00","nascimento":"dd/mm/aaaa","rg":"","operadora":"","plano":"","carteirinha":"","validade":"dd/mm/aaaa","cns":"","cep":"00000-000","endereco":"","bairro":"","cidade":"Cidade / UF","documentos":["carteirinha frente","RG"],"pendencias":[""]}
 REGRAS:
 - Copie exatamente o que está escrito. Campo que não aparece ou está ilegível fica "" e você explica em "pendencias". NUNCA estime um dígito.
 - "operadora": nome da operadora (ex.: "Unimed Central Nacional", "Saúde Caixa"); "plano": o produto/acomodação escrito na carteirinha; "carteirinha": o número do beneficiário com a pontuação da carteirinha; "cns": Cartão Nacional de Saúde, se houver.
 - Se aparecerem documentos de PESSOAS DIFERENTES, use o titular do atendimento (o que aparece na carteirinha) e avise em "pendencias".
+- Endereço (cep, endereco = rua/quadra + número + complemento, bairro, cidade = "Cidade / UF") só se aparecer num documento (ex.: comprovante de residência); senão fica "" SEM pendência — é opcional.
 - Se a imagem não for documento (ex.: exame, receita), diga em "pendencias" e deixe os campos vazios.`;
 async function lerDocumentos(arquivos) {
   const blocos = [];
@@ -11393,8 +11394,10 @@ app.post("/api/preexame/consulta/:id/dados", requirePreExame, async (req, res) =
     if (dados.nascimento && !/^\d{2}\/\d{2}\/\d{4}$/.test(dados.nascimento)) return res.status(400).json({ error: "Data de nascimento no formato dd/mm/aaaa." });
     dados.conferido_por = req.porPreExame; dados.conferido_em = new Date().toISOString();
     const chave = chavePaciente(ag.paciente_telefone, ag.paciente_nome);
+    // MESCLA com o que já existe (iclinic_id, sexo, origem… vêm da importação e não estão no formulário)
+    const { data: ant } = await supabase.from("prontuario_pacientes").select("dados").eq("chave", chave).maybeSingle();
     const { error } = await supabase.from("prontuario_pacientes").upsert(
-      { chave, nome: ag.paciente_nome, telefone: ag.paciente_telefone, dados, updated_at: dados.conferido_em }, { onConflict: "chave" });
+      { chave, nome: ag.paciente_nome, telefone: ag.paciente_telefone, dados: { ...(ant?.dados || {}), ...dados }, updated_at: dados.conferido_em }, { onConflict: "chave" });
     if (error) throw error;
     if (dados.nascimento && !idadeDe(ag.observacoes)) {
       const obs = [String(ag.observacoes || "").trim(), `Nascimento: ${dados.nascimento}`].filter(Boolean).join("\n");
