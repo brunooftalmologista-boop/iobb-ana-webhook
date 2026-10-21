@@ -115,6 +115,7 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
         <button type="button" class="link" id="voltar" style="padding-left:0">← Lista</button>
         <div class="cab"><span class="nome" id="p-nome"></span><span class="info" id="p-info"></span></div>
         <div class="info" id="p-ag" style="color:var(--muted);font-size:14px"></div>
+        <div id="p-hist" style="margin-top:6px;font-size:14px;background:var(--pri-soft);border-radius:8px;padding:8px 12px"></div>
 
         <h3>Motivo da consulta</h3>
         <div id="motivos"></div>
@@ -183,7 +184,7 @@ const hojeBR=()=>new Date().toLocaleDateString("en-CA",{timeZone:TZ});
 // Botões do motivo. Os da "Visão" e "Desconforto" usam os mesmos nomes da
 // queixa principal do prontuário, para já virem marcados lá.
 const MOTIVOS=[
-  ["Visão",["Revisão de rotina","Baixa visual para longe","Baixa visual para perto","Baixa visual para longe e perto","Óculos fracos","Visão embaçada","Visão dupla","Moscas volantes ou flashes"]],
+  ["Visão",["Revisão de rotina","Baixa visual para longe","Baixa visual para perto","Baixa visual para longe e perto","Óculos fracos","Má adaptação aos óculos","Visão embaçada","Visão dupla","Moscas volantes ou flashes"]],
   ["Desconforto",["Dor de cabeça","Olho vermelho","Irritação","Coceira","Lacrimejamento","Olho seco","Dor no olho","Cisco ou trauma no olho"]],
   ["Lente de contato",["Adaptação de lente de contato","Teste de lente de contato","Desconforto com a lente","Renovar a lente"]],
   ["Acompanhamento",["Ceratocone","Avaliação para cirurgia refrativa","Catarata","Glaucoma / pressão do olho","Diabetes (fundo de olho)","Pós-operatório","Retorno para mostrar exames"]],
@@ -240,6 +241,7 @@ function desenhaLista(){
   if(!dia.length){ $("#lista").innerHTML='<div class="vazio">Nenhum paciente agendado neste dia.</div>'; return; }
   $("#lista").innerHTML=dia.map(c=>`<button type="button" class="item${atual===c.id?" ativo":""}" data-id="${esc(c.id)}"><span class="h">${hhmm(c.inicio)}</span><span>${esc(c.paciente_nome||"Sem nome")}
     <small>${[c.idade!=null?c.idade+" anos":"",c.convenio||"",c.encaixe?"encaixe":""].filter(Boolean).map(esc).join(" · ")}</small>
+    ${c.historico?.total?`<span class="tag">já é paciente · última ${new Date(c.historico.ultimas[0].data).toLocaleDateString("pt-BR",{timeZone:TZ})}</span>`:'<span class="tag ok">primeira vez</span>'}
     ${c.motivos.length?'<span class="tag ok">motivo ✓</span>':'<span class="tag">sem motivo</span>'}${c.exames?`<span class="tag ok">${c.exames} exame${c.exames>1?"s":""}</span>`:""}</span></button>`).join("");
   $$("#lista .item").forEach(b=>b.addEventListener("click",()=>abrir(b.dataset.id)));
 }
@@ -258,6 +260,8 @@ function desenha(){
   $("#p-nome").textContent=c.paciente_nome||"Sem nome";
   $("#p-info").textContent=[c.idade!=null?c.idade+" anos":"",c.convenio||""].filter(Boolean).join(" · ");
   $("#p-ag").textContent=`${hhmm(c.inicio)} · ${c.unidade||""}${c.motivo?" · agendado como: "+c.motivo:""}`;
+  const h=c.historico||{total:0,ultimas:[]}, dt=iso=>new Date(iso).toLocaleDateString("pt-BR",{timeZone:TZ});
+  $("#p-hist").innerHTML=h.total?`<b>Já é paciente</b> desde ${dt(h.primeira)} · ${h.total} consulta${h.total>1?"s":""} anteriores<br>Últimas: ${h.ultimas.map(u=>`${dt(u.data)}${u.onde?" ("+esc(u.onde)+")":""}`).join(" · ")}`:"<b>Primeira consulta na clínica</b> (nenhuma consulta anterior encontrada)";
   $$("#motivos .chip").forEach(ch=>ch.setAttribute("aria-pressed",p.motivos.includes(ch.textContent)?"true":"false"));
   // motivo gravado que não é botão (lista mudou) volta para "Outro"
   const fora=p.motivos.filter(m=>!$$("#motivos .chip").some(ch=>ch.textContent===m));

@@ -11063,6 +11063,37 @@ async function agendamentoPreExame(id) {
   if (Math.abs(new Date(data.inicio).getTime() - Date.now()) > PRE_JANELA_DIAS * 864e5) return null;
   return data;
 }
+// JÁ É PACIENTE? (Dr. Bruno, 21/10/2026): datas das consultas anteriores — do
+// prontuário (inclui o histórico importado do iClinic, com a unidade) e da
+// agenda (compareceu, antes do dia). Só datas e local, nada clínico. Mesma
+// regra de paciente do resto do sistema: telefone (8 últimos) + primeiro nome.
+async function historicoPacientes(ags, antesDe) {
+  try { return await historicoPacientesBruto(ags, antesDe); }
+  catch (e) { console.error("[Pré-exame] histórico falhou:", e.message); return new Map(); }   // nunca derruba a lista do pré-exame
+}
+async function historicoPacientesBruto(ags, antesDe) {
+  const out = new Map(); if (!ags.length) return out;
+  const f8s = [...new Set(ags.map((a) => ult8(a.paciente_telefone)).filter(Boolean))];
+  if (!f8s.length) return out;
+  const ors = f8s.map((f) => `paciente_telefone.like.*${f}`).join(",");
+  const [{ data: cs, error: e1 }, { data: aps, error: e2 }] = await Promise.all([
+    supabase.from("prontuario_consultas").select("paciente_nome, paciente_telefone, data_consulta, dados->>iclinic_origem, finalizado_em").or(ors).lt("data_consulta", antesDe.toISOString()).limit(5000),
+    supabase.from("appointments").select("paciente_nome, paciente_telefone, inicio, unidade, compareceu, status").or(ors).lt("inicio", antesDe.toISOString()).neq("status", "cancelado").neq("origem", "bloqueio").limit(5000),
+  ]);
+  if (e1 || e2) throw (e1 || e2);
+  for (const a of ags) {
+    const f8 = ult8(a.paciente_telefone), pn = primNome(a.paciente_nome);
+    const dias = new Map();   // dd/mm/aaaa → local
+    for (const c of cs || []) if (ult8(c.paciente_telefone) === f8 && primNome(c.paciente_nome) === pn && c.finalizado_em) {
+      const d = new Date(c.data_consulta); dias.set(d.toISOString().slice(0, 10), { t: d.getTime(), onde: c.iclinic_origem || "prontuário" }); }
+    for (const p of aps || []) if (ult8(p.paciente_telefone) === f8 && primNome(p.paciente_nome) === pn && p.compareceu !== false) {
+      const d = new Date(p.inicio), k = d.toISOString().slice(0, 10); if (!dias.has(k)) dias.set(k, { t: d.getTime(), onde: p.unidade || "" }); }
+    const lista = [...dias.values()].sort((x, y) => y.t - x.t);
+    out.set(a.id, { total: lista.length, primeira: lista.length ? new Date(lista[lista.length - 1].t).toISOString() : null,
+      ultimas: lista.slice(0, 5).map((x) => ({ data: new Date(x.t).toISOString(), onde: x.onde })) });
+  }
+  return out;
+}
 app.get("/api/preexame/dia", requirePreExame, async (req, res) => {
   try {
     const hoje = new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR });
@@ -11083,10 +11114,11 @@ app.get("/api/preexame/dia", requirePreExame, async (req, res) => {
       ({ data: axs } = await supabase.from("prontuario_anexos").select("appointment_id").in("appointment_id", ids));
     }
     const mp = new Map((pres || []).map(p => [p.appointment_id, p]));
+    const hist = await historicoPacientes(ags || [], d0);
     res.json({ data: ymd, consultas: (ags || []).map(a => {
       const p = mp.get(a.id);
       return { id: a.id, inicio: a.inicio, unidade: a.unidade, paciente_nome: a.paciente_nome, convenio: a.convenio, motivo: a.motivo, encaixe: a.encaixe,
-        idade: idadeDe(a.observacoes)?.idade ?? null,
+        idade: idadeDe(a.observacoes)?.idade ?? null, historico: hist.get(a.id) || { total: 0, ultimas: [] },
         motivos: p ? [...(p.motivos || []), ...(p.motivo_outro ? [p.motivo_outro] : [])] : [],
         exames: (axs || []).filter(x => x.appointment_id === a.id).length };
     }) });
@@ -11107,8 +11139,10 @@ app.get("/api/preexame/consulta/:id", requirePreExame, async (req, res) => {
       const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(a.path, 1800);
       anexos.push({ id: a.id, nome: a.nome, mime: a.mime, observacao: a.observacao, enviado_por: a.enviado_por, created_at: a.created_at, url: s?.signedUrl || null, tem_laudo: !!a.laudo_em });
     }
+    const d0 = new Date(`${new Date(ag.inicio).toLocaleDateString("en-CA", { timeZone: TZ_BR })}T00:00:00-03:00`);
+    const historico = (await historicoPacientes([ag], d0)).get(ag.id) || { total: 0, ultimas: [] };
     res.json({
-      consulta: { id: ag.id, inicio: ag.inicio, unidade: ag.unidade, paciente_nome: ag.paciente_nome, convenio: ag.convenio, motivo: ag.motivo, encaixe: ag.encaixe, idade: idadeDe(ag.observacoes)?.idade ?? null },
+      consulta: { id: ag.id, inicio: ag.inicio, unidade: ag.unidade, paciente_nome: ag.paciente_nome, convenio: ag.convenio, motivo: ag.motivo, encaixe: ag.encaixe, idade: idadeDe(ag.observacoes)?.idade ?? null, historico },
       preexame: pre ? { motivos: pre.motivos || [], colirio: pre.colirio || [], motivo_outro: pre.motivo_outro || "", observacao: pre.observacao || "", feito_por: pre.feito_por, updated_at: pre.updated_at } : null,
       anexos,
     });
