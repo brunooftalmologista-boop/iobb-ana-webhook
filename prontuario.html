@@ -1122,7 +1122,9 @@ async function abrirFicha(tel,nome,manterAtend){
     ficha=r; mostra("ficha"); desenhaFicha();
     if(!manterAtend){ const aberta=(r.consultas||[]).find(c=>!c.finalizado_em&&(!r.hoje||c.appointment_id===r.hoje.id||!c.appointment_id));
       pararRelogio(); atend=null; modoAtend(false);
-      if(aberta) $("#btn-atend").textContent="▶ Continuar atendimento"; }
+      const fimHoje=!aberta&&r.hoje&&(r.consultas||[]).find(c=>c.appointment_id===r.hoje.id&&c.finalizado_em&&!c.dados?.importado&&diaBR(c.finalizado_em)===diaBR(Date.now()));
+      if(aberta) $("#btn-atend").textContent="▶ Continuar atendimento";
+      else if(fimHoje) $("#btn-atend").textContent="↺ Reabrir atendimento"; }
   }catch(e){ if(e.status===401) return status(MSG_SESSAO,"erro"); $("#lat-lista").textContent=e.msg||"Não consegui abrir a ficha."; }
 }
 function desenhaFicha(){
@@ -1277,7 +1279,16 @@ async function iniciar(consultaId){
   try{
     let c=consultaId?(ficha.consultas||[]).find(x=>x.id===consultaId):null;
     if(!c){ const r=await api("/api/prontuario/atendimento/iniciar",{method:"POST",body:JSON.stringify({tel:ficha.paciente.telefone,nome:ficha.paciente.nome,appointment_id:ficha.hoje?.id||null})}); c=r.consulta; }
-    if(c.finalizado_em){ status("Esta consulta já foi finalizada. Na linha do tempo: “↺ Reabrir para editar” (só hoje) ou “Inserir informações”.","erro"); return; }
+    if(c.finalizado_em){
+      // finalizada HOJE: o próprio botão de cima reabre (1º clique pede confirmação, 2º reabre)
+      if(!c.dados?.importado&&diaBR(c.finalizado_em)===diaBR(Date.now())){ const b=$("#btn-atend");
+        if(b.dataset.conf!==c.id){ b.dataset.conf=c.id; b.textContent="Confirmar reabertura?"; status(`Atendimento finalizado às ${hhmm(c.finalizado_em)}. Clique de novo para reabrir e editar (fica registrado).`,"ok");
+          setTimeout(()=>{ if(b.dataset.conf===c.id&&!atend){ delete b.dataset.conf; b.textContent="↺ Reabrir atendimento"; } },6000); return; }
+        delete b.dataset.conf;
+        const r=await api(`/api/prontuario/atendimento/${c.id}/reabrir`,{method:"POST",body:"{}"});
+        const i=(ficha.consultas||[]).findIndex(x=>x.id===c.id); c=r.consulta||{...c,finalizado_em:null}; if(i>=0) ficha.consultas[i]=c; else (ficha.consultas=ficha.consultas||[]).unshift(c);
+      } else { status("Esta consulta já foi finalizada. Use “Inserir informações” na linha do tempo.","erro"); return; }
+    }
     atend=c; consultaAtual={inicio:c.data_consulta,paciente_nome:ficha.paciente.nome};
     let dados=c.dados&&Object.keys(c.dados).length?c.dados:null;
     try{ const loc=JSON.parse(localStorage.getItem(chaveLocal(c.id))||"null"); if(loc&&(!c.updated_at||loc.ts>new Date(c.updated_at).getTime())) dados=loc.dados; }catch(_){}
