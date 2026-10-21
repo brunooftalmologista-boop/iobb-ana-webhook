@@ -6191,9 +6191,9 @@ app.post("/webhook", async (req, res) => {
         // "#REENGAJAR 50" → dispara o lote.
         // "#REENGAJAR 50" → campanha geral. "#REENGAJAR 15 LENTES" (ou LENTES_B)
         // → campanha paralela, com o template dela (ver CAMPANHAS_PARALELAS).
-        const quantos = arg.match(/^(\d{1,3})(?:\s+(LENTES_B|LENTES))?$/);
+        const quantos = arg.match(/^(\d{1,3})(?:\s+(LENTES_B|LENTES|REVISAO|REVISÃO))?$/);
         if (quantos) {
-          const paralela = quantos[2] ? CAMPANHAS_PARALELAS[quantos[2]] : null;
+          const paralela = quantos[2] ? CAMPANHAS_PARALELAS[quantos[2].replace("Ã", "A")] : null;
           const campanhaAlvo = paralela ? paralela.campanha : REENGAJAR_CAMPANHA;
           const templateAlvo = paralela ? paralela.template : TEMPLATE_REENGAJAR_NOME;
           let st = null, erroSt = null;
@@ -11912,6 +11912,10 @@ const TEMPLATE_REENGAJAR_NOME = (readEnv("WA_REENGAJAMENTO_TEMPLATE_NAME") || "r
 const CAMPANHAS_PARALELAS = {
   LENTES:   { campanha: "lentes_rigidas_2026",   template: "reavaliacao_lente_rigida", rotulo: "lentes rígidas" },
   LENTES_B: { campanha: "lentes_rigidas_2026_b", template: "reativacao_historico",     rotulo: "lentes rígidas (número antigo)" },
+  // REVISÃO ANUAL (21/10/2026): quem consultou em outubro/2025 e não entrou em
+  // nenhuma lista. Volta o template "Faz um ano…" (aprovado, usado na
+  // revisao_anual_2025: 6,4% de agendamento) — aqui ele é VERDADE. "#REENGAJAR 50 REVISAO".
+  REVISAO:  { campanha: "revisao_anual_2025_10", template: "reengajamento_revisao_anual", rotulo: "revisão anual (outubro/2025)" },
 };
 const CAMPANHAS_DE_LENTE = new Set(["lentes_rigidas_2026", "lentes_rigidas_2026_b"]);
 function campanhasAtivas() {
@@ -12146,10 +12150,17 @@ async function resumoReengajamento() {
 
 async function dispararLoteReengajamento(quantos, campanha = REENGAJAR_CAMPANHA, template = TEMPLATE_REENGAJAR_NOME) {
   const n = Math.max(1, Math.min(Number(quantos) || 0, REENGAJAR_LOTE_MAX));
-  const { data: fila, error } = await supabase.from("reengajamento")
+  // Revisão anual ("Faz um ano…"): só quem JÁ completou o ano e na ordem dos
+  // aniversários (mais antigo primeiro). As demais: mais recente primeiro.
+  const anual = /^revisao_anual/.test(campanha);
+  let q = supabase.from("reengajamento")
     .select("fone_chave, telefone, nome, primeiro_nome, mes_referencia")
-    .eq("campanha", campanha).eq("status", "pendente")
-    .order("ultima_consulta", { ascending: false }).limit(n);
+    .eq("campanha", campanha).eq("status", "pendente");
+  if (anual) {
+    const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+    q = q.lte("ultima_consulta", `${Number(hoje.slice(0, 4)) - 1}${hoje.slice(4).replace("-02-29", "-02-28")}`);
+  }
+  const { data: fila, error } = await q.order("ultima_consulta", { ascending: anual }).limit(n);
   if (error) throw new Error(`fila: ${error.message}`);
 
   const r = { pedidos: n, tentados: (fila || []).length, enviados: 0, descadastrados: 0, jaAgendados: 0, falhas: 0, erros: [] };
