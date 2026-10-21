@@ -10318,6 +10318,15 @@ async function garantirBucketProntuario() {
   }
   bucketProntuarioOk = true;
 }
+// Cadastros JUNTADOS (🔗): a ficha de qualquer um deles mostra o grupo todo —
+// o principal (juntado_para) e os que foram juntados nele (juntados).
+async function chavesDoGrupo(chave, pac) {
+  const principal = pac?.dados?.juntado_para || chave;
+  let pp = pac;
+  if (principal !== chave) ({ data: pp } = await supabase.from("prontuario_pacientes").select("chave, dados").eq("chave", principal).maybeSingle());
+  const grupo = new Set([chave, principal, ...(Array.isArray(pp?.dados?.juntados) ? pp.dados.juntados : []), ...(Array.isArray(pac?.dados?.juntados) ? pac.dados.juntados : [])]);
+  return { principal, principalDados: pp?.dados || {}, chaves: [...grupo] };
+}
 async function consultasDoPaciente(tel, nome) {
   const f8 = ult8(tel), pn = primNome(nome);
   if (!f8) return [];
@@ -10407,15 +10416,21 @@ app.post("/api/prontuario/juntar", requireMedico, async (req, res) => {
     }
     await supabase.from("prontuario_anexos").update({ paciente_chave: para }).eq("paciente_chave", de_chave);
     await supabase.from("prontuario_preexame").update({ paciente_chave: para }).eq("paciente_chave", de_chave);
+    // VÍNCULO PERMANENTE (21/10/2026): antes só se MOVIA o que existia — o
+    // cadastro da agenda (telefone novo) ainda sem consulta ficava sem marca, e a
+    // consulta iniciada depois pela agenda nascia de novo separada do histórico
+    // do iClinic (caso Ana Paula). Agora os dois lados ficam marcados e a ficha
+    // de qualquer um deles mostra tudo (ver chavesDoGrupo).
     const { data: ori } = await supabase.from("prontuario_pacientes").select("*").eq("chave", de_chave).maybeSingle();
-    if (ori) {
-      const { data: dst } = await supabase.from("prontuario_pacientes").select("*").eq("chave", para).maybeSingle();
-      const dados = { ...(dst?.dados || {}) }, ante = { ...(dst?.antecedentes || {}) };
-      for (const [k, v] of Object.entries(ori.dados || {})) if (v && !dados[k] && !/^juntado/.test(k)) dados[k] = v;
-      for (const [k, v] of Object.entries(ori.antecedentes || {})) if (v && !ante[k]) ante[k] = v;
-      await supabase.from("prontuario_pacientes").upsert({ chave: para, nome: dst?.nome || para_nome, telefone: dst?.telefone || para_tel, dados, antecedentes: ante, updated_at: agora }, { onConflict: "chave" });
-      await supabase.from("prontuario_pacientes").update({ dados: { ...(ori.dados || {}), juntado_para: para, juntado_em: agora } }).eq("chave", de_chave);
-    }
+    const { data: dst } = await supabase.from("prontuario_pacientes").select("*").eq("chave", para).maybeSingle();
+    const dados = { ...(dst?.dados || {}) }, ante = { ...(dst?.antecedentes || {}) };
+    for (const [k, v] of Object.entries(ori?.dados || {})) if (v && !dados[k] && !/^juntado/.test(k)) dados[k] = v;
+    for (const [k, v] of Object.entries(ori?.antecedentes || {})) if (v && !ante[k]) ante[k] = v;
+    dados.juntados = [...new Set([...(Array.isArray(dados.juntados) ? dados.juntados : []), de_chave, ...(Array.isArray(ori?.dados?.juntados) ? ori.dados.juntados : [])])].filter(k => k !== para);
+    await supabase.from("prontuario_pacientes").upsert({ chave: para, nome: dst?.nome || para_nome, telefone: dst?.telefone || para_tel, dados, antecedentes: ante, updated_at: agora }, { onConflict: "chave" });
+    const deNome = String(req.body?.de_nome || ori?.nome || delas[0]?.paciente_nome || m[2]), deTel = String(req.body?.de_tel || ori?.telefone || delas[0]?.paciente_telefone || m[1]);
+    await supabase.from("prontuario_pacientes").upsert({ chave: de_chave, nome: deNome, telefone: deTel,
+      dados: { ...(ori?.dados || {}), juntado_para: para, juntado_em: agora }, antecedentes: ori?.antecedentes || {}, updated_at: agora }, { onConflict: "chave" });
     console.log(`[Prontuário] Cadastros juntados: ${de_chave} → ${para} (${delas.length} consultas).`);
     res.json({ ok: true, consultas: delas.length });
   } catch (e) {
@@ -10443,14 +10458,23 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
     let idade = null;
     for (const a of [...meus].reverse()) { idade = idadeDe(a.observacoes); if (idade) break; }
     const { data: pac } = await supabase.from("prontuario_pacientes").select("*").eq("chave", chave).maybeSingle();
-    const consultas = await consultasDoPaciente(tel, nome);
+    const grupo = await chavesDoGrupo(chave, pac);
+    let consultas = await consultasDoPaciente(tel, nome);
+    // cabeçalho: o que falta neste cadastro vem do principal (ex.: CPF/nascimento do iClinic)
+    const docsGrupo = { ...(pac?.dados || {}) };
+    for (const [k, v] of Object.entries(grupo.principalDados)) if (v && !docsGrupo[k] && !/^juntad/.test(k)) docsGrupo[k] = v;
+    if (grupo.chaves.length > 1) {
+      const { data: outras } = await supabase.from("prontuario_consultas").select("*").in("paciente_chave", grupo.chaves).order("data_consulta", { ascending: false }).limit(300);
+      const vistos = new Set(consultas.map(c => c.id));
+      consultas = [...consultas, ...(outras || []).filter(c => !vistos.has(c.id))].sort((a, b) => String(b.data_consulta).localeCompare(String(a.data_consulta)));
+    }
     let preexames = [];
     if (meus.length) {
       const { data: ps } = await supabase.from("prontuario_preexame").select("appointment_id, motivos, colirio, motivo_outro, observacao, feito_por, updated_at")
         .in("appointment_id", meus.map(a => a.id));
       preexames = (ps || []).map(p => ({ ...p, inicio: meus.find(a => a.id === p.appointment_id)?.inicio || null }));
     }
-    const { data: anexosRaw } = await supabase.from("prontuario_anexos").select("*").eq("paciente_chave", chave).order("created_at", { ascending: false }).limit(200);
+    const { data: anexosRaw } = await supabase.from("prontuario_anexos").select("*").in("paciente_chave", grupo.chaves).order("created_at", { ascending: false }).limit(200);
     const anexos = [];
     for (const a of anexosRaw || []) {
       const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(a.path, 3600);
@@ -10477,7 +10501,7 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
         chave, nome: (ultimoAg && ultimoAg.paciente_nome) || pac?.nome || nome, telefone: tel,
         convenio: ultimoAg?.convenio || pac?.dados?.operadora || null,
         primeira_consulta: [meus[0]?.inicio, consultas.length ? consultas[consultas.length - 1].data_consulta : null].filter(Boolean).sort()[0] || null,
-        ...(idade || idadeDe(pac?.dados?.nascimento ? `Nascimento: ${pac.dados.nascimento}` : "") || {}), documentos: pac?.dados || {},
+        ...(idade || idadeDe(docsGrupo.nascimento ? `Nascimento: ${docsGrupo.nascimento}` : "") || {}), documentos: docsGrupo,
       },
       antecedentes: pac?.antecedentes || {}, hoje, consultas, anexos, conversa, preexames,
     });
