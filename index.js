@@ -11915,7 +11915,9 @@ const CAMPANHAS_PARALELAS = {
   // REVISÃO ANUAL (21/10/2026): quem consultou em outubro/2025 e não entrou em
   // nenhuma lista. Volta o template "Faz um ano…" (aprovado, usado na
   // revisao_anual_2025: 6,4% de agendamento) — aqui ele é VERDADE. "#REENGAJAR 50 REVISAO".
-  REVISAO:  { campanha: "revisao_anual_2025_10", template: "reengajamento_revisao_anual", rotulo: "revisão anual (outubro/2025)" },
+  // Fila CONTÍNUA: todo dia 1º o abastecimento automático põe nela quem teve a
+  // última consulta naquele mês do ano anterior (ver startAbastecimentoRevisaoAnual).
+  REVISAO:  { campanha: "revisao_anual", template: "reengajamento_revisao_anual", rotulo: "revisão anual" },
 };
 const CAMPANHAS_DE_LENTE = new Set(["lentes_rigidas_2026", "lentes_rigidas_2026_b"]);
 function campanhasAtivas() {
@@ -12148,6 +12150,39 @@ async function resumoReengajamento() {
   return { total: (data || []).length, por, voltaram, enviados: enviados.length };
 }
 
+// ===== ABASTECIMENTO AUTOMÁTICO DA REVISÃO ANUAL (Dr. Bruno, 21/10/2026) =====
+// Todo dia 1º, a partir das 9h: põe na fila `revisao_anual` quem teve a ÚLTIMA
+// consulta naquele mês do ano anterior e não voltou (função SQL
+// abastecer_revisao_anual — mesmos filtros da carga manual de outubro: celular
+// válido, sem optout, nunca retirado/descadastrado, fora de outra fila, sem
+// campanha há < 6 meses). NÃO ENVIA NADA: o envio continua só pelo comando
+// "#REENGAJAR N REVISAO". Avisa o Dr. Bruno por WhatsApp quanto entrou.
+// Idempotente por settings.revisao_anual_abastecido = "AAAA-MM" (reinício do
+// Render não duplica). EGRESS: fora do dia 1º a checagem nem toca o banco.
+function startAbastecimentoRevisaoAnual() {
+  const check = async () => {
+    try {
+      const br = new Date(new Date().toLocaleString("en-US", { timeZone: TZ_BR }));
+      if (br.getDate() !== 1 || br.getHours() < 9) return;
+      const mes = `${br.getFullYear()}-${String(br.getMonth() + 1).padStart(2, "0")}`;
+      const { data: st } = await supabase.from("settings").select("value").eq("key", "revisao_anual_abastecido").maybeSingle();
+      if (st?.value === mes) return;
+      const inicio = `${br.getFullYear() - 1}-${String(br.getMonth() + 1).padStart(2, "0")}-01`;
+      const { data, error } = await supabase.rpc("abastecer_revisao_anual", { p_inicio: inicio });
+      if (error) throw error;
+      const r = (Array.isArray(data) ? data[0] : data) || { inseridos: 0, conjunto: 0, taguatinga: 0 };
+      await supabase.from("settings").upsert({ key: "revisao_anual_abastecido", value: mes });
+      const { count: fila } = await supabase.from("reengajamento").select("fone_chave", { count: "exact", head: true }).eq("campanha", "revisao_anual").eq("status", "pendente");
+      const nomeMes = new Date(`${inicio}T12:00:00-03:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: TZ_BR });
+      const texto = `🗓️ *Revisão anual — lista abastecida*\n\nEntraram *${r.inseridos}* paciente(s) que consultaram em *${nomeMes}* e não voltaram (${r.conjunto} Conjunto Nacional · ${r.taguatinga} Taguatinga).\n📋 Na fila da revisão anual: *${fila ?? "?"}*\n\nNada foi enviado. Eles ficam liberados conforme completam 1 ano; para enviar: *#REENGAJAR 50 REVISAO*.`;
+      console.log(`[RevisãoAnual] Abastecido ${mes}: ${r.inseridos} (fila ${fila}).`);
+      const env = await trySendWhatsApp(AUDITORIA_DESTINO, texto);
+      if (!env?.ok) registrarErro("revisao_anual_aviso", `Abastecido ${mes}: ${r.inseridos} paciente(s), mas o aviso por WhatsApp não saiu (janela de 24h?).`).catch(() => {});
+    } catch (e) { console.error("[RevisãoAnual] abastecimento falhou:", e.message); }
+  };
+  setInterval(check, 30 * 60 * 1000);
+  check();
+}
 async function dispararLoteReengajamento(quantos, campanha = REENGAJAR_CAMPANHA, template = TEMPLATE_REENGAJAR_NOME) {
   const n = Math.max(1, Math.min(Number(quantos) || 0, REENGAJAR_LOTE_MAX));
   // Revisão anual ("Faz um ano…"): só quem JÁ completou o ano e na ordem dos
@@ -13713,6 +13748,7 @@ function startSemRespostaScheduler() {
 }
 
 startResumoDiarioScheduler();
+startAbastecimentoRevisaoAnual();
 startSemRespostaScheduler();   // nenhuma mensagem de paciente morre em silêncio
 startCobrancaRecadosScheduler();
 startSyncIClinic();   // reflete o iClinic (Google Calendars) na agenda do painel
