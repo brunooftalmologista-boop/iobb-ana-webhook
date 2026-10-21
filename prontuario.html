@@ -1212,13 +1212,14 @@ function desenhaTimeline(){
       <div class="bloco-t"><div class="cab"><span>Por: <b>Dr. Bruno Borges</b>${c.dados?.importado?` <span class="tag">importado do iClinic${c.dados.iclinic_origem?" · "+esc(c.dados.iclinic_origem):""}</span>`:""}${fim?"":' <span class="tag and">em andamento</span>'}</span><span class="h">⏱ ${hhmm(c.data_consulta)}${c.duracao_seg?` (${durTexto(c.duracao_seg)})`:""}</span></div>
       ${secs.map(s=>`<div class="secao-t">${s.rot?`<h4>${esc(s.rot)}</h4>`:""}<pre>${esc(s.corpo)}</pre></div>`).join("")||(fim?"":'<div class="secao-t"><pre class="hint">Atendimento ainda sem conteúdo.</pre></div>')}
       ${mostraAnexos&&anexos.length?`<div class="secao-t"><h4>Imagens e anexos</h4><div class="anexos-t">${anexos.map(arq).join("")}</div></div>`:""}
-      ${(c.adendos||[]).map(a=>`<div class="adendo"><small>Informações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`).join("")}
-      <div class="rodape-t">${fim?`<button type="button" data-copiar="${c.id}">Copiar texto</button><button type="button" data-adendo="${c.id}">+ Inserir informações</button><button type="button" data-anexar-ex="${c.id}">+ Anexar exame</button>`:`<button type="button" class="pri" data-continuar="${c.id}">Continuar atendimento</button>`}</div>
+      ${(c.adendos||[]).map(a=>a.tipo==="reabertura"?`<div class="adendo"><small>${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`:`<div class="adendo"><small>Informações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`).join("")}
+      <div class="rodape-t">${fim?`<button type="button" data-copiar="${c.id}">Copiar texto</button><button type="button" data-adendo="${c.id}">+ Inserir informações</button><button type="button" data-anexar-ex="${c.id}">+ Anexar exame</button>${!c.dados?.importado&&diaBR(c.finalizado_em)===diaBR(Date.now())?`<button type="button" data-reabrir="${c.id}" title="Só no dia em que foi finalizado; a reabertura fica registrada">↺ Reabrir para editar</button>`:""}`:`<button type="button" class="pri" data-continuar="${c.id}">Continuar atendimento</button>`}</div>
       ${fim?`<div class="row anx-linha" data-anx="${c.id}" hidden style="margin-top:8px"><label>Exame <select style="width:auto">${$("#ex-nome").innerHTML}</select></label><button type="button" data-escolher="${c.id}">Escolher arquivo</button><span class="hint">ou arraste o arquivo para cá</span><span class="status"></span></div>`:""}
       </div></div>`; }).join("")||'<div class="vazio">Nada nesta seção.</div>';
   $$("[data-copiar]").forEach(b=>b.addEventListener("click",()=>{ const c=cs.find(x=>x.id===b.dataset.copiar); const extra=(c.adendos||[]).map(a=>`\n\nInformações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}:\n${a.texto}`).join(""); copiarTxt((c.texto||"")+extra,()=>{ b.textContent="Copiado ✓"; setTimeout(()=>b.textContent="Copiar texto",2000); },()=>{}); }));
   $$("[data-adendo]").forEach(b=>b.addEventListener("click",()=>abrirAdendo(b.dataset.adendo)));
   $$("[data-continuar]").forEach(b=>b.addEventListener("click",()=>iniciar(b.dataset.continuar)));
+  $$("[data-reabrir]").forEach(b=>b.addEventListener("click",()=>reabrir(b.dataset.reabrir,b)));
   // consulta já finalizada: anexar exame continua possível (o texto não muda; o
   // resultado do laudo entra como "informações adicionadas")
   $$("[data-anexar-ex]").forEach(b=>b.addEventListener("click",()=>{ const l=$(`[data-anx="${b.dataset.anexarEx}"]`); l.hidden=!l.hidden; }));
@@ -1228,6 +1229,17 @@ function desenhaTimeline(){
     ["dragleave","drop"].forEach(ev=>l.addEventListener(ev,e=>{ e.preventDefault(); l.style.outline=""; }));
     l.addEventListener("drop",e=>{ const fs=[...(e.dataTransfer?.files||[])]; if(fs.length) anexarNaConsulta(l.dataset.anx,fs); });
   });
+}
+function diaBR(d){ return new Date(d).toLocaleDateString("sv-SE",{timeZone:TZ}); }
+// reabrir no mesmo dia: 1º clique pede confirmação no próprio botão, 2º reabre e continua o atendimento
+async function reabrir(cid,b){
+  if(atend&&atend.id!==cid){ status("Finalize o atendimento aberto antes de reabrir outro.","erro"); return; }
+  if(!b.dataset.conf){ b.dataset.conf="1"; b.textContent="Confirmar reabertura?"; b.classList.add("pri"); setTimeout(()=>{ if(b.isConnected){ delete b.dataset.conf; b.textContent="↺ Reabrir para editar"; b.classList.remove("pri"); } },5000); return; }
+  b.disabled=true;
+  try{ const r=await api(`/api/prontuario/atendimento/${cid}/reabrir`,{method:"POST",body:"{}"});
+    const i=ficha.consultas.findIndex(x=>x.id===cid); if(i>=0&&r.consulta) ficha.consultas[i]=r.consulta;
+    await iniciar(cid);
+  }catch(e){ b.disabled=false; status(e.status===401?MSG_SESSAO:(e.msg||"Não consegui reabrir."),"erro"); }
 }
 let anxCid=null;
 const inAnx=document.createElement("input"); inAnx.type="file"; inAnx.id="anx-arq"; inAnx.accept="application/pdf,image/*"; inAnx.multiple=true; inAnx.hidden=true; document.body.appendChild(inAnx);
@@ -1265,7 +1277,7 @@ async function iniciar(consultaId){
   try{
     let c=consultaId?(ficha.consultas||[]).find(x=>x.id===consultaId):null;
     if(!c){ const r=await api("/api/prontuario/atendimento/iniciar",{method:"POST",body:JSON.stringify({tel:ficha.paciente.telefone,nome:ficha.paciente.nome,appointment_id:ficha.hoje?.id||null})}); c=r.consulta; }
-    if(c.finalizado_em){ status("Esta consulta já foi finalizada. Use “Inserir informações” na linha do tempo.","erro"); return; }
+    if(c.finalizado_em){ status("Esta consulta já foi finalizada. Na linha do tempo: “↺ Reabrir para editar” (só hoje) ou “Inserir informações”.","erro"); return; }
     atend=c; consultaAtual={inicio:c.data_consulta,paciente_nome:ficha.paciente.nome};
     let dados=c.dados&&Object.keys(c.dados).length?c.dados:null;
     try{ const loc=JSON.parse(localStorage.getItem(chaveLocal(c.id))||"null"); if(loc&&(!c.updated_at||loc.ts>new Date(c.updated_at).getTime())) dados=loc.dados; }catch(_){}

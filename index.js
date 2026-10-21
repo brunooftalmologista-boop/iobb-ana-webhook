@@ -10547,6 +10547,29 @@ async function salvarAtendimento(req, res, finalizar) {
 }
 app.post("/api/prontuario/atendimento/:cid", requireMedico, (req, res) => salvarAtendimento(req, res, false));
 app.post("/api/prontuario/atendimento/:cid/finalizar", requireMedico, (req, res) => salvarAtendimento(req, res, true));
+// Reabrir (21/10/2026): o Dr. Bruno finaliza e às vezes precisa voltar a editar
+// (paciente volta da dilatação, finalizou antes da hora). Só NO MESMO DIA da
+// finalização (horário de Brasília) e nunca em consulta importada; a reabertura
+// fica registrada nos adendos — depois desse dia, só "Inserir informações".
+app.post("/api/prontuario/atendimento/:cid/reabrir", requireMedico, async (req, res) => {
+  try {
+    const { data: c, error } = await supabase.from("prontuario_consultas").select("id, finalizado_em, adendos, dados").eq("id", req.params.cid).maybeSingle();
+    if (error) throw error;
+    if (!c) return res.status(404).json({ error: "Atendimento não encontrado." });
+    if (!c.finalizado_em) return res.json({ ok: true });
+    if (c.dados?.importado) return res.status(409).json({ error: "Consulta importada do iClinic não pode ser editada. Use “Inserir informações”." });
+    const dia = (d) => new Date(d).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+    if (dia(c.finalizado_em) !== dia(Date.now())) return res.status(409).json({ error: "Só dá para reabrir no mesmo dia em que foi finalizado. Use “Inserir informações”." });
+    const hora = new Date(c.finalizado_em).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+    const adendos = [...(Array.isArray(c.adendos) ? c.adendos : []), { texto: `Atendimento reaberto para edição (tinha sido finalizado às ${hora}).`, em: new Date().toISOString(), por: "Dr. Bruno", tipo: "reabertura" }];
+    const { data: salvo, error: e2 } = await supabase.from("prontuario_consultas").update({ finalizado_em: null, adendos }).eq("id", c.id).select("*").single();
+    if (e2) throw e2;
+    res.json({ ok: true, consulta: salvo });
+  } catch (e) {
+    console.error("[Prontuário] reabrir falhou:", e.message);
+    res.status(500).json({ error: "Não consegui reabrir o atendimento." });
+  }
+});
 // Adendo: depois de finalizado, só se ACRESCENTA (com data e hora), nunca se altera.
 app.post("/api/prontuario/atendimento/:cid/adendo", requireMedico, async (req, res) => {
   try {
