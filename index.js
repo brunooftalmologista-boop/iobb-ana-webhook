@@ -1280,7 +1280,7 @@ async function fetchBusyFromDB(dias = 14) {
   const ateIso = new Date(now + (dias + 1) * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase.from("appointments")
     .select("unidade, inicio, fim, status, hold_expira_em")
-    .neq("status", "cancelado")
+    .neq("status", "cancelado").eq("encaixe", false)   // encaixe é EXTRA: não tira vaga da grade
     .gte("inicio", desdeIso).lte("inicio", ateIso);
   if (error) { console.error("[Agenda DB] Falha ao ler agendamentos:", error.message); return null; }
   const events = (data || [])
@@ -3077,7 +3077,7 @@ function alternativaMaisProxima(slots, iniPedido, minTs) {
 // eventual hold VENCIDO do mesmo slot (que não ocupa de fato, mas ainda prende o
 // índice). status 'reservado' + holdMin cria um hold temporário (uso da Ana);
 // status 'confirmado' marca direto (uso da secretária no painel).
-async function criarAgendamento({ unidade, inicio, fim, status, nome, telefone, convenio, motivo, observacoes, origem, conversationId, criadoPor, holdMin }) {
+async function criarAgendamento({ unidade, inicio, fim, status, nome, telefone, convenio, motivo, observacoes, origem, conversationId, criadoPor, holdMin, encaixe }) {
   if (!unidade || !inicio || !fim) return { ok: false, error: "unidade, inicio e fim são obrigatórios" };
   const inicioIso = new Date(inicio).toISOString();
   const fimIso = new Date(fim).toISOString();
@@ -3144,7 +3144,7 @@ async function criarAgendamento({ unidade, inicio, fim, status, nome, telefone, 
       paciente_nome: nomeFinal || null, paciente_telefone: telefone || null,
       convenio: convenioFinal || null, motivo: motivo || null, observacoes: obsFinal || null,
       origem: origem || null, conversation_id: conversationId ? String(conversationId) : null,
-      criado_por: criadoPor || null,
+      criado_por: criadoPor || null, encaixe: !!encaixe,
       hold_expira_em: (st === "reservado" && holdMin) ? new Date(Date.now() + holdMin * 60000).toISOString() : null,
     };
     invalidarCacheSlots();                            // a agenda mudou: próxima leitura vai ao banco
@@ -3284,7 +3284,7 @@ async function fichaHistoricaDoPaciente(telefone) {
 // para o painel NÃO quebrar caso a migração ainda não tenha rodado: se o Postgres
 // recusar por coluna inexistente, refazemos a consulta sem elas e a agenda
 // continua funcionando — só sem a marcação de presença.
-const COLS_AGENDA_BASE = "id, unidade, inicio, fim, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, origem, hold_expira_em, confirmado_em";
+const COLS_AGENDA_BASE = "id, unidade, inicio, fim, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, origem, hold_expira_em, confirmado_em, encaixe";
 const COLS_AGENDA_PRESENCA = COLS_AGENDA_BASE + ", compareceu, compareceu_em, compareceu_por";
 let avisouSemComparecimento = false;
 
@@ -9310,14 +9310,28 @@ app.get("/api/evolucao-anterior/:appointmentId", async (req, res) => {
 
 // Marca um horário direto pela secretária (status confirmado). O `inicio` deve ser
 // exatamente o de um slot livre devolvido por /api/agenda/slots.
+// ENCAIXE (Dr. Bruno, 21/10/2026): `encaixe: true` marca um paciente EXTRA num
+// horário já ocupado ou fora da grade (ex.: 12h10). Só a equipe faz; a linha fica
+// fora da trava única e fora de fetchBusyFromDB — não tira vaga de ninguém e a
+// Ana não enxerga. Se o horário escolhido estiver LIVRE na grade, vira marcação
+// normal (senão a vaga continuaria aberta para a Ana e daria dois pacientes).
 app.post("/api/agenda/book", async (req, res) => {
   try {
     const { unidade, inicio, nome, telefone, convenio, motivo, observacoes } = req.body || {};
+    let encaixe = req.body?.encaixe === true;
     if (!unidade || !inicio) return res.status(400).json({ ok: false, error: "Informe unidade e horário (inicio)." });
     const ini = new Date(inicio);
     if (isNaN(ini.getTime())) return res.status(400).json({ ok: false, error: "Horário (inicio) inválido." });
-    if (ini.getTime() <= Date.now()) return res.status(400).json({ ok: false, error: "Não é possível marcar em horário passado." });
+    // encaixe de HOJE pode ser em hora que já passou: é o paciente que chegou e precisa
+    // entrar na agenda (pré-exame e prontuário partem dela)
+    const diaBR = (d) => new Date(d).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+    if (ini.getTime() <= Date.now() && !(encaixe && diaBR(ini) === diaBR(Date.now()))) return res.status(400).json({ ok: false, error: "Não é possível marcar em horário passado." });
     const fim = new Date(ini.getTime() + SLOT_MIN * 60000);
+    let avisoEncaixe = null;
+    if (encaixe) {
+      const livres = await fetchSlotsDB(unidade, Math.min(120, Math.ceil((ini.getTime() - Date.now()) / 864e5) + 2));
+      if (livres && livres.some(s => s.start.getTime() === ini.getTime())) { encaixe = false; avisoEncaixe = "Esse horário estava livre na agenda: foi marcado normalmente (não como encaixe)."; }
+    }
     // Telefone normalizado (55 + DDD + número). Sem isso o paciente não recebe a
     // confirmação da véspera — 13 dos 31 agendamentos da secretária em julho
     // ficaram sem telefone utilizável. Não BLOQUEIA a marcação (paciente de
@@ -9333,11 +9347,11 @@ app.post("/api/agenda/book", async (req, res) => {
     const r = await criarAgendamento({
       unidade, inicio: ini, fim, status: "confirmado",
       nome, telefone: foneNorm, convenio, motivo, observacoes,
-      origem: "secretaria", criadoPor: req.panelUser?.email || null,
+      origem: "secretaria", criadoPor: req.panelUser?.email || null, encaixe,
     });
     if (r.taken) return res.status(409).json({ ok: false, taken: true, error: "Esse horário acabou de ser ocupado. Atualize a agenda e escolha outro." });
     if (!r.ok) return res.status(500).json({ ok: false, error: r.error || "Falha ao marcar." });
-    res.json({ ok: true, appointment: r.appointment, aviso });
+    res.json({ ok: true, appointment: r.appointment, aviso: [avisoEncaixe, aviso].filter(Boolean).join(" ") || null });
   } catch (e) {
     console.error("[Agenda] /book falhou:", e.message);
     res.status(500).json({ ok: false, error: e.message });

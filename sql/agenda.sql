@@ -42,3 +42,10 @@ create unique index if not exists appointments_slot_unico
 create index if not exists appointments_inicio_idx on appointments (inicio);
 create index if not exists appointments_status_idx on appointments (status);
 create index if not exists appointments_conversation_idx on appointments (conversation_id);
+
+-- ENCAIXE (21/10/2026): paciente extra marcado pela equipe num horário já
+-- ocupado ou fora da grade. Fica FORA da trava única e fora das vagas da Ana.
+alter table appointments add column if not exists encaixe boolean not null default false;
+create unique index if not exists appointments_slot_unico_v2 on appointments (unidade, inicio) where status in ('reservado','confirmado') and not encaixe;
+drop index if exists appointments_slot_unico;
+alter index appointments_slot_unico_v2 rename to appointments_slot_unico;
