@@ -184,7 +184,10 @@ function corpoPedido(doc, d, exames) {
     doc.font("G8").fontSize(12).text(`${i + 1}. ${e}`, L + mm(3), y, { width: W - mm(45) });
     const yFim = doc.y;
     doc.font("G6").text(d.olho || "Ambos os olhos", L + W - mm(42), y, { width: mm(42), align: "right" });
-    doc.y = Math.max(yFim, doc.y); doc.moveDown(0.5);
+    doc.y = Math.max(yFim, doc.y);
+    const j = d.justificativas && d.justificativas[e];
+    if (j) doc.font("G6").fontSize(11).text(`Justificativa: ${j}`, L + mm(8), doc.y + 2, { width: W - mm(8) }).fontSize(12);
+    doc.moveDown(0.5);
   });
   if (d.indicacao) { doc.moveDown(0.5); doc.font("G8").fontSize(11.5).text("Indicação clínica: ", L, doc.y, { continued: true }).font("G6").text(d.indicacao, { width: W }); }
 }

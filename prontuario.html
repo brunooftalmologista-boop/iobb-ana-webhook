@@ -361,7 +361,9 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
               <div class="rx" id="ped-bloco">
                 <span class="rot" style="margin:0">Pedido de exames <span class="hint">— os exames marcados acima, mais os escritos aqui</span></span>
                 <div class="campo"><label for="ex-txt">Outros exames (um por linha)</label><textarea id="ex-txt" rows="2" style="min-height:48px"></textarea></div>
-                <div class="campo"><label for="ex-ind">Indicação clínica</label><input id="ex-ind"></div>
+                <div id="ex-just-box" hidden><span class="rot" style="margin:6px 0 0">Justificativa de cada exame <span class="hint">— preenchida pelo CID do diagnóstico; dá para editar antes de imprimir</span></span><div id="ex-just"></div></div>
+                <input type="hidden" id="ex-justs">
+                <div class="campo"><label for="ex-ind">Indicação clínica geral <span class="hint">(opcional — só sai no pedido se escrita aqui)</span></label><input id="ex-ind"></div>
                 <div class="row"><label>Olhos <select id="ex-olho" style="width:auto"><option>Ambos os olhos</option><option>Olho direito</option><option>Olho esquerdo</option></select></label><label style="gap:6px"><input type="checkbox" id="ex-separado" style="width:auto"> Um exame por folha (convênio)</label></div>
                 <div class="row"><button type="button" class="pri" id="gerar-ped">Imprimir pedido de exames</button><button type="button" id="assinar-ped">🔏 PDF assinado</button><span class="status" id="status-ped"></span></div>
               </div>
@@ -603,7 +605,7 @@ const nomeChip=c=>c.childNodes[0].textContent.trim();
 const marcados=g=>$$(`[data-grupo="${g}"] .chip[aria-pressed="true"]`);
 function normal(id){ for(const [k,,txt] of (id==="bio"?BIO:FO)) for(const o of ["od","oe"]){ const el=$(`#${id}-${k}-${o}`); if(!el.value) el.value=txt; } atualiza(); }
 $$("[data-normal]").forEach(b=>b.addEventListener("click",()=>normal(b.dataset.normal)));
-const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>!["anexo-obs","anexo-tipo","ex-nome"].includes(el.id));
+const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>el.id&&!["anexo-obs","anexo-tipo","ex-nome"].includes(el.id));
 document.addEventListener("keydown",e=>{ if(e.key!=="Enter"||e.target.tagName!=="INPUT"||!e.target.closest("#atendimento")||e.target.id==="anexo-obs") return;
   e.preventDefault(); normalizaCampo(e.target); const l=campos(),i=l.indexOf(e.target); if(i>=0&&l[i+1]) l[i+1].focus(); atualiza(); });
 document.addEventListener("focusout",e=>{ if(e.target.matches("#atendimento input")){ normalizaCampo(e.target); atualiza(); } });
@@ -988,6 +990,41 @@ $("#mc-remover").addEventListener("click",async()=>{ try{ await api("/api/prontu
    vem da hipótese diagnóstica (com CID) se ele não escrever outra. Convênio
    e carteirinha saem no pedido quando o paciente não é particular. */
 function examesPedidos(){ return [...marcados("ex").map(nomeChip),...linhas("ex-txt")]; }
+// ===== JUSTIFICATIVA DO PEDIDO DE EXAMES PELO CID (Dr. Bruno, 21/10/2026) =====
+// Convênio pede justificativa clínica + CID por exame. Para cada exame: a 1ª
+// regra cujo CID (prefixo) está entre os diagnósticos marcados vence; senão, o
+// texto padrão do exame (sem CID). O médico pode editar cada uma
+// (fica salva no atendimento, em #ex-justs).
+const J_GLAUCOMA=["H40","H42","Q15.0"], J_DIABETES=["E10","E11","E12","E13","E14","H36.0"], J_CATARATA=["H25","H26","H28"], J_ECTASIA=["H18.6","H18.7"];
+const JUST={
+  "Pentacam":[[J_ECTASIA,"Diagnóstico e acompanhamento de ectasia corneana (ceratocone), com avaliação de progressão por tomografia de córnea."],[["H52.2"],"Investigação de astigmatismo com suspeita de irregularidade corneana."],[["H52.1","H52.0","H44.2"],"Avaliação corneana (curvatura, elevação e espessura) para indicação de cirurgia refrativa e exclusão de ectasia."],[J_CATARATA,"Avaliação corneana no planejamento da cirurgia de catarata (astigmatismo corneano e escolha da lente intraocular)."],[null,"Avaliação da curvatura, elevação e espessura da córnea."]],
+  "Topografia de córnea":[[J_ECTASIA,"Diagnóstico e acompanhamento de ectasia corneana (ceratocone)."],[["H52.2"],"Investigação de astigmatismo com suspeita de irregularidade corneana."],[["H52.1","H52.0","H44.2"],"Avaliação da curvatura corneana para indicação de cirurgia refrativa e exclusão de ectasia."],[J_CATARATA,"Avaliação do astigmatismo corneano no planejamento da cirurgia de catarata."],[null,"Avaliação da curvatura da córnea."]],
+  "Paquimetria":[[J_GLAUCOMA,"Medida da espessura corneana central para interpretação da pressão intraocular em suspeita/diagnóstico de glaucoma."],[J_ECTASIA,"Acompanhamento da espessura corneana em ectasia corneana."],[null,"Avaliação da espessura corneana."]],
+  "Microscopia especular":[[J_CATARATA,"Avaliação do endotélio corneano no pré-operatório de cirurgia de catarata."],[["H18.5"],"Avaliação de distrofia endotelial corneana."],[J_ECTASIA,"Avaliação endotelial em paciente com ectasia corneana e uso de lente de contato."],[null,"Avaliação da densidade e da morfologia das células endoteliais da córnea."]],
+  "Mapeamento de retina":[[J_DIABETES,"Rastreamento e estadiamento de retinopatia diabética."],[["H43"],"Avaliação da periferia retiniana por alteração do vítreo (descolamento do vítreo posterior / moscas volantes)."],[["H44.2","H52.1"],"Avaliação da periferia retiniana em miopia (risco de degenerações e roturas)."],[J_CATARATA,"Avaliação da retina no pré-operatório de cirurgia de catarata."],[J_GLAUCOMA,"Avaliação do nervo óptico e da retina em suspeita/diagnóstico de glaucoma."],[null,"Avaliação do fundo de olho sob midríase."]],
+  "Retinografia":[[J_GLAUCOMA,"Documentação do disco óptico para acompanhamento de glaucoma."],[J_DIABETES,"Documentação e acompanhamento de retinopatia diabética."],[["H35.3"],"Documentação e acompanhamento de maculopatia."],[null,"Documentação fotográfica do fundo de olho."]],
+  "OCT de mácula":[[["H35.3"],"Diagnóstico e acompanhamento de degeneração macular."],[J_DIABETES,"Investigação e acompanhamento de edema macular diabético."],[["H35.8","H34"],"Investigação de edema macular."],[J_CATARATA,"Avaliação macular no pré-operatório de cirurgia de catarata."],[null,"Avaliação da espessura e da estrutura da mácula."]],
+  "OCT de nervo óptico":[[J_GLAUCOMA,"Avaliação da camada de fibras nervosas da retina para diagnóstico e acompanhamento de glaucoma."],[["H47"],"Investigação de neuropatia óptica."],[null,"Avaliação da camada de fibras nervosas da retina e do nervo óptico."]],
+  "Campimetria visual":[[J_GLAUCOMA,"Avaliação do campo visual para diagnóstico e acompanhamento de glaucoma."],[["H47","H46"],"Investigação de neuropatia óptica."],[null,"Avaliação do campo visual."]],
+  "Curva diária de pressão ocular":[[J_GLAUCOMA,"Avaliação da variação da pressão intraocular ao longo do dia em suspeita/diagnóstico de glaucoma."],[null,"Avaliação da variação diurna da pressão intraocular."]],
+  "Gonioscopia":[[J_GLAUCOMA,"Avaliação do ângulo da câmara anterior para classificação do glaucoma."],[null,"Avaliação do ângulo da câmara anterior."]],
+  "Teste de sobrecarga hídrica":[[J_GLAUCOMA,"Avaliação da facilidade de escoamento do humor aquoso em suspeita/diagnóstico de glaucoma."],[null,"Avaliação da facilidade de escoamento do humor aquoso."]],
+  "Biometria":[[J_CATARATA,"Cálculo da lente intraocular para cirurgia de catarata."],[null,"Cálculo de lente intraocular."]],
+  "Ultrassonografia ocular":[[J_CATARATA,"Avaliação do segmento posterior por opacidade de meios (catarata densa)."],[["H43.1"],"Avaliação do vítreo e da retina por hemorragia vítrea."],[["H33"],"Investigação de descolamento de retina."],[null,"Avaliação do segmento posterior do olho."]],
+};
+function cidsAtivos(){ return [...marcados("hd").map(c=>c.dataset.cid).filter(Boolean),...cidsEscolhidos().map(([c])=>c)]; }
+function justAuto(exame){ const regras=JUST[exame]; const cs=cidsAtivos();
+  if(regras) for(const [pref,txt] of regras){ if(!pref) continue; const c=cs.find(c=>pref.some(p=>c.startsWith(p))); if(c) return `${txt} CID ${c}.`; }
+  // nenhuma regra casou: texto padrão SEM CID (CID sem relação com o exame seria pior que nenhum)
+  const def=regras&&regras.find(r=>!r[0]); return def?def[1]:""; }
+function justEditadas(){ try{ return JSON.parse(v("ex-justs")||"{}"); }catch(_){ return {}; } }
+function justificativas(){ const ed=justEditadas(); const o={}; for(const e of examesPedidos()) o[e]=(ed[e]!=null?ed[e]:justAuto(e)).trim(); return o; }
+let justSig="";
+function desenhaJust(forcar){ const exs=examesPedidos(); const sig=exs.join("|")+"#"+cidsAtivos().join(",")+"#"+v("ex-justs"); if(!forcar&&sig===justSig) return; justSig=sig;
+  const j=justificativas(); $("#ex-just-box").hidden=!exs.length;
+  $("#ex-just").innerHTML=exs.map(e=>`<div class="campo" style="margin-top:6px"><label>${esc(e)}</label><input data-just="${esc(e)}" value="${esc(j[e]||"")}" placeholder="Justificativa clínica"></div>`).join(""); }
+$("#ex-just").addEventListener("input",e=>{ const i=e.target.closest("[data-just]"); if(!i) return; const ed=justEditadas(); ed[i.dataset.just]=i.value; $("#ex-justs").value=JSON.stringify(ed);
+  justSig=examesPedidos().join("|")+"#"+cidsAtivos().join(",")+"#"+v("ex-justs"); });
 function hdComCid(){ return [...marcados("hd").map(c=>`${nomeChip(c)} (CID ${c.dataset.cid})`),...cidsEscolhidos().map(([c,d])=>`${d} (CID ${c})`),...linhas("hd-txt")]; }
 function indicacaoAuto(){ return hdComCid().join("; "); }
 function statusPed(t,cls){ const x=$("#status-ped"); x.textContent=t; x.className="status "+(cls||""); }
@@ -996,7 +1033,7 @@ $("#assinar-ped").addEventListener("click",()=>gerarPedido(true));
 function gerarPedido(assinar){
   if(!consultaAtual){ statusPed("Inicie o atendimento primeiro.","erro"); return; }
   const exs=examesPedidos(); if(!exs.length){ statusPed("Marque ou escreva ao menos um exame.","erro"); return; }
-  const ind=v("ex-ind")||indicacaoAuto(), olho=$("#ex-olho").value, timbrado=$("#rx-timbrado").checked;
+  const ind=v("ex-ind"), olho=$("#ex-olho").value, timbrado=$("#rx-timbrado").checked, just=justificativas();
   const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   const nome=String(consultaAtual.paciente_nome||"").toUpperCase();
   const p=ficha?.paciente||{}, doc=p.documentos||{}, conv=String(doc.operadora||p.convenio||"").trim();
@@ -1006,10 +1043,10 @@ function gerarPedido(assinar){
 <p class="nome">Nome: ${esc(nome)}${p.idade!=null?` &nbsp;&nbsp; Idade: ${esc(p.idade)} anos`:""}${temConv?`<br>Convênio: ${esc(conv)}${doc.carteirinha?` &nbsp;&nbsp; Carteirinha: ${esc(doc.carteirinha)}`:""}`:""}</p>
 <h1>SOLICITAÇÃO DE EXAMES</h1>
 <p>Solicito:</p>
-<ol class="meds">${lista.map(e=>`<li><div class="med-n"><span>${esc(e)}</span><span>${esc(olho)}</span></div></li>`).join("")}</ol>
+<ol class="meds">${lista.map(e=>`<li><div class="med-n"><span>${esc(e)}</span><span>${esc(olho)}</span></div>${just[e]?`<div class="med-p">Justificativa: ${esc(just[e])}</div>`:""}</li>`).join("")}</ol>
 ${ind?`<p class="sug"><b>Indicação clínica:</b> ${esc(ind)}</p>`:""}
 <div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877 - RQE: 9314</div>`;
-  if(assinar) return enviarAssinado("pedido",{nome,data,idade:p.idade??null,convenio:temConv?conv:"",carteirinha:temConv?(doc.carteirinha||""):"",exames:exs,olho,indicacao:ind,separado:$("#ex-separado").checked},statusPed);
+  if(assinar) return enviarAssinado("pedido",{nome,data,idade:p.idade??null,convenio:temConv?conv:"",carteirinha:temConv?(doc.carteirinha||""):"",exames:exs,olho,indicacao:ind,justificativas:just,separado:$("#ex-separado").checked},statusPed);
   const folhas=$("#ex-separado").checked?exs.map(e=>folha([e])):[folha(exs)];
   abrirReceita({titulo:`Pedido de exames - ${nome}`,folhas,timbrado,status:statusPed});
 }
@@ -1065,7 +1102,10 @@ $$("[data-modelo]").forEach(b=>b.addEventListener("click",()=>{ const m=MODELOS[
 
 /* ===== estado do formulário ===== */
 function limpar(){ campos().forEach(el=>{ if(el.tagName==="SELECT") el.selectedIndex=0; else el.value=""; }); $$(".chip").forEach(c=>c.setAttribute("aria-pressed","false")); sugEditada=false; }
-function coletar(){ const d={campos:{},chips:$$('#atendimento .chip[aria-pressed="true"]').map(c=>c.closest("[data-grupo]").dataset.grupo+"|"+nomeChip(c))};
+// Só chips DE GRUPO: as etiquetas do CID escolhido na busca (#hd-cids-tags) também são
+// .chip marcadas, mas sem data-grupo — elas quebravam aqui (null.dataset) e com isso o
+// salvar e o finalizar de todo atendimento que usava a busca de CID (21/10/2026).
+function coletar(){ const d={campos:{},chips:$$('#atendimento [data-grupo] .chip[aria-pressed="true"]').map(c=>c.closest("[data-grupo]").dataset.grupo+"|"+nomeChip(c))};
   campos().forEach(el=>d.campos[el.id]=el.value); return d; }
 function aplicar(d){ limpar(); if(!d) return; if(d.campos&&d.campos["rx-sug"]) sugEditada=true;
   for(const [id,val] of Object.entries(d.campos||{})){ const el=$("#"+id); if(el&&el.closest("#atendimento")) el.value=val; }
@@ -1085,7 +1125,7 @@ function atualiza(){
   $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar.";
   const r=receita();
   $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
-  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol(); desenhaCids(); $("#ex-ind").placeholder=indicacaoAuto()||"Hipótese diagnóstica (preenchida sozinha a partir do diagnóstico)";
+  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol(); desenhaCids(); desenhaJust(); $("#ex-ind").placeholder="Ex.: acompanhamento semestral";
   if(atend){ sujo=true; rascunhoLocal(); status("Alterações não salvas.",""); }
 }
 
