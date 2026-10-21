@@ -10338,8 +10338,18 @@ async function consultasDoPaciente(tel, nome) {
 // Busca de pacientes por nome ou telefone (agenda + prontuário).
 app.get("/api/prontuario/busca", requireMedico, async (req, res) => {
   try {
-    const q = String(req.query.q || "").trim();
-    if (q.length < 2) return res.json({ pacientes: [] });
+    res.json({ pacientes: await buscarPacientes(req.query.q) });
+  } catch (e) {
+    console.error("[Prontuário] busca falhou:", e.message);
+    res.status(500).json({ error: "Não consegui buscar." });
+  }
+});
+// Também usada pelo Cadastro do pré-exame (secretárias): devolve só identificação
+// (nome, telefone, convênio, nascimento, última/próxima consulta) — nada clínico.
+async function buscarPacientes(qRaw) {
+  {
+    const q = String(qRaw || "").trim();
+    if (q.length < 2) return [];
     const dig = q.replace(/\D/g, "");
     // Busca também por DATA DE NASCIMENTO (12/03/1990) e CPF (com pontos, ou
     // 11 dígitos — aí procura como telefone E como CPF): são os dados que não
@@ -10385,12 +10395,9 @@ app.get("/api/prontuario/busca", requireMedico, async (req, res) => {
       if (mapa.has(pp.chave)) { if (pp.dados?.iclinic_id) mapa.get(pp.chave).importado = true; continue; }
       mapa.set(pp.chave, { chave: pp.chave, nome: pp.nome, telefone: pp.telefone, convenio: pp.dados?.operadora || null, ultima: null, proxima: null, nascimento: pp.dados?.nascimento || null, importado: !!pp.dados?.iclinic_id });
     }
-    res.json({ pacientes: [...mapa.values()].slice(0, 40) });
-  } catch (e) {
-    console.error("[Prontuário] busca falhou:", e.message);
-    res.status(500).json({ error: "Não consegui buscar." });
+    return [...mapa.values()].slice(0, 40);
   }
-});
+}
 
 // JUNTAR CADASTROS (Dr. Bruno, 20/10/2026): liga o histórico de outro cadastro
 // à ficha aberta — ex.: paciente do iClinic que trocou de nome ou de telefone.
@@ -11274,7 +11281,28 @@ app.post("/api/preexame/anexo/:aid/remover", requirePreExame, async (req, res) =
 // A IA lê os campos, a secretária CONFERE e salva — nada é gravado sem ela.
 // Os dados ficam em prontuario_pacientes.dados (CPF, nascimento, carteirinha…),
 // base do cadastro, dos laudos e, depois, do pacote de autorização.
-const CAMPOS_DOC = ["nome_completo", "cpf", "nascimento", "rg", "operadora", "plano", "carteirinha", "validade", "cns", "cep", "endereco", "bairro", "cidade"];
+const CAMPOS_DOC = ["nome_completo", "cpf", "nascimento", "rg", "operadora", "plano", "carteirinha", "validade", "cns", "cep", "endereco", "bairro", "cidade", "sexo", "email", "telefone2", "responsavel"];
+// Grava os dados de cadastro conferidos pela equipe. MESCLA com o que existe
+// (iclinic_id, juntados… não estão no formulário). Cadastro juntado (🔗) grava
+// no principal, que é o que a ficha mostra.
+async function salvarDadosPaciente({ chave, nome, telefone, b, por }) {
+  const dados = {};
+  for (const k of CAMPOS_DOC) dados[k] = String(b?.[k] || "").trim().slice(0, 160);
+  if (dados.cpf && dados.cpf.replace(/\D/g, "").length !== 11) { const e = new Error("O CPF precisa ter 11 dígitos."); e.publico = true; throw e; }
+  if (dados.nascimento && !/^\d{2}\/\d{2}\/\d{4}$/.test(dados.nascimento)) { const e = new Error("Data de nascimento no formato dd/mm/aaaa."); e.publico = true; throw e; }
+  if (dados.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(dados.email)) { const e = new Error("E-mail inválido."); e.publico = true; throw e; }
+  dados.conferido_por = por; dados.conferido_em = new Date().toISOString();
+  let { data: ant } = await supabase.from("prontuario_pacientes").select("chave, nome, telefone, dados").eq("chave", chave).maybeSingle();
+  if (ant?.dados?.juntado_para) {
+    const { data: pr } = await supabase.from("prontuario_pacientes").select("chave, nome, telefone, dados").eq("chave", ant.dados.juntado_para).maybeSingle();
+    if (pr) ant = pr;
+  }
+  const alvo = ant?.chave || chave;
+  const { error } = await supabase.from("prontuario_pacientes").upsert(
+    { chave: alvo, nome: ant?.nome || nome, telefone: ant?.telefone || telefone, dados: { ...(ant?.dados || {}), ...dados }, updated_at: dados.conferido_em }, { onConflict: "chave" });
+  if (error) throw error;
+  return { chave: alvo, dados };
+}
 const PROMPT_DOCS = `Leia os documentos de um paciente (carteirinha de plano de saúde, frente e/ou verso; RG; CNH; ou documento parecido) e devolva SOMENTE um JSON, sem texto antes ou depois:
 {"nome_completo":"","cpf":"000.000.000-00","nascimento":"dd/mm/aaaa","rg":"","operadora":"","plano":"","carteirinha":"","validade":"dd/mm/aaaa","cns":"","cep":"00000-000","endereco":"","bairro":"","cidade":"Cidade / UF","documentos":["carteirinha frente","RG"],"pendencias":[""]}
 REGRAS:
@@ -11306,6 +11334,10 @@ async function lerDocumentos(arquivos) {
 }
 async function dadosDoPaciente(ag) {
   const { data } = await supabase.from("prontuario_pacientes").select("dados").eq("chave", chavePaciente(ag.paciente_telefone, ag.paciente_nome)).maybeSingle();
+  if (data?.dados?.juntado_para) {   // cadastro juntado: os dados vivem no principal
+    const { data: pr } = await supabase.from("prontuario_pacientes").select("dados").eq("chave", data.dados.juntado_para).maybeSingle();
+    if (pr) return pr.dados || {};
+  }
   return data?.dados || {};
 }
 async function documentosDaConsulta(ag) {
@@ -11425,26 +11457,50 @@ app.post("/api/preexame/consulta/:id/dados", requirePreExame, async (req, res) =
   try {
     const ag = await agendamentoPreExame(req.params.id);
     if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
-    const b = req.body?.dados || {};
-    const dados = {};
-    for (const k of CAMPOS_DOC) dados[k] = String(b[k] || "").trim().slice(0, 120);
-    if (dados.cpf && dados.cpf.replace(/\D/g, "").length !== 11) return res.status(400).json({ error: "O CPF precisa ter 11 dígitos." });
-    if (dados.nascimento && !/^\d{2}\/\d{2}\/\d{4}$/.test(dados.nascimento)) return res.status(400).json({ error: "Data de nascimento no formato dd/mm/aaaa." });
-    dados.conferido_por = req.porPreExame; dados.conferido_em = new Date().toISOString();
-    const chave = chavePaciente(ag.paciente_telefone, ag.paciente_nome);
-    // MESCLA com o que já existe (iclinic_id, sexo, origem… vêm da importação e não estão no formulário)
-    const { data: ant } = await supabase.from("prontuario_pacientes").select("dados").eq("chave", chave).maybeSingle();
-    const { error } = await supabase.from("prontuario_pacientes").upsert(
-      { chave, nome: ag.paciente_nome, telefone: ag.paciente_telefone, dados: { ...(ant?.dados || {}), ...dados }, updated_at: dados.conferido_em }, { onConflict: "chave" });
-    if (error) throw error;
+    const { dados } = await salvarDadosPaciente({ chave: chavePaciente(ag.paciente_telefone, ag.paciente_nome),
+      nome: ag.paciente_nome, telefone: ag.paciente_telefone, b: req.body?.dados || {}, por: req.porPreExame });
     if (dados.nascimento && !idadeDe(ag.observacoes)) {
       const obs = [String(ag.observacoes || "").trim(), `Nascimento: ${dados.nascimento}`].filter(Boolean).join("\n");
       await supabase.from("appointments").update({ observacoes: obs }).eq("id", ag.id);
     }
     res.json({ ok: true, dados });
   } catch (e) {
+    if (e.publico) return res.status(400).json({ error: e.message });
     console.error("[Documentos] salvar falhou:", e.message);
     res.status(500).json({ error: "Não consegui salvar os dados." });
+  }
+});
+// ===== CADASTRO (pré-exame, 21/10/2026) ======================================
+// As secretárias procuram QUALQUER paciente (com ou sem consulta marcada) e
+// preenchem/corrigem os dados de cadastro. Só identificação — nada clínico.
+app.get("/api/preexame/busca", requirePreExame, async (req, res) => {
+  try { res.json({ pacientes: await buscarPacientes(req.query.q) }); }
+  catch (e) { console.error("[Cadastro] busca falhou:", e.message); res.status(500).json({ error: "Não consegui buscar." }); }
+});
+app.get("/api/preexame/paciente", requirePreExame, async (req, res) => {
+  try {
+    const tel = String(req.query.tel || ""), nome = String(req.query.nome || "");
+    if (!ult8(tel) || !primNome(nome)) return res.status(400).json({ error: "Paciente inválido." });
+    let { data: pac } = await supabase.from("prontuario_pacientes").select("chave, nome, telefone, dados").eq("chave", chavePaciente(tel, nome)).maybeSingle();
+    if (pac?.dados?.juntado_para) { const { data: pr } = await supabase.from("prontuario_pacientes").select("chave, nome, telefone, dados").eq("chave", pac.dados.juntado_para).maybeSingle(); if (pr) pac = pr; }
+    const d = pac?.dados || {};
+    const dados = {}; for (const k of CAMPOS_DOC) dados[k] = d[k] || "";
+    if (!dados.nascimento) {   // nascimento que a Ana anotou na agenda
+      const { data: ags } = await supabase.from("appointments").select("paciente_nome, observacoes").like("paciente_telefone", `%${ult8(tel)}`).order("inicio", { ascending: false }).limit(30);
+      for (const a of ags || []) { if (primNome(a.paciente_nome) !== primNome(nome)) continue; const n = idadeDe(a.observacoes); if (n) { dados.nascimento = n.nascimento; break; } }
+    }
+    res.json({ nome: pac?.nome || nome, telefone: pac?.telefone || tel, dados, conferido_por: d.conferido_por || null, conferido_em: d.conferido_em || null });
+  } catch (e) { console.error("[Cadastro] abrir falhou:", e.message); res.status(500).json({ error: "Não consegui abrir o cadastro." }); }
+});
+app.post("/api/preexame/paciente", requirePreExame, async (req, res) => {
+  try {
+    const tel = String(req.body?.tel || ""), nome = String(req.body?.nome || "");
+    if (!ult8(tel) || !primNome(nome)) return res.status(400).json({ error: "Paciente inválido." });
+    const r = await salvarDadosPaciente({ chave: chavePaciente(tel, nome), nome, telefone: tel, b: req.body?.dados || {}, por: req.porPreExame });
+    res.json({ ok: true, dados: r.dados });
+  } catch (e) {
+    if (e.publico) return res.status(400).json({ error: e.message });
+    console.error("[Cadastro] salvar falhou:", e.message); res.status(500).json({ error: "Não consegui salvar o cadastro." });
   }
 });
 // ===== CHAT DA EQUIPE (Dr. Bruno, 19/10/2026) =================================

@@ -249,6 +249,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
               <div><b>Telefone:</b> <span id="p-tel">—</span></div>
               <div id="p-cpf-l" hidden><b>CPF:</b> <span id="p-cpf"></span></div>
               <div id="p-end-l" hidden><b>Endereço:</b> <span id="p-end"></span></div>
+              <div id="p-cont-l" hidden><b>Contato:</b> <span id="p-cont"></span></div>
               <div id="p-cart-l" hidden><b>Carteirinha:</b> <span id="p-cart"></span></div>
             </div>
             <div class="row" id="nasc-box" hidden style="margin-top:6px"><label>Data de nascimento <input id="nasc-in" placeholder="dd/mm/aaaa" style="width:130px;font-family:var(--f-mono)"></label><button type="button" id="nasc-ok">Gravar</button><span class="hint" id="nasc-msg"></span></div>
@@ -1139,6 +1140,7 @@ function desenhaFicha(){
   $("#p-tel").textContent=p.telefone||"—";
   const dc=p.documentos||{}; $("#p-cpf-l").hidden=!dc.cpf; $("#p-cpf").textContent=dc.cpf||"";
   const end=[dc.endereco,dc.bairro,dc.cidade,dc.cep?"CEP "+dc.cep:""].filter(Boolean).join(" · "); $("#p-end-l").hidden=!end; $("#p-end").textContent=end;
+  const cont=[dc.sexo,dc.telefone2?"outro tel. "+dc.telefone2:"",dc.email,dc.responsavel?"mãe/resp.: "+dc.responsavel:""].filter(Boolean).join(" · "); $("#p-cont-l").hidden=!cont; $("#p-cont").textContent=cont;
   $("#p-cart-l").hidden=!dc.carteirinha; $("#p-cart").textContent=[dc.carteirinha,dc.operadora,dc.plano,dc.validade?"validade "+dc.validade:""].filter(Boolean).join(" · ");
   $("#p-hoje").textContent=ficha.hoje?`Consulta hoje às ${hhmm(ficha.hoje.inicio)} · ${ficha.hoje.unidade}`:"Sem consulta marcada para hoje";
   // pré-exame (motivo da consulta + exames anexados por quem faz o pré-exame)
