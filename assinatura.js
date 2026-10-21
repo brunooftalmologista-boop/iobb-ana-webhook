@@ -189,6 +189,68 @@ function corpoPedido(doc, d, exames) {
   if (d.indicacao) { doc.moveDown(0.5); doc.font("G8").fontSize(11.5).text("Indicação clínica: ", L, doc.y, { continued: true }).font("G6").text(d.indicacao, { width: W }); }
 }
 
+// ===== RECEITA NO VISUAL DO iCLINIC (21/10/2026) ==============================
+// O Dr. Bruno quer a receita assinada igual à do iClinicRx: cabeçalho com os dados
+// dele à esquerda e o logo à direita, bloco do paciente, itens numerados e, no pé,
+// os dados do médico + "Assinada Digitalmente". Fonte Helvetica (como lá).
+const ENDERECO_UNIDADE = {
+  "Taguatinga": "QS 1 Rua 210 Lote 40, 615, B, Areal, CEP 71950-904",
+  "Conjunto Nacional": "Shopping Conjunto Nacional, sala 6017, 6º andar, Asa Norte",
+};
+function paginaIclinic(doc, d, via, meta) {
+  const L = mm(15), R = doc.page.width - mm(15), W = R - L, H = doc.page.height;
+  const cinzaLinha = "#cfd4da", azul = "#1f5b99";
+  const regua = (y) => doc.moveTo(L, y).lineTo(R, y).lineWidth(0.6).strokeColor(cinzaLinha).stroke();
+  const rotulo = (r, v, x, y, opt = {}) => { doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#000").text(r + " ", x, y, { continued: true, ...opt }).font("Helvetica").text(v, opt); };
+  // cabeçalho
+  doc.font("Helvetica").fontSize(9.5).fillColor("#000");
+  let y = mm(15);
+  for (const l of ["Dr. Bruno Borges", "Médico Oftalmologista", "CRM: 17877 - RQE: 9314", "Telefone: (61)3033-6605 / (61)98406-0001", "Shopping Conjunto Nacional sala 6017", "Brasília - DF"]) { doc.text(l, L, y, { lineBreak: false }); y += 12.2; }
+  doc.image(LOGO, R - mm(48), mm(19), { width: mm(48) });
+  y += 6; regua(y); y += 8;
+  // paciente
+  if (via) { doc.font("Helvetica-Bold").fontSize(9.5).text(via, L, y); y = doc.y + 1; }
+  rotulo("Nome do Paciente:", d.nome, L, y, { width: W }); y = doc.y + 1;
+  const idSexo = [d.idade_txt ? ["Idade:", d.idade_txt] : null, d.sexo ? ["Sexo:", d.sexo] : null].filter(Boolean);
+  if (idSexo.length) { doc.font("Helvetica-Bold").fontSize(9.5).text("", L, y, { continued: true });
+    idSexo.forEach(([r, v], i) => doc.font("Helvetica-Bold").text((i ? "   " : "") + r + " ", { continued: true }).font("Helvetica").text(v, { continued: i < idSexo.length - 1 }));
+    y = doc.y + 1; }
+  if (d.cpf) { rotulo("CPF:", d.cpf, L, y, { width: W }); y = doc.y + 1; }
+  if (d.endereco) { rotulo("Endereço: ", d.endereco, L, y, { width: W }); y = doc.y + 1; }
+  if (d.cidade) { rotulo("Cidade:", d.cidade, L, y, { width: W }); y = doc.y + 1; }
+  y += 10; regua(y); y += 16;
+  // itens
+  d.meds.forEach((m, i) => {
+    doc.font("Helvetica-Bold").fontSize(10.5).fillColor(azul).text(String(i + 1), L + 4, y, { width: 14 });
+    doc.fillColor("#000").text(`${m.med}${m.qtd ? " • " + m.qtd : ""}`, L + 32, y, { width: W - 32 });
+    doc.font("Helvetica").fontSize(10).fillColor("#000").text(m.pos, L + 32, doc.y + 2, { width: W - 32 });
+    y = doc.y + 14;
+  });
+  // pé (de baixo para cima)
+  const base = H - mm(22);
+  doc.font("Helvetica").fontSize(8.5).fillColor("#000").text(`Assinado digitalmente por ${meta.titular}`, L, base + 8, { width: W, lineBreak: false });
+  let yp = base - 62;
+  regua(yp - 6);
+  doc.font("Helvetica-Bold").fontSize(9).fillColor("#000").text("Prescrição Digital Emitida no IOBB", L, yp, { lineBreak: false });
+  doc.font("Helvetica").text("Emissão: ", L, yp + 13, { continued: true, lineBreak: false }).font("Helvetica-Bold").text(meta.emissao, { lineBreak: false });
+  // selo verde
+  const sx = L, sy = yp + 29, sw = mm(48), sh = 15;
+  doc.roundedRect(sx, sy, sw, sh, sh / 2).fill("#2e9e45");
+  doc.circle(sx + 9, sy + sh / 2, 4.6).fill("#ffffff");
+  doc.moveTo(sx + 6.8, sy + sh / 2).lineTo(sx + 8.6, sy + sh / 2 + 1.9).lineTo(sx + 11.4, sy + sh / 2 - 2.1).lineWidth(1.3).strokeColor("#2e9e45").stroke();
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#ffffff").text("Assinada Digitalmente", sx + 17, sy + 4, { width: sw - 20, lineBreak: false });
+  const mx = L + W * 0.42;
+  doc.fillColor("#000").font("Helvetica-Bold").fontSize(9).text("ID da Receita: ", mx, yp, { continued: true, lineBreak: false }).font("Helvetica").text(meta.id, { lineBreak: false });
+  if (d.codigo) doc.font("Helvetica-Bold").text("Código do Paciente: ", mx, yp + 13, { continued: true, lineBreak: false }).font("Helvetica").text(String(d.codigo), { lineBreak: false });
+  doc.font("Helvetica").text("Confira a assinatura em ", mx, yp + (d.codigo ? 26 : 13), { continued: true, lineBreak: false }).font("Helvetica-Bold").text("validar.iti.gov.br", { lineBreak: false });
+  let ym = yp - 6 - 58;
+  regua(ym - 6);
+  rotulo("Médico(a):", "Bruno Borges   ", L, ym, { lineBreak: false, continued: true }); doc.font("Helvetica-Bold").text("CRM: ", { continued: true }).font("Helvetica").text("17877   ", { continued: true }).font("Helvetica-Bold").text("UF: ", { continued: true }).font("Helvetica").text("DF");
+  rotulo("Endereço: ", ENDERECO_UNIDADE[d.unidade] || ENDERECO_UNIDADE["Conjunto Nacional"], L, ym + 13, { width: W });
+  rotulo("Cidade:", "Brasília - DF", L, ym + 26, { width: W });
+  rotulo("Telefone:", "(61) 3033-6605", L, ym + 39, { width: W });
+}
+
 // Monta o PDF, reserva o espaço da assinatura e assina com o .pfx.
 async function documentoAssinado(tipo, d, cert) {
   const agora = new Date();
@@ -200,10 +262,14 @@ async function documentoAssinado(tipo, d, cert) {
   doc.registerFont("G6", FONTE); doc.registerFont("G8", FONTE_NEGRITO);
   const partes = []; doc.on("data", (c) => partes.push(c));
   const fim = new Promise((ok, falha) => { doc.on("end", ok); doc.on("error", falha); });
-  doc.on("pageAdded", () => rodape(doc));
+  if (tipo !== "colirios") doc.on("pageAdded", () => rodape(doc));
   const paginas = [];   // [via, desenha]
-  if (tipo === "oculos") paginas.push(["", () => { corpoOculos(doc, d); assinatura(doc, carimbo, false); }]);
-  else if (tipo === "colirios") (d.duas_vias ? ["1ª via — farmácia", "2ª via — paciente"] : [""]).forEach(via => paginas.push([via, () => { corpoColirios(doc, d); assinatura(doc, carimbo, false); }]));
+  if (tipo === "colirios") {
+    const meta = { titular: cert.titular, emissao: quando.replace(", ", " - "), id: crypto.randomBytes(5).toString("hex").toUpperCase().slice(0, 8) };
+    for (const via of (d.duas_vias ? ["1ª via Farmácia", "2ª via Paciente"] : [""])) {
+      doc.addPage({ size: "A4", margins: { top: 0, bottom: 0, left: 0, right: 0 } }); paginaIclinic(doc, d, via, meta);
+    }
+  } else if (tipo === "oculos") paginas.push(["", () => { corpoOculos(doc, d); assinatura(doc, carimbo, false); }]);
   else if (tipo === "pedido") (d.separado ? d.exames.map(e => [e]) : [d.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista); assinatura(doc, carimbo, true); }]));
   else throw new Error("tipo de documento desconhecido");
   for (const [via, desenha] of paginas) { novaPagina(doc); cabecalho(doc, d.data, via); desenha(); }

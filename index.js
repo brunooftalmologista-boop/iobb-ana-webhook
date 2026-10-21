@@ -10853,12 +10853,41 @@ app.post("/api/prontuario/certificado/remover", requireMedico, async (req, res) 
   try { await supabase.from("medico_certificado").delete().eq("id", "medico"); cacheCert = null; res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: "Não consegui remover." }); }
 });
+// Receita no visual do iClinic: CPF, endereço, idade em anos e meses e a unidade
+// vêm do cadastro (o que a secretária preencheu/conferiu) e da consulta.
+async function completarReceita(d, tel, nome, consultaId) {
+  try {
+    if (ult8(tel) && primNome(nome)) {
+      const { data: pac } = await supabase.from("prontuario_pacientes").select("dados").eq("chave", chavePaciente(tel, nome)).maybeSingle();
+      let dd = pac?.dados || {};
+      if (dd.juntado_para) { const { data: pr } = await supabase.from("prontuario_pacientes").select("dados").eq("chave", dd.juntado_para).maybeSingle(); dd = { ...(pr?.dados || {}), ...Object.fromEntries(Object.entries(dd).filter(([, v]) => v)) }; }
+      if (dd.cpf) d.cpf = dd.cpf;
+      const end = [dd.endereco, dd.bairro, dd.cep ? `CEP ${dd.cep}` : ""].filter(Boolean).join(", ");
+      if (end) d.endereco = end;
+      if (dd.cidade) d.cidade = String(dd.cidade).replace(/\s*\/\s*/, " - ");
+      if (!d.sexo && dd.sexo) d.sexo = dd.sexo;
+      if (dd.iclinic_id) d.codigo = dd.iclinic_id;
+      const m = String(dd.nascimento || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (m) {
+        const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: TZ_BR }));
+        let meses = (hoje.getFullYear() - +m[3]) * 12 + (hoje.getMonth() + 1 - +m[2]); if (hoje.getDate() < +m[1]) meses--;
+        if (meses >= 0) d.idade_txt = `${Math.floor(meses / 12)} anos${meses % 12 ? ` e ${meses % 12} ${meses % 12 === 1 ? "mês" : "meses"}` : ""}`;
+      }
+    }
+    if (!d.idade_txt && d.idade != null) d.idade_txt = `${d.idade} anos`;
+    if (/^[0-9a-f-]{36}$/i.test(String(consultaId || ""))) {
+      const { data: c } = await supabase.from("prontuario_consultas").select("appointment_id").eq("id", consultaId).maybeSingle();
+      if (c?.appointment_id) { const { data: ag } = await supabase.from("appointments").select("unidade").eq("id", c.appointment_id).maybeSingle(); if (ag?.unidade) d.unidade = ag.unidade; }
+    }
+  } catch (e) { console.error("[Assinatura] completar receita (segue sem):", e.message); }
+}
 app.post("/api/prontuario/documento-assinado", requireMedico, async (req, res) => {
   try {
     const { tipo, dados, tel, nome, consulta_id } = req.body || {};
     if (!["oculos", "colirios", "pedido"].includes(tipo) || !dados || !dados.nome) return res.status(400).json({ error: "Documento inválido." });
     const cert = await certificadoDoMedico();
     if (!cert) return res.status(409).json({ error: "Cadastre o certificado digital primeiro (botão “Certificado digital”)." });
+    if (tipo === "colirios") await completarReceita(dados, tel, nome, consulta_id);
     const pdf = await assin.documentoAssinado(tipo, dados, cert);
     const rotulo = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames" }[tipo];
     let anexo = null;
