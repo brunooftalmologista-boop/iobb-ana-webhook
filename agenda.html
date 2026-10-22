@@ -331,6 +331,8 @@
         <label>Convênio <span style="font-weight:400;color:#6b7b8c">— vazio = Particular</span></label>
         <input id="agdet-e-conv" list="agdet-conv-lista" autocomplete="off">
         <datalist id="agdet-conv-lista"></datalist>
+        <label>Data de nascimento</label>
+        <input id="agdet-e-nasc" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10" autocomplete="off">
       </div>
       <label>Motivo</label>
       <input id="agdet-e-motivo" autocomplete="off">
@@ -990,7 +992,9 @@ function entrarModoEdicao(){
   $('#agdet-e-tel').value    = a.paciente_telefone ? fone(a.paciente_telefone) : '';
   $('#agdet-e-conv').value   = a.convenio||'';
   $('#agdet-e-motivo').value = a.motivo||'';
-  $('#agdet-e-obs').value    = a.observacoes||'';
+  // a data de nascimento mora nas observações ("Nascimento: dd/mm/aaaa"): vai para o campo próprio
+  $('#agdet-e-nasc').value   = nascDeObs(a.observacoes);
+  $('#agdet-e-obs').value    = String(a.observacoes||'').split('\n').filter(l=>!/^\s*Nascimento:/i.test(l)).join('\n').trim();
   $('#agdet-body').style.display='none';
   $('#agdet-presenca').style.display='none';
   $('#agdet-indicacao').style.display='none';
@@ -1000,6 +1004,11 @@ function entrarModoEdicao(){
   ['agdet-voltar','agdet-salvar'].forEach(i=>$('#'+i).style.display='');
   if(!ehBloqueio) $('#agdet-e-nome').focus(); else $('#agdet-e-motivo').focus();
 }
+function nascDeObs(obs){ const t=String(obs||''); let m=t.match(/Nascimento:\s*(\d{2}\/\d{2}\/\d{4})/i); if(m) return m[1];
+  m=t.match(/Nascimento:\s*(\d{4})-(\d{2})-(\d{2})/i); return m?`${m[3]}/${m[2]}/${m[1]}`:''; }
+// digitação só com números vira dd/mm/aaaa
+document.addEventListener('input',e=>{ if(e.target.id!=='agdet-e-nasc') return; const d=e.target.value.replace(/\D/g,'').slice(0,8);
+  e.target.value=d.length>4?`${d.slice(0,2)}/${d.slice(2,4)}/${d.slice(4)}`:d.length>2?`${d.slice(0,2)}/${d.slice(2)}`:d; });
 async function salvarEdicao(){
   const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
   if(!a) return;
@@ -1009,6 +1018,8 @@ async function salvarEdicao(){
     body.nome=$('#agdet-e-nome').value.trim();
     body.telefone=$('#agdet-e-tel').value.trim();
     body.convenio=$('#agdet-e-conv').value.trim();
+    body.nascimento=$('#agdet-e-nasc').value.trim();
+    if(body.nascimento && !/^\d{2}\/\d{2}\/\d{4}$/.test(body.nascimento)){ const e=$('#agdet-e-erro'); e.textContent='Data de nascimento no formato dd/mm/aaaa.'; e.style.display='block'; return; }
     if(!body.nome){ const e=$('#agdet-e-erro'); e.textContent='O nome do paciente não pode ficar vazio.'; e.style.display='block'; return; }
   }
   $('#agdet-salvar').disabled=true;

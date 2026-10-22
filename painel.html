@@ -527,6 +527,8 @@
         <input id="agedit-tel" inputmode="tel" autocomplete="off" placeholder="Ex.: 61 98406-0001">
         <label>Convênio</label>
         <select id="agedit-conv"></select>
+        <label>Data de nascimento</label>
+        <input id="agedit-nasc" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10" autocomplete="off">
         <label>Motivo</label>
         <input id="agedit-motivo" autocomplete="off">
         <label>Observações</label>
@@ -1865,7 +1867,10 @@ function prepararEdicao(a){
   $('#agedit-nome').value   = a.paciente_nome || '';
   $('#agedit-tel').value    = a.paciente_telefone || '';
   $('#agedit-motivo').value = a.motivo || '';
-  $('#agedit-obs').value    = a.observacoes || '';
+  // nascimento mora nas observações ("Nascimento: dd/mm/aaaa"): vai para o campo próprio
+  { const t=String(a.observacoes||''); let m=t.match(/Nascimento:\s*(\d{2}\/\d{2}\/\d{4})/i); if(!m){ const i=t.match(/Nascimento:\s*(\d{4})-(\d{2})-(\d{2})/i); if(i) m=[0,`${i[3]}/${i[2]}/${i[1]}`]; }
+    $('#agedit-nasc').value = m?m[1]:''; }
+  $('#agedit-obs').value    = String(a.observacoes||'').split('\n').filter(l=>!/^\s*Nascimento:/i.test(l)).join('\n').trim();
   // O convênio gravado pode não estar na lista (veio da Ana, escrito por
   // extenso). Nesse caso acrescenta a opção, para não apagar o dado ao salvar.
   const conv = a.convenio || '';
@@ -1873,7 +1878,7 @@ function prepararEdicao(a){
     $('#agedit-conv').insertAdjacentHTML('beforeend','<option>'+esc(conv)+'</option>');
   }
   $('#agedit-conv').value = conv;
-  for(const el of ['agedit-nome','agedit-tel','agedit-conv']) $('#'+el).disabled = ehBloqueio;
+  for(const el of ['agedit-nome','agedit-tel','agedit-conv','agedit-nasc']) $('#'+el).disabled = ehBloqueio;
   $('#agedit-unidade').value = a.unidade === 'Taguatinga' ? 'Taguatinga' : 'Conjunto Nacional';
 }
 function erroEdicao(msg){
@@ -1901,6 +1906,8 @@ async function carregarVagasEdicao(){
     erroEdicao('Falha ao carregar as vagas ('+e.message+').');
   }
 }
+document.addEventListener('input',e=>{ if(e.target.id!=='agedit-nasc') return; const d=e.target.value.replace(/\D/g,'').slice(0,8);
+  e.target.value=d.length>4?`${d.slice(0,2)}/${d.slice(2,4)}/${d.slice(4)}`:d.length>2?`${d.slice(0,2)}/${d.slice(2)}`:d; });
 async function salvarEdicao(){
   if(!agDetId) return;
   erroEdicao('');
@@ -1910,7 +1917,9 @@ async function salvarEdicao(){
     convenio:$('#agedit-conv').value.trim(),
     motivo:$('#agedit-motivo').value.trim(),
     observacoes:$('#agedit-obs').value.trim(),
+    nascimento:$('#agedit-nasc').value.trim(),
   };
+  if(corpo.nascimento && !/^\d{2}\/\d{2}\/\d{4}$/.test(corpo.nascimento)){ erroEdicao('Data de nascimento no formato dd/mm/aaaa.'); return; }
   if(!corpo.nome){ erroEdicao('O nome do paciente não pode ficar vazio.'); return; }
   const b=$('#agedit-salvar'); b.disabled=true;
   try{

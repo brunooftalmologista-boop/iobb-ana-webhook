@@ -9751,7 +9751,7 @@ app.post("/api/agenda/:id/cancel", async (req, res) => {
 // obrigatória existe para evitar).
 app.post("/api/agenda/:id/editar", async (req, res) => {
   try {
-    const { nome, telefone, convenio, motivo, observacoes } = req.body || {};
+    const { nome, telefone, convenio, motivo, observacoes, nascimento } = req.body || {};
     const { data: atual, error } = await supabase.from("appointments")
       .select("id, status, origem, paciente_nome, paciente_telefone, convenio, motivo, observacoes")
       .eq("id", req.params.id).single();
@@ -9782,6 +9782,23 @@ app.post("/api/agenda/:id/editar", async (req, res) => {
     if (convenio !== undefined && !ehBloqueio) updates.convenio = String(convenio || "").trim() || null;
     if (motivo !== undefined) updates.motivo = String(motivo || "").trim() || null;
     if (observacoes !== undefined) updates.observacoes = String(observacoes || "").trim() || null;
+    // DATA DE NASCIMENTO (22/10/2026): mora nas observações como "Nascimento: dd/mm/aaaa"
+    // (formato da Ana — é de lá que a Ana, o pré-exame e o prontuário tiram a idade).
+    // A linha antiga é trocada, nunca duplicada; também vai para o cadastro do paciente.
+    let nascOk = null;
+    if (nascimento !== undefined && !ehBloqueio) {
+      const nz = String(nascimento || "").trim();
+      if (nz) {
+        const m = nz.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        const dt = m ? new Date(`${m[3]}-${m[2]}-${m[1]}T12:00:00-03:00`) : null;
+        if (!m || isNaN(dt) || dt.getUTCDate() !== Number(m[1]) || dt > new Date() || Number(m[3]) < 1900)
+          return res.status(400).json({ ok: false, error: "Data de nascimento inválida. Use dd/mm/aaaa." });
+        nascOk = nz;
+      }
+      const base = String(observacoes !== undefined ? (observacoes || "") : (atual.observacoes || ""))
+        .split("\n").filter(l => !/^\s*Nascimento:/i.test(l)).join("\n").trim();
+      updates.observacoes = [base, nascOk ? `Nascimento: ${nascOk}` : ""].filter(Boolean).join("\n") || null;
+    }
     if (!Object.keys(updates).length) return res.status(400).json({ ok: false, error: "Nada para alterar." });
 
     updates.updated_at = new Date().toISOString();
@@ -9794,6 +9811,15 @@ app.post("/api/agenda/:id/editar", async (req, res) => {
     const mudou = Object.keys(updates).filter(k => k !== "updated_at")
       .map(k => `${k}: "${atual[k] ?? ""}" → "${updates[k] ?? ""}"`).join(" · ");
     console.log(`[Agenda] Editado ${req.params.id} por ${req.panelUser?.email || "painel"} — ${mudou}`);
+    if (nascOk && novo?.paciente_telefone && novo?.paciente_nome) {
+      try {   // cadastro do paciente (o principal, se o cadastro foi juntado)
+        const chave = chavePaciente(novo.paciente_telefone, novo.paciente_nome);
+        let { data: pac } = await supabase.from("prontuario_pacientes").select("chave, nome, telefone, dados").eq("chave", chave).maybeSingle();
+        if (pac?.dados?.juntado_para) { const { data: pr } = await supabase.from("prontuario_pacientes").select("chave, nome, telefone, dados").eq("chave", pac.dados.juntado_para).maybeSingle(); if (pr) pac = pr; }
+        await supabase.from("prontuario_pacientes").upsert({ chave: pac?.chave || chave, nome: pac?.nome || novo.paciente_nome, telefone: pac?.telefone || novo.paciente_telefone,
+          dados: { ...(pac?.dados || {}), nascimento: nascOk }, updated_at: new Date().toISOString() }, { onConflict: "chave" });
+      } catch (e) { console.error("[Agenda] nascimento no cadastro (segue):", e.message); }
+    }
 
     // Telefone e nome viajam no lembrete da véspera; convênio, na ficha da
     // recepção. Nada disso mexe em horário, então o cache de vagas fica de pé.
