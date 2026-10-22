@@ -841,8 +841,20 @@ const CID_IDX=CID_OLHO.map(([c,d,a])=>({c,d,k:semAcento(`${c} ${c.replace(".",""
 function cidsEscolhidos(){ try{ return JSON.parse(v("hd-cids")||"[]"); }catch(_){ return []; } }
 function desenhaCids(){ $("#hd-cids-tags").innerHTML=cidsEscolhidos().map(([c,d],i)=>`<span class="chip" aria-pressed="true">${esc(d)} (CID ${esc(c)})<button type="button" data-tira="${i}" aria-label="Tirar ${esc(d)}">×</button></span>`).join(""); }
 let sugCid=[], sugI=0;
+// CID-10 COMPLETO (22/10/2026, DATASUS: 14.233 categorias e subcategorias), além da lista
+// oftalmológica com sinônimos (CID_OLHO). Carrega só ao usar a busca (~150 KB comprimido);
+// os oftalmológicos continuam aparecendo PRIMEIRO.
+let CID_TODOS=null, cidCarregando=null;
+function carregaCidTodos(){ if(CID_TODOS||cidCarregando) return cidCarregando;
+  cidCarregando=fetch("/prontuario/cid10.json").then(r=>r.json()).then(l=>{ CID_TODOS=l.map(([c,d])=>({c,d,k:semAcento(`${c} ${c.replace(".","")} ${d}`)})); if(v("hd-busca").trim().length>=2) buscaCid(); }).catch(()=>{ cidCarregando=null; });
+  return cidCarregando; }
+$("#hd-busca").addEventListener("focus",carregaCidTodos);
 function buscaCid(){ const q=semAcento(v("hd-busca")).trim(); if(q.length<2){ $("#hd-sug").hidden=true; return; }
-  const ts=q.split(/\s+/); sugCid=CID_IDX.filter(x=>ts.every(t=>x.k.includes(t))).sort((a,b)=>(a.k.startsWith(q)?0:1)-(b.k.startsWith(q)?0:1)||a.c.localeCompare(b.c)).slice(0,15); sugI=0;
+  carregaCidTodos();
+  const ts=q.split(/\s+/), casa=x=>ts.every(t=>x.k.includes(t)), ordem=(a,b)=>(a.k.startsWith(q)?0:1)-(b.k.startsWith(q)?0:1)||a.c.localeCompare(b.c);
+  const olho=CID_IDX.filter(casa).sort(ordem), ja=new Set(olho.map(x=>x.c));
+  const resto=CID_TODOS?CID_TODOS.filter(x=>!ja.has(x.c)&&casa(x)).sort(ordem):[];
+  sugCid=[...olho,...resto].slice(0,20); sugI=0;
   $("#hd-sug").innerHTML=sugCid.length?sugCid.map((x,i)=>`<div role="option" data-i="${i}" class="${i===0?"on":""}"><b>${x.c}</b>${esc(x.d)}</div>`).join(""):'<div style="cursor:default;color:var(--muted)">Nenhum CID encontrado. Escreva em “Outros diagnósticos sem CID”.</div>';
   $("#hd-sug").hidden=false; }
 function escolheCid(i){ const x=sugCid[i]; if(!x) return; const l=cidsEscolhidos(); if(!l.some(([c])=>c===x.c)) l.push([x.c,x.d]);

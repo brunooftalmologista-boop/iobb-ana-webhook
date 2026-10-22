@@ -11644,6 +11644,14 @@ app.post("/api/equipe/mensagens", async (req, res) => {
 app.get("/equipe-chat.js", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.type("application/javascript").sendFile(__dirname + "/equipe-chat.js"); });
 app.get("/pre-exame", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/preexame.html"); });
 app.get("/prontuario/timbrado.jpg", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/timbrado-a4.jpg"); });
+// CID-10 completo (DATASUS, 22/10/2026) para a busca de diagnóstico do prontuário.
+// Dado público, sem paciente: vai comprimido (o servidor não tem compressão geral).
+app.get("/prontuario/cid10.json", (req, res) => {
+  res.set({ "Cache-Control": "public, max-age=2592000", "Content-Type": "application/json; charset=utf-8", Vary: "Accept-Encoding" });
+  const gz = require("fs").readFileSync(__dirname + "/assets/cid10.json.gz");
+  if (/\bgzip\b/.test(String(req.headers["accept-encoding"] || ""))) { res.set("Content-Encoding", "gzip"); return res.send(gz); }
+  res.send(require("zlib").gunzipSync(gz));
+});
 app.get("/prontuario/logo.png", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/logo-receita.png"); });
 app.get("/prontuario", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/prontuario.html"); });
 
