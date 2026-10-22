@@ -101,7 +101,16 @@ function rodape(doc) {
     .text("Instituto de Olhos Bruno Borges · Shopping Conjunto Nacional, sala 6017 · Brasília - DF · (61) 3033-6605 / (61) 98406-0001", L, doc.page.height - mm(12), { width: W, align: "center", lineBreak: false });
   doc.page.margins.bottom = mb; doc.x = x; doc.y = y;
 }
-function assinatura(doc, carimbo, rqe) {
+// Selo verde (o mesmo da receita no visual iClinic): pílula verde com o ✓ e o texto.
+function seloVerde(doc, sx, sy, sw, texto) {
+  const sh = 15;
+  doc.roundedRect(sx, sy, sw, sh, sh / 2).fill("#2e9e45");
+  doc.circle(sx + 9, sy + sh / 2, 4.6).fill("#ffffff");
+  doc.moveTo(sx + 6.8, sy + sh / 2).lineTo(sx + 8.6, sy + sh / 2 + 1.9).lineTo(sx + 11.4, sy + sh / 2 - 2.1).lineWidth(1.3).strokeColor("#2e9e45").stroke();
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#ffffff").text(texto, sx + 17, sy + 4, { width: sw - 20, lineBreak: false });
+  doc.fillColor("#000").strokeColor("#000");
+}
+function assinatura(doc, carimbo, rqe, selo) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   if (doc.y > doc.page.height - mm(62)) { novaPagina(doc); }
   doc.y += mm(14);
@@ -113,6 +122,7 @@ function assinatura(doc, carimbo, rqe) {
     .text(rqe ? "CRM: 17877 - RQE: 9314" : "CRM: 17877", { width: W, align: "center" });
   doc.moveDown(0.6);
   doc.fontSize(8.5).text(carimbo, L, doc.y, { width: W, align: "center" });
+  if (selo) { const sw = mm(48), y = doc.y + mm(2); seloVerde(doc, L + (W - sw) / 2, y, sw, selo); doc.y = y + 15; }
 }
 
 function corpoOculos(doc, d) {
@@ -249,10 +259,7 @@ function paginaIclinic(doc, d, via, meta) {
   doc.font("Helvetica").text("Emissão: ", L, yp + 13, { continued: true, lineBreak: false }).font("Helvetica-Bold").text(meta.emissao, { lineBreak: false });
   // selo verde
   const sx = L, sy = yp + 29, sw = mm(48), sh = 15;
-  doc.roundedRect(sx, sy, sw, sh, sh / 2).fill("#2e9e45");
-  doc.circle(sx + 9, sy + sh / 2, 4.6).fill("#ffffff");
-  doc.moveTo(sx + 6.8, sy + sh / 2).lineTo(sx + 8.6, sy + sh / 2 + 1.9).lineTo(sx + 11.4, sy + sh / 2 - 2.1).lineWidth(1.3).strokeColor("#2e9e45").stroke();
-  doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#ffffff").text("Assinada Digitalmente", sx + 17, sy + 4, { width: sw - 20, lineBreak: false });
+  seloVerde(doc, sx, sy, sw, "Assinada Digitalmente");
   const mx = L + W * 0.42;
   doc.fillColor("#000").font("Helvetica-Bold").fontSize(9).text("ID da Receita: ", mx, yp, { continued: true, lineBreak: false }).font("Helvetica").text(meta.id, { lineBreak: false });
   if (d.codigo) doc.font("Helvetica-Bold").text("Código do Paciente: ", mx, yp + 13, { continued: true, lineBreak: false }).font("Helvetica").text(String(d.codigo), { lineBreak: false });
@@ -283,8 +290,8 @@ async function documentoAssinado(tipo, d, cert) {
     for (const via of (d.duas_vias ? ["1ª via Farmácia", "2ª via Paciente"] : [""])) {
       doc.addPage({ size: "A4", margins: { top: 0, bottom: 0, left: 0, right: 0 } }); paginaIclinic(doc, d, via, meta);
     }
-  } else if (tipo === "oculos") paginas.push(["", () => { corpoOculos(doc, d); assinatura(doc, carimbo, false); }]);
-  else if (tipo === "pedido") (d.separado ? d.exames.map(e => [e]) : [d.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista); assinatura(doc, carimbo, true); }]));
+  } else if (tipo === "oculos") paginas.push(["", () => { corpoOculos(doc, d); assinatura(doc, carimbo, false, "Assinada Digitalmente"); }]);
+  else if (tipo === "pedido") (d.separado ? d.exames.map(e => [e]) : [d.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista); assinatura(doc, carimbo, true, "Assinado Digitalmente"); }]));
   else throw new Error("tipo de documento desconhecido");
   for (const [via, desenha] of paginas) { novaPagina(doc); cabecalho(doc, d.data, via); desenha(); }
   // (a v4 já fecha a assinatura e o widget; fechar de novo duplica o ByteRange)
