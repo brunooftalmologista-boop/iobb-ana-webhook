@@ -703,8 +703,13 @@ function emailLogado(){ try{ syncTokensFromStorage(); const p=AUTH.split('.')[1]
 function botoesAbrir(a){
   if(a.origem==='bloqueio'){ $('#agdet-abrir').innerHTML=''; return; }
   const dia=agDayStr(new Date(a.inicio)), medico=emailLogado()==='bruno@iobb.local';
-  const pront=medico&&a.paciente_telefone?`<a class="btn" href="/prontuario?ag=${encodeURIComponent(a.id)}" target="_blank" rel="noopener">🩺 Abrir prontuário</a>`:'';
-  const pre=`<a class="btn ${medico?'ghost':''}" href="/pre-exame?ag=${encodeURIComponent(a.id)}&dia=${dia}" target="_blank" rel="noopener">🔬 Abrir pré-exame</a>`;
+  // No APP instalado, "nova aba" abre na janela comum do Chrome (às vezes escondida
+  // atrás/noutra área de trabalho) — a ficha carregava sem ninguém ver (22/10/2026).
+  // No app, abre na própria janela (volta-se pelo ⌂); no navegador, aba nova.
+  const noApp=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
+  const alvo=noApp?'':' target="_blank" rel="noopener"';
+  const pront=medico&&a.paciente_telefone?`<a class="btn" href="/prontuario?ag=${encodeURIComponent(a.id)}"${alvo}>🩺 Abrir prontuário</a>`:'';
+  const pre=`<a class="btn ${medico?'ghost':''}" href="/pre-exame?ag=${encodeURIComponent(a.id)}&dia=${dia}"${alvo}>🔬 Abrir pré-exame</a>`;
   $('#agdet-abrir').innerHTML=pront+pre;
 }
 function openAgDetails(id){
