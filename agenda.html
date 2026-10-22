@@ -21,6 +21,7 @@
   select,input[type=date],input[type=search]{padding:7px 10px;border-radius:8px;border:1px solid #2a557d;background:#173d5e;color:#fff;font-size:13px}
   input[type=search]{min-width:180px}
   .btn{padding:7px 14px;border-radius:8px;border:none;background:#25d366;color:#08301c;font-weight:700;font-size:13px;cursor:pointer}
+  a.btn{text-decoration:none;display:inline-block}
   .btn.ghost{background:#173d5e;color:#dbe9f5;border:1px solid #2a557d}
   .wrap{max-width:1080px;margin:0 auto;padding:18px}
   .wrap.larga{max-width:1320px}
@@ -318,6 +319,7 @@
   <div class="pmodal">
     <h3 id="agdet-titulo">Detalhes do agendamento</h3>
     <p id="agdet-quando"></p>
+    <div id="agdet-abrir" style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 10px"></div>
     <div id="agdet-body"></div>
     <!-- Edição dos dados do agendamento (nunca do dia/hora: isso é Remarcar) -->
     <div id="agdet-form" style="display:none">
@@ -689,10 +691,21 @@ $('#ag-week').addEventListener('click', e=>{
 
 // ----- detalhes do agendamento ------------------------------------------------
 let agDetId=null;
+// Quem está logado (só para decidir os botões — o servidor é quem barra o acesso).
+function emailLogado(){ try{ syncTokensFromStorage(); const p=AUTH.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'); return String(JSON.parse(decodeURIComponent(escape(atob(p)))).email||'').toLowerCase(); }catch(_){ return ''; } }
+// 21/10/2026: da agenda direto para o prontuário (login do médico) ou para o
+// pré-exame (todos). O link leva só o id do agendamento.
+function botoesAbrir(a){
+  if(a.origem==='bloqueio'){ $('#agdet-abrir').innerHTML=''; return; }
+  const dia=agDayStr(new Date(a.inicio)), medico=emailLogado()==='bruno@iobb.local';
+  const pront=medico&&a.paciente_telefone?`<a class="btn" href="/prontuario?ag=${encodeURIComponent(a.id)}" target="_blank" rel="noopener">🩺 Abrir prontuário</a>`:'';
+  const pre=`<a class="btn ${medico?'ghost':''}" href="/pre-exame?ag=${encodeURIComponent(a.id)}&dia=${dia}" target="_blank" rel="noopener">🔬 Abrir pré-exame</a>`;
+  $('#agdet-abrir').innerHTML=pront+pre;
+}
 function openAgDetails(id){
   const a=(agBooked||[]).find(x=>String(x.id)===String(id));
   if(!a) return;
-  agDetId=id;
+  agDetId=id; botoesAbrir(a);
   sairModoEdicao();          // reabrir o modal sempre começa em modo leitura
   const d=new Date(a.inicio);
   $('#agdet-quando').textContent=a.unidade+' — '+d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'})+' às '+d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});

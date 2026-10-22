@@ -1654,6 +1654,11 @@ ${figs}
   catch(e){ return portao(e.status===403?"Esta página é só para o login <b>Dr. Bruno</b>. Saia do painel e entre com o seu usuário.":null); }
   $("#portao").hidden=true; $("#raiz").hidden=false;
   $("#dia").value=hojeBR(); mostra("lista"); carregaDia($("#dia").value);
+  // vindo da agenda: /prontuario?ag=<id do agendamento> abre a ficha direto
+  const ag=new URLSearchParams(location.search).get("ag");
+  if(ag){ history.replaceState(null,"",location.pathname);
+    try{ const r=await api(`/api/prontuario/agendamento/${encodeURIComponent(ag)}`); await abrirFicha(r.tel,r.nome); }
+    catch(e){ status(e.msg||"Não consegui abrir a ficha deste agendamento.","erro"); } }
 })();
 })();
 </script>

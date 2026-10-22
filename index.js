@@ -10404,6 +10404,16 @@ async function buscarPacientes(qRaw) {
 // Move consultas (guardando em dados.juntado_de o nome/telefone antigos),
 // anexos e pré-exames; o cadastro de origem não é apagado, só marcado como
 // juntado (some da busca) e o destino só COMPLETA o que estiver vazio.
+// Abrir a ficha a partir da agenda (/prontuario?ag=<id>): o link leva só o id do
+// agendamento — telefone e nome não ficam na URL/histórico do navegador.
+app.get("/api/prontuario/agendamento/:id", requireMedico, async (req, res) => {
+  try {
+    if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(400).json({ error: "Agendamento inválido." });
+    const { data: a } = await supabase.from("appointments").select("paciente_telefone, paciente_nome").eq("id", req.params.id).maybeSingle();
+    if (!a || !ult8(a.paciente_telefone) || !primNome(a.paciente_nome)) return res.status(404).json({ error: "Este agendamento não tem telefone/nome para abrir a ficha." });
+    res.json({ tel: a.paciente_telefone, nome: a.paciente_nome });
+  } catch (e) { res.status(500).json({ error: "Não consegui abrir." }); }
+});
 app.post("/api/prontuario/juntar", requireMedico, async (req, res) => {
   try {
     const { de_chave, para_tel, para_nome } = req.body || {};

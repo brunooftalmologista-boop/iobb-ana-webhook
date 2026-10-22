@@ -473,7 +473,10 @@ $("#wa-trazer").addEventListener("click",async()=>{
 /* ===== entrada ===== */
 function entrar(){ $("#portao").hidden=true; $("#raiz").hidden=false;
   $("#hoje-txt").textContent=new Date().toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"long"});
-  $("#dia").value=hojeBR(); carregaDia(); }
+  // vindo da agenda: /pre-exame?ag=<id>&dia=AAAA-MM-DD abre o paciente direto
+  const q=new URLSearchParams(location.search), ag=q.get("ag"), d=q.get("dia");
+  $("#dia").value=/^\d{4}-\d{2}-\d{2}$/.test(d||"")?d:hojeBR(); carregaDia();
+  if(ag){ history.replaceState(null,"",location.pathname); abrir(ag); } }
 if(AUTH||ler("iobb_rt")) entrar(); else portao("");
 setInterval(()=>{ if(!$("#raiz").hidden&&!sujo) carregaDia(); },60000);
 })();
