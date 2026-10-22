@@ -187,6 +187,10 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 .trazido{border-color:#d9a400 !important;border-style:dashed !important;background:color-mix(in srgb,#d9a400 8%,var(--surface)) !important}
 .seg-alertas{border:1px solid var(--warn);border-left-width:4px;border-radius:6px;padding:8px 10px;background:color-mix(in srgb,var(--warn) 9%,var(--surface));font-size:14px;display:grid;gap:4px}
 .seg-alertas b{color:var(--warn)}
+.graf-wrap{display:grid;gap:14px;grid-template-columns:1fr;max-width:760px}
+.graf-wrap figure{margin:0;min-width:0} .graf-wrap figcaption{font-size:13px;font-weight:600;margin-bottom:4px}
+.graf-wrap svg{width:100%;height:auto;display:block} .graf-wrap text{fill:var(--muted);font-size:10px;font-family:inherit}
+.graf-leg{font-size:12px;color:var(--muted)} .graf-leg b.od{color:var(--od)} .graf-leg b.oe{color:var(--oe)}
 .col-fav{border:0;background:none;font-size:18px;line-height:1;padding:4px;cursor:pointer;color:var(--muted)} .col-fav.on{color:#d9a400}
 #med-sug{position:fixed;right:auto;top:auto;z-index:60;max-height:320px}
 #med-sug div{line-height:1.3} #med-sug small{color:var(--muted);margin-left:6px;font-size:12px}
@@ -273,6 +277,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 
 
         <details class="sec" id="sec-pre" hidden open><summary id="pre-resumo">Pré-exame</summary><div id="pre-corpo" style="display:grid;gap:8px"></div></details>
+        <details class="sec" id="sec-graf" hidden><summary>Evolução da PIO e da acuidade visual</summary><div id="graf"></div></details>
         <details class="sec" id="sec-diag"><summary>Últimos diagnósticos</summary><div class="diag" id="diag"></div></details>
         <details class="sec" id="sec-iclinic"><summary>Prontuário anterior (iClinic)</summary><div style="display:grid;gap:10px"><div class="anexos-t" id="iclinic-arqs" style="padding:0"></div><div class="row"><button type="button" id="anexar-iclinic">Anexar prontuário anterior (PDF)</button><span class="status" id="st-iclinic"></span></div></div></details>
         <details class="sec" id="sec-ana" hidden><summary id="ana-resumo">Conversa com a Ana</summary><div class="conversa" id="ana-msgs"></div></details>
@@ -1194,6 +1199,54 @@ document.addEventListener("keydown",e=>{ const inp=e.target, box=$("#med-sug"); 
 $("#med-sug").addEventListener("mousedown",e=>{ const d=e.target.closest("[data-i]"); if(d){ e.preventDefault(); escolheMed(medItens[+d.dataset.i]); } });
 document.addEventListener("focusout",e=>{ if(e.target.dataset?.medac) setTimeout(()=>{ if(!document.activeElement?.dataset?.medac) $("#med-sug").hidden=true; },150); });
 window.addEventListener("scroll",()=>{ $("#med-sug").hidden=true; },true);
+/* ===== GRÁFICO DE PIO E ACUIDADE (22/10/2026) =====
+   Pontos de TODAS as consultas da ficha: campos (pio-od/oe, av-cc-od/oe ou AV da refração)
+   e, nas importadas do iClinic, o texto (padrões medidos no banco em 22/10: "Tonometria olho
+   direito: N mmHg" 13 mil, "PIO: N/NmmHg" 1,3 mil, "Acuidade visual corrigida: 20/N em ambos
+   os olhos" 10 mil, "AV OD CC: 20/N"…). Acuidade em escala logMAR (20/20 no alto). */
+function medidasDe(c){ const C=c.dados?.campos||{}, t=String(c.texto||""), r={};
+  const num=x=>{ const n=parseInt(x,10); return n>=3&&n<=70?n:null; };
+  // uma consulta pode ter várias medidas (curva, repetição): guarda todas em r.pios
+  r.pios=[]; const p0={od:num(C["pio-od"]),oe:num(C["pio-oe"])}; if(p0.od!=null||p0.oe!=null) r.pios.push(p0);
+  let m;
+  if(!r.pios.length){ const ds=[...t.matchAll(/Tonometria olho direito:\s*(\d{1,2})/gi)].map(x=>num(x[1])), es=[...t.matchAll(/Tonometria olho esquerdo:\s*(\d{1,2})/gi)].map(x=>num(x[1]));
+    for(let i=0;i<Math.max(ds.length,es.length);i++) r.pios.push({od:ds[i]??null,oe:es[i]??null}); }
+  for(const x of t.matchAll(/\bPIO\s*[:;]?\s*(\d{1,2})\s*\/\s*(\d{1,2})(?!\d)/gi)) r.pios.push({od:num(x[1]),oe:num(x[2])});
+  if(r.pios.length){ r.pod=r.pios[0].od; r.poe=r.pios[0].oe; } else { r.pod=null; r.poe=null; }
+  if(r.pod==null&&(m=t.match(/\bPIO\b[^\n]{0,6}?\bOD\b:?\s*(\d{1,2})/i))) r.pod=num(m[1]);
+  if(r.poe==null&&(m=t.match(/\bPIO\b[^\n]{0,30}?\bOE\b:?\s*(\d{1,2})/i))) r.poe=num(m[1]);
+  if(r.pod==null&&r.poe==null&&(m=t.match(/\bPIO\s*:?\s*(\d{1,2})\s*mmHg\s*(AO|em ambos)/i))) r.pod=r.poe=num(m[1]);
+  if(!r.pios.length&&(r.pod!=null||r.poe!=null)) r.pios.push({od:r.pod,oe:r.poe});
+  const sn=x=>{ const m=String(x||"").match(/20\s*\/\s*(\d{2,3})/); return m?+m[1]:null; };
+  r.aod=sn(C["av-cc-od"])??sn(C["re-od-av"]); r.aoe=sn(C["av-cc-oe"])??sn(C["re-oe-av"]);
+  if(r.aod==null&&r.aoe==null&&(m=t.match(/Acuidade visual corrigida:\s*20\/(\d{2,3}) em ambos/i))) r.aod=r.aoe=+m[1];
+  if(r.aod==null&&(m=t.match(/Olho direito:[^\n]*acuidade visual 20\/(\d{2,3})/i)||t.match(/\bAV OD CC:\s*20\/(\d{2,3})/i)||t.match(/Acuidade visual corrigida:[^\n]*\bOD\b:?\s*20\/(\d{2,3})/i))) r.aod=+m[1];
+  if(r.aoe==null&&(m=t.match(/Olho esquerdo:[^\n]*acuidade visual 20\/(\d{2,3})/i)||t.match(/\bAV OE CC:\s*20\/(\d{2,3})/i)||t.match(/Acuidade visual corrigida:[^\n]*\bOE\b:?\s*20\/(\d{2,3})/i))) r.aoe=+m[1];
+  return r; }
+function svgSerie(pts,{min,max,ticks,fmt,inv,ref}){ // pts: [{t,od,oe,data}]
+  const W=560,H=190,L=40,R=10,T=10,B=26, t0=pts[0].t, t1=pts[pts.length-1].t||t0+1, dt=Math.max(1,t1-t0);
+  const X=t=>L+(W-L-R)*(t-t0)/dt, Y=v=>{ const f=(v-min)/(max-min); return T+(H-T-B)*(inv?f:1-f); };
+  const grade=ticks.map(v=>`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L-6}" y="${Y(v)+3}" text-anchor="end">${fmt(v)}</text>`).join("");
+  const refL=ref!=null&&ref>min&&ref<max?`<line x1="${L}" x2="${W-R}" y1="${Y(ref)}" y2="${Y(ref)}" stroke="var(--warn)" stroke-dasharray="4 4" stroke-width="1"/><text x="${W-R}" y="${Y(ref)-4}" text-anchor="end" style="fill:var(--warn)">${ref} mmHg</text>`:"";
+  const anos=[]; for(let a=new Date(t0).getFullYear();a<=new Date(t1).getFullYear();a++){ const ta=new Date(a,0,1).getTime(); if(ta>=t0&&ta<=t1) anos.push(ta); }
+  const eixoX=(anos.length>=2?anos:[t0,t1]).map(ta=>`<text x="${X(ta)}" y="${H-8}" text-anchor="middle">${anos.length>=2?new Date(ta).getFullYear():new Date(ta).toLocaleDateString("pt-BR",{month:"2-digit",year:"2-digit"})}</text>`).join("");
+  const linha=(k,cor)=>{ const q=pts.filter(p=>p[k]!=null); if(!q.length) return "";
+    return `<polyline fill="none" stroke="${cor}" stroke-width="2" points="${q.map(p=>`${X(p.t)},${Y(p[k])}`).join(" ")}"/>`+q.map(p=>`<circle cx="${X(p.t)}" cy="${Y(p[k])}" r="3.2" fill="${cor}"><title>${k==="od"?"OD":"OE"} ${p.data}: ${fmt(p[k],true)}</title></circle>`).join(""); };
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">${grade}${refL}${eixoX}${linha("od","var(--od)")}${linha("oe","var(--oe)")}</svg>`; }
+function desenhaGrafico(){ const sec=$("#sec-graf"); const cs=(ficha?.consultas||[]).map(c=>({c,m:medidasDe(c),t:new Date(c.data_consulta).getTime()})).filter(x=>!isNaN(x.t)).sort((a,b)=>a.t-b.t);
+  const data=t=>new Date(t).toLocaleDateString("pt-BR",{timeZone:TZ});
+  const pio=cs.flatMap(x=>x.m.pios.filter(p=>p.od!=null||p.oe!=null).map(p=>({t:x.t,data:data(x.t),od:p.od,oe:p.oe})));
+  const lm=n=>Math.log10(n/20); // logMAR
+  const av=cs.filter(x=>x.m.aod!=null||x.m.aoe!=null).map(x=>({t:x.t,data:data(x.t),od:x.m.aod!=null?lm(x.m.aod):null,oe:x.m.aoe!=null?lm(x.m.aoe):null}));
+  const figs=[];
+  if(pio.length>=2){ const vs=pio.flatMap(p=>[p.od,p.oe]).filter(v=>v!=null); const mx=Math.max(25,Math.ceil((Math.max(...vs)+2)/5)*5), mn=Math.max(0,Math.min(10,Math.floor((Math.min(...vs)-2)/5)*5));
+    const ticks=[]; for(let v=mn;v<=mx;v+=5) ticks.push(v);
+    figs.push(`<figure><figcaption>PIO (mmHg) · ${pio.length} medidas</figcaption>${svgSerie(pio,{min:mn,max:mx,ticks,fmt:(v,f)=>f?v+" mmHg":String(v),ref:21})}</figure>`); }
+  if(av.length>=2){ const vs=av.flatMap(p=>[p.od,p.oe]).filter(v=>v!=null); const pior=Math.max(0.4,Math.ceil(Math.max(...vs)*10-0.001)/10);
+    const sn=v=>"20/"+Math.round(20*Math.pow(10,v)); let ticks=[0,0.1,0.18,0.3,0.4,0.5,0.7,1,1.3].filter(v=>v<=pior+0.001); if(ticks.length>6) ticks=ticks.filter(v=>![0.18,0.4].includes(v));
+    figs.push(`<figure><figcaption>Acuidade visual com correção · ${av.length} medidas</figcaption>${svgSerie(av,{min:0,max:pior,ticks,fmt:v=>sn(v),inv:true})}</figure>`); }
+  sec.hidden=!figs.length; if(!figs.length) return;
+  $("#graf").innerHTML=`<div class="graf-leg"><b class="od">● OD</b> &nbsp; <b class="oe">● OE</b> · passe o mouse num ponto para ver a data e o valor. Dados lidos dos campos e do texto das consultas (inclui as do iClinic).</div><div class="graf-wrap">${figs.join("")}</div>`; }
 /* ===== POSOLOGIA ABREVIADA (22/10/2026) =====
    "1g 12/12 7d AO" → "Pingar 1 gota em ambos os olhos de 12 em 12 horas por 7 dias" ao sair do
    campo. Atalhos: Ng/gts, Ncp, Ncap, pom · AO/OD/OE · 12/12 ou 4x · 7d/2sem/1m/uc · sn, an
@@ -1282,8 +1335,8 @@ function seguranca(){ const box=$("#seg-alertas"); if(!box) return;
    Só o que é do PACIENTE e muda pouco: antecedentes, medicações em uso, diagnósticos e a
    última refração prescrita (vai para "Refração / óculos anteriores"). Nada de medida do
    dia (AV, PIO, biomicroscopia). Soma sem apagar; o que veio fica com borda amarela
-   tracejada até ser editado. Só consultas feitas aqui (as importadas do iClinic são texto). */
-function ultimaConsulta(){ return (ficha?.consultas||[]).filter(c=>c.id!==atend?.id&&c.dados?.campos&&!c.dados.importado)
+   tracejada até ser editado. Das importadas do iClinic vêm só refração e CIDs (o resto é texto). */
+function ultimaConsulta(){ return (ficha?.consultas||[]).filter(c=>c.id!==atend?.id&&c.dados?.campos&&Object.keys(c.dados.campos).length)
   .sort((a,b)=>new Date(b.data_consulta)-new Date(a.data_consulta))[0]||null; }
 function mostraTrazer(){ const u=ultimaConsulta(), b=$("#trazer-ult"); b.hidden=!u||!atend;
   if(u) b.textContent=`↻ Trazer da última consulta (${new Date(u.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ})})`; }
@@ -1295,7 +1348,7 @@ $("#trazer-ult").addEventListener("click",()=>{ const u=ultimaConsulta(); if(!u)
   for(const k of u.dados.chips||[]){ const [g,nm]=k.split("|"); if(g!=="hd") continue; const c=$$('[data-grupo="hd"] .chip').find(c=>nomeChip(c)===nm); if(c&&c.getAttribute("aria-pressed")!=="true"){ c.click(); n++; } }
   if(C["hd-cids"]){ const l=cidsEscolhidos(); try{ JSON.parse(C["hd-cids"]).forEach(x=>{ if(!l.some(([c])=>c===x[0])){ l.push(x); n++; } }); }catch(_){} $("#hd-cids").value=JSON.stringify(l); }
   const od=refrDe(C,"od"), oe=refrDe(C,"oe");
-  if(od||oe){ const t=[`Refração prescrita em ${quando}:`,od&&`OD ${od}`,oe&&`OE ${oe}`,C["re-add"]&&`Adição ${C["re-add"]}`].filter(Boolean).join(" "); if(somaLinhas("refant-txt",t)) n++; }
+  if(od||oe){ const t=[`Refração da consulta de ${quando}${u.dados.importado?" (iClinic)":""}:`,od&&`OD ${od}`,oe&&`OE ${oe}`,C["re-add"]&&`Adição ${C["re-add"]}`].filter(Boolean).join(" "); if(somaLinhas("refant-txt",t)) n++; }
   $("#ant-txt").dispatchEvent(new Event("input",{bubbles:true}));
   status(n?`Trazido da consulta de ${quando} (borda amarela): confira com o paciente.`:`A consulta de ${quando} não tem nada novo para trazer.`,n?"ok":""); });
 document.addEventListener("input",e=>{ if(e.isTrusted) e.target.classList?.remove("trazido"); });
@@ -1461,7 +1514,7 @@ async function abrirFicha(tel,nome,manterAtend){
   }catch(e){ if(e.status===401) return status(MSG_SESSAO,"erro"); diag("ficha_falhou",`${e.status||""} ${e.msg||e.message||e} ${String(e.stack||"").split("\n")[1]||""}`); $("#lat-lista").textContent=e.msg||"Não consegui abrir a ficha."; }
 }
 function desenhaFicha(){
-  const p=ficha.paciente;
+  const p=ficha.paciente; try{ desenhaGrafico(); }catch(e){ console.error(e); }
   $("#p-nome").textContent=p.nome||"—";
   $("#p-ini").textContent=String(p.nome||"?").trim().split(/\s+/).filter(Boolean).slice(0,2).map(t=>t[0]).join("").toUpperCase();
   $("#p-idade").textContent=p.idade!=null?`${p.idade} ${p.idade===1?"ano":"anos"} (nasc. ${p.nascimento})`:"não informada";
