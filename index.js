@@ -7023,6 +7023,17 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
           const conv = String(camp.convenio || "").trim();
           const ehParticular = /^particular$/i.test(conv);
           campanhaSabeConvenio = !!conv;
+          // 🚫 CONVÊNIO DE ANTES QUE HOJE NÃO ATENDEMOS (22/10/2026). A fila veio do
+          // iClinic sem filtrar plano: a paciente da GDF Saúde (INAS) ouviu
+          // "Continua pelo GDF Saúde (INAS)?" — como se fosse normal — e, ao
+          // responder "Sim", recebeu "preciso verificar com a equipe". O plano não
+          // é atendido (Dr. Bruno, 27/07, 25/08 e 22/10). Aqui o sistema SABE: diz.
+          // Só a lista EXPLÍCITA dos não atendidos — nunca "não reconheci o nome":
+          // nome do iClinic escrito diferente não pode virar negativa (o erro de
+          // agosto, quando a Ana negava Unimed e variações).
+          const convNorm = _normFicha(conv);
+          const convRecusado = !!conv && !ehParticular && !convNorm.includes("unimed")
+            && CONVENIOS_NAO_ATENDIDOS.some(x => ` ${convNorm} `.includes(` ${_normFicha(x)} `));   // palavra inteira: "inas" não casa "Marinas"
           const quando = camp.ultima_consulta
             ? new Date(`${camp.ultima_consulta}T12:00:00-03:00`).toLocaleDateString("pt-BR", { timeZone: TZ_BR, month: "long", year: "numeric" })
             : null;
@@ -7032,7 +7043,9 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
             + (conv ? `\n- Como foi atendido daquela vez: **${ehParticular ? "Particular" : conv}**.` : "")
             + `\n\nCOMO USAR ISSO:`
             + `\n- 🚫 NÃO pergunte o nome completo — você já tem. Use o do cadastro no bloco [AGENDAR]. Só troque se o próprio paciente disser outro nome (pode ser a mãe marcando para o filho).`
-            + (conv
+            + (convRecusado
+                ? `\n- ⚠️ O plano que ele usou daquela vez (**${conv}**) NÃO é atendido hoje. 🚫 NÃO pergunte "continua pelo ${conv}?" e NÃO diga que vai "verificar com a equipe": a resposta é conhecida. Diga em meia linha, sem rodeio, que hoje não atendemos esse plano e ofereça o PARTICULAR — R$ 200,00, com nota fiscal para ele pedir reembolso ao plano — e pergunte, na MESMA mensagem, se ele tem hoje algum outro convênio (pode ter mudado de plano). Ex.: "Hoje não atendemos o ${conv}, mas posso agendar no particular — R$ 200,00, com nota fiscal para reembolso. Ou, se você tiver outro convênio agora, me diz qual que eu confiro."`
+                : conv
                 ? `\n- 🚫 NÃO pergunte "é particular ou convênio?" do nada. CONFIRME em meia linha, junto da oferta do horário: "${ehParticular ? "Continua como particular?" : `Continua pelo ${conv}?`}" — e siga. Se ele disser que mudou, use o novo.`
                 : `\n- Pergunte se é particular ou por convênio (esse dado não veio no cadastro).`)
             + `\n- ✅ O QUE REALMENTE FALTA É A DATA DE NASCIMENTO: peça só ela, na mesma mensagem em que oferece o horário. É o único dado obrigatório que não temos.`
