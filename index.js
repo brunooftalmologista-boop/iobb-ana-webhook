@@ -30,8 +30,9 @@ const googleAds = require("./googleAds");
 const app = express();
 // Captura o corpo CRU (rawBody) para validar a assinatura X-Hub-Signature-256 da Meta.
 const jsonPadrao = express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } });
-// A importação grande do iClinic manda pacotes de até 15 MB: tem parser próprio na rota.
-app.use((req, res, next) => (req.path === "/api/prontuario/iclinic-lote" ? next() : jsonPadrao(req, res, next)));
+// A importação grande do iClinic manda pacotes de até 15 MB, e o laudo assinado leva as
+// telas do exame: as duas rotas têm parser próprio.
+app.use((req, res, next) => (req.path === "/api/prontuario/iclinic-lote" || req.path === "/api/prontuario/documento-assinado" ? next() : jsonPadrao(req, res, next)));
 
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
@@ -10960,7 +10961,40 @@ async function completarReceita(d, tel, nome, consultaId) {
     }
   } catch (e) { console.error("[Assinatura] completar receita (segue sem):", e.message); }
 }
-app.post("/api/prontuario/documento-assinado", requireMedico, async (req, res) => {
+// Envia um documento ASSINADO (anexo do prontuário) ao paciente pelo WhatsApp da clínica.
+// Só dentro da janela de 24h da Meta (documento é mensagem livre; template não leva PDF
+// aqui). Manda para o número que ESCREVEU para a clínica (patients.phone, 12 ou 13
+// dígitos), não o do cadastro, e registra na conversa para a equipe ver no painel.
+app.post("/api/prontuario/anexo/:id/whatsapp", requireMedico, async (req, res) => {
+  try {
+    const { data: ax } = await supabase.from("prontuario_anexos").select("*").eq("id", req.params.id).maybeSingle();
+    if (!ax) return res.status(404).json({ error: "Documento não encontrado." });
+    if (ax.tipo !== "assinado") return res.status(400).json({ error: "Só documentos assinados podem ser enviados por aqui." });
+    const tel = String(req.body?.tel || "");
+    if (!ult8(tel) || String(ax.paciente_chave || "").split("|")[0] !== ult8(tel)) return res.status(400).json({ error: "O telefone não confere com o paciente deste documento." });
+    const { data: pats } = await supabase.from("patients").select("id, phone").in("phone", fonesBR(tel));
+    if (!pats || !pats.length) return res.json({ ok: false, foraDaJanela: true, error: "Este paciente nunca escreveu para a clínica pelo WhatsApp: não dá para enviar o PDF por aqui." });
+    let alvo = null, ultima = null;
+    for (const p of pats) { const t = await lastInboundAt(p.phone); if (t && (!ultima || t > ultima)) { ultima = t; alvo = p; } }
+    if (!ultima || Date.now() - ultima > 24 * 3600 * 1000) {
+      return res.json({ ok: false, foraDaJanela: true, error: "Fora da janela de 24h do WhatsApp: o paciente precisa mandar uma mensagem para a clínica antes. Dá para entregar impresso ou pedir que ele escreva." });
+    }
+    const { data: s2 } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(ax.path, 900);
+    if (!s2?.signedUrl) throw new Error("sem URL assinada");
+    const nomeArq = String(ax.nome || "documento.pdf").replace(/^.*?(Receita|Pedido|Atestado|Declaração|Laudo)/i, "$1").slice(0, 90);
+    const legenda = String(req.body?.legenda || "").slice(0, 500) || "Segue o documento assinado digitalmente pelo Dr. Bruno Borges. Qualquer dúvida, é só responder por aqui.";
+    const waId = await sendWhatsAppDocument(alvo.phone, s2.signedUrl, nomeArq, legenda);
+    const { data: conv } = await supabase.from("conversations").select("id").eq("patient_id", alvo.id).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (conv) await saveMessage(conv.id, "human", `[Documento enviado: ${nomeArq}] ${legenda}`, waId, null, "Dr. Bruno");
+    res.json({ ok: true, para: alvo.phone });
+  } catch (e) {
+    const meta = e?.response?.data?.error || {};
+    const fora = meta.code === 131047 || meta.code === 131051;
+    console.error("[prontuario whatsapp]", meta.code || "", meta.message || e.message);
+    res.json({ ok: false, foraDaJanela: fora, error: fora ? "Fora da janela de 24h do WhatsApp." : "Não consegui enviar pelo WhatsApp." });
+  }
+});
+app.post("/api/prontuario/documento-assinado", requireMedico, express.json({ limit: "15mb" }), async (req, res) => {
   try {
     const { tipo, dados, tel, nome, consulta_id } = req.body || {};
     if (!["oculos", "colirios", "pedido", "atestado"].includes(tipo) || !dados || !dados.nome) return res.status(400).json({ error: "Documento inválido." });

@@ -1057,7 +1057,7 @@ async function enviarAssinado(tipo,dados,stFn){
     let url=r.url; if(!url&&r.pdf_b64){ const b=Uint8Array.from(atob(r.pdf_b64),c=>c.charCodeAt(0)); url=URL.createObjectURL(new Blob([b],{type:"application/pdf"})); }
     if(w) w.location.href=url; else window.open(url,"_blank");
     if(r.anexo){ ficha.anexos=[r.anexo,...(ficha.anexos||[])]; desenhaAnexosAt(); }
-    stFn("PDF assinado pronto (abriu em outra aba e ficou anexado à consulta).","ok");
+    stFn("PDF assinado pronto (abriu em outra aba e ficou anexado à consulta). Para mandar ao paciente: 📲 WhatsApp, ao lado do documento nos anexos.","ok");
   }catch(e){ if(w) w.close(); stFn(e.status===401?MSG_SESSAO:(e.msg||"Não consegui gerar o PDF assinado."),"erro"); }
 }
 function mcStatus(t,cls){ $("#mc-st").textContent=t; $("#mc-st").className="status "+(cls||""); }
@@ -1207,6 +1207,16 @@ document.addEventListener("keydown",e=>{ const inp=e.target, box=$("#med-sug"); 
 $("#med-sug").addEventListener("mousedown",e=>{ const d=e.target.closest("[data-i]"); if(d){ e.preventDefault(); escolheMed(medItens[+d.dataset.i]); } });
 document.addEventListener("focusout",e=>{ if(e.target.dataset?.medac) setTimeout(()=>{ if(!document.activeElement?.dataset?.medac) $("#med-sug").hidden=true; },150); });
 window.addEventListener("scroll",()=>{ $("#med-sug").hidden=true; },true);
+/* ===== ENVIAR DOCUMENTO ASSINADO PELO WHATSAPP (22/10/2026) =====
+   Botão 📲 nos anexos assinados. 1º clique pede confirmação; o servidor só envia dentro
+   da janela de 24h da Meta e registra na conversa (a equipe vê no painel). */
+document.addEventListener("click",async e=>{ const b=e.target.closest("[data-wpp]"); if(!b) return; e.preventDefault();
+  if(!b.dataset.conf){ b.dataset.conf="1"; const t=b.textContent; b.textContent="Enviar ao paciente? Clique de novo"; setTimeout(()=>{ if(b.dataset.conf==="1"){ delete b.dataset.conf; b.textContent=t; } },5000); return; }
+  b.dataset.conf="2"; b.disabled=true; b.textContent="Enviando…";
+  try{ const r=await api(`/api/prontuario/anexo/${encodeURIComponent(b.dataset.wpp)}/whatsapp`,{method:"POST",body:JSON.stringify({tel:ficha?.paciente?.telefone})});
+    if(r.ok){ b.textContent="✓ Enviado pelo WhatsApp"; status("Documento enviado ao paciente pelo WhatsApp (aparece na conversa do painel).","ok"); }
+    else { b.textContent="📲 WhatsApp"; b.disabled=false; delete b.dataset.conf; status(r.error||"Não consegui enviar.","erro"); } }
+  catch(err){ b.textContent="📲 WhatsApp"; b.disabled=false; delete b.dataset.conf; status(err.status===401?MSG_SESSAO:(err.msg||"Não consegui enviar."),"erro"); } });
 /* ===== ATESTADO E DECLARAÇÃO (22/10/2026) =====
    Comparecimento (horário de/até + acompanhante), afastamento (dias, início e CID só com
    autorização — Res. CFM 1.658/2002) ou texto livre. O texto se monta dos campos até ser
@@ -1616,7 +1626,8 @@ function dadosDoPreExame(apptId){
   return {chips,campos:linhas.length?{"qp-txt":linhas.join("\n")}:{}};
 }
 function arq(x){ const ext=(String(x.nome||"").split(".").pop()||"").slice(0,4).toUpperCase();
-  const a=arqLink(x,ext); return x.tipo==="exame"?`<span class="arq-w">${a}<button type="button" data-laudo="${esc(x.id)}">${x.laudo?"Ver laudo":"Gerar laudo"}</button></span>`:a; }
+  const a=arqLink(x,ext); if(x.tipo==="assinado") return `<span class="arq-w">${a}<button type="button" data-wpp="${esc(x.id)}" title="Enviar este PDF ao paciente pelo WhatsApp da clínica">📲 WhatsApp</button></span>`;
+  return x.tipo==="exame"?`<span class="arq-w">${a}<button type="button" data-laudo="${esc(x.id)}">${x.laudo?"Ver laudo":"Gerar laudo"}</button></span>`:a; }
 function arqLink(x,ext){
   return `<a class="arq" href="${esc(x.url||"#")}" target="_blank" rel="noopener" title="${esc(x.observacao||x.nome)}"><span class="ic">${esc(ext||"ARQ")}</span><span>${esc(x.nome)}<br><small class="hint">${ddmmaa(x.created_at)}${x.observacao?" · "+esc(x.observacao):""}</small></span></a>`; }
 // Texto da consulta → seções (título + conteúdo), no visual do iClinic. Além do
