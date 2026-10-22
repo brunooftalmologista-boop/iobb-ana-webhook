@@ -216,7 +216,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
           <button type="button" data-ir="s-hd" data-at hidden>Hipótese diagnóstica / Conduta</button>
           <button type="button" data-ir="s-evolucao" data-at hidden>Evolução</button>
           <button type="button" data-ir="s-anexos" data-at hidden>Imagens e anexos</button>
-          <button type="button" data-ir="s-iclinic" data-at hidden>Texto para o iClinic</button>
+          <button type="button" data-ir="s-iclinic" data-at hidden>Texto do atendimento</button>
         </nav>
       </div>
       <div id="lat-lista" class="hint">Escolha um paciente na agenda do dia ou busque pelo nome ou telefone.</div>
@@ -414,7 +414,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
           </article>
 
           <article class="folha-sec" id="s-iclinic">
-            <div class="t"><span>Texto para o iClinic</span><button type="button" class="pri" id="copiar">Copiar</button></div>
+            <div class="t"><span>Texto do atendimento <span class="hint" style="font-weight:400">— para relatório</span></span><button type="button" class="pri" id="copiar">Copiar</button></div>
             <div class="c"><pre class="saida" id="saida"></pre><div class="status" id="status"></div></div>
           </article>
         </div>
@@ -471,7 +471,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
   <div class="gaveta" role="dialog" aria-labelledby="gf-t">
     <h3 id="gf-t">Finalizar atendimento</h3>
     <p style="margin:0;color:var(--muted)">Ao finalizar um atendimento, você não poderá alterá-lo novamente. Depois, só será possível <b>inserir informações</b>, com data e hora. Deseja prosseguir?</p>
-    <label class="row" style="color:var(--ink)"><input type="checkbox" id="gf-copiar" style="width:auto" checked> Copiar o texto para colar no iClinic</label>
+    <label class="row" style="color:var(--ink)"><input type="checkbox" id="gf-copiar" style="width:auto"> Copiar o texto do atendimento (para relatório)</label>
     <div class="status" id="gf-st"></div>
     <div class="pe"><button type="button" class="link" id="gf-voltar">← Voltar</button><button type="button" class="pri" id="gf-ok">Finalizar</button></div>
   </div>
@@ -1362,7 +1362,7 @@ async function salvar(silencioso){
 }
 setInterval(()=>{ if(atend&&sujo) salvar(true); },30000);
 window.addEventListener("beforeunload",e=>{ if(atend&&sujo){ e.preventDefault(); e.returnValue=""; } });
-$("#copiar").addEventListener("click",()=>copiarTxt(textoIclinic(),()=>status("Copiado. Cole no iClinic.","ok"),()=>status("Não consegui copiar: selecione o texto e use Ctrl+C.","erro")));
+$("#copiar").addEventListener("click",()=>copiarTxt(textoIclinic(),()=>status("Texto copiado.","ok"),()=>status("Não consegui copiar: selecione o texto e use Ctrl+C.","erro")));
 // repetir a refração da última consulta finalizada
 $("#repetir-ref").addEventListener("click",()=>{ const c=(ficha.consultas||[]).find(x=>x.finalizado_em&&(x.dados?.campos?.["re-od-esf"]||x.dados?.campos?.["re-oe-esf"])); if(!c) return;
   for(const id of ["re-od-esf","re-od-cil","re-od-eixo","re-oe-esf","re-oe-cil","re-oe-eixo","re-add"]){ const el=$("#"+id); if(el) el.value=c.dados.campos[id]||""; }
@@ -1384,7 +1384,7 @@ $("#gf-ok").addEventListener("click",async()=>{
     try{ localStorage.removeItem(chaveLocal(atend.id)); }catch(_){}
     $("#g-fim").hidden=true; sujo=false; pararRelogio(); atend=null; consultaAtual=null; modoAtend(false);
     await abrirFicha(ficha.paciente.telefone,ficha.paciente.nome,true);
-    status($("#gf-copiar").checked?"Atendimento finalizado. O texto foi copiado: cole no iClinic.":"Atendimento finalizado.","ok");
+    status($("#gf-copiar").checked?"Atendimento finalizado. O texto foi copiado.":"Atendimento finalizado.","ok");
   }catch(e){ diag("finalizar_falhou",`status ${e.status||"?"}: ${e.msg||e.message||e}`); $("#gf-st").textContent=e.status===401?MSG_SESSAO:(e.msg||"Não consegui finalizar."); $("#gf-st").className="status erro"; }
 });
 // DIAGNÓSTICO (21/10/2026): "não consigo finalizar" aconteceu várias vezes sem
