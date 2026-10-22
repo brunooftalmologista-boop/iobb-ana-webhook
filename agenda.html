@@ -124,6 +124,7 @@
   .ag-pres{font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:6px;margin-left:2px;vertical-align:middle}
   .ag-pres.veio{background:#0a7d3c;color:#fff}
   .ag-pres.faltou{background:#b3261e;color:#fff}
+  .ag-pres.conf{background:#25d366;color:#08301c}
 
   /* modais no estilo do painel (detalhes + marcar horário) */
   .modal-bg{position:fixed;inset:0;background:rgba(11,20,26,.55);display:none;align-items:center;justify-content:center;z-index:100;padding:16px;overflow:auto}
@@ -608,6 +609,8 @@ function agRender(){
 function tagPresenca(a){
   if(a.compareceu===true)  return '<span class="ag-pres veio">veio</span>';
   if(a.compareceu===false) return '<span class="ag-pres faltou">faltou</span>';
+  // Confirmação do lembrete da véspera (antes só aparecia na aba "Transferir", que saiu em 21/10/2026)
+  if(a.confirmado_em) return `<span class="ag-pres conf" title="Confirmou pelo WhatsApp em ${esc(dataBR(a.confirmado_em)+' às '+horaBR(a.confirmado_em))}">✓ confirmou</span>`;
   return '';
 }
 $('#ag-body').addEventListener('click', async e=>{
@@ -719,6 +722,7 @@ function openAgDetails(id){
     linha('Motivo', a.motivo)+
     linha('Observações', a.observacoes)+
     linha('Registrado por', origem)+
+    (a.confirmado_em?linha('Confirmação','Confirmou pelo WhatsApp em '+dataBR(a.confirmado_em)+' às '+horaBR(a.confirmado_em)):'')+
     (a.encaixe?linha('Tipo','Encaixe (paciente extra)'):'')+
     (a.status==='reservado'?linha('Status','Reserva temporária (aguardando confirmação)'):'');
   renderPresenca(a);
