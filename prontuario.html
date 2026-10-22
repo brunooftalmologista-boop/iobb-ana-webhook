@@ -396,6 +396,14 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                 <div class="row"><label>Olhos <select id="ex-olho" style="width:auto"><option>Ambos os olhos</option><option>Olho direito</option><option>Olho esquerdo</option></select></label><label style="gap:6px"><input type="checkbox" id="ex-separado" style="width:auto"> Um exame por folha (convênio)</label></div>
                 <div class="row"><button type="button" class="pri" id="gerar-ped">Imprimir pedido de exames</button><button type="button" id="assinar-ped">🔏 PDF assinado</button><span class="status" id="status-ped"></span></div>
               </div>
+              <div class="rx" id="at-bloco">
+                <span class="rot" style="margin:0">Atestado / declaração <span class="hint">— o texto se monta sozinho; dá para editar antes de imprimir</span></span>
+                <div class="row" style="flex-wrap:wrap"><label>Tipo <select id="at-tipo" style="width:auto"><option value="comparecimento">Declaração de comparecimento</option><option value="afastamento">Atestado de afastamento</option><option value="livre">Texto livre</option></select></label></div>
+                <div class="row" id="at-comp" style="flex-wrap:wrap"><label>Das <input id="at-de" placeholder="14h00" style="width:80px"></label><label>às <input id="at-ate" placeholder="15h00" style="width:80px"></label><label style="flex:1 1 240px">Acompanhante <input id="at-acomp" placeholder="opcional — nome de quem acompanhou"></label></div>
+                <div class="row" id="at-afast" hidden style="flex-wrap:wrap"><label>Dias <input id="at-dias" inputmode="numeric" style="width:64px"></label><label>A partir de <input id="at-inicio" type="date" style="width:auto"></label><label style="gap:6px"><input type="checkbox" id="at-cid" style="width:auto"> Incluir o CID (só com autorização do paciente)</label></div>
+                <div class="campo"><label for="at-txt">Texto</label><textarea id="at-txt" rows="4" style="min-height:80px;font-size:14px"></textarea></div>
+                <div class="row"><button type="button" class="pri" id="gerar-at">Imprimir</button><button type="button" id="assinar-at">🔏 PDF assinado</button><span class="status" id="status-at"></span></div>
+              </div>
               <div class="campo"><label for="cd-txt">Observações da conduta (um item por linha)</label><textarea id="cd-txt" rows="3" placeholder="Orientações, colírios, encaminhamentos…"></textarea></div>
               <div class="row"><label>Retorno <select id="retorno"><option value="">—</option><option>7 dias</option><option>30 dias</option><option>3 meses</option><option>6 meses</option><option>1 ano</option></select></label></div>
 
@@ -1199,6 +1207,48 @@ document.addEventListener("keydown",e=>{ const inp=e.target, box=$("#med-sug"); 
 $("#med-sug").addEventListener("mousedown",e=>{ const d=e.target.closest("[data-i]"); if(d){ e.preventDefault(); escolheMed(medItens[+d.dataset.i]); } });
 document.addEventListener("focusout",e=>{ if(e.target.dataset?.medac) setTimeout(()=>{ if(!document.activeElement?.dataset?.medac) $("#med-sug").hidden=true; },150); });
 window.addEventListener("scroll",()=>{ $("#med-sug").hidden=true; },true);
+/* ===== ATESTADO E DECLARAÇÃO (22/10/2026) =====
+   Comparecimento (horário de/até + acompanhante), afastamento (dias, início e CID só com
+   autorização — Res. CFM 1.658/2002) ou texto livre. O texto se monta dos campos até ser
+   editado à mão. Imprime na mesma folha da receita ou sai assinado com o selo verde. */
+let atEditado=false;
+const EXTENSO=["zero","um","dois","três","quatro","cinco","seis","sete","oito","nove","dez","onze","doze","treze","quatorze","quinze","dezesseis","dezessete","dezoito","dezenove","vinte","vinte e um","vinte e dois","vinte e três","vinte e quatro","vinte e cinco","vinte e seis","vinte e sete","vinte e oito","vinte e nove","trinta"];
+function statusAt(t,cls){ const x=$("#status-at"); x.textContent=t; x.className="status "+(cls||""); }
+function hhmmBR(d){ const x=new Date(d); return x.toLocaleTimeString("pt-BR",{timeZone:TZ,hour:"2-digit",minute:"2-digit"}).replace(":","h"); }
+function textoAtestado(){ const tipo=$("#at-tipo").value, nome=String(consultaAtual?.paciente_nome||ficha?.paciente?.nome||"").toUpperCase();
+  const cpf=ficha?.paciente?.documentos?.cpf, quem=`${nome}${cpf?`, CPF ${cpf},`:""}`;
+  const data=consultaAtual?new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ}):new Date().toLocaleDateString("pt-BR",{timeZone:TZ});
+  if(tipo==="comparecimento"){ const de=v("at-de").trim(), ate=v("at-ate").trim(), ac=v("at-acomp").trim();
+    let t=`Declaro, para os devidos fins, que ${quem} compareceu à consulta oftalmológica nesta clínica no dia ${data}${de&&ate?`, das ${de} às ${ate}`:de?`, a partir das ${de}`:""}.`;
+    if(ac) t+=`\n\nDeclaro também que ${ac} acompanhou o(a) paciente durante o atendimento.`; return t; }
+  if(tipo==="afastamento"){ const n=parseInt(v("at-dias"),10), ini=v("at-inicio")?v("at-inicio").split("-").reverse().join("/"):data;
+    const cids=$("#at-cid").checked?[...cidsEscolhidos().map(([c])=>c),...$$('[data-grupo="hd"] .chip[aria-pressed="true"]').map(c=>c.dataset.cid).filter(Boolean)]:[];
+    let t=`Atesto, para os devidos fins, que ${quem} esteve sob meus cuidados profissionais no dia ${data} e necessita de afastamento de suas atividades por ${n>0?`${n} (${EXTENSO[n]||n}) ${n===1?"dia":"dias"}`:"___ dias"}, a partir de ${ini}.`;
+    if(cids.length) t+=`\n\nCID-10: ${[...new Set(cids)].join(", ")}.`; return t; }
+  return ""; }
+function atualizaAtestado(){ const tipo=$("#at-tipo").value; $("#at-comp").hidden=tipo!=="comparecimento"; $("#at-afast").hidden=tipo!=="afastamento";
+  if(!atEditado) $("#at-txt").value=textoAtestado(); }
+["at-tipo","at-de","at-ate","at-acomp","at-dias","at-inicio","at-cid"].forEach(id=>$("#"+id).addEventListener(id==="at-tipo"||id==="at-cid"||id==="at-inicio"?"change":"input",()=>{ if(id==="at-tipo") atEditado=false; atualizaAtestado(); }));
+$("#at-txt").addEventListener("input",e=>{ if(e.isTrusted) atEditado=!!e.target.value.trim(); });
+function preparaAtestado(){ if(consultaAtual&&!v("at-de")) $("#at-de").value=hhmmBR(consultaAtual.inicio);
+  atEditado=!!v("at-txt").trim()&&v("at-txt").trim()!==textoAtestado().trim(); atualizaAtestado(); }  // rascunho com texto editado: preserva
+$("#at-bloco").addEventListener("focusin",()=>{ if(!v("at-ate")&&$("#at-tipo").value==="comparecimento"){ $("#at-ate").value=hhmmBR(Date.now()); atualizaAtestado(); } });
+function gerarAtestado(assinar){
+  if(!consultaAtual){ statusAt("Inicie o atendimento primeiro.","erro"); return; }
+  const texto=v("at-txt").trim(); if(!texto){ statusAt("Escreva o texto do atestado.","erro"); return; }
+  if(/___/.test(texto)){ statusAt("Falta o número de dias.","erro"); return; }
+  const titulo=$("#at-tipo").value==="comparecimento"?"DECLARAÇÃO DE COMPARECIMENTO":"ATESTADO MÉDICO";
+  const data=new Date().toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+  const nome=String(consultaAtual.paciente_nome||"").toUpperCase(), timbrado=$("#rx-timbrado").checked;
+  if(assinar) return enviarAssinado("atestado",{nome,data,titulo,texto},statusAt);
+  const folha=`
+<div class="cab">${timbrado?"":`<img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges">`}<span>Brasília, ${data}.</span></div>
+<h1 style="margin-top:6mm">${titulo}</h1>
+${texto.split(/\n{2,}/).map(p=>`<p style="text-align:justify;line-height:1.6;margin:0 0 5mm">${esc(p).replace(/\n/g,"<br>")}</p>`).join("")}
+<div class="ass" style="margin-top:22mm"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877 - RQE: 9314</div>`;
+  abrirReceita({titulo:`${titulo.charAt(0)+titulo.slice(1).toLowerCase()} - ${nome}`,folhas:[folha],timbrado,status:statusAt}); }
+$("#gerar-at").addEventListener("click",()=>gerarAtestado(false));
+$("#assinar-at").addEventListener("click",()=>gerarAtestado(true));
 /* ===== GRÁFICO DE PIO E ACUIDADE (22/10/2026) =====
    Pontos de TODAS as consultas da ficha: campos (pio-od/oe, av-cc-od/oe ou AV da refração)
    e, nas importadas do iClinic, o texto (padrões medidos no banco em 22/10: "Tonometria olho
@@ -1685,7 +1735,7 @@ async function iniciar(consultaId){
     $("#data-at").textContent=new Date(c.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
     durBase=c.duracao_seg||0; t0=Date.now(); pararRelogio(); t0=Date.now(); relogio=setInterval(()=>{ $("#duracao").textContent=fmtDur(durAtual()); },1000);
     modoAtend(true); atualiza(); sujo=false; status(c.updated_at&&c.texto?`Rascunho salvo às ${hhmm(c.updated_at)}.`:"Atendimento iniciado.","ok");
-    carregaPref().then(marcaFavs); mostraTrazer(); $("#mod-st").textContent=""; desenhaAnexosAt(); $("#ind-form").hidden=true; $("#ind-abrir").hidden=false; $("#ind-st").textContent=""; carregaIndicacoesPac(); $("#s-anamnese").scrollIntoView({behavior:"smooth"});
+    carregaPref().then(marcaFavs); mostraTrazer(); preparaAtestado(); $("#mod-st").textContent=""; desenhaAnexosAt(); $("#ind-form").hidden=true; $("#ind-abrir").hidden=false; $("#ind-st").textContent=""; carregaIndicacoesPac(); $("#s-anamnese").scrollIntoView({behavior:"smooth"});
   }catch(e){ status(e.status===401?MSG_SESSAO:(e.msg||"Não consegui iniciar o atendimento."),"erro"); }
 }
 $("#btn-atend").addEventListener("click",()=>{ if(atend) abrirFinalizar(); else iniciar(); });

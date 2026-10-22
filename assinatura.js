@@ -186,6 +186,17 @@ function corpoColirios(doc, d) {
     doc.moveDown(0.9);
   });
 }
+function corpoAtestado(doc, d) {
+  const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
+  doc.moveDown(1.5);
+  doc.font("G8").fontSize(15).text(String(d.titulo || "ATESTADO MÉDICO"), L, doc.y, { width: W, align: "center", characterSpacing: 0.8 });
+  doc.moveDown(1.5);
+  String(d.texto || "").split(/\n{2,}/).forEach((par) => {
+    doc.font("G6").fontSize(12.5).text(par.replace(/\n/g, " ").trim(), L, doc.y, { width: W, align: "justify", lineGap: 5 });
+    doc.moveDown(1);
+  });
+  doc.moveDown(1.5);
+}
 function corpoPedido(doc, d, exames) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   doc.font("G6").fontSize(12.5).text(`Nome: ${d.nome}${d.idade != null ? `     Idade: ${d.idade} anos` : ""}`, L, doc.y);
@@ -277,7 +288,7 @@ async function documentoAssinado(tipo, d, cert) {
   const agora = new Date();
   const quando = agora.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const carimbo = `Documento assinado digitalmente com certificado ICP-Brasil de ${cert.titular} em ${quando}. Confira a assinatura em validar.iti.gov.br.`;
-  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames" };
+  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : "Atestado" };
   const doc = new PDFDocument({ size: "A4", autoFirstPage: false, pdfVersion: "1.7",
     info: { Title: `${titulos[tipo] || "Documento"} - ${d.nome}`, Author: "Dr. Bruno O. Borges - CRM 17877", Creator: "IOBB - prontuário" } });
   doc.registerFont("G6", FONTE); doc.registerFont("G8", FONTE_NEGRITO);
@@ -292,6 +303,7 @@ async function documentoAssinado(tipo, d, cert) {
     }
   } else if (tipo === "oculos") paginas.push(["", () => { corpoOculos(doc, d); assinatura(doc, carimbo, false, "Assinada Digitalmente"); }]);
   else if (tipo === "pedido") (d.separado ? d.exames.map(e => [e]) : [d.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista); assinatura(doc, carimbo, true, "Assinado Digitalmente"); }]));
+  else if (tipo === "atestado") paginas.push(["", () => { corpoAtestado(doc, d); assinatura(doc, carimbo, true, "Assinado Digitalmente"); }]);
   else throw new Error("tipo de documento desconhecido");
   for (const [via, desenha] of paginas) { novaPagina(doc); cabecalho(doc, d.data, via); desenha(); }
   // (a v4 já fecha a assinatura e o widget; fechar de novo duplica o ByteRange)

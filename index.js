@@ -10963,12 +10963,12 @@ async function completarReceita(d, tel, nome, consultaId) {
 app.post("/api/prontuario/documento-assinado", requireMedico, async (req, res) => {
   try {
     const { tipo, dados, tel, nome, consulta_id } = req.body || {};
-    if (!["oculos", "colirios", "pedido"].includes(tipo) || !dados || !dados.nome) return res.status(400).json({ error: "Documento inválido." });
+    if (!["oculos", "colirios", "pedido", "atestado"].includes(tipo) || !dados || !dados.nome) return res.status(400).json({ error: "Documento inválido." });
     const cert = await certificadoDoMedico();
     if (!cert) return res.status(409).json({ error: "Cadastre o certificado digital primeiro (botão “Certificado digital”)." });
     if (tipo === "colirios") await completarReceita(dados, tel, nome, consulta_id);
     const pdf = await assin.documentoAssinado(tipo, dados, cert);
-    const rotulo = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames" }[tipo];
+    const rotulo = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", atestado: /DECLARA/.test(String(dados.titulo)) ? "Declaração" : "Atestado" }[tipo];
     let anexo = null;
     if (ult8(tel) && primNome(nome)) {
       anexo = await guardarAnexo({
