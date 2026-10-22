@@ -380,7 +380,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                 <span class="rot" style="margin:0">Prescrição de óculos <span class="hint">— preenchida a partir da refração</span></span>
                 <div style="overflow-x:auto"><table aria-label="Receita"><thead><tr><th></th><th>Esférico</th><th>Cilíndrico</th><th>Eixo</th></tr></thead><tbody id="rx-body"></tbody></table></div>
                 <div class="hint" id="rx-add"></div>
-                <div class="row"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="perto">Óculos para perto</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option></select></label>
+                <div class="row"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="perto">Óculos para perto</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option><option value="bifocais">Bifocal (flat-top 28)</option></select></label>
                   <label style="gap:6px"><input type="checkbox" id="rx-timbrado" style="width:auto"> Papel timbrado (sem logotipo)</label></div>
                 <div class="campo"><label for="rx-sug">Lentes sugeridas (pode editar)</label><textarea id="rx-sug" rows="2" style="min-height:48px;font-size:14px"></textarea></div>
                 <div class="campo"><label for="rx-obs">Observação na receita (opcional) <span class="hint">— sai impressa, para o paciente e a ótica</span></label><textarea id="rx-obs" rows="3" style="min-height:56px;font-size:14px" placeholder="Ex.: Óculos para longe. Aumentar o grau de longe para melhorar a visão de perto embaça a visão de longe…"></textarea></div>
@@ -709,7 +709,8 @@ const SUGESTOES={
   monofocais:{padrao:"Hoya Nulux com Hi-Vision LongLife, Zeiss ClearView com DuraVision Platinum ou Essilor com Crizal Sapphire",alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
   "monofocais-alto":{padrao:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR",alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
   perto:{padrao:"Hoya Nulux com Hi-Vision LongLife, Zeiss ClearView com DuraVision Platinum ou Essilor com Crizal Sapphire",alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
-  ocupacionais:{padrao:"Zeiss OfficeLens, Hoya iD WorkStyle 3 ou Essilor Eyezen",alto:"Zeiss OfficeLens 1.67, Hoya iD WorkStyle 3 1.67 ou Rodenstock Impression B.I.G. NORM Ergo 1.67"}
+  ocupacionais:{padrao:"Zeiss OfficeLens, Hoya iD WorkStyle 3 ou Essilor Eyezen",alto:"Zeiss OfficeLens 1.67, Hoya iD WorkStyle 3 1.67 ou Rodenstock Impression B.I.G. NORM Ergo 1.67"},
+  bifocais:{padrao:"lente bifocal flat-top 28 (segmento de leitura de 28 mm), resina ou policarbonato, com antirreflexo",alto:"lente bifocal flat-top 28 (segmento de leitura de 28 mm) em alto índice, com antirreflexo"}
 };
 const altoIndice=()=>["re-od-esf","re-od-cil","re-oe-esf","re-oe-cil"].some(id=>Math.abs(num(v(id)))>4);
 let sugEditada=false;
@@ -717,7 +718,7 @@ function sugerir(){ if(sugEditada) return; const t=SUGESTOES[$("#rx-uso").value]
 $("#rx-sug").addEventListener("input",()=>{ sugEditada=true; });
 $("#rx-uso").addEventListener("change",()=>{ sugEditada=false; sugerir(); atualiza(); });
 const MARGENS_TIMBRADO={topo:50, base:47, lado:20};
-const TIPO_TEXTO={"monofocais":"monofocais","monofocais-alto":"monofocais de alto índice","perto":"monofocais para perto","multifocais":"multifocais","ocupacionais":"ocupacionais"};
+const TIPO_TEXTO={"monofocais":"monofocais","monofocais-alto":"monofocais de alto índice","perto":"monofocais para perto","multifocais":"multifocais","ocupacionais":"ocupacionais","bifocais":"bifocais flat-top 28"};
 function statusRx(t,cls){ const s=$("#status-rx"); s.textContent=t; s.className="status "+(cls||""); }
 let consultaAtual=null;   // {inicio, paciente_nome} — usado pela receita
 function gerarPrescricao(assinar){
