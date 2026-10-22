@@ -152,6 +152,9 @@ function corpoOculos(doc, d) {
   doc.moveDown(0.8);
   doc.font("G8").fontSize(11.5).text(`Data da próxima consulta: ${d.proxima}`, L, doc.y);
 }
+// A receita vem agrupada pela via (o prontuário já ordena); sem via = colírio.
+const viaDe = (m) => String((m && m.via) || "oftálmico");
+const usoDe = (m) => "USO " + viaDe(m).toUpperCase();
 function corpoColirios(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   doc.font("G6").fontSize(12.5).text(`Nome: ${d.nome}`, L, doc.y);
@@ -159,9 +162,12 @@ function corpoColirios(doc, d) {
   doc.moveDown(1.2);
   doc.font("G8").fontSize(15).text("RECEITUÁRIO", L, doc.y, { width: W, align: "center", characterSpacing: 0.8 });
   doc.moveDown(0.8);
-  doc.font("G8").fontSize(11.5).text("USO OFTÁLMICO", L, doc.y, { characterSpacing: 0.4 });
-  doc.moveDown(0.6);
   d.meds.forEach((m, i) => {
+    if (i === 0 || viaDe(m) !== viaDe(d.meds[i - 1])) {
+      if (i) doc.moveDown(0.3);
+      doc.font("G8").fontSize(11.5).text(usoDe(m), L, doc.y, { characterSpacing: 0.4 });
+      doc.moveDown(0.6);
+    }
     const y = doc.y;
     doc.font("G8").fontSize(12).text(`${i + 1}. ${m.med}`, L, y, { width: W - mm(35) });
     const yFim = doc.y;
@@ -223,7 +229,12 @@ function paginaIclinic(doc, d, via, meta) {
   if (d.cidade) { rotulo("Cidade:", d.cidade, L, y, { width: W }); y = doc.y + 1; }
   y += 10; regua(y); y += 16;
   // itens
+  const variasVias = new Set(d.meds.map(viaDe)).size > 1;
   d.meds.forEach((m, i) => {
+    if (variasVias && (i === 0 || viaDe(m) !== viaDe(d.meds[i - 1]))) {
+      doc.font("Helvetica-Bold").fontSize(9.5).fillColor(azul).text(usoDe(m), L + 4, y, { width: W - 4, characterSpacing: 0.4 });
+      y = doc.y + 8;
+    }
     doc.font("Helvetica-Bold").fontSize(10.5).fillColor(azul).text(String(i + 1), L + 4, y, { width: 14 });
     doc.fillColor("#000").text(`${m.med}${m.qtd ? " • " + m.qtd : ""}`, L + 32, y, { width: W - 32 });
     doc.font("Helvetica").fontSize(10).fillColor("#000").text(m.pos, L + 32, doc.y + 2, { width: W - 32 });

@@ -11647,12 +11647,18 @@ app.get("/pre-exame", (req, res) => { res.set("Cache-Control", "no-store, must-r
 app.get("/prontuario/timbrado.jpg", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/timbrado-a4.jpg"); });
 // CID-10 completo (DATASUS, 22/10/2026) para a busca de diagnóstico do prontuário.
 // Dado público, sem paciente: vai comprimido (o servidor não tem compressão geral).
-app.get("/prontuario/cid10.json", (req, res) => {
-  res.set({ "Cache-Control": "public, max-age=2592000", "Content-Type": "application/json; charset=utf-8", Vary: "Accept-Encoding" });
-  const gz = require("fs").readFileSync(__dirname + "/assets/cid10.json.gz");
-  if (/\bgzip\b/.test(String(req.headers["accept-encoding"] || ""))) { res.set("Content-Encoding", "gzip"); return res.send(gz); }
-  res.send(require("zlib").gunzipSync(gz));
-});
+// Medicamentos: lista PMC da CMED/Anvisa (09/10/2026), [produto, substância, apresentação,
+// via, tarja] — P preta, R vermelha com retenção, A antimicrobiano (classe J1/J3/J4/J8B/S1A/S1C1).
+function jsonGz(arquivo, maxAge) {
+  return (req, res) => {
+    res.set({ "Cache-Control": `public, max-age=${maxAge}`, "Content-Type": "application/json; charset=utf-8", Vary: "Accept-Encoding" });
+    const gz = require("fs").readFileSync(__dirname + "/assets/" + arquivo);
+    if (/\bgzip\b/.test(String(req.headers["accept-encoding"] || ""))) { res.set("Content-Encoding", "gzip"); return res.send(gz); }
+    res.send(require("zlib").gunzipSync(gz));
+  };
+}
+app.get("/prontuario/cid10.json", jsonGz("cid10.json.gz", 2592000));
+app.get("/prontuario/medicamentos.json", jsonGz("medicamentos.json.gz", 86400));
 app.get("/prontuario/logo.png", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/logo-receita.png"); });
 app.get("/prontuario", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/prontuario.html"); });
 

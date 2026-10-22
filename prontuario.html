@@ -180,6 +180,9 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 .cid-sug div{padding:7px 10px;cursor:pointer;font-size:14px}
 .cid-sug div b{font-family:var(--f-mono);font-weight:500;margin-right:8px;color:var(--pri)}
 .cid-sug div.on,.cid-sug div:hover{background:var(--pri-soft)}
+#med-sug{position:fixed;right:auto;top:auto;z-index:60;max-height:320px}
+#med-sug div{line-height:1.3} #med-sug small{color:var(--muted);margin-left:6px;font-size:12px}
+#med-sug .tarja{font-size:11px;font-weight:600;padding:1px 5px;border-radius:4px;margin-left:6px;background:var(--pri-soft);color:var(--warn)}
 #hd-cids-tags .chip{background:var(--pri-soft);border-color:var(--pri)}
 #hd-cids-tags .chip button{border:0;background:none;padding:0 0 0 6px;color:var(--muted);cursor:pointer;font-size:15px;line-height:1}
 .ex-at{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:6px;padding:8px 10px}
@@ -269,7 +272,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
         <!-- histórico -->
         <div id="historico" style="display:grid;gap:14px">
           <div class="filtro"><label class="hint" for="filtro">Filtrar:</label>
-            <select id="filtro"><option value="">Todos</option><option>Evolução</option><option>Queixa principal</option><option>Antecedentes pregressos</option><option>Acuidade visual</option><option>Refração</option><option>Biomicroscopia</option><option>Pressão intraocular</option><option>Fundoscopia</option><option>Exames complementares</option><option>Hipótese diagnóstica</option><option>Conduta</option><option>Exames solicitados</option><option>Imagens e anexos</option></select></div>
+            <select id="filtro"><option value="">Todos</option><option>Evolução</option><option>Queixa principal</option><option>Antecedentes pregressos</option><option>Medicações em uso</option><option>Acuidade visual</option><option>Refração</option><option>Biomicroscopia</option><option>Pressão intraocular</option><option>Fundoscopia</option><option>Exames complementares</option><option>Hipótese diagnóstica</option><option>Conduta</option><option>Exames solicitados</option><option>Imagens e anexos</option></select></div>
           <div class="timeline" id="timeline"></div>
         </div>
 
@@ -287,6 +290,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                 </div></div>
               <div class="campo"><label for="qp-txt">História da moléstia atual (um item por linha)</label><textarea id="qp-txt" rows="3"></textarea></div>
               <div class="campo"><label for="ant-txt">Antecedentes pregressos (doenças, cirurgias anteriores, medicamentos, alergias; um item por linha)</label><textarea id="ant-txt" rows="3"></textarea></div>
+              <div class="campo"><label for="meduso-busca">Medicações em uso <span class="hint">— busque pelo nome comercial ou princípio ativo; cada uma vira uma linha</span></label><input id="meduso-busca" data-medac="uso" autocomplete="off" placeholder="Buscar medicamento…"><textarea id="meduso-txt" rows="2" style="margin-top:6px" placeholder="Uma medicação por linha"></textarea></div>
               <div class="campo"><label for="refant-txt">Refração / óculos anteriores</label><textarea id="refant-txt" rows="5"></textarea></div>
               <div><span class="rot">Acuidade visual</span>
                 <div class="grid-olho">
@@ -389,12 +393,12 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
               <div class="rx" id="col-bloco">
                 <span class="rot" style="margin:0">Receita de colírios e medicamentos <span class="hint">— digite o nome e a posologia</span></span>
                 <div style="display:grid;gap:6px">
-                  <div class="row col-linha" data-i="1" style="flex-wrap:wrap"><input id="col-1-med" list="lista-colirios" placeholder="1. Colírio / medicamento" style="flex:2 1 220px"><input id="col-1-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-1-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
-                  <div class="row col-linha" data-i="2" style="flex-wrap:wrap"><input id="col-2-med" list="lista-colirios" placeholder="2. Colírio / medicamento" style="flex:2 1 220px"><input id="col-2-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-2-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
-                  <div class="row col-linha" data-i="3" hidden style="flex-wrap:wrap"><input id="col-3-med" list="lista-colirios" placeholder="3. Colírio / medicamento" style="flex:2 1 220px"><input id="col-3-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-3-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
-                  <div class="row col-linha" data-i="4" hidden style="flex-wrap:wrap"><input id="col-4-med" list="lista-colirios" placeholder="4. Colírio / medicamento" style="flex:2 1 220px"><input id="col-4-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-4-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
-                  <div class="row col-linha" data-i="5" hidden style="flex-wrap:wrap"><input id="col-5-med" list="lista-colirios" placeholder="5. Colírio / medicamento" style="flex:2 1 220px"><input id="col-5-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-5-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
-                  <div class="row col-linha" data-i="6" hidden style="flex-wrap:wrap"><input id="col-6-med" list="lista-colirios" placeholder="6. Colírio / medicamento" style="flex:2 1 220px"><input id="col-6-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-6-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="1" style="flex-wrap:wrap"><input type="hidden" id="col-1-via"><input type="hidden" id="col-1-fl"><input id="col-1-med" data-medac="rx" autocomplete="off" placeholder="1. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-1-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-1-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="2" style="flex-wrap:wrap"><input type="hidden" id="col-2-via"><input type="hidden" id="col-2-fl"><input id="col-2-med" data-medac="rx" autocomplete="off" placeholder="2. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-2-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-2-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="3" hidden style="flex-wrap:wrap"><input type="hidden" id="col-3-via"><input type="hidden" id="col-3-fl"><input id="col-3-med" data-medac="rx" autocomplete="off" placeholder="3. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-3-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-3-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="4" hidden style="flex-wrap:wrap"><input type="hidden" id="col-4-via"><input type="hidden" id="col-4-fl"><input id="col-4-med" data-medac="rx" autocomplete="off" placeholder="4. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-4-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-4-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="5" hidden style="flex-wrap:wrap"><input type="hidden" id="col-5-via"><input type="hidden" id="col-5-fl"><input id="col-5-med" data-medac="rx" autocomplete="off" placeholder="5. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-5-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-5-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="6" hidden style="flex-wrap:wrap"><input type="hidden" id="col-6-via"><input type="hidden" id="col-6-fl"><input id="col-6-med" data-medac="rx" autocomplete="off" placeholder="6. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-6-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-6-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
                 </div>
                 <button type="button" class="link" id="col-mais" style="justify-self:start;padding-left:0">+ outro medicamento</button>
                 <div class="row"><label style="gap:6px"><input type="checkbox" id="col-2vias" style="width:auto"> Antibiótico (2 vias, com idade e sexo)</label><label id="col-sexo-l" hidden>Sexo <select id="col-sexo" style="width:auto"><option value="">—</option><option>Feminino</option><option>Masculino</option></select></label></div>
@@ -504,6 +508,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
   </div>
 </div>
 
+<div class="cid-sug" id="med-sug" role="listbox" hidden></div>
 <datalist id="lista-colirios">
 <!-- Lista ampliada em 21/10/2026 (mercado brasileiro). Datalist só SUGERE: qualquer texto digitado vale. -->
 <!-- lubrificantes / olho seco -->
@@ -646,9 +651,9 @@ const nomeChip=c=>c.childNodes[0].textContent.trim();
 const marcados=g=>$$(`[data-grupo="${g}"] .chip[aria-pressed="true"]`);
 function normal(id){ for(const [k,,txt] of (id==="bio"?BIO:FO)) for(const o of ["od","oe"]){ const el=$(`#${id}-${k}-${o}`); if(!el.value) el.value=txt; } atualiza(); }
 $$("[data-normal]").forEach(b=>b.addEventListener("click",()=>normal(b.dataset.normal)));
-const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>el.id&&!["anexo-obs","anexo-tipo","ex-nome","ind-proc","ind-proc-outro","ind-olho","ind-valor"].includes(el.id));
+const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>el.id&&!["anexo-obs","anexo-tipo","ex-nome","ind-proc","ind-proc-outro","ind-olho","ind-valor","meduso-busca"].includes(el.id));
 document.addEventListener("keydown",e=>{ if(e.key!=="Enter"||e.target.tagName!=="INPUT"||!e.target.closest("#atendimento")||e.target.id==="anexo-obs") return;
-  e.preventDefault(); normalizaCampo(e.target); const l=campos(),i=l.indexOf(e.target); if(i>=0&&l[i+1]) l[i+1].focus(); atualiza(); });
+  e.preventDefault(); normalizaCampo(e.target); const l=campos().filter(x=>x.type!=="hidden"),i=l.indexOf(e.target); if(i>=0&&l[i+1]) l[i+1].focus(); atualiza(); });
 document.addEventListener("focusout",e=>{ if(e.target.matches("#atendimento input")){ normalizaCampo(e.target); atualiza(); } });
 document.addEventListener("input",e=>{ if(e.target.closest("#atendimento")&&!["anexo-obs","ex-nome"].includes(e.target.id)) atualiza(); });
 
@@ -680,6 +685,7 @@ function textoIclinic(){ const L=[];
   const ev=linhas("evol-txt"); if(ev.length) L.push(`Evolução:\n${ev.join("\n")}`);
   const qp=bloco("Queixa principal",[...marcados("qp").map(nomeChip),...linhas("qp-txt")]); if(qp) L.push(qp);
   const ant=bloco("Antecedentes pregressos",linhas("ant-txt")); if(ant) L.push(ant);
+  const mu=bloco("Medicações em uso",linhas("meduso-txt")); if(mu) L.push(mu);
   const refAnt=bloco("Refração / óculos anteriores",linhas("refant-txt")); if(refAnt) L.push(refAnt);
   const avs=[["Acuidade visual sem correção",v("av-sc-od"),v("av-sc-oe")],["Acuidade visual com correção",v("av-cc-od"),v("av-cc-oe")],["Acuidade visual para perto",v("av-pt-od"),v("av-pt-oe")]]
     .map(([r,a,b])=>par(r,a,b)).filter(Boolean); if(avs.length) L.push(avs.join("\n"));
@@ -1112,7 +1118,7 @@ ${ind?`<p class="sug"><b>Indicação clínica:</b> ${esc(ind)}</p>`:""}
    Ele digita o colírio e a posologia; a receita sai na mesma folha da de
    óculos (timbrado ou logotipo). Antibiótico: 2 vias com idade e sexo. */
 const NCOL=6;
-function medicamentos(){ const out=[]; for(let i=1;i<=NCOL;i++){ const m=v(`col-${i}-med`); if(m) out.push({med:m,qtd:v(`col-${i}-qtd`),pos:v(`col-${i}-pos`)}); } return out; }
+function medicamentos(){ const out=[]; for(let i=1;i<=NCOL;i++){ const m=v(`col-${i}-med`); if(m) out.push({med:m,qtd:v(`col-${i}-qtd`),pos:v(`col-${i}-pos`),via:v(`col-${i}-via`)||"oftálmico",fl:v(`col-${i}-fl`)}); } return out; }
 function mostraLinhasCol(){ let ult=0; for(let i=1;i<=NCOL;i++) if(v(`col-${i}-med`)||v(`col-${i}-pos`)) ult=i;
   $$(".col-linha").forEach(l=>{ const i=+l.dataset.i; if(i<=Math.max(2,ult+1)) l.hidden=false; }); }
 $("#col-mais").addEventListener("click",()=>{ const l=$$(".col-linha").find(x=>x.hidden); if(l){ l.hidden=false; l.querySelector("input").focus(); } });
@@ -1121,9 +1127,56 @@ $("#col-2vias").addEventListener("change",()=>{ $("#col-sexo-l").hidden=!$("#col
 // escolher/digitar um; o sexo vem do cadastro se a secretária preencheu. Dá para desmarcar.
 const RE_ANTIBIOTICO=/floxacin|micina|tetraciclina|cloranfenicol|polimixina|vigamox|vigadexa|zymar|zymaxid|zypred|ciloxan|oflox|besivance|tobrex|tobradex|maxitrol|duodex|terramicina|epitezan|regencel/i;
 document.addEventListener("input",e=>{ if(!/^col-\d+-med$/.test(e.target.id||"")) return;
-  const tem=[...document.querySelectorAll('[id^="col-"][id$="-med"]')].some(i=>RE_ANTIBIOTICO.test(i.value));
+  const tem=[...document.querySelectorAll('[id^="col-"][id$="-med"]')].some(i=>RE_ANTIBIOTICO.test(i.value)||/A/.test(v(i.id.replace("-med","-fl"))));
   if(tem&&!$("#col-2vias").checked){ $("#col-2vias").checked=true; $("#col-sexo-l").hidden=false;
     const sx=ficha?.paciente?.documentos?.sexo; if(sx&&!$("#col-sexo").value){ const o=[...$("#col-sexo").options].find(o=>o.value===sx||o.text===sx); if(o) $("#col-sexo").value=o.value; } } });
+// ── Todos os medicamentos (CMED/Anvisa, lista PMC de 09/10/2026: 9.022 apresentações) ──
+// A lista curada do olho (datalist acima) vem primeiro; depois a CMED. Carrega só no
+// primeiro foco (90 KB comprimido). Cada linha da receita guarda a VIA (agrupa a folha
+// em USO OFTÁLMICO / USO ORAL…) e a tarja (P = preta, R = vermelha com retenção,
+// A = antimicrobiano). Texto digitado à mão continua valendo, como colírio.
+const VIA_UP={"oftálmico":"USO OFTÁLMICO","oral":"USO ORAL","tópico":"USO TÓPICO","nasal":"USO NASAL","inalatório":"USO INALATÓRIO","transdérmico":"USO TRANSDÉRMICO","vaginal":"USO VAGINAL","injetável":"USO INJETÁVEL"};
+const ORDEM_VIA=Object.keys(VIA_UP);
+function gruposVia(ms){ const g=new Map(); ms.forEach(m=>{ const k=m.via||"oftálmico"; if(!g.has(k)) g.set(k,[]); g.get(k).push(m); });
+  let n=1; return [...g.keys()].sort((a,b)=>(ORDEM_VIA.indexOf(a)+1||99)-(ORDEM_VIA.indexOf(b)+1||99)).map(k=>{ const l=g.get(k),r=[k,l,n]; n+=l.length; return r; }); }
+const MEDS_CURADOS=$$("#lista-colirios option").map(o=>o.value||o.textContent).filter(Boolean).map(t=>({txt:t,via:"oftálmico",fl:RE_ANTIBIOTICO.test(t)?"RA":"",k:semAcento(t),cur:1}));
+let MEDS=null, medsCarregando=null;
+function carregaMeds(){ return medsCarregando||(medsCarregando=fetch("/prontuario/medicamentos.json").then(r=>{ if(!r.ok) throw 0; return r.json(); }).then(l=>{ const vistos=new Set();
+  MEDS=[]; l.forEach(([p,s,a,via,fl])=>{ const txt=`${s} ${a}`+(semAcento(p)!==semAcento(s)?` (${p})`:""); if(vistos.has(txt)) return; vistos.add(txt); MEDS.push({txt,via,fl,k:semAcento(`${p} ${s} ${a}`),p:semAcento(p),s:semAcento(s)}); }); }).catch(()=>{ medsCarregando=null; })); }
+const TARJA_TXT={P:"tarja preta",R:"retém receita",A:"antibiótico"};
+function tarjaDe(fl){ return /P/.test(fl)?"P":/A/.test(fl)?"A":/R/.test(fl)?"R":""; }
+let medAlvo=null, medItens=[], medOn=-1;
+function buscaMed(inp){ const q=semAcento(inp.value).trim(), box=$("#med-sug"); medAlvo=inp;
+  if(q.length<2){ box.hidden=true; return; }
+  const tk=q.split(/\s+/), casa=m=>tk.every(t=>m.k.includes(t));
+  const cur=MEDS_CURADOS.filter(casa).slice(0,8);
+  const cm=(MEDS||[]).filter(casa).sort((a,b)=>((b.p.startsWith(tk[0])||b.s.startsWith(tk[0]))-(a.p.startsWith(tk[0])||a.s.startsWith(tk[0])))||a.txt.length-b.txt.length).slice(0,30-cur.length);
+  medItens=[...cur,...cm]; medOn=-1;
+  if(!medItens.length){ box.hidden=true; if(!MEDS) carregaMeds().then(()=>{ if(document.activeElement===inp) buscaMed(inp); }); return; }
+  box.innerHTML=medItens.map((m,i)=>{ const t=tarjaDe(m.fl); return `<div role="option" data-i="${i}">${esc(m.txt)}<small>${m.cur?"lista do olho":esc(m.via)}</small>${t?`<span class="tarja">${TARJA_TXT[t]}</span>`:""}</div>`; }).join("");
+  const r=inp.getBoundingClientRect(); Object.assign(box.style,{left:r.left+"px",width:Math.max(r.width,420)+"px",top:(r.bottom+2)+"px"}); box.hidden=false; }
+function escolheMed(m){ const inp=medAlvo; $("#med-sug").hidden=true; if(!inp||!m) return;
+  if(inp.dataset.medac==="uso"){ const ta=$("#meduso-txt"); ta.value=(ta.value.trim()?ta.value.replace(/\s+$/,"")+"\n":"")+m.txt; inp.value=""; ta.dispatchEvent(new Event("input",{bubbles:true})); inp.focus(); return; }
+  const i=inp.id.split("-")[1]; inp.value=m.txt; $(`#col-${i}-via`).value=m.via; $(`#col-${i}-fl`).value=m.fl||"";
+  inp.dataset.escolhido=m.txt; inp.dispatchEvent(new Event("input",{bubbles:true}));
+  const t=tarjaDe(m.fl);
+  if(t==="P") statusCol(`Atenção: “${m.txt}” é tarja preta: exige Notificação de Receita (azul/amarela) e não sai nesta receita.`,"erro");
+  else if(t==="R") statusCol(`“${m.txt}” retém receita na farmácia. Se for da Portaria 344 (lista C), use o receituário de controle especial em 2 vias.`,"erro");
+  else statusCol("");
+  $(`#col-${i}-qtd`)?.focus(); }
+document.addEventListener("focusin",e=>{ if(e.target.dataset?.medac) carregaMeds(); });
+document.addEventListener("input",e=>{ const inp=e.target; if(!inp.dataset?.medac) return;
+  if(inp.dataset.medac==="rx"&&inp.dataset.escolhido!==inp.value){ const i=inp.id.split("-")[1]; $(`#col-${i}-via`).value=""; $(`#col-${i}-fl`).value=""; delete inp.dataset.escolhido; }
+  if(inp.dataset.escolhido===inp.value) return; buscaMed(inp); });
+document.addEventListener("keydown",e=>{ const inp=e.target, box=$("#med-sug"); if(!inp.dataset?.medac) return;
+  if(box.hidden){ if(e.key==="Enter"&&inp.dataset.medac==="uso"&&inp.value.trim()){ e.preventDefault(); e.stopPropagation(); escolheMed({txt:inp.value.trim()}); } return; }
+  const n=medItens.length;
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){ e.preventDefault(); medOn=(medOn+(e.key==="ArrowDown"?1:-1)+n)%n; $$("#med-sug div").forEach((d,i)=>d.classList.toggle("on",i===medOn)); $$("#med-sug div")[medOn]?.scrollIntoView({block:"nearest"}); }
+  else if(e.key==="Enter"){ if(medOn<0&&inp.dataset.medac==="rx"){ box.hidden=true; return; } e.preventDefault(); e.stopPropagation(); escolheMed(medOn>=0?medItens[medOn]:{txt:inp.value.trim()}); }
+  else if(e.key==="Escape"){ box.hidden=true; } },true);
+$("#med-sug").addEventListener("mousedown",e=>{ const d=e.target.closest("[data-i]"); if(d){ e.preventDefault(); escolheMed(medItens[+d.dataset.i]); } });
+document.addEventListener("focusout",e=>{ if(e.target.dataset?.medac) setTimeout(()=>{ if(!document.activeElement?.dataset?.medac) $("#med-sug").hidden=true; },150); });
+window.addEventListener("scroll",()=>{ $("#med-sug").hidden=true; },true);
 function statusCol(t,cls){ const x=$("#status-col"); x.textContent=t; x.className="status "+(cls||""); }
 $("#gerar-col").addEventListener("click",()=>gerarColirios(false));
 $("#assinar-col").addEventListener("click",()=>gerarColirios(true));
@@ -1131,6 +1184,7 @@ function gerarColirios(assinar){
   if(!consultaAtual){ statusCol("Inicie o atendimento primeiro.","erro"); return; }
   const ms=medicamentos();
   if(!ms.length){ statusCol("Digite ao menos um colírio ou medicamento.","erro"); return; }
+  const preta=ms.find(m=>/P/.test(m.fl||"")); if(preta){ statusCol(`“${preta.med}” é tarja preta: exige Notificação de Receita (azul ou amarela), não pode ir nesta receita.`,"erro"); return; }
   const semPos=ms.find(m=>!m.pos); if(semPos){ statusCol(`Falta a posologia de “${semPos.med}”.`,"erro"); return; }
   const duasVias=$("#col-2vias").checked, sexo=$("#col-sexo").value;
   if(duasVias&&!sexo){ statusCol("Receita de antibiótico precisa do sexo do paciente.","erro"); return; }
@@ -1141,10 +1195,10 @@ function gerarColirios(assinar){
 <div class="cab">${timbrado?"":`<img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges">`}<span>Brasília, ${data}.</span></div>
 <p class="nome">Nome: ${esc(nome)}${duasVias?`<br>Idade: ${idade!=null?esc(idade)+" anos":"________"} &nbsp;&nbsp; Sexo: ${esc(sexo)}`:""}</p>
 <h1>RECEITUÁRIO</h1>
-<h3 class="uso">USO OFTÁLMICO</h3>
-<ol class="meds">${ms.map(m=>`<li><div class="med-n"><span>${esc(m.med)}</span><span>${esc(m.qtd||"")}</span></div><div class="med-p">${esc(m.pos)}</div></li>`).join("")}</ol>
+${gruposVia(ms).map(([via,lista,ini])=>`<h3 class="uso">${VIA_UP[via]||"USO "+via.toUpperCase()}</h3>
+<ol class="meds" start="${ini}">${lista.map(m=>`<li><div class="med-n"><span>${esc(m.med)}</span><span>${esc(m.qtd||"")}</span></div><div class="med-p">${esc(m.pos)}</div></li>`).join("")}</ol>`).join("")}
 <div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877</div>`;
-  if(assinar) return enviarAssinado("colirios",{nome,data,idade:idade??null,sexo,duas_vias:duasVias,meds:ms.map(m=>({med:m.med,qtd:m.qtd,pos:m.pos}))},statusCol);
+  if(assinar) return enviarAssinado("colirios",{nome,data,idade:idade??null,sexo,duas_vias:duasVias,meds:gruposVia(ms).flatMap(([,l])=>l).map(m=>({med:m.med,qtd:m.qtd,pos:m.pos,via:m.via}))},statusCol);
   abrirReceita({titulo:`Receita - ${nome}`,folhas:duasVias?[folha("1ª via — farmácia"),folha("2ª via — paciente")]:[folha("")],timbrado,status:statusCol});
 }
 try{ $("#rx-timbrado").checked=localStorage.getItem("rx-timbrado")!=="0"; }catch(_){ $("#rx-timbrado").checked=true; }
