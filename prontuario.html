@@ -351,6 +351,11 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                   <span class="chip" tabindex="0">Compressa morna e higiene palpebral</span><span class="chip" tabindex="0">Teste de lente de contato</span><span class="chip" tabindex="0">Avaliação para cirurgia refrativa</span>
                   <span class="chip" tabindex="0">Orientado a não coçar os olhos</span><span class="chip" tabindex="0">Encaminhamento</span><span class="chip" tabindex="0">Orientações</span>
                 </div></div>
+              <div id="ind-box" style="border:1px dashed var(--line);border-radius:8px;padding:8px 10px">
+                <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><span class="rot" style="margin:0">💰 Indicação</span><span id="ind-lista" class="row" style="gap:6px;flex-wrap:wrap"></span><button type="button" class="link" id="ind-abrir">+ registrar cirurgia/lente indicada</button></div>
+                <div class="row" id="ind-form" hidden style="margin-top:6px;gap:6px;flex-wrap:wrap"><select id="ind-proc" style="width:auto"></select><input id="ind-proc-outro" placeholder="Qual procedimento?" hidden style="flex:1 1 180px"><select id="ind-olho" style="width:auto"><option value="">Olho…</option><option>OD</option><option>OE</option><option>AO</option></select><input id="ind-valor" placeholder="Valor (opcional)" inputmode="numeric" style="width:130px"><button type="button" class="pri" id="ind-salvar">Salvar</button><button type="button" class="link" id="ind-cancelar">Cancelar</button></div>
+                <div class="status" id="ind-st"></div>
+              </div>
               <div><span class="rot">Exames solicitados</span>
                 <div class="chips" data-grupo="ex">
                   <span class="chip" tabindex="0">Pentacam</span><span class="chip" tabindex="0">Topografia de córnea</span><span class="chip" tabindex="0">Paquimetria</span>
@@ -640,7 +645,7 @@ const nomeChip=c=>c.childNodes[0].textContent.trim();
 const marcados=g=>$$(`[data-grupo="${g}"] .chip[aria-pressed="true"]`);
 function normal(id){ for(const [k,,txt] of (id==="bio"?BIO:FO)) for(const o of ["od","oe"]){ const el=$(`#${id}-${k}-${o}`); if(!el.value) el.value=txt; } atualiza(); }
 $$("[data-normal]").forEach(b=>b.addEventListener("click",()=>normal(b.dataset.normal)));
-const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>el.id&&!["anexo-obs","anexo-tipo","ex-nome"].includes(el.id));
+const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>el.id&&!["anexo-obs","anexo-tipo","ex-nome","ind-proc","ind-proc-outro","ind-olho","ind-valor"].includes(el.id));
 document.addEventListener("keydown",e=>{ if(e.key!=="Enter"||e.target.tagName!=="INPUT"||!e.target.closest("#atendimento")||e.target.id==="anexo-obs") return;
   e.preventDefault(); normalizaCampo(e.target); const l=campos(),i=l.indexOf(e.target); if(i>=0&&l[i+1]) l[i+1].focus(); atualiza(); });
 document.addEventListener("focusout",e=>{ if(e.target.matches("#atendimento input")){ normalizaCampo(e.target); atualiza(); } });
@@ -1397,7 +1402,7 @@ async function iniciar(consultaId){
     $("#data-at").textContent=new Date(c.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
     durBase=c.duracao_seg||0; t0=Date.now(); pararRelogio(); t0=Date.now(); relogio=setInterval(()=>{ $("#duracao").textContent=fmtDur(durAtual()); },1000);
     modoAtend(true); atualiza(); sujo=false; status(c.updated_at&&c.texto?`Rascunho salvo às ${hhmm(c.updated_at)}.`:"Atendimento iniciado.","ok");
-    desenhaAnexosAt(); $("#s-anamnese").scrollIntoView({behavior:"smooth"});
+    desenhaAnexosAt(); $("#ind-form").hidden=true; $("#ind-abrir").hidden=false; $("#ind-st").textContent=""; carregaIndicacoesPac(); $("#s-anamnese").scrollIntoView({behavior:"smooth"});
   }catch(e){ status(e.status===401?MSG_SESSAO:(e.msg||"Não consegui iniciar o atendimento."),"erro"); }
 }
 $("#btn-atend").addEventListener("click",()=>{ if(atend) abrirFinalizar(); else iniciar(); });
@@ -1448,6 +1453,30 @@ function diag(evento,detalhe){ try{ fetch("/api/prontuario/diag",{method:"POST",
 window.addEventListener("error",e=>diag("erro_js",`${e.message} @${e.lineno}:${e.colno}`));
 window.addEventListener("unhandledrejection",e=>diag("promessa_rejeitada",String(e.reason&&(e.reason.stack||e.reason.message)||e.reason).slice(0,600)));
 function quemCobre(el){ const r=el.getBoundingClientRect(); if(!r.width) return "invisível"; const x=r.left+r.width/2,y=r.top+r.height/2; if(x<0||y<0||x>innerWidth||y>innerHeight) return `fora da tela (${Math.round(x)},${Math.round(y)} em ${innerWidth}x${innerHeight})`; const t=document.elementFromPoint(x,y); return !t||el.contains(t)?null:(t.id?"#"+t.id:"")+"."+String(t.className||t.tagName).slice(0,60)+" ("+(t.closest("[id]")?.id||"")+")"; }
+
+/* ===== INDICAÇÃO (cirurgia/lente) — 22/10/2026: a mesma da agenda, agora também aqui =====
+   Uma linha só: o que já está indicado vira etiqueta; "+ registrar" abre o formulário.
+   Alimenta o funil de indicações (a Ana retoma o paciente depois). Não entra no texto do atendimento. */
+const IND_PROCS=["Cirurgia refrativa","Cirurgia de catarata","Crosslinking","Anel de Ferrara","Teste de lente de contato (Esclera)","Teste de lente de contato (Esclera Multifocal)","Lente escleral (Esclera SG)","Lente escleral (ZenLens)","Lente Zen RC","Lente rígida gás permeável","Lente de contato gelatinosa"];
+const IND_ST={aberta:"em aberto",pausada:"agora não",retornou:"voltou a marcar",fechada:"fechou",recusada:"recusou",perdida:"sem resposta"};
+async function carregaIndicacoesPac(){ const box=$("#ind-lista"); if(!ficha?.paciente) return;
+  try{ const r=await api("/api/indicacoes?status=todas"); const f8=String(ficha.paciente.telefone||"").replace(/\D/g,"").slice(-8);
+    const minhas=(r.indicacoes||[]).filter(i=>String(i.paciente_telefone||"").replace(/\D/g,"").slice(-8)===f8);
+    box.innerHTML=minhas.map(i=>`<span class="tag" title="${esc(IND_ST[i.status]||i.status)}${i.valor?" · R$ "+Number(i.valor).toLocaleString("pt-BR"):""}">${esc(i.procedimento)}${i.olho?" "+esc(i.olho):""} · ${esc(IND_ST[i.status]||i.status)}</span>`).join("");
+  }catch(_){ box.innerHTML=""; } }
+$("#ind-abrir").addEventListener("click",()=>{ const s=$("#ind-proc"); if(!s.options.length) s.innerHTML='<option value="">Procedimento…</option>'+IND_PROCS.map(p=>`<option>${esc(p)}</option>`).join("")+'<option value="__outro">Outro — escrever</option>';
+  s.value=""; $("#ind-proc-outro").hidden=true; $("#ind-proc-outro").value=""; $("#ind-olho").value=""; $("#ind-valor").value=""; $("#ind-form").hidden=false; $("#ind-abrir").hidden=true; $("#ind-st").textContent=""; s.focus(); });
+$("#ind-proc").addEventListener("change",()=>{ $("#ind-proc-outro").hidden=$("#ind-proc").value!=="__outro"; if(!$("#ind-proc-outro").hidden) $("#ind-proc-outro").focus(); });
+$("#ind-cancelar").addEventListener("click",()=>{ $("#ind-form").hidden=true; $("#ind-abrir").hidden=false; });
+$("#ind-salvar").addEventListener("click",async()=>{ const esc_=$("#ind-proc").value, proc=esc_==="__outro"?v("ind-proc-outro"):esc_, st=$("#ind-st");
+  if(!proc){ st.textContent="Escolha o procedimento."; st.className="status erro"; return; }
+  const vb=v("ind-valor").replace(/[^\d,.]/g,"").replace(/\./g,"").replace(",",".");
+  const corpo={procedimento:proc,olho:$("#ind-olho").value||null,valor:vb?Number(vb):undefined};
+  if(atend?.appointment_id) corpo.appointment_id=atend.appointment_id; else { corpo.telefone=ficha.paciente.telefone; corpo.nome=ficha.paciente.nome; }
+  $("#ind-salvar").disabled=true;
+  try{ await api("/api/indicacoes",{method:"POST",body:JSON.stringify(corpo)}); $("#ind-form").hidden=true; $("#ind-abrir").hidden=false; st.textContent="Indicação registrada — a Ana vai retomar o paciente."; st.className="status ok"; carregaIndicacoesPac(); }
+  catch(e){ st.textContent=e.status===409?(e.msg||"Esta indicação já está registrada."):(e.msg||"Não consegui registrar."); st.className="status erro"; }
+  finally{ $("#ind-salvar").disabled=false; } });
 
 /* ===== ANEXOS ===== */
 function anexosDoAtend(){ return (ficha.anexos||[]).filter(x=>atend&&(x.consulta_id===atend.id||(atend.appointment_id&&x.appointment_id===atend.appointment_id))); }
