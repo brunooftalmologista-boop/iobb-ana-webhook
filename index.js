@@ -10997,17 +10997,18 @@ app.post("/api/prontuario/anexo/:id/whatsapp", requireMedico, async (req, res) =
 app.post("/api/prontuario/documento-assinado", requireMedico, express.json({ limit: "15mb" }), async (req, res) => {
   try {
     const { tipo, dados, tel, nome, consulta_id } = req.body || {};
-    if (!["oculos", "colirios", "pedido", "atestado"].includes(tipo) || !dados || !dados.nome) return res.status(400).json({ error: "Documento inválido." });
+    if (!["oculos", "colirios", "pedido", "atestado", "laudo"].includes(tipo) || !dados || !dados.nome) return res.status(400).json({ error: "Documento inválido." });
     const cert = await certificadoDoMedico();
     if (!cert) return res.status(409).json({ error: "Cadastre o certificado digital primeiro (botão “Certificado digital”)." });
     if (tipo === "colirios") await completarReceita(dados, tel, nome, consulta_id);
     const pdf = await assin.documentoAssinado(tipo, dados, cert);
-    const rotulo = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", atestado: /DECLARA/.test(String(dados.titulo)) ? "Declaração" : "Atestado" }[tipo];
+    const rotulo = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", atestado: /DECLARA/.test(String(dados.titulo)) ? "Declaração" : "Atestado" }[tipo];
+    const assinadaO = /^(Receita|Declara)/.test(rotulo) ? "assinada" : "assinado";
     let anexo = null;
     if (ult8(tel) && primNome(nome)) {
       anexo = await guardarAnexo({
-        tel, nome, tipo: "assinado", nomeArq: `${rotulo} assinada - ${String(dados.nome).slice(0, 60)} - ${String(dados.data || "").replace(/\//g, "-")}.pdf`,
-        mime: "application/pdf", buf: pdf, obs: `${rotulo} (assinada digitalmente)`,
+        tel, nome, tipo: "assinado", nomeArq: `${rotulo} ${assinadaO} - ${String(dados.nome).slice(0, 60)} - ${String(dados.data || "").replace(/\//g, "-")}.pdf`,
+        mime: "application/pdf", buf: pdf, obs: `${rotulo} (${assinadaO} digitalmente)`,
         consultaId: /^[0-9a-f-]{36}$/i.test(String(consulta_id || "")) ? consulta_id : null,
       });
     }

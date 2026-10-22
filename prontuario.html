@@ -530,7 +530,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
       <div class="campo"><label for="ml-imp">Impressão diagnóstica</label><textarea id="ml-imp" rows="3"></textarea></div>
       <div class="pe" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center">
         <div class="row"><label style="gap:6px"><input type="checkbox" id="ml-timbrado" style="width:auto"> Papel timbrado</label><label style="gap:6px"><input type="checkbox" id="ml-imagens" style="width:auto" checked> Incluir as telas do exame</label></div>
-        <div class="row"><button type="button" id="ml-adendo" hidden title="A consulta já foi finalizada: o resultado entra como informação adicionada">Acrescentar ao prontuário</button><button type="button" id="ml-salvar">Salvar revisão</button><button type="button" class="pri" id="ml-imprimir">Imprimir laudo</button></div>
+        <div class="row"><button type="button" id="ml-adendo" hidden title="A consulta já foi finalizada: o resultado entra como informação adicionada">Acrescentar ao prontuário</button><button type="button" id="ml-salvar">Salvar revisão</button><button type="button" class="pri" id="ml-imprimir">Imprimir laudo</button><button type="button" id="ml-assinar">🔏 PDF assinado</button></div>
       </div>
     </div>
   </div>
@@ -2033,6 +2033,17 @@ ${figs}
   w.document.open(); w.document.write(html); w.document.close(); mlStatus("Laudo aberto em outra janela.","ok");
 });
 
+// Laudo assinado (22/10/2026): mesmo conteúdo do "Imprimir laudo", montado em blocos
+// (título de olho + tabelas) para o servidor desenhar no PDF e assinar com o selo.
+const paraDataURL=src=>src.startsWith("data:")?Promise.resolve(src):fetch(src).then(r=>r.blob()).then(b=>new Promise((ok,f)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=f; fr.readAsDataURL(b); }));
+$("#ml-assinar").addEventListener("click",async()=>{ lerEdicao(); const p=ficha.paciente, tipo=laudo.tipo||"pentacam", blocos=[];
+  if(tipo==="pentacam"){ for(const o of ["OD","OS"]){ const d=laudo.olhos?.[o]; if(!d) continue; blocos.push({tipo:"h2",texto:o==="OD"?"OLHO DIREITO (OD)":"OLHO ESQUERDO (OS)"});
+      for(const [k,rot,c1] of SEC_LAUDO) if(d[k]) blocos.push({tipo:"tabela",titulo:rot,cab:[c1,"Valor","Referência"],linhas:d[k].map(r=>[r.parametro||r.componente||"",r.valor??"",r.referencia||""]),alt:d[k].map(r=>r.alterado?[true,true,true]:[])});
+      if(d.belin) blocos.push({tipo:"tabela",titulo:"Belin/Ambrósio (BAD-D) e estadiamento",cab:["Componente","Valor"],linhas:d.belin.map(r=>[r.parametro||r.componente||"",r.valor??""]),alt:d.belin.map(r=>r.alterado?[true,true]:[])}); } }
+  else for(const sc of laudo.secoes||[]) blocos.push({tipo:"tabela",titulo:sc.titulo,cab:["Parâmetro","OD","OS","Referência"],linhas:(sc.linhas||[]).map(r=>[r.parametro||"",r.od??"",r.os??"",r.referencia||"—"]),alt:(sc.linhas||[]).map(r=>[false,!!r.od_alterado,!!r.os_alterado,false])});
+  let imagens=[]; if($("#ml-imagens").checked){ try{ mlStatus("Preparando as telas do exame…",""); for(const i of await telasDoExame()) imagens.push({leg:i.leg,b64:await paraDataURL(i.src)}); }catch(_){ mlStatus("Não consegui incluir as telas; o laudo sai sem elas.","erro"); } }
+  const data=new Date().toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+  await enviarAssinado("laudo",{nome:p.nome,data,cpf:laudo.cpf||"",nascimento:p.nascimento||"",idade:p.idade??null,sexo:laudo.sexo||"",titulo:TITULO_LAUDO[tipo],data_exame:laudo.data_exame||"",metodo:tipo==="pentacam"?"":(laudo.metodo||""),blocos,impressao:laudo.impressao_diagnostica||"",imagens},mlStatus); });
 /* ===== entrada ===== */
 (async()=>{
   if(!AUTH) return portao();

@@ -186,6 +186,74 @@ function corpoColirios(doc, d) {
     doc.moveDown(0.9);
   });
 }
+// Laudo de exame (Pentacam, topografia, paquimetria, microscopia) — mesmo conteúdo do
+// "Imprimir laudo" do prontuário, que já chega montado em blocos: título de olho (h2) e
+// tabelas (cabeçalho azul, linhas zebradas, valor alterado em vermelho). Telas do exame
+// vão depois da assinatura, a partir de página nova, 2 por página.
+const AZUL_LAUDO = "#1a3a5c";
+function cabeLaudo(doc, need) { if (doc.y + need > doc.page.height - doc.page.margins.bottom - mm(8)) { novaPagina(doc); doc.y = doc.page.margins.top + mm(4); } }
+function tabelaLaudo(doc, t) {
+  const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right, n = t.cab.length;
+  const fr = n === 4 ? [0.36, 0.16, 0.16, 0.32] : n === 3 ? [0.44, 0.2, 0.36] : [0.6, 0.4];
+  const ws = fr.map((f) => f * W), pad = 4, fs = 8.6;
+  const alt = (cells, font) => Math.max(...cells.map((c, i) => doc.font(font).fontSize(fs).heightOfString(String(c ?? ""), { width: ws[i] - 2 * pad }))) + 2 * pad;
+  const linha = (cells, y, h, o) => { let x = L; cells.forEach((c, i) => {
+    if (o.fill) doc.rect(x, y, ws[i], h).fill(o.fill);
+    if (o.borda) doc.rect(x, y, ws[i], h).lineWidth(0.5).strokeColor("#c9ced4").stroke();
+    doc.fillColor(o.cor?.[i] || o.txt || "#222").font(o.font).fontSize(fs).text(String(c ?? ""), x + pad, y + pad, { width: ws[i] - 2 * pad });
+    x += ws[i]; }); doc.fillColor("#000"); };
+  const hc = alt(t.cab, "Helvetica-Bold"), h1 = t.linhas.length ? alt(t.linhas[0], "Helvetica") : 0;
+  cabeLaudo(doc, 16 + hc + h1);
+  doc.font("Helvetica-Bold").fontSize(10).fillColor(AZUL_LAUDO).text(t.titulo || "", L, doc.y, { width: W }); doc.moveDown(0.2);
+  let y = doc.y; linha(t.cab, y, hc, { fill: AZUL_LAUDO, txt: "#fff", font: "Helvetica-Bold" }); y += hc;
+  t.linhas.forEach((cells, r) => {
+    const fonts = (t.alt?.[r] || []).map((a) => a ? "Helvetica-Bold" : "Helvetica");
+    const h = alt(cells, "Helvetica-Bold");
+    if (y + h > doc.page.height - doc.page.margins.bottom - mm(8)) { novaPagina(doc); y = doc.page.margins.top + mm(4); linha(t.cab, y, hc, { fill: AZUL_LAUDO, txt: "#fff", font: "Helvetica-Bold" }); y += hc; }
+    let x = L; cells.forEach((c, i) => {
+      if (r % 2) doc.rect(x, y, ws[i], h).fill("#f4f6f8");
+      doc.rect(x, y, ws[i], h).lineWidth(0.5).strokeColor("#c9ced4").stroke();
+      const vermelho = !!(t.alt?.[r]?.[i]);
+      doc.fillColor(vermelho ? "#b02a2a" : "#222").font(vermelho ? "Helvetica-Bold" : (fonts[i] || "Helvetica")).fontSize(fs).text(String(c ?? ""), x + pad, y + pad, { width: ws[i] - 2 * pad });
+      x += ws[i]; });
+    y += h; });
+  doc.fillColor("#000"); doc.x = L; doc.y = y + 8;
+}
+const semMu = (x) => String(x ?? "").replace(/\u03bc/g, "\u00b5");
+function corpoLaudo(doc, d) {
+  const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
+  doc.font("Helvetica-Bold").fontSize(11).fillColor("#000").text(String(d.nome || "").toUpperCase(), L, doc.y, { width: W });
+  doc.font("Helvetica").fontSize(9.5).text(`CPF: ${d.cpf || "Não informado"}`)
+    .text(`Data de nascimento: ${d.nascimento || "Não informado"}${d.idade != null ? ` (${d.idade} anos)` : ""}   |   Sexo: ${d.sexo || "Não informado"}`);
+  doc.moveDown(0.8);
+  doc.font("Helvetica-Bold").fontSize(12).fillColor(AZUL_LAUDO).text(String(d.titulo || "LAUDO"), L, doc.y, { width: W });
+  doc.font("Helvetica").fontSize(9.5).fillColor("#000").text(`Exame realizado em: ${d.data_exame || ""}`);
+  if (d.metodo) { doc.moveDown(0.4); doc.text(semMu(d.metodo), { width: W }); }
+  doc.moveDown(0.6);
+  for (const b of d.blocos || []) {
+    if (b.tipo === "h2") { cabeLaudo(doc, 60); doc.moveDown(0.4); doc.font("Helvetica-Bold").fontSize(11.5).fillColor(AZUL_LAUDO).text(b.texto, L, doc.y, { width: W }); doc.fillColor("#000"); doc.moveDown(0.3); }
+    else if (b.tipo === "tabela" && Array.isArray(b.cab) && Array.isArray(b.linhas)) tabelaLaudo(doc, { ...b, titulo: semMu(b.titulo), cab: b.cab.map(semMu), linhas: b.linhas.map((l) => l.map(semMu)) });
+  }
+  cabeLaudo(doc, 70);
+  doc.moveDown(0.4);
+  doc.font("Helvetica-Bold").fontSize(11.5).fillColor(AZUL_LAUDO).text("IMPRESSÃO DIAGNÓSTICA", L, doc.y, { width: W });
+  doc.font("Helvetica").fontSize(10).fillColor("#000").text(semMu(d.impressao), L, doc.y + 2, { width: W, align: "justify" });
+}
+function imagensLaudo(doc, imagens) {
+  const lista = (imagens || []).slice(0, 8);
+  for (let i = 0; i < lista.length; i++) {
+    if (i % 2 === 0) { novaPagina(doc); doc.y = doc.page.margins.top; if (i === 0) { doc.font("Helvetica-Bold").fontSize(11.5).fillColor(AZUL_LAUDO).text("IMAGENS DO EXAME"); doc.moveDown(0.4); } }
+    const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
+    const hDisp = (doc.page.height - doc.page.margins.bottom - mm(8) - doc.page.margins.top) / 2 - 24;
+    const im = lista[i]; let buf;
+    try { buf = Buffer.from(String(im.b64 || "").replace(/^data:image\/\w+;base64,/, ""), "base64"); } catch (_) { continue; }
+    if (!buf.length) continue;
+    const y0 = doc.y;
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(AZUL_LAUDO).text(String(im.leg || ""), L, y0, { width: W }); doc.fillColor("#000");
+    try { doc.image(buf, L, doc.y + 2, { fit: [W, hDisp], align: "center", valign: "top" }); } catch (_) {}
+    doc.x = L; doc.y = y0 + hDisp + 24;
+  }
+}
 function corpoAtestado(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   doc.moveDown(1.5);
@@ -288,7 +356,7 @@ async function documentoAssinado(tipo, d, cert) {
   const agora = new Date();
   const quando = agora.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const carimbo = `Documento assinado digitalmente com certificado ICP-Brasil de ${cert.titular} em ${quando}. Confira a assinatura em validar.iti.gov.br.`;
-  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : "Atestado" };
+  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : "Atestado" };
   const doc = new PDFDocument({ size: "A4", autoFirstPage: false, pdfVersion: "1.7",
     info: { Title: `${titulos[tipo] || "Documento"} - ${d.nome}`, Author: "Dr. Bruno O. Borges - CRM 17877", Creator: "IOBB - prontuário" } });
   doc.registerFont("G6", FONTE); doc.registerFont("G8", FONTE_NEGRITO);
@@ -303,6 +371,7 @@ async function documentoAssinado(tipo, d, cert) {
     }
   } else if (tipo === "oculos") paginas.push(["", () => { corpoOculos(doc, d); assinatura(doc, carimbo, false, "Assinada Digitalmente"); }]);
   else if (tipo === "pedido") (d.separado ? d.exames.map(e => [e]) : [d.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista); assinatura(doc, carimbo, true, "Assinado Digitalmente"); }]));
+  else if (tipo === "laudo") paginas.push(["", () => { corpoLaudo(doc, d); assinatura(doc, carimbo, true, "Assinado Digitalmente"); imagensLaudo(doc, d.imagens); }]);
   else if (tipo === "atestado") paginas.push(["", () => { corpoAtestado(doc, d); assinatura(doc, carimbo, true, "Assinado Digitalmente"); }]);
   else throw new Error("tipo de documento desconhecido");
   for (const [via, desenha] of paginas) { novaPagina(doc); cabecalho(doc, d.data, via); desenha(); }
