@@ -11673,6 +11673,29 @@ app.get("/version", (req, res) => {
 // Agenda em página única p/ transferência ao prontuário (copiar/colar rápido).
 // Mesma sessão do painel (localStorage compartilhado) — login lá vale aqui.
 app.get("/agenda", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/agenda.html"); });
+// ===== IOBB COMO APLICATIVO (PWA, Dr. Bruno, 22/10/2026) ======================
+// Ícone na tela do celular/computador, abre em tela cheia em /app (atalhos para
+// agenda, painel, pré-exame e prontuário). O service worker só existe para o app
+// ser instalável e mostrar "sem internet" — não guarda dado nenhum (ver sw.js).
+const MANIFESTO_APP = {
+  name: "IOBB — Instituto de Olhos Bruno Borges", short_name: "IOBB", lang: "pt-BR",
+  start_url: "/app", scope: "/", display: "standalone", background_color: "#ffffff", theme_color: "#0e2a43",
+  icons: [
+    { src: "/app-icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+    { src: "/app-icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+    { src: "/app-icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+  ],
+  shortcuts: [
+    { name: "Agenda", url: "/agenda" }, { name: "Painel", url: "/painel" },
+    { name: "Pré-exame", url: "/pre-exame" }, { name: "Prontuário", url: "/prontuario" },
+  ],
+};
+app.get("/manifest.webmanifest", (req, res) => { res.set("Cache-Control", "public, max-age=3600"); res.type("application/manifest+json").send(JSON.stringify(MANIFESTO_APP)); });
+app.get("/sw.js", (req, res) => { res.set({ "Cache-Control": "no-cache", "Service-Worker-Allowed": "/" }); res.type("application/javascript").sendFile(__dirname + "/sw.js"); });
+app.get("/app-shell.js", (req, res) => { res.set("Cache-Control", "no-cache"); res.type("application/javascript").sendFile(__dirname + "/app-shell.js"); });
+app.use("/app-icons", express.static(`${__dirname}/assets/app`, { maxAge: "7d" }));
+app.get("/app", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/app.html"); });
+app.get("/app-offline", (req, res) => { res.set("Cache-Control", "no-cache"); res.type("html").send('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IOBB — sem internet</title><body style="font:17px system-ui,sans-serif;text-align:center;padding:60px 20px;color:#0e2a43"><div style="font-size:44px">📶</div><h2>Sem internet</h2><p>O sistema da clínica precisa de conexão. Verifique o Wi-Fi e tente de novo.</p><button onclick="location.reload()" style="font-size:16px;padding:10px 20px;border-radius:8px;border:0;background:#0e2a43;color:#fff">Tentar de novo</button></body>'); });
 
 // ── Follow-up de leads frios (recuperação de conversão) ──────────────────────
 // Uma ÚNICA mensagem gentil para LEAD PAGO (ad_click) que engajou e NÃO agendou,

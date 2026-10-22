@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>IOBB</title>
+<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#0e2a43">
+<link rel="apple-touch-icon" href="/app-icons/apple-touch-icon.png"><link rel="icon" href="/app-icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="IOBB">
+<style>
+:root{--bg:#f2f4f7;--card:#fff;--ink:#0e2a43;--muted:#5a6b7c;--line:#dfe4ea;--pri:#1f6fb2}
+@media (prefers-color-scheme: dark){:root{--bg:#10171d;--card:#1a2228;--ink:#e3e9ee;--muted:#93a3ae;--line:#2c3a43;--pri:#5aa7e6}}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:calc(20px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px))}
+main{max-width:560px;margin:0 auto}
+header{display:flex;align-items:center;gap:12px;margin:8px 0 22px}
+header img{width:52px;height:52px;border-radius:12px;background:#fff}
+header b{display:block;font-size:19px} header small{color:var(--muted)}
+.grade{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+a.tile{display:flex;flex-direction:column;gap:6px;padding:18px 16px;border-radius:14px;background:var(--card);border:1px solid var(--line);color:inherit;text-decoration:none;min-height:118px}
+a.tile:active{transform:scale(.98)} a.tile .ic{font-size:30px} a.tile b{font-size:17px} a.tile small{color:var(--muted);font-size:13px}
+#quem{margin-top:22px;color:var(--muted);font-size:13.5px;text-align:center}
+</style>
+</head>
+<body>
+<main>
+  <header><img src="/app-icons/icon-192.png" alt=""><div><b>Instituto de Olhos Bruno Borges</b><small>Sistema da clínica</small></div></header>
+  <div class="grade">
+    <a class="tile" href="/agenda"><span class="ic">🗓️</span><b>Agenda</b><small>Grade da semana, encaixe, confirmações</small></a>
+    <a class="tile" href="/painel"><span class="ic">💬</span><b>Painel</b><small>Conversas da Ana no WhatsApp</small></a>
+    <a class="tile" href="/pre-exame"><span class="ic">🔬</span><b>Pré-exame</b><small>Motivo, exames e cadastro</small></a>
+    <a class="tile" href="/prontuario" id="t-pront" hidden><span class="ic">🩺</span><b>Prontuário</b><small>Só para o Dr. Bruno</small></a>
+  </div>
+  <div id="quem"></div>
+</main>
+<script>
+// Quem está logado (o login é o do painel, guardado neste aparelho). Só decide o que
+// mostrar — quem barra o acesso é o servidor.
+(function(){ let email=""; try{ const t=localStorage.getItem("iobb_at")||""; const p=t.split(".")[1]; if(p) email=String(JSON.parse(decodeURIComponent(escape(atob(p.replace(/-/g,"+").replace(/_/g,"/"))))).email||"").toLowerCase(); }catch(_){}
+  document.getElementById("t-pront").hidden = email!=="bruno@iobb.local";
+  document.getElementById("quem").textContent = email ? "Conectado como "+email.split("@")[0] : "Entre pelo Painel ou pela Agenda com o seu usuário.";
+})();
+</script>
+<script src="/app-shell.js"></script>
+</body>
+</html>
