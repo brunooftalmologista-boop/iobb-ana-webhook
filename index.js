@@ -11714,6 +11714,7 @@ const MANIFESTO_APP = {
 };
 app.get("/manifest.webmanifest", (req, res) => { res.set("Cache-Control", "public, max-age=3600"); res.type("application/manifest+json").send(JSON.stringify(MANIFESTO_APP)); });
 app.get("/sw.js", (req, res) => { res.set({ "Cache-Control": "no-cache", "Service-Worker-Allowed": "/" }); res.type("application/javascript").sendFile(__dirname + "/sw.js"); });
+app.get("/paciente-autocompletar.js", (req, res) => { res.set("Cache-Control", "no-cache"); res.type("application/javascript").sendFile(__dirname + "/paciente-autocompletar.js"); });
 app.get("/app-shell.js", (req, res) => { res.set("Cache-Control", "no-cache"); res.type("application/javascript").sendFile(__dirname + "/app-shell.js"); });
 app.use("/app-icons", express.static(`${__dirname}/assets/app`, { maxAge: "7d" }));
 app.get("/app", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/app.html"); });
