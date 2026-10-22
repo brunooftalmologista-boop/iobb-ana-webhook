@@ -180,6 +180,11 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 .cid-sug div{padding:7px 10px;cursor:pointer;font-size:14px}
 .cid-sug div b{font-family:var(--f-mono);font-weight:500;margin-right:8px;color:var(--pri)}
 .cid-sug div.on,.cid-sug div:hover{background:var(--pri-soft)}
+.mod-box{border:1px solid var(--line);background:var(--pri-soft);border-radius:8px;padding:8px 10px;display:grid;gap:4px}
+.mod-chip{display:inline-flex;align-items:center;border:1px solid var(--pri);border-radius:999px;background:var(--surface);overflow:hidden}
+.mod-chip button{border:0;background:none;padding:4px 10px;font:inherit;font-size:13px;color:var(--pri);cursor:pointer}
+.mod-chip button.x{padding:4px 8px 4px 2px;color:var(--muted)} .mod-chip button.x.conf{color:var(--warn);font-weight:600}
+.col-fav{border:0;background:none;font-size:18px;line-height:1;padding:4px;cursor:pointer;color:var(--muted)} .col-fav.on{color:#d9a400}
 #med-sug{position:fixed;right:auto;top:auto;z-index:60;max-height:320px}
 #med-sug div{line-height:1.3} #med-sug small{color:var(--muted);margin-left:6px;font-size:12px}
 #med-sug .tarja{font-size:11px;font-weight:600;padding:1px 5px;border-radius:4px;margin-left:6px;background:var(--pri-soft);color:var(--warn)}
@@ -337,6 +342,12 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
           <article class="folha-sec" id="s-hd">
             <div class="t"><span>Hipótese diagnóstica / Conduta</span></div>
             <div class="c">
+              <div id="mod-box" class="mod-box">
+                <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><span class="rot" style="margin:0">📋 Modelos</span><span id="mod-lista" class="row" style="gap:6px;flex-wrap:wrap"></span><button type="button" class="link" id="mod-abrir">+ salvar este atendimento como modelo</button></div>
+                <div class="row" id="mod-form" hidden style="margin-top:6px;gap:6px;flex-wrap:wrap"><input id="mod-nome" placeholder="Nome do modelo (ex.: Conjuntivite bacteriana)" style="flex:1 1 260px"><button type="button" class="pri" id="mod-salvar">Salvar modelo</button><button type="button" class="link" id="mod-cancelar">Cancelar</button></div>
+                <div class="hint" id="mod-ajuda">O modelo guarda diagnósticos, conduta, exames, retorno e a receita de colírios/medicamentos deste atendimento. Usar um modelo SOMA ao que já está preenchido (não apaga nada).</div>
+                <div class="status" id="mod-st"></div>
+              </div>
               <div><span class="rot">Diagnóstico</span>
                 <div class="chips" data-grupo="hd">
                   <span class="chip" tabindex="0" data-cid="H52.1">Miopia</span><span class="chip" tabindex="0" data-cid="H52.2">Astigmatismo</span>
@@ -393,12 +404,12 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
               <div class="rx" id="col-bloco">
                 <span class="rot" style="margin:0">Receita de colírios e medicamentos <span class="hint">— digite o nome e a posologia</span></span>
                 <div style="display:grid;gap:6px">
-                  <div class="row col-linha" data-i="1" style="flex-wrap:wrap"><input type="hidden" id="col-1-via"><input type="hidden" id="col-1-fl"><input id="col-1-med" data-medac="rx" autocomplete="off" placeholder="1. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-1-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-1-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
-                  <div class="row col-linha" data-i="2" style="flex-wrap:wrap"><input type="hidden" id="col-2-via"><input type="hidden" id="col-2-fl"><input id="col-2-med" data-medac="rx" autocomplete="off" placeholder="2. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-2-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-2-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
-                  <div class="row col-linha" data-i="3" hidden style="flex-wrap:wrap"><input type="hidden" id="col-3-via"><input type="hidden" id="col-3-fl"><input id="col-3-med" data-medac="rx" autocomplete="off" placeholder="3. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-3-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-3-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
-                  <div class="row col-linha" data-i="4" hidden style="flex-wrap:wrap"><input type="hidden" id="col-4-via"><input type="hidden" id="col-4-fl"><input id="col-4-med" data-medac="rx" autocomplete="off" placeholder="4. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-4-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-4-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
-                  <div class="row col-linha" data-i="5" hidden style="flex-wrap:wrap"><input type="hidden" id="col-5-via"><input type="hidden" id="col-5-fl"><input id="col-5-med" data-medac="rx" autocomplete="off" placeholder="5. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-5-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-5-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
-                  <div class="row col-linha" data-i="6" hidden style="flex-wrap:wrap"><input type="hidden" id="col-6-via"><input type="hidden" id="col-6-fl"><input id="col-6-med" data-medac="rx" autocomplete="off" placeholder="6. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-6-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-6-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"></div>
+                  <div class="row col-linha" data-i="1" style="flex-wrap:wrap"><input type="hidden" id="col-1-via"><input type="hidden" id="col-1-fl"><input id="col-1-med" data-medac="rx" autocomplete="off" placeholder="1. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-1-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-1-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"><button type="button" class="col-fav" data-fav="1" title="Guardar como receita favorita">☆</button></div>
+                  <div class="row col-linha" data-i="2" style="flex-wrap:wrap"><input type="hidden" id="col-2-via"><input type="hidden" id="col-2-fl"><input id="col-2-med" data-medac="rx" autocomplete="off" placeholder="2. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-2-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-2-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"><button type="button" class="col-fav" data-fav="2" title="Guardar como receita favorita">☆</button></div>
+                  <div class="row col-linha" data-i="3" hidden style="flex-wrap:wrap"><input type="hidden" id="col-3-via"><input type="hidden" id="col-3-fl"><input id="col-3-med" data-medac="rx" autocomplete="off" placeholder="3. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-3-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-3-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"><button type="button" class="col-fav" data-fav="3" title="Guardar como receita favorita">☆</button></div>
+                  <div class="row col-linha" data-i="4" hidden style="flex-wrap:wrap"><input type="hidden" id="col-4-via"><input type="hidden" id="col-4-fl"><input id="col-4-med" data-medac="rx" autocomplete="off" placeholder="4. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-4-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-4-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"><button type="button" class="col-fav" data-fav="4" title="Guardar como receita favorita">☆</button></div>
+                  <div class="row col-linha" data-i="5" hidden style="flex-wrap:wrap"><input type="hidden" id="col-5-via"><input type="hidden" id="col-5-fl"><input id="col-5-med" data-medac="rx" autocomplete="off" placeholder="5. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-5-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-5-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"><button type="button" class="col-fav" data-fav="5" title="Guardar como receita favorita">☆</button></div>
+                  <div class="row col-linha" data-i="6" hidden style="flex-wrap:wrap"><input type="hidden" id="col-6-via"><input type="hidden" id="col-6-fl"><input id="col-6-med" data-medac="rx" autocomplete="off" placeholder="6. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-6-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-6-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"><button type="button" class="col-fav" data-fav="6" title="Guardar como receita favorita">☆</button></div>
                 </div>
                 <button type="button" class="link" id="col-mais" style="justify-self:start;padding-left:0">+ outro medicamento</button>
                 <div class="row"><label style="gap:6px"><input type="checkbox" id="col-2vias" style="width:auto"> Antibiótico (2 vias, com idade e sexo)</label><label id="col-sexo-l" hidden>Sexo <select id="col-sexo" style="width:auto"><option value="">—</option><option>Feminino</option><option>Masculino</option></select></label></div>
@@ -651,7 +662,7 @@ const nomeChip=c=>c.childNodes[0].textContent.trim();
 const marcados=g=>$$(`[data-grupo="${g}"] .chip[aria-pressed="true"]`);
 function normal(id){ for(const [k,,txt] of (id==="bio"?BIO:FO)) for(const o of ["od","oe"]){ const el=$(`#${id}-${k}-${o}`); if(!el.value) el.value=txt; } atualiza(); }
 $$("[data-normal]").forEach(b=>b.addEventListener("click",()=>normal(b.dataset.normal)));
-const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>el.id&&!["anexo-obs","anexo-tipo","ex-nome","ind-proc","ind-proc-outro","ind-olho","ind-valor","meduso-busca"].includes(el.id));
+const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>el.id&&!["anexo-obs","anexo-tipo","ex-nome","ind-proc","ind-proc-outro","ind-olho","ind-valor","meduso-busca","mod-nome"].includes(el.id));
 document.addEventListener("keydown",e=>{ if(e.key!=="Enter"||e.target.tagName!=="INPUT"||!e.target.closest("#atendimento")||e.target.id==="anexo-obs") return;
   e.preventDefault(); normalizaCampo(e.target); const l=campos().filter(x=>x.type!=="hidden"),i=l.indexOf(e.target); if(i>=0&&l[i+1]) l[i+1].focus(); atualiza(); });
 document.addEventListener("focusout",e=>{ if(e.target.matches("#atendimento input")){ normalizaCampo(e.target); atualiza(); } });
@@ -1149,15 +1160,17 @@ let medAlvo=null, medItens=[], medOn=-1;
 function buscaMed(inp){ const q=semAcento(inp.value).trim(), box=$("#med-sug"); medAlvo=inp;
   if(q.length<2){ box.hidden=true; return; }
   const tk=q.split(/\s+/), casa=m=>tk.every(t=>m.k.includes(t));
+  const fav=inp.dataset.medac==="rx"?FAVORITOS.map(f=>({...f,txt:f.med,fav:1,k:semAcento(f.med+" "+(f.pos||""))})).filter(casa).slice(0,6):[];
   const cur=MEDS_CURADOS.filter(casa).slice(0,8);
   const cm=(MEDS||[]).filter(casa).sort((a,b)=>((b.p.startsWith(tk[0])||b.s.startsWith(tk[0]))-(a.p.startsWith(tk[0])||a.s.startsWith(tk[0])))||a.txt.length-b.txt.length).slice(0,30-cur.length);
-  medItens=[...cur,...cm]; medOn=-1;
+  medItens=[...fav,...cur.filter(c=>!fav.some(f=>semAcento(f.med)===c.k))].concat(cm).slice(0,30); medOn=-1;
   if(!medItens.length){ box.hidden=true; if(!MEDS) carregaMeds().then(()=>{ if(document.activeElement===inp) buscaMed(inp); }); return; }
-  box.innerHTML=medItens.map((m,i)=>{ const t=tarjaDe(m.fl); return `<div role="option" data-i="${i}">${esc(m.txt)}<small>${m.cur?"lista do olho":esc(m.via)}</small>${t?`<span class="tarja">${TARJA_TXT[t]}</span>`:""}</div>`; }).join("");
+  box.innerHTML=medItens.map((m,i)=>{ const t=tarjaDe(m.fl); return `<div role="option" data-i="${i}">${esc(m.txt)}<small>${m.fav?"⭐ favorita"+(m.pos?" · "+esc(m.pos):""):m.cur?"lista do olho":esc(m.via)}</small>${t?`<span class="tarja">${TARJA_TXT[t]}</span>`:""}</div>`; }).join("");
   const r=inp.getBoundingClientRect(); Object.assign(box.style,{left:r.left+"px",width:Math.max(r.width,420)+"px",top:(r.bottom+2)+"px"}); box.hidden=false; }
 function escolheMed(m){ const inp=medAlvo; $("#med-sug").hidden=true; if(!inp||!m) return;
   if(inp.dataset.medac==="uso"){ const ta=$("#meduso-txt"); ta.value=(ta.value.trim()?ta.value.replace(/\s+$/,"")+"\n":"")+m.txt; inp.value=""; ta.dispatchEvent(new Event("input",{bubbles:true})); inp.focus(); return; }
-  const i=inp.id.split("-")[1]; inp.value=m.txt; $(`#col-${i}-via`).value=m.via; $(`#col-${i}-fl`).value=m.fl||"";
+  const i=inp.id.split("-")[1]; inp.value=m.txt; $(`#col-${i}-via`).value=m.via||""; $(`#col-${i}-fl`).value=m.fl||"";
+  if(m.fav){ $(`#col-${i}-qtd`).value=m.qtd||""; $(`#col-${i}-pos`).value=m.pos||""; }
   inp.dataset.escolhido=m.txt; inp.dispatchEvent(new Event("input",{bubbles:true}));
   const t=tarjaDe(m.fl);
   if(t==="P") statusCol(`Atenção: “${m.txt}” é tarja preta: exige Notificação de Receita (azul/amarela) e não sai nesta receita.`,"erro");
@@ -1177,6 +1190,54 @@ document.addEventListener("keydown",e=>{ const inp=e.target, box=$("#med-sug"); 
 $("#med-sug").addEventListener("mousedown",e=>{ const d=e.target.closest("[data-i]"); if(d){ e.preventDefault(); escolheMed(medItens[+d.dataset.i]); } });
 document.addEventListener("focusout",e=>{ if(e.target.dataset?.medac) setTimeout(()=>{ if(!document.activeElement?.dataset?.medac) $("#med-sug").hidden=true; },150); });
 window.addEventListener("scroll",()=>{ $("#med-sug").hidden=true; },true);
+/* ===== MODELOS DE CONDUTA E RECEITAS FAVORITAS (22/10/2026) =====
+   Guardados no servidor (settings), só do médico. Modelo = recorte do coletar() nos
+   campos de diagnóstico/conduta/exames/retorno + as linhas da receita. Aplicar SOMA. */
+const MOD_CAMPOS=["hd-cids","hd-txt","cd-txt","retorno","ex-txt","ex-ind","ex-olho","rx-obs"], MOD_GRUPOS=["hd","cd","ex"];
+let MEUS_MODELOS=[], FAVORITOS=[], prefCarregada=null;
+function carregaPref(){ return prefCarregada||(prefCarregada=Promise.all([api("/api/prontuario/pref/modelos"),api("/api/prontuario/pref/favoritos")]).then(([a,b])=>{ MEUS_MODELOS=a.lista||[]; FAVORITOS=b.lista||[]; desenhaModelos(); marcaFavs(); }).catch(()=>{ prefCarregada=null; })); }
+const salvaPref=(k,l)=>api(`/api/prontuario/pref/${k}`,{method:"POST",body:JSON.stringify({lista:l})});
+function modSt(t,cls){ const x=$("#mod-st"); x.textContent=t; x.className="status "+(cls||""); }
+function desenhaModelos(){ $("#mod-lista").innerHTML=MEUS_MODELOS.length?MEUS_MODELOS.map((m,i)=>`<span class="mod-chip"><button type="button" data-mod="${i}" title="Aplicar: soma ao que já está preenchido">${esc(m.nome)}</button><button type="button" class="x" data-modx="${i}" title="Apagar modelo">×</button></span>`).join(""):`<span class="hint">nenhum ainda</span>`; }
+function capturaModelo(){ const d=coletar(), c={};
+  MOD_CAMPOS.forEach(k=>{ const x=String(d.campos[k]||"").trim(); if(x&&x!=="[]"&&!(k==="ex-olho"&&x==="Ambos os olhos")) c[k]=d.campos[k]; });
+  return { campos:c, chips:d.chips.filter(k=>MOD_GRUPOS.includes(k.split("|")[0])), meds:medicamentos().map(({med,qtd,pos,via,fl})=>({med,qtd,pos,via,fl})), duas_vias:$("#col-2vias").checked }; }
+function poeNaReceita(m){ if(medicamentos().some(x=>semAcento(x.med)===semAcento(m.med))) return true;
+  let i=1; while(i<=NCOL&&v(`col-${i}-med`)) i++; if(i>NCOL) return false;
+  const inp=$(`#col-${i}-med`); inp.value=m.med; $(`#col-${i}-qtd`).value=m.qtd||""; $(`#col-${i}-pos`).value=m.pos||""; $(`#col-${i}-via`).value=m.via||""; $(`#col-${i}-fl`).value=m.fl||"";
+  inp.dataset.escolhido=m.med; inp.dispatchEvent(new Event("input",{bubbles:true})); return true; }
+function aplicaModelo(m){ const C=m.campos||{};
+  for(const k of m.chips||[]){ const [g,n]=k.split("|"); const c=$$(`[data-grupo="${g}"] .chip`).find(c=>nomeChip(c)===n); if(c&&c.getAttribute("aria-pressed")!=="true") c.click(); }
+  if(C["hd-cids"]){ const l=cidsEscolhidos(); try{ JSON.parse(C["hd-cids"]).forEach(x=>{ if(!l.some(([c])=>c===x[0])) l.push(x); }); }catch(_){} $("#hd-cids").value=JSON.stringify(l); }
+  for(const k of ["hd-txt","cd-txt","ex-txt"]) if(C[k]){ const el=$("#"+k), tem=el.value.split("\n").map(x=>x.trim());
+    const novas=C[k].split("\n").map(x=>x.trim()).filter(x=>x&&!tem.includes(x)); if(novas.length) el.value=(el.value.trim()?el.value.replace(/\s+$/,"")+"\n":"")+novas.join("\n"); }
+  for(const k of ["retorno","ex-olho"]) if(C[k]) $("#"+k).value=C[k];
+  for(const k of ["ex-ind","rx-obs"]) if(C[k]&&!v(k).trim()) $("#"+k).value=C[k];
+  let cheia=false; for(const x of m.meds||[]) if(!poeNaReceita(x)) cheia=true;
+  if(m.duas_vias&&!$("#col-2vias").checked) $("#col-2vias").click();
+  $("#cd-txt").dispatchEvent(new Event("input",{bubbles:true}));
+  modSt(cheia?`Modelo “${m.nome}” aplicado, mas a receita já tinha 6 itens: confira o que ficou de fora.`:`Modelo “${m.nome}” aplicado. Confira e ajuste.`,cheia?"erro":"ok"); }
+$("#mod-lista").addEventListener("click",async e=>{ const a=e.target.closest("[data-mod]"), x=e.target.closest("[data-modx]");
+  if(a){ if(!atend){ modSt("Inicie o atendimento antes de usar um modelo.","erro"); return; } aplicaModelo(MEUS_MODELOS[+a.dataset.mod]); return; }
+  if(x){ if(!x.classList.contains("conf")){ x.classList.add("conf"); x.textContent="apagar?"; setTimeout(()=>{ x.classList.remove("conf"); x.textContent="×"; },3000); return; }
+    const nova=MEUS_MODELOS.filter((_,i)=>i!==+x.dataset.modx); try{ await salvaPref("modelos",nova); MEUS_MODELOS=nova; desenhaModelos(); modSt("Modelo apagado.","ok"); }catch(err){ modSt(err.msg||"Não consegui apagar.","erro"); } } });
+$("#mod-abrir").addEventListener("click",()=>{ $("#mod-form").hidden=false; $("#mod-nome").focus(); });
+$("#mod-cancelar").addEventListener("click",()=>{ $("#mod-form").hidden=true; $("#mod-nome").value=""; });
+$("#mod-nome").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); e.stopPropagation(); $("#mod-salvar").click(); } });
+$("#mod-salvar").addEventListener("click",async()=>{ const nome=v("mod-nome").trim(); if(!nome){ modSt("Dê um nome ao modelo.","erro"); return; }
+  const m={nome,...capturaModelo()}; if(!Object.keys(m.campos).length&&!m.chips.length&&!m.meds.length){ modSt("Este atendimento ainda não tem diagnóstico, conduta, exames nem receita para guardar.","erro"); return; }
+  const i=MEUS_MODELOS.findIndex(x=>semAcento(x.nome)===semAcento(nome)); const nova=[...MEUS_MODELOS]; if(i>=0) nova[i]=m; else nova.push(m); nova.sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
+  try{ await salvaPref("modelos",nova); MEUS_MODELOS=nova; desenhaModelos(); $("#mod-form").hidden=true; $("#mod-nome").value=""; modSt(i>=0?`Modelo “${nome}” atualizado.`:`Modelo “${nome}” salvo.`,"ok"); }catch(err){ modSt(err.msg||"Não consegui salvar o modelo.","erro"); } });
+// Favoritas: a estrela da linha guarda remédio + quantidade + posologia; na busca da
+// receita elas vêm primeiro e preenchem a linha inteira.
+const chaveFav=m=>semAcento(m.med)+"|"+semAcento(m.pos||"");
+function marcaFavs(){ const ks=new Set(FAVORITOS.map(chaveFav)); $$(".col-fav").forEach(b=>{ const i=b.dataset.fav, m={med:v(`col-${i}-med`),pos:v(`col-${i}-pos`)}; const on=!!m.med&&ks.has(chaveFav(m)); b.classList.toggle("on",on); b.textContent=on?"★":"☆"; b.title=on?"Receita favorita (clique para tirar)":"Guardar como receita favorita"; }); }
+document.addEventListener("click",async e=>{ const b=e.target.closest(".col-fav"); if(!b) return; const i=b.dataset.fav;
+  const m={med:v(`col-${i}-med`).trim(),qtd:v(`col-${i}-qtd`).trim(),pos:v(`col-${i}-pos`).trim(),via:v(`col-${i}-via`)||"oftálmico",fl:v(`col-${i}-fl`)};
+  if(!m.med){ statusCol("Escreva o remédio na linha antes de favoritar.","erro"); return; }
+  const k=chaveFav(m), tem=FAVORITOS.some(f=>chaveFav(f)===k); const nova=tem?FAVORITOS.filter(f=>chaveFav(f)!==k):[...FAVORITOS,m];
+  try{ await salvaPref("favoritos",nova); FAVORITOS=nova; marcaFavs(); statusCol(tem?"Tirado das favoritas.":"Guardado nas favoritas: aparece primeiro quando você digitar o nome.","ok"); }catch(err){ statusCol(err.msg||"Não consegui salvar a favorita.","erro"); } });
+document.addEventListener("input",e=>{ if(/^col-\d+-(med|pos)$/.test(e.target.id||"")) marcaFavs(); });
 function statusCol(t,cls){ const x=$("#status-col"); x.textContent=t; x.className="status "+(cls||""); }
 $("#gerar-col").addEventListener("click",()=>gerarColirios(false));
 $("#assinar-col").addEventListener("click",()=>gerarColirios(true));
@@ -1461,7 +1522,7 @@ async function iniciar(consultaId){
     $("#data-at").textContent=new Date(c.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
     durBase=c.duracao_seg||0; t0=Date.now(); pararRelogio(); t0=Date.now(); relogio=setInterval(()=>{ $("#duracao").textContent=fmtDur(durAtual()); },1000);
     modoAtend(true); atualiza(); sujo=false; status(c.updated_at&&c.texto?`Rascunho salvo às ${hhmm(c.updated_at)}.`:"Atendimento iniciado.","ok");
-    desenhaAnexosAt(); $("#ind-form").hidden=true; $("#ind-abrir").hidden=false; $("#ind-st").textContent=""; carregaIndicacoesPac(); $("#s-anamnese").scrollIntoView({behavior:"smooth"});
+    carregaPref().then(marcaFavs); $("#mod-st").textContent=""; desenhaAnexosAt(); $("#ind-form").hidden=true; $("#ind-abrir").hidden=false; $("#ind-st").textContent=""; carregaIndicacoesPac(); $("#s-anamnese").scrollIntoView({behavior:"smooth"});
   }catch(e){ status(e.status===401?MSG_SESSAO:(e.msg||"Não consegui iniciar o atendimento."),"erro"); }
 }
 $("#btn-atend").addEventListener("click",()=>{ if(atend) abrirFinalizar(); else iniciar(); });

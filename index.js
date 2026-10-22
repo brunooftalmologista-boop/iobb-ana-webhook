@@ -10497,6 +10497,30 @@ app.post("/api/prontuario/juntar", requireMedico, async (req, res) => {
 
 // Ficha completa: cabeçalho, antecedentes, consultas (linha do tempo), anexos,
 // a consulta agendada para hoje (se houver) e a conversa com a Ana.
+// Preferências do médico no prontuário (modelos de conduta, receitas favoritas): uma
+// linha JSON em settings por chave. Só ele lê e grava; conteúdo é dele, não de paciente.
+const PREF_PRONT = { modelos: "prontuario_modelos", favoritos: "prontuario_favoritos" };
+app.get("/api/prontuario/pref/:chave", requireMedico, async (req, res) => {
+  const k = PREF_PRONT[req.params.chave]; if (!k) return res.status(404).json({ error: "Preferência desconhecida." });
+  try {
+    const { data, error } = await supabase.from("settings").select("value").eq("key", k).maybeSingle();
+    if (error) throw error;
+    let lista = []; try { lista = JSON.parse(data?.value || "[]"); } catch (_) {}
+    res.json({ lista: Array.isArray(lista) ? lista : [] });
+  } catch (e) { console.error("pref get", e.message); res.status(500).json({ error: "Não consegui ler." }); }
+});
+app.post("/api/prontuario/pref/:chave", requireMedico, async (req, res) => {
+  const k = PREF_PRONT[req.params.chave]; if (!k) return res.status(404).json({ error: "Preferência desconhecida." });
+  const lista = req.body?.lista;
+  if (!Array.isArray(lista) || lista.length > 300) return res.status(400).json({ error: "Lista inválida." });
+  const value = JSON.stringify(lista);
+  if (value.length > 400000) return res.status(400).json({ error: "Lista grande demais." });
+  try {
+    const { error } = await supabase.from("settings").upsert({ key: k, value, updated_at: new Date().toISOString() });
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) { console.error("pref post", e.message); res.status(500).json({ error: "Não consegui salvar." }); }
+});
 app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
   try {
     const tel = String(req.query.tel || ""), nome = String(req.query.nome || "");
