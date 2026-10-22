@@ -181,6 +181,7 @@
     <button class="btn ghost" id="ag-reload" title="Atualizar">⟳</button>
     <button class="btn ghost" id="ag-encaixe" title="Marcar um paciente extra (horário ocupado ou fora da grade). A Ana não vê encaixes.">＋ Encaixe</button>
     <button class="btn ghost" id="ag-bloquear" title="Fechar horários (feriado, congresso, cirurgia…)">🚫 Bloquear</button>
+    <button class="btn ghost" id="btn-chat" title="Chat da equipe">💬 Chat</button>
     <button class="btn ghost" id="ag-indicacoes" title="Pacientes com procedimento indicado que ainda não decidiram">💰 Indicações</button>
   </span>
 
@@ -1467,5 +1468,7 @@ setInterval(() => {
   carregarIndicacoes();       // lista pequena, lida uma vez: alimenta o modal do agendamento
 })();
 </script>
+<script src="/equipe-chat.js"></script>
+<script>EquipeChat.montar(document.getElementById("btn-chat"));</script>
 </body>
 </html>

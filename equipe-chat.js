@@ -50,15 +50,30 @@
   .ec-pe{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--ec-line)}
   .ec-pe textarea{flex:1;min-width:0;resize:none;height:44px;border:1px solid var(--ec-line);border-radius:8px;padding:8px 10px;font:14px system-ui,sans-serif;background:var(--ec-bg);color:var(--ec-fg)}
   .ec-pe button{border:0;border-radius:8px;background:var(--ec-pri);color:var(--ec-pri-fg);font:600 14px system-ui,sans-serif;padding:0 14px;cursor:pointer}
-  .ec-st{color:var(--ec-alerta);font-size:12.5px;padding:0 14px 8px}`;
+  .ec-st{color:var(--ec-alerta);font-size:12.5px;padding:0 14px 8px}
+  .ec-urgchk{display:flex;align-items:center;gap:4px;font:600 12.5px system-ui,sans-serif;color:var(--ec-alerta);white-space:nowrap;cursor:pointer}
+  .ec-msg.urg{border-left:3px solid var(--ec-alerta)}
+  .ec-perm{border:0;background:none;color:var(--ec-pri);font:600 12.5px system-ui,sans-serif;cursor:pointer;padding:0 14px 8px;text-align:left}
+  .ec-toast{position:fixed;top:calc(62px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:min(440px,94vw);z-index:9998;background:var(--ec-bg);color:var(--ec-fg);
+    border:2px solid var(--ec-pri);border-radius:12px;box-shadow:0 10px 30px var(--ec-sombra);padding:12px 14px;font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .ec-toast[hidden]{display:none}
+  .ec-toast .ec-t-txt{margin:4px 0 10px;white-space:pre-wrap;word-break:break-word;max-height:7.5em;overflow:hidden}
+  .ec-toast .ec-t-ac{display:flex;gap:8px;justify-content:flex-end}
+  .ec-toast button,.ec-urg button{border:0;border-radius:8px;font:600 14px system-ui,sans-serif;padding:8px 14px;cursor:pointer}
+  .ec-btn-pri{background:var(--ec-pri);color:var(--ec-pri-fg)} .ec-btn-sec{background:var(--ec-out);color:var(--ec-fg)}
+  .ec-urg{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.5);display:grid;place-items:center;padding:16px}
+  .ec-urg[hidden]{display:none}
+  .ec-urg>div{width:min(460px,100%);background:var(--ec-bg);color:var(--ec-fg);border:3px solid var(--ec-alerta);border-radius:14px;padding:18px 20px;box-shadow:0 12px 40px rgba(0,0,0,.4);font:15px/1.45 system-ui,sans-serif}
+  .ec-urg h3{margin:0 0 6px;color:var(--ec-alerta);font-size:18px} .ec-urg .ec-u-txt{white-space:pre-wrap;word-break:break-word;margin:8px 0 16px;font-size:16px}
+  .ec-urg .ec-u-ac{display:flex;gap:8px;justify-content:flex-end} .ec-btn-urg{background:var(--ec-alerta);color:#fff}`;
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
   /* ---------- gaveta ---------- */
   const g = document.createElement("div");
   g.className = "ec-gaveta"; g.hidden = true; g.setAttribute("role", "dialog"); g.setAttribute("aria-label", "Chat da equipe");
   g.innerHTML = `<div class="ec-topo"><b>Chat da equipe</b><span><button type="button" class="ec-x ec-som"></button><button type="button" class="ec-x" title="Fechar" aria-label="Fechar">×</button></span></div>
-    <div class="ec-abas"></div><div class="ec-lista"></div><div class="ec-st"></div>
-    <div class="ec-pe"><textarea placeholder="Escreva… (Enter envia, Shift+Enter quebra linha)" aria-label="Mensagem"></textarea><button type="button">Enviar</button></div>`;
+    <div class="ec-abas"></div><div class="ec-lista"></div><div class="ec-st"></div><button type="button" class="ec-perm" hidden></button>
+    <div class="ec-pe"><textarea placeholder="Escreva… (Enter envia, Shift+Enter quebra linha)" aria-label="Mensagem"></textarea><div style="display:flex;flex-direction:column;gap:6px;justify-content:center"><label class="ec-urgchk" title="Abre uma janela na tela de quem recebe, que só fecha clicando em Ciente"><input type="checkbox" class="ec-urg-in"> ⚠️ Urgente</label><button type="button" class="ec-enviar" style="padding:8px 14px">Enviar</button></div></div>`;
   document.body.appendChild(g);
   const $abas = g.querySelector(".ec-abas"), $lista = g.querySelector(".ec-lista"), $txt = g.querySelector("textarea"), $st = g.querySelector(".ec-st");
 
@@ -76,7 +91,7 @@
     const convs = ["todos", ...pessoas.filter(p => p !== eu)];
     $abas.innerHTML = convs.map(c => `<button type="button" class="ec-aba${c === aba ? " ativa" : ""}" data-c="${esc(c)}">${c === "todos" ? "Todos" : esc(c)}${c !== aba && naoLidas(c) ? "<i></i>" : ""}</button>`).join("");
     const ms = msgs.filter(m => conversaDe(m) === aba);
-    $lista.innerHTML = ms.length ? ms.map(m => `<div class="ec-msg${m.de === eu ? " meu" : ""}"><small>${m.de === eu ? "Você" : esc(m.de)} · ${hora(m.created_at)}</small>${esc(m.texto)}</div>`).join("")
+    $lista.innerHTML = ms.length ? ms.map(m => `<div class="ec-msg${m.de === eu ? " meu" : ""}${m.urgente ? " urg" : ""}"><small>${m.urgente ? "⚠️ URGENTE · " : ""}${m.de === eu ? "Você" : esc(m.de)} · ${hora(m.created_at)}</small>${esc(m.texto)}</div>`).join("")
       : `<div class="ec-vazio">${aba === "todos" ? "Mensagens para toda a equipe aparecem aqui." : "Nenhuma mensagem com " + esc(aba) + " ainda."}</div>`;
     $lista.scrollTop = $lista.scrollHeight;
     const total = convs.reduce((n, c) => n + naoLidas(c), 0);
@@ -124,7 +139,8 @@
       eu = r.eu; pessoas = r.pessoas || pessoas;
       const novas = (r.mensagens || []).filter(m => !msgs.some(x => x.id === m.id));
       if (novas.length) { msgs = msgs.concat(novas).slice(-500); ultima = msgs[msgs.length - 1].created_at;
-        if (!primeiraCarga && novas.some(m => m.de !== eu)) bip(); }
+        const deOutros = primeiraCarga ? [] : novas.filter(m => m.de !== eu);
+        if (deOutros.length) { bip(); avisarNovas(deOutros); } }
       if (!ultima) ultima = new Date(Date.now() - 1000).toISOString();
       primeiraCarga = false; marcarVisto(); desenhar(); $st.textContent = "";
     } catch (e) { if (e.status === 403) { botoes.forEach(b => b.style.display = "none"); clearTimeout(tPoll); emCurso = false; return; } }
@@ -136,12 +152,74 @@
   async function enviar() {
     const texto = $txt.value.trim(); if (!texto) return;
     $txt.disabled = true;
-    try { const r = await api("/api/equipe/mensagens", { method: "POST", body: JSON.stringify({ texto, para: aba === "todos" ? null : aba }) });
-      $txt.value = ""; if (!msgs.some(x => x.id === r.mensagem.id)) msgs.push(r.mensagem); ultima = r.mensagem.created_at; marcarVisto(); desenhar();
+    const $urg = g.querySelector(".ec-urg-in");
+    try { const r = await api("/api/equipe/mensagens", { method: "POST", body: JSON.stringify({ texto, para: aba === "todos" ? null : aba, urgente: $urg.checked }) });
+      $txt.value = ""; $urg.checked = false; if (!msgs.some(x => x.id === r.mensagem.id)) msgs.push(r.mensagem); ultima = r.mensagem.created_at; marcarVisto(); desenhar();
     } catch (e) { $st.textContent = e.msg || "Não consegui enviar. Tente de novo."; }
     finally { $txt.disabled = false; $txt.focus(); }
   }
-  g.querySelector(".ec-pe button").addEventListener("click", enviar);
+  g.querySelector(".ec-enviar").addEventListener("click", enviar);
+
+  /* ---------- AVISOS (22/10/2026): "na prática ninguém vê, só se abrir o chat" ----------
+     1) cartão no topo da tela com quem mandou e o texto; 2) mensagem URGENTE abre
+     janela no meio que só fecha com "Ciente" (e o bip repete até lá); 3) notificação
+     do sistema quando a página está minimizada/atrás de outra janela; 4) título da
+     aba pisca. Nada disso aparece para quem já está com aquela conversa aberta. */
+  const toast = document.createElement("div"); toast.className = "ec-toast"; toast.hidden = true; toast.setAttribute("role", "status");
+  toast.innerHTML = `<b class="ec-t-de"></b><div class="ec-t-txt"></div><div class="ec-t-ac"><button type="button" class="ec-btn-sec ec-t-x">Fechar</button><button type="button" class="ec-btn-pri ec-t-abrir">Abrir chat</button></div>`;
+  document.body.appendChild(toast);
+  const urg = document.createElement("div"); urg.className = "ec-urg"; urg.hidden = true; urg.setAttribute("role", "alertdialog");
+  urg.innerHTML = `<div><h3>⚠️ Mensagem urgente</h3><b class="ec-u-de"></b><div class="ec-u-txt"></div><div class="ec-u-ac"><button type="button" class="ec-btn-sec ec-u-abrir">Responder</button><button type="button" class="ec-btn-urg ec-u-ok">Ciente</button></div></div>`;
+  document.body.appendChild(urg);
+  let toastConv = null, tToast = null, filaUrg = [], tBipUrg = null, tTitulo = null;
+  const tituloOrig = () => document.title.replace(/^\(\d+\) 💬 [^|]*\| /, "");
+  function abrirEm(c) { aba = c || "todos"; g.hidden = false; marcaBotoes(); marcarVisto(); desenhar(); setTimeout(() => $txt.focus(), 30); buscar(); agendar(); }
+  function mostraToast(lista) {
+    const m = lista[lista.length - 1]; toastConv = conversaDe(m);
+    toast.querySelector(".ec-t-de").textContent = `💬 ${m.de}${m.para ? " (para você)" : " (para todos)"}${lista.length > 1 ? ` · +${lista.length - 1} mensagem(ns)` : ""}`;
+    toast.querySelector(".ec-t-txt").textContent = m.texto;
+    toast.hidden = false; clearTimeout(tToast); tToast = setTimeout(() => { toast.hidden = true; }, 90000);
+  }
+  toast.querySelector(".ec-t-x").addEventListener("click", () => { toast.hidden = true; });
+  toast.querySelector(".ec-t-abrir").addEventListener("click", () => { toast.hidden = true; abrirEm(toastConv); });
+  function mostraUrg() {
+    const m = filaUrg[0]; if (!m) { urg.hidden = true; clearInterval(tBipUrg); tBipUrg = null; return; }
+    urg.querySelector(".ec-u-de").textContent = `De ${m.de} · ${hora(m.created_at)}`; urg.querySelector(".ec-u-txt").textContent = m.texto;
+    urg.hidden = false; if (!tBipUrg) tBipUrg = setInterval(bip, 12000);
+  }
+  urg.querySelector(".ec-u-ok").addEventListener("click", () => { filaUrg.shift(); mostraUrg(); });
+  urg.querySelector(".ec-u-abrir").addEventListener("click", () => { const m = filaUrg.shift(); mostraUrg(); if (m) abrirEm(conversaDe(m)); });
+  function notificarSistema(m) {
+    try {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      const titulo = `${m.urgente ? "⚠️ URGENTE — " : "💬 "}${m.de}`, opts = { body: String(m.texto).slice(0, 200), tag: "iobb-chat", renotify: true, icon: "/app-icons/icon-192.png", requireInteraction: !!m.urgente };
+      const viaJanela = () => { try { const n = new Notification(titulo, opts); n.onclick = () => { window.focus(); abrirEm(conversaDe(m)); n.close(); }; } catch (_) {} };
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(r => r ? r.showNotification(titulo, opts) : viaJanela()).catch(viaJanela);
+      else viaJanela();
+    } catch (_) {}
+  }
+  function piscaTitulo(n) {
+    if (!document.hidden || tTitulo) return; let liga = false;
+    tTitulo = setInterval(() => { liga = !liga; const base = tituloOrig(); document.title = liga ? `(${n}) 💬 Nova mensagem | ${base}` : base; }, 1200);
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && tTitulo) { clearInterval(tTitulo); tTitulo = null; document.title = tituloOrig(); } });
+  function avisarNovas(lista) {
+    const vendo = m => !g.hidden && aba === conversaDe(m) && !document.hidden;
+    const urgentes = lista.filter(m => m.urgente), normais = lista.filter(m => !m.urgente && !vendo(m));
+    if (urgentes.length) { filaUrg.push(...urgentes); mostraUrg(); }
+    if (normais.length) mostraToast(normais);
+    if (document.hidden || !document.hasFocus()) { lista.forEach(notificarSistema); piscaTitulo(lista.length); }
+  }
+  // permissão para o aviso do sistema (pedida num clique — o navegador exige)
+  const $perm = g.querySelector(".ec-perm");
+  function desenhaPerm() {
+    if (!("Notification" in window)) { $perm.hidden = true; return; }
+    const p = Notification.permission;
+    $perm.hidden = p === "granted";
+    $perm.textContent = p === "denied" ? "🔕 Avisos fora desta tela estão bloqueados no navegador (libere no cadeado da barra de endereço)." : "🔔 Ativar aviso mesmo com a tela minimizada";
+  }
+  $perm.addEventListener("click", () => { try { Notification.requestPermission().then(desenhaPerm); } catch (_) {} });
+  desenhaPerm();
   $txt.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } });
 
   window.EquipeChat = {

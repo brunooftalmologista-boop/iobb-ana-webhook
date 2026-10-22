@@ -11611,7 +11611,7 @@ app.get("/api/equipe/mensagens", async (req, res) => {
     const desde = String(req.query.desde || "");
     const ult = await ultimaEquipe();
     if (desde && (!ult || new Date(ult).getTime() <= new Date(desde).getTime())) return res.json({ eu, pessoas, mensagens: [] });
-    let q = supabase.from("equipe_mensagens").select("id, de, para, texto, created_at")
+    let q = supabase.from("equipe_mensagens").select("id, de, para, texto, urgente, created_at")
       .or(`para.is.null,para.eq."${eu}",de.eq."${eu}"`);
     if (desde && !isNaN(new Date(desde))) q = q.gt("created_at", new Date(desde).toISOString()).order("created_at", { ascending: true }).limit(200);
     else q = q.gte("created_at", new Date(Date.now() - 7 * 864e5).toISOString()).order("created_at", { ascending: false }).limit(300);
@@ -11632,7 +11632,8 @@ app.post("/api/equipe/mensagens", async (req, res) => {
     if (!texto) return res.status(400).json({ error: "Mensagem vazia." });
     const para = req.body?.para ? String(req.body.para) : null;
     if (para && !SECRETARIAS.some(s => s.nome === para)) return res.status(400).json({ error: "Destinatário inválido." });
-    const { data, error } = await supabase.from("equipe_mensagens").insert({ de: eu, para, texto }).select("id, de, para, texto, created_at").single();
+    const urgente = req.body?.urgente === true;   // 22/10/2026: abre janela "Ciente" em quem recebe
+    const { data, error } = await supabase.from("equipe_mensagens").insert({ de: eu, para, texto, urgente }).select("id, de, para, texto, urgente, created_at").single();
     if (error) throw error;
     ultimaMsgEquipe = data.created_at;
     res.json({ ok: true, mensagem: data });
