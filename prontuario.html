@@ -184,6 +184,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 .mod-chip{display:inline-flex;align-items:center;border:1px solid var(--pri);border-radius:999px;background:var(--surface);overflow:hidden}
 .mod-chip button{border:0;background:none;padding:4px 10px;font:inherit;font-size:13px;color:var(--pri);cursor:pointer}
 .mod-chip button.x{padding:4px 8px 4px 2px;color:var(--muted)} .mod-chip button.x.conf{color:var(--warn);font-weight:600}
+.trazido{border-color:#d9a400 !important;border-style:dashed !important;background:color-mix(in srgb,#d9a400 8%,var(--surface)) !important}
 .col-fav{border:0;background:none;font-size:18px;line-height:1;padding:4px;cursor:pointer;color:var(--muted)} .col-fav.on{color:#d9a400}
 #med-sug{position:fixed;right:auto;top:auto;z-index:60;max-height:320px}
 #med-sug div{line-height:1.3} #med-sug small{color:var(--muted);margin-left:6px;font-size:12px}
@@ -285,7 +286,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
         <div id="atendimento" class="palco" hidden>
           <div class="faixa-pre" id="faixa-pre" hidden></div>
           <article class="folha-sec" id="s-anamnese">
-            <div class="t"><span>Anamnese e exame oftalmológico</span><span><button type="button" class="link" data-modelo="rotina">Modelo: rotina normal</button><button type="button" class="link" data-modelo="lente">Retorno de lente</button><button type="button" class="link" data-modelo="ceratocone">Ceratocone</button><button type="button" class="link" data-modelo="catarata">Catarata</button></span></div>
+            <div class="t"><span>Anamnese e exame oftalmológico</span><span><button type="button" class="link" id="trazer-ult" hidden>↻ Trazer da última consulta</button><button type="button" class="link" data-modelo="rotina">Modelo: rotina normal</button><button type="button" class="link" data-modelo="lente">Retorno de lente</button><button type="button" class="link" data-modelo="ceratocone">Ceratocone</button><button type="button" class="link" data-modelo="catarata">Catarata</button></span></div>
             <div class="c" id="form-anamnese">
               <div><span class="rot">Queixa principal</span>
                 <div class="chips" data-grupo="qp">
@@ -1190,6 +1191,27 @@ document.addEventListener("keydown",e=>{ const inp=e.target, box=$("#med-sug"); 
 $("#med-sug").addEventListener("mousedown",e=>{ const d=e.target.closest("[data-i]"); if(d){ e.preventDefault(); escolheMed(medItens[+d.dataset.i]); } });
 document.addEventListener("focusout",e=>{ if(e.target.dataset?.medac) setTimeout(()=>{ if(!document.activeElement?.dataset?.medac) $("#med-sug").hidden=true; },150); });
 window.addEventListener("scroll",()=>{ $("#med-sug").hidden=true; },true);
+/* ===== TRAZER DA ÚLTIMA CONSULTA (22/10/2026) =====
+   Só o que é do PACIENTE e muda pouco: antecedentes, medicações em uso, diagnósticos e a
+   última refração prescrita (vai para "Refração / óculos anteriores"). Nada de medida do
+   dia (AV, PIO, biomicroscopia). Soma sem apagar; o que veio fica com borda amarela
+   tracejada até ser editado. Só consultas feitas aqui (as importadas do iClinic são texto). */
+function ultimaConsulta(){ return (ficha?.consultas||[]).filter(c=>c.id!==atend?.id&&c.dados?.campos&&!c.dados.importado)
+  .sort((a,b)=>new Date(b.data_consulta)-new Date(a.data_consulta))[0]||null; }
+function mostraTrazer(){ const u=ultimaConsulta(), b=$("#trazer-ult"); b.hidden=!u||!atend;
+  if(u) b.textContent=`↻ Trazer da última consulta (${new Date(u.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ})})`; }
+function refrDe(C,o){ const e=C[`re-${o}-esf`],c=C[`re-${o}-cil`],x=C[`re-${o}-eixo`]; if(!e&&!c) return ""; let r=e||"Plano"; if(c) r+=` ${c}x${x||"?"}º`; return r; }
+function somaLinhas(id,txt){ const el=$("#"+id), tem=el.value.split("\n").map(x=>x.trim()); const novas=String(txt||"").split("\n").map(x=>x.trim()).filter(x=>x&&!tem.includes(x));
+  if(!novas.length) return false; el.value=(el.value.trim()?el.value.replace(/\s+$/,"")+"\n":"")+novas.join("\n"); el.classList.add("trazido"); return true; }
+$("#trazer-ult").addEventListener("click",()=>{ const u=ultimaConsulta(); if(!u) return; const C=u.dados.campos||{}, quando=new Date(u.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ}); let n=0;
+  for(const k of ["ant-txt","meduso-txt","hd-txt"]) if(somaLinhas(k,C[k])) n++;
+  for(const k of u.dados.chips||[]){ const [g,nm]=k.split("|"); if(g!=="hd") continue; const c=$$('[data-grupo="hd"] .chip').find(c=>nomeChip(c)===nm); if(c&&c.getAttribute("aria-pressed")!=="true"){ c.click(); n++; } }
+  if(C["hd-cids"]){ const l=cidsEscolhidos(); try{ JSON.parse(C["hd-cids"]).forEach(x=>{ if(!l.some(([c])=>c===x[0])){ l.push(x); n++; } }); }catch(_){} $("#hd-cids").value=JSON.stringify(l); }
+  const od=refrDe(C,"od"), oe=refrDe(C,"oe");
+  if(od||oe){ const t=[`Refração prescrita em ${quando}:`,od&&`OD ${od}`,oe&&`OE ${oe}`,C["re-add"]&&`Adição ${C["re-add"]}`].filter(Boolean).join(" "); if(somaLinhas("refant-txt",t)) n++; }
+  $("#ant-txt").dispatchEvent(new Event("input",{bubbles:true}));
+  status(n?`Trazido da consulta de ${quando} (borda amarela): confira com o paciente.`:`A consulta de ${quando} não tem nada novo para trazer.`,n?"ok":""); });
+document.addEventListener("input",e=>{ if(e.isTrusted) e.target.classList?.remove("trazido"); });
 /* ===== MODELOS DE CONDUTA E RECEITAS FAVORITAS (22/10/2026) =====
    Guardados no servidor (settings), só do médico. Modelo = recorte do coletar() nos
    campos de diagnóstico/conduta/exames/retorno + as linhas da receita. Aplicar SOMA. */
@@ -1280,7 +1302,7 @@ $$("[data-modelo]").forEach(b=>b.addEventListener("click",()=>{ const m=MODELOS[
   $("#retorno").value=m.retorno; atualiza(); }));
 
 /* ===== estado do formulário ===== */
-function limpar(){ campos().forEach(el=>{ if(el.tagName==="SELECT") el.selectedIndex=0; else el.value=""; }); $$(".chip").forEach(c=>c.setAttribute("aria-pressed","false")); sugEditada=false; }
+function limpar(){ campos().forEach(el=>{ if(el.tagName==="SELECT") el.selectedIndex=0; else el.value=""; }); $$(".chip").forEach(c=>c.setAttribute("aria-pressed","false")); $$(".trazido").forEach(x=>x.classList.remove("trazido")); sugEditada=false; }
 // Só chips DE GRUPO: as etiquetas do CID escolhido na busca (#hd-cids-tags) também são
 // .chip marcadas, mas sem data-grupo — elas quebravam aqui (null.dataset) e com isso o
 // salvar e o finalizar de todo atendimento que usava a busca de CID (21/10/2026).
@@ -1522,7 +1544,7 @@ async function iniciar(consultaId){
     $("#data-at").textContent=new Date(c.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
     durBase=c.duracao_seg||0; t0=Date.now(); pararRelogio(); t0=Date.now(); relogio=setInterval(()=>{ $("#duracao").textContent=fmtDur(durAtual()); },1000);
     modoAtend(true); atualiza(); sujo=false; status(c.updated_at&&c.texto?`Rascunho salvo às ${hhmm(c.updated_at)}.`:"Atendimento iniciado.","ok");
-    carregaPref().then(marcaFavs); $("#mod-st").textContent=""; desenhaAnexosAt(); $("#ind-form").hidden=true; $("#ind-abrir").hidden=false; $("#ind-st").textContent=""; carregaIndicacoesPac(); $("#s-anamnese").scrollIntoView({behavior:"smooth"});
+    carregaPref().then(marcaFavs); mostraTrazer(); $("#mod-st").textContent=""; desenhaAnexosAt(); $("#ind-form").hidden=true; $("#ind-abrir").hidden=false; $("#ind-st").textContent=""; carregaIndicacoesPac(); $("#s-anamnese").scrollIntoView({behavior:"smooth"});
   }catch(e){ status(e.status===401?MSG_SESSAO:(e.msg||"Não consegui iniciar o atendimento."),"erro"); }
 }
 $("#btn-atend").addEventListener("click",()=>{ if(atend) abrirFinalizar(); else iniciar(); });
