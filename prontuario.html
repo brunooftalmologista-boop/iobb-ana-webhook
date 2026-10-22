@@ -383,6 +383,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                 <div class="row"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="perto">Óculos para perto</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option></select></label>
                   <label style="gap:6px"><input type="checkbox" id="rx-timbrado" style="width:auto"> Papel timbrado (sem logotipo)</label></div>
                 <div class="campo"><label for="rx-sug">Lentes sugeridas (pode editar)</label><textarea id="rx-sug" rows="2" style="min-height:48px;font-size:14px"></textarea></div>
+                <div class="campo"><label for="rx-obs">Observação na receita (opcional) <span class="hint">— sai impressa, para o paciente e a ótica</span></label><textarea id="rx-obs" rows="3" style="min-height:56px;font-size:14px" placeholder="Ex.: Óculos para longe. Aumentar o grau de longe para melhorar a visão de perto embaça a visão de longe…"></textarea></div>
                 <div class="row"><button type="button" class="pri" id="gerar-rx">Imprimir prescrição</button><button type="button" id="assinar-rx">🔏 PDF assinado</button><button type="button" id="copiar-rx">Copiar receita</button><span class="status" id="status-rx"></span></div>
               </div>
               <div class="rx" id="col-bloco">
@@ -744,7 +745,7 @@ function gerarPrescricao(assinar){
   if(assinar===true){ const ex=x=>x&&x!=="—"?x.replace("°","")+"º":"";
     return enviarAssinado("oculos",{nome,data:dataExame,titulo:`RECEITA DE ÓCULOS${perto?" PARA PERTO":""}`,
       linhas:[["OLHO DIREITO",r.od[0],r.od[1]==="—"?"":r.od[1],ex(r.od[2])],["OLHO ESQUERDO",r.oe[0],r.oe[1]==="—"?"":r.oe[1],ex(r.oe[2])]],
-      adicao:mono?null:(r.add||"-"),sugestao:`Lentes ${TIPO_TEXTO[$("#rx-uso").value]||$("#rx-uso").value} sugeridas: ${v("rx-sug")}`,proxima:prox},status); }
+      adicao:mono?null:(r.add||"-"),sugestao:v("rx-sug")?`Lentes ${TIPO_TEXTO[$("#rx-uso").value]||$("#rx-uso").value} sugeridas: ${v("rx-sug")}`:"",observacao:v("rx-obs"),proxima:prox},status); }
   const corpo=`
 <div class="cab">${timbrado?"":`<img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges">`}<span>Brasília, ${dataExame}.</span></div>
 <p class="nome">Nome: ${esc(nome)}</p>
@@ -754,7 +755,8 @@ function gerarPrescricao(assinar){
 <tr><td>OLHO ESQUERDO</td>${cel(r.oe[0],r.oe[1]==="—"?"":r.oe[1],r.oe[2])}</tr>
 ${mono?"":`<tr><td>ADIÇÃO</td><td colspan="3">${esc(r.add||"-")}</td></tr>`}
 </tbody></table>
-<p class="sug">Lentes ${esc(TIPO_TEXTO[$("#rx-uso").value]||$("#rx-uso").value)} sugeridas: ${esc(v("rx-sug"))}</p>
+${v("rx-sug")?`<p class="sug">Lentes ${esc(TIPO_TEXTO[$("#rx-uso").value]||$("#rx-uso").value)} sugeridas: ${esc(v("rx-sug"))}</p>`:""}
+${v("rx-obs")?`<p class="sug" style="white-space:pre-wrap"><b>Observação:</b> ${esc(v("rx-obs"))}</p>`:""}
 <h2>IMPORTANTE</h2>
 <h2>RECOMENDAÇÕES PARA O PACIENTE:</h2>
 <ul><li>Não deixe de conferir seus óculos com o médico oftalmologista antes de usá-los.</li>

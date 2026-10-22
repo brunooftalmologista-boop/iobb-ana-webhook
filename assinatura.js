@@ -141,8 +141,8 @@ function corpoOculos(doc, d) {
     y += h;
   }
   doc.y = y + mm(5); doc.x = L;
-  doc.font("G6").fontSize(11.5).text(d.sugestao, L, doc.y, { width: W });
-  doc.moveDown(0.8);
+  if (d.sugestao) { doc.font("G6").fontSize(11.5).text(d.sugestao, L, doc.y, { width: W }); doc.moveDown(0.8); }
+  if (d.observacao) { doc.font("G8").fontSize(11.5).text("Observação: ", L, doc.y, { continued: true }).font("G6").text(d.observacao, { width: W }); doc.moveDown(0.8); }
   doc.font("G8").fontSize(11.5).text("IMPORTANTE", L, doc.y, { characterSpacing: 0.4 });
   doc.moveDown(0.3).text("RECOMENDAÇÕES PARA O PACIENTE:", { characterSpacing: 0.4 });
   doc.font("G6").fontSize(10).list(RECOMENDA_PACIENTE, { bulletRadius: 1.6, textIndent: 10, width: W });
