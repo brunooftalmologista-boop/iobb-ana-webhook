@@ -185,6 +185,8 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 .mod-chip button{border:0;background:none;padding:4px 10px;font:inherit;font-size:13px;color:var(--pri);cursor:pointer}
 .mod-chip button.x{padding:4px 8px 4px 2px;color:var(--muted)} .mod-chip button.x.conf{color:var(--warn);font-weight:600}
 .trazido{border-color:#d9a400 !important;border-style:dashed !important;background:color-mix(in srgb,#d9a400 8%,var(--surface)) !important}
+.seg-alertas{border:1px solid var(--warn);border-left-width:4px;border-radius:6px;padding:8px 10px;background:color-mix(in srgb,var(--warn) 9%,var(--surface));font-size:14px;display:grid;gap:4px}
+.seg-alertas b{color:var(--warn)}
 .col-fav{border:0;background:none;font-size:18px;line-height:1;padding:4px;cursor:pointer;color:var(--muted)} .col-fav.on{color:#d9a400}
 #med-sug{position:fixed;right:auto;top:auto;z-index:60;max-height:320px}
 #med-sug div{line-height:1.3} #med-sug small{color:var(--muted);margin-left:6px;font-size:12px}
@@ -404,6 +406,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
               </div>
               <div class="rx" id="col-bloco">
                 <span class="rot" style="margin:0">Receita de colírios e medicamentos <span class="hint">— digite o nome e a posologia</span></span>
+                <div id="seg-alertas" class="seg-alertas" role="alert" hidden></div>
                 <div style="display:grid;gap:6px">
                   <div class="row col-linha" data-i="1" style="flex-wrap:wrap"><input type="hidden" id="col-1-via"><input type="hidden" id="col-1-fl"><input id="col-1-med" data-medac="rx" autocomplete="off" placeholder="1. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-1-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-1-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"><button type="button" class="col-fav" data-fav="1" title="Guardar como receita favorita">☆</button></div>
                   <div class="row col-linha" data-i="2" style="flex-wrap:wrap"><input type="hidden" id="col-2-via"><input type="hidden" id="col-2-fl"><input id="col-2-med" data-medac="rx" autocomplete="off" placeholder="2. Colírio / medicamento (digite para buscar)" style="flex:2 1 220px"><input id="col-2-qtd" list="lista-qtd" placeholder="Quantidade" style="flex:0 1 120px"><input id="col-2-pos" list="lista-posologia" placeholder="Posologia" style="flex:3 1 280px"><button type="button" class="col-fav" data-fav="2" title="Guardar como receita favorita">☆</button></div>
@@ -1191,6 +1194,51 @@ document.addEventListener("keydown",e=>{ const inp=e.target, box=$("#med-sug"); 
 $("#med-sug").addEventListener("mousedown",e=>{ const d=e.target.closest("[data-i]"); if(d){ e.preventDefault(); escolheMed(medItens[+d.dataset.i]); } });
 document.addEventListener("focusout",e=>{ if(e.target.dataset?.medac) setTimeout(()=>{ if(!document.activeElement?.dataset?.medac) $("#med-sug").hidden=true; },150); });
 window.addEventListener("scroll",()=>{ $("#med-sug").hidden=true; },true);
+/* ===== ALERTAS DE SEGURANÇA DA RECEITA (22/10/2026) =====
+   Alergia: lê as linhas com "alerg" dos antecedentes e procura a substância (ou a classe)
+   nos itens da receita. Interações: poucas regras do dia a dia da oftalmologia, cruzando a
+   receita com diagnósticos, antecedentes e medicações em uso. Só AVISA; imprimir com alerta
+   pede um 2º clique. Regras clínicas para o Dr. Bruno revisar/ampliar. */
+const CLASSE_ALERGIA=[
+  [/sulf/, /sulf|acetazolamid|dorzolamid|brinzolamid/, "sulfa (acetazolamida/dorzolamida/brinzolamida: possível reação cruzada)"],
+  [/penicil|amoxicil|ampicil|betalact/, /cilina|penicil|\bcef/, "penicilina (cefalosporinas: possível reação cruzada)"],
+  [/dipirona|metamizol|novalgina/, /dipiron|metamizol/, "dipirona"],
+  [/\baas\b|aspirina|acetilsalicil|salicil/, /acetilsalicil|aspirin/, "AAS"],
+  [/anti.?inflamat|\baine/, /diclofenac|cetorolac|nepafenac|bromfenac|ibuprofen|naproxen|nimesulid|cetoprofen|piroxicam|meloxicam|indometacin|flurbiprofen|acetilsalicil/, "anti-inflamatório (AINE)"],
+  [/quinolon|floxacin/, /floxacin/, "quinolona"],
+  [/aminoglicosid|neomicin|gentamicin|tobramicin/, /neomicin|gentamicin|tobramicin|amicacin|tobradex|maxitrol/, "aminoglicosídeo"],
+  [/ciclina/, /ciclina/, "tetraciclina"],
+  [/corticoid/, /dexametason|prednisolon|fluormetolon|loteprednol|difluprednat|rimexolon|betametason|hidrocortison|prednison/, "corticoide"],
+  [/\biodo|povidon/, /\biod|povidon/, "iodo"],
+];
+const RE_CORTICO=/dexametason|prednisolon|fluormetolon|loteprednol|difluprednat|rimexolon|maxitrol|tobradex|zypred|pred fort|pred mild|predmild|flutinol|lotemax|vexol|durezol|maxidex|vigadexa|cilodex/;
+const RE_BETABLOQ=/timolol|betaxolol|levobunolol|carteolol|cosopt|combigan|xalacom|ganfort|duotrav|azorga/;
+const RE_ANTIGLAUC=/latanoprost|bimatoprost|travoprost|tafluprost|timolol|dorzolamid|brinzolamid|brimonidin|betaxolol|xalatan|lumigan|travatan|cosopt|combigan|ganfort|azorga|simbrinza/;
+const RE_PROSTA=/latanoprost|bimatoprost|travoprost|tafluprost|xalatan|lumigan|travatan|ganfort|xalacom|duotrav/;
+const REGRAS_INTERACAO=[
+  [c=>RE_BETABLOQ.test(c.rx)&&/asma|dpoc|bronquit|enfisema|\bj4[45]|bradicard|bloqueio av|\bbav\b/.test(c.clin), "Betabloqueador tópico (timolol e afins) com asma/DPOC/bradicardia nos antecedentes: risco de broncoespasmo ou bradicardia."],
+  [c=>RE_CORTICO.test(c.rx)&&(/glaucoma|\bh40|hipertensao ocular/.test(c.clin)||RE_ANTIGLAUC.test(c.uso)), "Corticoide em paciente com glaucoma/hipertensão ocular (ou em uso de antiglaucomatoso): pode elevar a PIO — controlar a pressão."],
+  [c=>RE_CORTICO.test(c.rx)&&/herpe|\bb00/.test(c.clin), "Corticoide com história de herpes ocular: risco de reativar ceratite herpética."],
+  [c=>/atropin|ciclopentolat|tropicamid|homatropin/.test(c.rx)&&/angulo fechado|angulo estreito|camara rasa|\bh40\.2/.test(c.clin), "Cicloplégico/midriático com ângulo estreito/fechado: risco de crise de fechamento angular."],
+  [c=>/fenilefrin/.test(c.rx)&&/hipertensao(?! ocular)|\bhas\b|cardiopat|arritmi|\bi10\b|\bi2[05]/.test(c.clin), "Fenilefrina tópica (sobretudo 10%) em hipertenso/cardiopata: pode elevar a pressão arterial."],
+  [c=>RE_PROSTA.test(c.rx)&&/uveit|\bh20/.test(c.clin), "Análogo de prostaglandina com uveíte: pode piorar a inflamação/edema macular."],
+  [c=>/brimonidin|alphagan|combigan|simbrinza/.test(c.rx)&&c.idade!=null&&c.idade<6, "Brimonidina em criança pequena: contraindicada abaixo de 2 anos e com risco de sonolência/apneia até ~6 anos."],
+  [c=>/acetazolamid/.test(c.rx)&&/insuficiencia renal|litiase|calculo renal|hipocalemi|\bn18/.test(c.clin), "Acetazolamida com doença renal/litíase/hipocalemia nos antecedentes: cautela."],
+];
+function alergiasDoPaciente(){ const out=[];
+  for(const l of v("ant-txt").split("\n")){ const t=semAcento(l); if(!/alerg/.test(t)) continue;
+    const resto=t.replace(/^.*?alerg\w*\s*(a|ao|aos|as|à|a:|:)?\s*/,""); if(/^(nega|nenhuma|sem)\b/.test(t)||/nega/.test(t.split("alerg")[0])) continue;
+    resto.split(/,|;|\/|\be\b|\+/).map(x=>x.replace(/[().]/g," ").trim()).filter(x=>x.length>=3&&!/^(medicament|remedio|droga)/.test(x)).forEach(x=>out.push(x)); }
+  return out; }
+let alertasAtuais=[], confirmaAlerta=0;
+function seguranca(){ const box=$("#seg-alertas"); if(!box) return;
+  const itens=medicamentos(), rx=semAcento(itens.map(m=>m.med).join(" | "));
+  const clin=semAcento([v("ant-txt"),v("hd-txt"),cidsEscolhidos().map(([c,d])=>c+" "+d).join(" "),$$('[data-grupo="hd"] .chip[aria-pressed="true"]').map(c=>(c.dataset.cid||"")+" "+nomeChip(c)).join(" ")].join(" \n "));
+  const ctx={rx,clin,uso:semAcento(v("meduso-txt")),idade:ficha?.paciente?.idade??null}, al=[];
+  for(const a of alergiasDoPaciente()){ const cl=CLASSE_ALERGIA.find(([re])=>re.test(a)); const re=cl?cl[1]:new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
+    for(const m of itens) if(re.test(semAcento(m.med))) al.push(`<b>Alergia:</b> “${esc(m.med)}” — antecedente de alergia a ${esc(cl?cl[2]:a)}.`); }
+  if(itens.length) for(const [teste,msg] of REGRAS_INTERACAO) if(teste(ctx)) al.push(`<b>Atenção:</b> ${esc(msg)}`);
+  alertasAtuais=[...new Set(al)]; box.innerHTML=alertasAtuais.map(x=>`<div>⚠️ ${x}</div>`).join(""); box.hidden=!alertasAtuais.length; }
 /* ===== TRAZER DA ÚLTIMA CONSULTA (22/10/2026) =====
    Só o que é do PACIENTE e muda pouco: antecedentes, medicações em uso, diagnósticos e a
    última refração prescrita (vai para "Refração / óculos anteriores"). Nada de medida do
@@ -1267,6 +1315,7 @@ function gerarColirios(assinar){
   if(!consultaAtual){ statusCol("Inicie o atendimento primeiro.","erro"); return; }
   const ms=medicamentos();
   if(!ms.length){ statusCol("Digite ao menos um colírio ou medicamento.","erro"); return; }
+  seguranca(); if(alertasAtuais.length&&Date.now()-confirmaAlerta>15000){ confirmaAlerta=Date.now(); statusCol("Há alerta(s) de segurança acima. Confira e clique de novo para gerar a receita assim mesmo.","erro"); $("#seg-alertas").scrollIntoView({block:"center",behavior:"smooth"}); return; }
   const preta=ms.find(m=>/P/.test(m.fl||"")); if(preta){ statusCol(`“${preta.med}” é tarja preta: exige Notificação de Receita (azul ou amarela), não pode ir nesta receita.`,"erro"); return; }
   const semPos=ms.find(m=>!m.pos); if(semPos){ statusCol(`Falta a posologia de “${semPos.med}”.`,"erro"); return; }
   const duasVias=$("#col-2vias").checked, sexo=$("#col-sexo").value;
@@ -1326,7 +1375,7 @@ function atualiza(){
   $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar.";
   const r=receita();
   $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
-  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol(); desenhaCids(); desenhaJust(); $("#ex-ind").placeholder="Ex.: acompanhamento semestral";
+  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol(); seguranca(); desenhaCids(); desenhaJust(); $("#ex-ind").placeholder="Ex.: acompanhamento semestral";
   if(atend){ sujo=true; rascunhoLocal(); status("Alterações não salvas.",""); }
 }
 
