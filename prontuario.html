@@ -291,6 +291,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 
         <!-- atendimento -->
         <div id="atendimento" class="palco" hidden>
+          <div class="faixa-pre" id="faixa-2via" hidden style="background:var(--pri-soft);border-color:var(--pri)"></div>
           <div class="faixa-pre" id="faixa-pre" hidden></div>
           <article class="folha-sec" id="s-anamnese">
             <div class="t"><span>Anamnese e exame oftalmológico</span><span><button type="button" class="link" id="trazer-ult" hidden>↻ Trazer da última consulta</button><button type="button" class="link" data-modelo="rotina">Modelo: rotina normal</button><button type="button" class="link" data-modelo="lente">Retorno de lente</button><button type="button" class="link" data-modelo="ceratocone">Ceratocone</button><button type="button" class="link" data-modelo="catarata">Catarata</button></span></div>
@@ -757,7 +758,7 @@ $("#rx-uso").addEventListener("change",()=>{ sugEditada=false; sugerir(); atuali
 const MARGENS_TIMBRADO={topo:50, base:47, lado:20};
 const TIPO_TEXTO={"monofocais":"monofocais","monofocais-alto":"monofocais de alto índice","perto":"monofocais para perto","multifocais":"multifocais","ocupacionais":"ocupacionais","bifocais":"bifocais flat-top 28"};
 function statusRx(t,cls){ const s=$("#status-rx"); s.textContent=t; s.className="status "+(cls||""); }
-let consultaAtual=null;   // {inicio, paciente_nome} — usado pela receita
+let consultaAtual=null, segundaVia=null;   // {inicio, paciente_nome} — usado pela receita; segundaVia: consulta antiga aberta só para emitir 2ª via
 function gerarPrescricao(assinar){
   const status=statusRx;
   if(!consultaAtual){ status("Inicie o atendimento primeiro.","erro"); return; }
@@ -1071,7 +1072,7 @@ async function enviarAssinado(tipo,dados,stFn){
   if(!certInfo?.cadastrado){ stFn("Cadastre o certificado digital primeiro (🔏 Certificado digital, no topo).","erro"); return; }
   const w=window.open("","_blank"); if(w) w.document.write("<p style='font:15px sans-serif;padding:20px'>Gerando o PDF assinado…</p>");
   stFn("Gerando e assinando o PDF…","");
-  try{ const r=await api("/api/prontuario/documento-assinado",{method:"POST",body:JSON.stringify({tipo,dados,tel:ficha?.paciente?.telefone,nome:ficha?.paciente?.nome,consulta_id:atend?.id||null})});
+  try{ const r=await api("/api/prontuario/documento-assinado",{method:"POST",body:JSON.stringify({tipo,dados,tel:ficha?.paciente?.telefone,nome:ficha?.paciente?.nome,consulta_id:atend?.id||segundaVia?.id||null})});
     let url=r.url; if(!url&&r.pdf_b64){ const b=Uint8Array.from(atob(r.pdf_b64),c=>c.charCodeAt(0)); url=URL.createObjectURL(new Blob([b],{type:"application/pdf"})); }
     if(w) w.location.href=url; else window.open(url,"_blank");
     if(r.anexo){ ficha.anexos=[r.anexo,...(ficha.anexos||[])]; desenhaAnexosAt(); }
@@ -1260,13 +1261,13 @@ function atualizaAtestado(){ const tipo=$("#at-tipo").value; $("#at-comp").hidde
 $("#at-txt").addEventListener("input",e=>{ if(e.isTrusted) atEditado=!!e.target.value.trim(); });
 function preparaAtestado(){ if(consultaAtual&&!v("at-de")) $("#at-de").value=hhmmBR(consultaAtual.inicio);
   atEditado=!!v("at-txt").trim()&&v("at-txt").trim()!==textoAtestado().trim(); atualizaAtestado(); }  // rascunho com texto editado: preserva
-$("#at-bloco").addEventListener("focusin",()=>{ if(!v("at-ate")&&$("#at-tipo").value==="comparecimento"){ $("#at-ate").value=hhmmBR(Date.now()); atualizaAtestado(); } });
+$("#at-bloco").addEventListener("focusin",()=>{ if(!segundaVia&&!v("at-ate")&&$("#at-tipo").value==="comparecimento"){ $("#at-ate").value=hhmmBR(Date.now()); atualizaAtestado(); } });
 function gerarAtestado(assinar){
   if(!consultaAtual){ statusAt("Inicie o atendimento primeiro.","erro"); return; }
   const texto=v("at-txt").trim(); if(!texto){ statusAt("Escreva o texto do atestado.","erro"); return; }
   if(/___/.test(texto)){ statusAt("Falta o número de dias.","erro"); return; }
   const titulo=$("#at-tipo").value==="comparecimento"?"DECLARAÇÃO DE COMPARECIMENTO":"ATESTADO MÉDICO";
-  const data=new Date().toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+  const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   const nome=String(consultaAtual.paciente_nome||"").toUpperCase(), timbrado=$("#rx-timbrado").checked;
   if(assinar) return enviarAssinado("atestado",{nome,data,titulo,texto},statusAt);
   const folha=`
@@ -1549,7 +1550,7 @@ function atualiza(){
 }
 
 /* ===== LISTA ===== */
-function mostra(v){ $("#v-lista").hidden=v!=="lista"; $("#v-ficha").hidden=v!=="ficha"; $("#lat-ficha").hidden=v!=="ficha"; $("#lat-lista").hidden=v!=="lista"; window.scrollTo({top:0}); }
+function mostra(v){ if(v==="lista"&&segundaVia) fecharSegundaVia(); $("#v-lista").hidden=v!=="lista"; $("#v-ficha").hidden=v!=="ficha"; $("#lat-ficha").hidden=v!=="ficha"; $("#lat-lista").hidden=v!=="lista"; window.scrollTo({top:0}); }
 async function carregaDia(ymd){
   $("#dia-corpo").innerHTML='<tr><td colspan="5" class="vazio">Carregando…</td></tr>';
   try{ const r=await api("/api/prontuario/dia?data="+ymd); const cs=r.consultas||[];
@@ -1579,6 +1580,7 @@ async function voltarLista(){ if(atend&&sujo) await salvar(true); pararRelogio()
 
 /* ===== FICHA ===== */
 async function abrirFicha(tel,nome,manterAtend){
+  if(segundaVia) fecharSegundaVia();
   if(atend&&sujo&&!manterAtend) await salvar(true);
   try{
     const r=await api(`/api/prontuario/ficha?tel=${encodeURIComponent(tel)}&nome=${encodeURIComponent(nome)}`);
@@ -1681,7 +1683,7 @@ function desenhaTimeline(){
       ${secs.map(s=>`<div class="secao-t">${s.rot?`<h4>${esc(s.rot)}</h4>`:""}<pre>${esc(s.corpo)}</pre></div>`).join("")||(fim?"":'<div class="secao-t"><pre class="hint">Atendimento ainda sem conteúdo.</pre></div>')}
       ${mostraAnexos&&anexos.length?`<div class="secao-t"><h4>Imagens e anexos</h4><div class="anexos-t">${anexos.map(arq).join("")}</div></div>`:""}
       ${(c.adendos||[]).map(a=>a.tipo==="reabertura"?`<div class="adendo"><small>${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`:`<div class="adendo"><small>Informações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`).join("")}
-      <div class="rodape-t">${fim?`<button type="button" data-copiar="${c.id}">Copiar texto</button><button type="button" data-adendo="${c.id}">+ Inserir informações</button><button type="button" data-anexar-ex="${c.id}">+ Anexar exame</button>${!c.dados?.importado&&diaBR(c.finalizado_em)===diaBR(Date.now())?`<button type="button" data-reabrir="${c.id}" title="Só no dia em que foi finalizado; a reabertura fica registrada">↺ Reabrir para editar</button>`:""}`:`<button type="button" class="pri" data-continuar="${c.id}">Continuar atendimento</button>`}</div>
+      <div class="rodape-t">${fim?`<button type="button" data-copiar="${c.id}">Copiar texto</button><button type="button" data-adendo="${c.id}">+ Inserir informações</button><button type="button" data-anexar-ex="${c.id}">+ Anexar exame</button>${c.dados?.campos&&Object.keys(c.dados.campos).length?`<button type="button" data-2via="${c.id}" title="Receita, pedido ou atestado desta consulta, com a data dela">🖨 Segunda via</button>`:""}${!c.dados?.importado&&diaBR(c.finalizado_em)===diaBR(Date.now())?`<button type="button" data-reabrir="${c.id}" title="Só no dia em que foi finalizado; a reabertura fica registrada">↺ Reabrir para editar</button>`:""}`:`<button type="button" class="pri" data-continuar="${c.id}">Continuar atendimento</button>`}</div>
       ${fim?`<div class="row anx-linha" data-anx="${c.id}" hidden style="margin-top:8px"><label>Exame <select style="width:auto">${$("#ex-nome").innerHTML}</select></label><button type="button" data-escolher="${c.id}">Escolher arquivo</button><span class="hint">ou arraste o arquivo para cá</span><span class="status"></span></div>`:""}
       </div></div>`; }).join("")||'<div class="vazio">Nada nesta seção.</div>';
   $$("[data-copiar]").forEach(b=>b.addEventListener("click",()=>{ const c=cs.find(x=>x.id===b.dataset.copiar); const extra=(c.adendos||[]).map(a=>`\n\nInformações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}:\n${a.texto}`).join(""); copiarTxt((c.texto||"")+extra,()=>{ b.textContent="Copiado ✓"; setTimeout(()=>b.textContent="Copiar texto",2000); },()=>{}); }));
@@ -1766,7 +1768,20 @@ async function iniciar(consultaId){
     carregaPref().then(marcaFavs); mostraTrazer(); preparaAtestado(); $("#mod-st").textContent=""; desenhaAnexosAt(); $("#ind-form").hidden=true; $("#ind-abrir").hidden=false; $("#ind-st").textContent=""; carregaIndicacoesPac(); $("#s-anamnese").scrollIntoView({behavior:"smooth"});
   }catch(e){ status(e.status===401?MSG_SESSAO:(e.msg||"Não consegui iniciar o atendimento."),"erro"); }
 }
-$("#btn-atend").addEventListener("click",()=>{ if(atend) abrirFinalizar(); else iniciar(); });
+$("#btn-atend").addEventListener("click",()=>{ if(segundaVia) return fecharSegundaVia(); if(atend) abrirFinalizar(); else iniciar(); });
+/* ===== SEGUNDA VIA (22/10/2026) =====
+   Abre os dados de uma consulta antiga (inclusive as importadas do iClinic, que têm a
+   refração) no formulário, SEM atendimento: nada é salvo. Os documentos saem com a DATA
+   DAQUELA CONSULTA (consultaAtual.inicio); o assinado fica anexado a ela. */
+document.addEventListener("click",e=>{ const b=e.target.closest("[data-2via]"); if(!b) return; e.preventDefault();
+  if(atend){ status("Finalize o atendimento aberto antes de tirar uma segunda via.","erro"); return; }
+  const c=(ficha.consultas||[]).find(x=>x.id===b.dataset["2via"]); if(!c) return;
+  segundaVia=c; aplicar(c.dados); consultaAtual={inicio:c.data_consulta,paciente_nome:ficha.paciente.nome};
+  modoAtend(true); const bt=$("#btn-atend"); bt.textContent="✕ Fechar segunda via"; bt.classList.remove("fim");
+  const quando=new Date(c.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ});
+  $("#faixa-2via").innerHTML=`<b>Segunda via da consulta de ${quando}${c.dados?.importado?" (iClinic)":""}</b><span>Receita, pedido e atestado saem com a data dessa consulta. Nada do que mudar aqui é salvo no prontuário.</span>`; $("#faixa-2via").hidden=false;
+  atualiza(); preparaAtestado(); status(`Segunda via da consulta de ${quando}.`,"ok"); $("#s-hd").scrollIntoView({behavior:"smooth"}); });
+function fecharSegundaVia(){ segundaVia=null; consultaAtual=null; limpar(); $("#faixa-2via").hidden=true; modoAtend(false); }
 $$("#menu button").forEach(b=>b.addEventListener("click",()=>{
   $$("#menu button").forEach(x=>x.classList.toggle("ativo",x===b));
   if(b.dataset.ir==="historico"){ $("#historico").hidden=false; $("#atendimento").hidden=true; if(atend&&sujo) salvar(true); desenhaTimeline(); $("#historico").scrollIntoView({behavior:"smooth"}); return; }
@@ -2059,8 +2074,12 @@ $("#ml-assinar").addEventListener("click",async()=>{ lerEdicao(); const p=ficha.
       if(d.belin) blocos.push({tipo:"tabela",titulo:"Belin/Ambrósio (BAD-D) e estadiamento",cab:["Componente","Valor"],linhas:d.belin.map(r=>[r.parametro||r.componente||"",r.valor??""]),alt:d.belin.map(r=>r.alterado?[true,true]:[])}); } }
   else for(const sc of laudo.secoes||[]) blocos.push({tipo:"tabela",titulo:sc.titulo,cab:["Parâmetro","OD","OS","Referência"],linhas:(sc.linhas||[]).map(r=>[r.parametro||"",r.od??"",r.os??"",r.referencia||"—"]),alt:(sc.linhas||[]).map(r=>[false,!!r.od_alterado,!!r.os_alterado,false])});
   let imagens=[]; if($("#ml-imagens").checked){ try{ mlStatus("Preparando as telas do exame…",""); for(const i of await telasDoExame()) imagens.push({leg:i.leg,b64:await paraDataURL(i.src)}); }catch(_){ mlStatus("Não consegui incluir as telas; o laudo sai sem elas.","erro"); } }
-  const data=new Date().toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+  const data=dataDoLaudo();
   await enviarAssinado("laudo",{nome:p.nome,data,cpf:laudo.cpf||"",nascimento:p.nascimento||"",idade:p.idade??null,sexo:laudo.sexo||"",titulo:TITULO_LAUDO[tipo],data_exame:laudo.data_exame||"",metodo:tipo==="pentacam"?"":(laudo.metodo||""),blocos,impressao:laudo.impressao_diagnostica||"",imagens},mlStatus); });
+// Data do laudo = data da consulta a que o exame pertence; sem consulta, a do exame.
+function dataDoLaudo(){ const c=(ficha.consultas||[]).find(x=>x.id===laudoAx?.consulta_id||x.appointment_id&&x.appointment_id===laudoAx?.appointment_id);
+  if(c) return new Date(c.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+  return /^\d{2}\/\d{2}\/\d{4}$/.test(laudo?.data_exame||"")?laudo.data_exame:new Date().toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"}); }
 /* ===== entrada ===== */
 (async()=>{
   if(!AUTH) return portao();
