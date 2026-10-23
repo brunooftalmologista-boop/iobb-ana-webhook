@@ -402,7 +402,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
               <div class="rx" id="at-bloco">
                 <span class="rot" style="margin:0">Atestado / declaração <span class="hint">— o texto se monta sozinho; dá para editar antes de imprimir</span></span>
                 <div class="row" style="flex-wrap:wrap"><label>Tipo <select id="at-tipo" style="width:auto"><option value="comparecimento">Declaração de comparecimento</option><option value="afastamento">Atestado de afastamento</option><option value="livre">Texto livre</option></select></label></div>
-                <div class="row" id="at-comp" style="flex-wrap:wrap"><label>Das <input id="at-de" placeholder="14h00" style="width:80px"></label><label>às <input id="at-ate" placeholder="15h00" style="width:80px"></label><label style="flex:1 1 240px">Acompanhante <input id="at-acomp" placeholder="opcional — nome de quem acompanhou"></label></div>
+                <div class="row" id="at-comp" style="flex-wrap:wrap"><label>Turno <select id="at-turno" style="width:auto"><option value="">pelo horário</option><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option><option value="manha-tarde">Manhã e tarde</option></select></label><label class="at-hora">Das <input id="at-de" placeholder="14h00" style="width:80px"></label><label class="at-hora">às <input id="at-ate" placeholder="15h00" style="width:80px"></label><label style="flex:1 1 240px">Acompanhante <input id="at-acomp" placeholder="opcional — nome de quem acompanhou"></label></div>
                 <div class="row" id="at-afast" hidden style="flex-wrap:wrap"><label>Dias <input id="at-dias" inputmode="numeric" style="width:64px"></label><label>A partir de <input id="at-inicio" type="date" style="width:auto"></label><label style="gap:6px"><input type="checkbox" id="at-cid" style="width:auto"> Incluir o CID (só com autorização do paciente)</label></div>
                 <div class="campo"><label for="at-txt">Texto</label><textarea id="at-txt" rows="4" style="min-height:80px;font-size:14px"></textarea></div>
                 <div class="row"><button type="button" class="pri" id="gerar-at">Imprimir</button><button type="button" id="assinar-at">🔏 PDF assinado</button><span class="status" id="status-at"></span></div>
@@ -1390,7 +1390,8 @@ function textoAtestado(){ const tipo=$("#at-tipo").value, nome=String(consultaAt
   const cpf=ficha?.paciente?.documentos?.cpf, quem=`${nome}${cpf?`, CPF ${cpf},`:""}`;
   const data=consultaAtual?new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ}):new Date().toLocaleDateString("pt-BR",{timeZone:TZ});
   if(tipo==="comparecimento"){ const de=v("at-de").trim(), ate=v("at-ate").trim(), ac=v("at-acomp").trim();
-    let t=`Declaro, para os devidos fins, que ${quem} compareceu à consulta oftalmológica nesta clínica no dia ${data}${de&&ate?`, das ${de} às ${ate}`:de?`, a partir das ${de}`:""}.`;
+    const turno=v("at-turno"), TURNO={manha:"no período da manhã",tarde:"no período da tarde",noite:"no período da noite","manha-tarde":"nos períodos da manhã e da tarde"};
+    let t=`Declaro, para os devidos fins, que ${quem} compareceu à consulta oftalmológica nesta clínica no dia ${data}${turno?`, ${TURNO[turno]}`:de&&ate?`, das ${de} às ${ate}`:de?`, a partir das ${de}`:""}.`;
     if(ac) t+=`\n\nDeclaro também que ${ac} acompanhou o(a) paciente durante o atendimento.`; return t; }
   if(tipo==="afastamento"){ const n=parseInt(v("at-dias"),10), ini=v("at-inicio")?v("at-inicio").split("-").reverse().join("/"):data;
     const cids=$("#at-cid").checked?[...cidsEscolhidos().map(([c])=>c),...$$('[data-grupo="hd"] .chip[aria-pressed="true"]').map(c=>c.dataset.cid).filter(Boolean)]:[];
@@ -1398,8 +1399,9 @@ function textoAtestado(){ const tipo=$("#at-tipo").value, nome=String(consultaAt
     if(cids.length) t+=`\n\nCID-10: ${[...new Set(cids)].join(", ")}.`; return t; }
   return ""; }
 function atualizaAtestado(){ const tipo=$("#at-tipo").value; $("#at-comp").hidden=tipo!=="comparecimento"; $("#at-afast").hidden=tipo!=="afastamento";
+  $$(".at-hora").forEach(l=>l.hidden=!!v("at-turno"));
   if(!atEditado) $("#at-txt").value=textoAtestado(); }
-["at-tipo","at-de","at-ate","at-acomp","at-dias","at-inicio","at-cid"].forEach(id=>$("#"+id).addEventListener(id==="at-tipo"||id==="at-cid"||id==="at-inicio"?"change":"input",()=>{ if(id==="at-tipo") atEditado=false; atualizaAtestado(); }));
+["at-tipo","at-turno","at-de","at-ate","at-acomp","at-dias","at-inicio","at-cid"].forEach(id=>$("#"+id).addEventListener(["at-tipo","at-turno","at-cid","at-inicio"].includes(id)?"change":"input",()=>{ if(id==="at-tipo") atEditado=false; atualizaAtestado(); }));
 $("#at-txt").addEventListener("input",e=>{ if(e.isTrusted) atEditado=!!e.target.value.trim(); });
 function preparaAtestado(){ if(consultaAtual&&!v("at-de")) $("#at-de").value=hhmmBR(consultaAtual.inicio);
   atEditado=!!v("at-txt").trim()&&v("at-txt").trim()!==textoAtestado().trim(); atualizaAtestado(); }  // rascunho com texto editado: preserva
