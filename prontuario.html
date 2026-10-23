@@ -277,6 +277,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 
 
         <details class="sec" id="sec-pre" hidden open><summary id="pre-resumo">Pré-exame</summary><div id="pre-corpo" style="display:grid;gap:8px"></div></details>
+        <details class="sec" id="sec-lentes" hidden><summary>Pedidos de lentes de contato</summary><div id="ped-lc"></div></details>
         <details class="sec" id="sec-graf" hidden><summary>Evolução da PIO e da acuidade visual</summary><div id="graf"></div></details>
         <details class="sec" id="sec-diag"><summary>Últimos diagnósticos</summary><div class="diag" id="diag"></div></details>
         <details class="sec" id="sec-iclinic"><summary>Prontuário anterior (iClinic)</summary><div style="display:grid;gap:10px"><div class="anexos-t" id="iclinic-arqs" style="padding:0"></div><div class="row"><button type="button" id="anexar-iclinic">Anexar prontuário anterior (PDF)</button><span class="status" id="st-iclinic"></span></div></div></details>
@@ -430,7 +431,7 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
                   </tbody></table></div>
                   <div class="hint" id="lc-calc"></div>
                   <div class="campo"><label for="lc-orient">Orientações de uso <span class="hint">— saem na receita; uma por linha</span></label><textarea id="lc-orient" rows="7" style="font-size:14px"></textarea></div>
-                  <div class="row"><button type="button" class="pri" id="gerar-lc">Imprimir receita de lentes</button><button type="button" id="assinar-lc">🔏 PDF assinado</button><span class="status" id="status-lc"></span></div>
+                  <div class="row"><button type="button" class="pri" id="gerar-lc">Imprimir receita de lentes</button><button type="button" id="assinar-lc">🔏 PDF assinado</button><button type="button" id="pedido-lc" title="Abre o pedido já com a lente e os graus desta receita; a equipe acompanha em Agenda › 📦 Lentes">📦 Criar pedido</button><span class="status" id="status-lc"></span></div>
                 </div>
               </div>
               <div class="rx" id="col-bloco">
@@ -1331,6 +1332,19 @@ ${assFolha(false,timbrado)}`;
   abrirReceita({titulo:`Receita de lentes de contato - ${nome}`,folhas:[folha],timbrado,status:statusLC}); }
 $("#gerar-lc").addEventListener("click",()=>gerarLC(false));
 $("#assinar-lc").addEventListener("click",()=>gerarLC(true));
+// Pedido de lentes a partir da receita (22/10/2026): abre a ficha do pedido (pedidos-lentes.js)
+// já com paciente, lente e graus; a equipe acompanha em Agenda › 📦 Lentes.
+$("#pedido-lc").addEventListener("click",()=>{ if(!window.PedidosLentes){ statusLC("Não consegui abrir os pedidos (recarregue a página).","erro"); return; }
+  const l=lcLenteSel(), olhos={}; for(const o of ["od","oe"]) olhos[o]={esf:v(`lc-${o}-esf`),cil:v(`lc-${o}-cil`),eixo:v(`lc-${o}-eixo`),add:v(`lc-${o}-add`)};
+  PedidosLentes.novo({paciente_nome:ficha?.paciente?.nome||"",paciente_tel:ficha?.paciente?.telefone||"",lente:l?`${l.nome}${l.descarte?` (${l.descarte})`:""}`:"",olhos,consulta_id:atend?.id||segundaVia?.id||null}); });
+// Resumo dos pedidos do paciente na ficha (o que falta pagar fica em vermelho).
+async function carregaPedidosLC(){ const sec=$("#sec-lentes"); sec.hidden=true; const tel=ficha?.paciente?.telefone; if(!tel) return;
+  try{ const r=await api(`/api/pedidos-lentes?tel=${encodeURIComponent(tel)}`); const ps=(r.pedidos||[]).filter(p=>(p.paciente_nome||"").split(/\s+/)[0].toLowerCase()===String(ficha.paciente.nome||"").split(/\s+/)[0].toLowerCase());
+    if(!ps.length) return; const BRL=n=>Number(n||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+    const SIT={a_encomendar:"a encomendar",encomendado:"encomendado",chegou:"chegou na clínica",avisado:"paciente avisado",entregue:"entregue"};
+    $("#ped-lc").innerHTML=ps.map(p=>{ const pg=(p.pagamentos||[]).reduce((s,x)=>s+Number(x.valor||0),0), f=Math.max(0,Number(p.valor_total||0)-pg);
+      return `<div style="padding:6px 0;border-bottom:1px dashed var(--line)"><b>#${String(p.numero||"").padStart(4,"0")}</b> · ${esc(p.lente)} · ${SIT[p.situacao]||p.situacao} · ${ddmmaa(p.created_at)}<br><small>Total ${BRL(p.valor_total)} · pago ${BRL(pg)} · ${f>0?`<b style="color:var(--danger)">falta ${BRL(f)}</b>`:"quitado"}</small></div>`; }).join("")+`<div class="hint" style="margin-top:6px">A equipe acompanha em Agenda › 📦 Lentes.</div>`;
+    sec.hidden=false; }catch(_){} }
 /* ===== ATESTADO E DECLARAÇÃO (22/10/2026) =====
    Comparecimento (horário de/até + acompanhante), afastamento (dias, início e CID só com
    autorização — Res. CFM 1.658/2002) ou texto livre. O texto se monta dos campos até ser
@@ -1689,7 +1703,7 @@ async function abrirFicha(tel,nome,manterAtend){
   }catch(e){ if(e.status===401) return status(MSG_SESSAO,"erro"); diag("ficha_falhou",`${e.status||""} ${e.msg||e.message||e} ${String(e.stack||"").split("\n")[1]||""}`); $("#lat-lista").textContent=e.msg||"Não consegui abrir a ficha."; }
 }
 function desenhaFicha(){
-  const p=ficha.paciente; try{ desenhaGrafico(); }catch(e){ console.error(e); }
+  const p=ficha.paciente; try{ desenhaGrafico(); }catch(e){ console.error(e); } carregaPedidosLC();
   $("#p-nome").textContent=p.nome||"—";
   $("#p-ini").textContent=String(p.nome||"?").trim().split(/\s+/).filter(Boolean).slice(0,2).map(t=>t[0]).join("").toUpperCase();
   $("#p-idade").textContent=p.idade!=null?`${p.idade} ${p.idade===1?"ano":"anos"} (nasc. ${p.nascimento})`:"não informada";
@@ -2192,6 +2206,7 @@ function dataDoLaudo(){ const c=(ficha.consultas||[]).find(x=>x.id===laudoAx?.co
 })();
 </script>
 <script src="/equipe-chat.js"></script>
+<script src="/pedidos-lentes.js"></script>
 <script>EquipeChat.montar(document.getElementById("btn-chat")); document.getElementById("nav-lista").addEventListener("click",()=>EquipeChat.fechar());</script>
 </body>
 </html>

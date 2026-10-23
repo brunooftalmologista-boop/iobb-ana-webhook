@@ -183,6 +183,7 @@
     <button class="btn ghost" id="ag-bloquear" title="Fechar horários (feriado, congresso, cirurgia…)">🚫 Bloquear</button>
     <button class="btn ghost" id="btn-chat" title="Chat da equipe">💬 Chat</button>
     <button class="btn ghost" id="ag-indicacoes" title="Pacientes com procedimento indicado que ainda não decidiram">💰 Indicações</button>
+    <button class="btn ghost" id="ag-lentes" title="Pedidos de lentes de contato: situação, valores e pagamentos">📦 Lentes</button>
   </span>
 
   <!-- controles da TRANSFERÊNCIA -->
@@ -1477,5 +1478,7 @@ setInterval(() => {
 <script src="/equipe-chat.js"></script>
 <script>EquipeChat.montar(document.getElementById("btn-chat"));</script>
 <script src="/paciente-autocompletar.js"></script>
+<script src="/pedidos-lentes.js"></script>
+<script>document.getElementById("ag-lentes").addEventListener("click",()=>window.PedidosLentes&&PedidosLentes.abrir());</script>
 </body>
 </html>

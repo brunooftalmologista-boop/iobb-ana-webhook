@@ -10498,6 +10498,69 @@ app.post("/api/prontuario/juntar", requireMedico, async (req, res) => {
 
 // Ficha completa: cabeçalho, antecedentes, consultas (linha do tempo), anexos,
 // a consulta agendada para hoje (se houver) e a conversa com a Ana.
+// ===== PEDIDOS DE LENTES DE CONTATO (22/10/2026) =====
+// A equipe acompanha na /agenda (aba Lentes); o médico vê o resumo na ficha e cria o
+// pedido direto da receita de lentes. Valores visíveis a toda a equipe (decisão dele).
+// Situação: a_encomendar → encomendado → chegou → avisado → entregue; cada troca vai
+// para o histórico com data e quem fez. Pagamentos: lista (sinal, restante…).
+const SIT_LENTES = ["a_encomendar", "encomendado", "chegou", "avisado", "entregue"];
+const quemPainel = (req) => String(req.panelUser?.email || "equipe").split("@")[0];
+const dinheiro = (x) => { const n = Number(String(x ?? "").replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".")); return isFinite(n) ? Math.round(n * 100) / 100 : 0; };
+function pedidoLimpo(b) {
+  const o = {};
+  if (b.lente != null) o.lente = String(b.lente).slice(0, 200);
+  if (b.olhos != null && typeof b.olhos === "object") o.olhos = b.olhos;
+  if (b.qtd_od != null) o.qtd_od = Math.max(0, Math.min(99, parseInt(b.qtd_od, 10) || 0));
+  if (b.qtd_oe != null) o.qtd_oe = Math.max(0, Math.min(99, parseInt(b.qtd_oe, 10) || 0));
+  if (b.fornecedor != null) o.fornecedor = String(b.fornecedor).slice(0, 120) || null;
+  if (b.pedido_fornecedor != null) o.pedido_fornecedor = String(b.pedido_fornecedor).slice(0, 60) || null;
+  if (b.valor_total != null) o.valor_total = dinheiro(b.valor_total);
+  if (b.obs != null) o.obs = String(b.obs).slice(0, 2000) || null;
+  return o;
+}
+app.get("/api/pedidos-lentes", async (req, res) => {
+  try {
+    let q = supabase.from("pedidos_lentes").select("*").order("created_at", { ascending: false }).limit(500);
+    if (req.query.tel) q = q.like("paciente_tel", `%${ult8(req.query.tel)}`);
+    if (req.query.todos !== "1") q = q.eq("cancelado", false);
+    const { data, error } = await q; if (error) throw error;
+    res.json({ pedidos: data || [] });
+  } catch (e) { console.error("pedidos-lentes get", e.message); res.status(500).json({ error: "Não consegui carregar os pedidos." }); }
+});
+app.post("/api/pedidos-lentes", async (req, res) => {
+  try {
+    const b = req.body || {}, nome = String(b.paciente_nome || "").trim(), tel = String(b.paciente_tel || "").replace(/\D/g, "");
+    if (!nome || !String(b.lente || "").trim()) return res.status(400).json({ error: "Informe o paciente e a lente." });
+    const sit = SIT_LENTES.includes(b.situacao) ? b.situacao : "a_encomendar", por = quemPainel(req), agora = new Date().toISOString();
+    const pag = dinheiro(b.pago) > 0 ? [{ valor: dinheiro(b.pago), forma: String(b.forma || "").slice(0, 40), em: agora, por }] : [];
+    const { data, error } = await supabase.from("pedidos_lentes").insert({
+      ...pedidoLimpo(b), paciente_nome: nome.slice(0, 160), paciente_tel: tel || null, paciente_chave: tel ? chavePaciente(tel, nome) : null,
+      consulta_id: /^[0-9a-f-]{36}$/i.test(String(b.consulta_id || "")) ? b.consulta_id : null,
+      situacao: sit, historico: [{ situacao: sit, em: agora, por }], pagamentos: pag, criado_por: por,
+    }).select("*").single();
+    if (error) throw error;
+    res.json({ ok: true, pedido: data });
+  } catch (e) { console.error("pedidos-lentes post", e.message); res.status(500).json({ error: "Não consegui criar o pedido." }); }
+});
+app.post("/api/pedidos-lentes/:id", async (req, res) => {
+  try {
+    const { data: atual } = await supabase.from("pedidos_lentes").select("*").eq("id", req.params.id).maybeSingle();
+    if (!atual) return res.status(404).json({ error: "Pedido não encontrado." });
+    const b = req.body || {}, por = quemPainel(req), agora = new Date().toISOString(), patch = { ...pedidoLimpo(b), updated_at: agora };
+    if (b.situacao && b.situacao !== atual.situacao) {
+      if (!SIT_LENTES.includes(b.situacao)) return res.status(400).json({ error: "Situação inválida." });
+      patch.situacao = b.situacao; patch.historico = [...(atual.historico || []), { situacao: b.situacao, em: agora, por }];
+    }
+    if (b.pagar != null) { const v = dinheiro(b.pagar); if (v) patch.pagamentos = [...(atual.pagamentos || []), { valor: v, forma: String(b.forma || "").slice(0, 40), em: agora, por }]; }
+    if (b.tirar_pagamento != null) { const i = parseInt(b.tirar_pagamento, 10); patch.pagamentos = (atual.pagamentos || []).filter((_, k) => k !== i);
+      patch.historico = [...(patch.historico || atual.historico || []), { evento: `pagamento removido (${(atual.pagamentos || [])[i]?.valor ?? "?"})`, em: agora, por }]; }
+    if (b.cancelado != null) { patch.cancelado = !!b.cancelado; patch.historico = [...(patch.historico || atual.historico || []), { evento: b.cancelado ? "cancelado" : "reativado", em: agora, por }]; }
+    const { data, error } = await supabase.from("pedidos_lentes").update(patch).eq("id", req.params.id).select("*").single();
+    if (error) throw error;
+    res.json({ ok: true, pedido: data });
+  } catch (e) { console.error("pedidos-lentes upd", e.message); res.status(500).json({ error: "Não consegui salvar o pedido." }); }
+});
+
 // Preferências do médico no prontuário (modelos de conduta, receitas favoritas): uma
 // linha JSON em settings por chave. Só ele lê e grava; conteúdo é dele, não de paciente.
 const PREF_PRONT = { modelos: "prontuario_modelos", favoritos: "prontuario_favoritos" };
@@ -11701,6 +11764,7 @@ app.post("/api/equipe/mensagens", async (req, res) => {
     res.status(500).json({ error: "Não consegui enviar." });
   }
 });
+app.get("/pedidos-lentes.js", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.type("application/javascript").sendFile(__dirname + "/pedidos-lentes.js"); });
 app.get("/equipe-chat.js", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.type("application/javascript").sendFile(__dirname + "/equipe-chat.js"); });
 app.get("/pre-exame", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/preexame.html"); });
 app.get("/prontuario/timbrado.jpg", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/timbrado-a4.jpg"); });
