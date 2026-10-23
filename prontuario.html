@@ -281,7 +281,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
 
         <details class="sec" id="sec-pre" hidden open><summary id="pre-resumo">Pré-exame</summary><div id="pre-corpo" style="display:grid;gap:8px"></div></details>
         <details class="sec" id="sec-lentes" hidden><summary>Pedidos de lentes de contato</summary><div id="ped-lc"></div></details>
-        <details class="sec" id="sec-graf" hidden><summary>Evolução da PIO e da acuidade visual</summary><div id="graf"></div></details>
+        <details class="sec" id="sec-graf" hidden><summary>Evolução da PIO</summary><div id="graf"></div></details>
         <details class="sec" id="sec-diag"><summary>Últimos diagnósticos</summary><div class="diag" id="diag"></div></details>
         <details class="sec" id="sec-iclinic"><summary>Prontuário anterior (iClinic)</summary><div style="display:grid;gap:10px"><div class="anexos-t" id="iclinic-arqs" style="padding:0"></div><div class="row"><button type="button" id="anexar-iclinic">Anexar prontuário anterior (PDF)</button><span class="status" id="st-iclinic"></span></div></div></details>
         <details class="sec" id="sec-ana" hidden><summary id="ana-resumo">Conversa com a Ana</summary><div class="conversa" id="ana-msgs"></div></details>
@@ -1536,15 +1536,11 @@ function svgSerie(pts,{min,max,ticks,fmt,inv,ref}){ // pts: [{t,od,oe,data}]
 function desenhaGrafico(){ const sec=$("#sec-graf"); const cs=(ficha?.consultas||[]).map(c=>({c,m:medidasDe(c),t:new Date(c.data_consulta).getTime()})).filter(x=>!isNaN(x.t)).sort((a,b)=>a.t-b.t);
   const data=t=>new Date(t).toLocaleDateString("pt-BR",{timeZone:TZ});
   const pio=cs.flatMap(x=>x.m.pios.filter(p=>p.od!=null||p.oe!=null).map(p=>({t:x.t,data:data(x.t),od:p.od,oe:p.oe})));
-  const lm=n=>Math.log10(n/20); // logMAR
-  const av=cs.filter(x=>x.m.aod!=null||x.m.aoe!=null).map(x=>({t:x.t,data:data(x.t),od:x.m.aod!=null?lm(x.m.aod):null,oe:x.m.aoe!=null?lm(x.m.aoe):null}));
   const figs=[];
   if(pio.length>=2){ const vs=pio.flatMap(p=>[p.od,p.oe]).filter(v=>v!=null); const mx=Math.max(25,Math.ceil((Math.max(...vs)+2)/5)*5), mn=Math.max(0,Math.min(10,Math.floor((Math.min(...vs)-2)/5)*5));
     const ticks=[]; for(let v=mn;v<=mx;v+=5) ticks.push(v);
     figs.push(`<figure><figcaption>PIO (mmHg) · ${pio.length} medidas</figcaption>${svgSerie(pio,{min:mn,max:mx,ticks,fmt:(v,f)=>f?v+" mmHg":String(v),ref:21})}</figure>`); }
-  if(av.length>=2){ const vs=av.flatMap(p=>[p.od,p.oe]).filter(v=>v!=null); const pior=Math.max(0.4,Math.ceil(Math.max(...vs)*10-0.001)/10);
-    const sn=v=>"20/"+Math.round(20*Math.pow(10,v)); let ticks=[0,0.1,0.18,0.3,0.4,0.5,0.7,1,1.3].filter(v=>v<=pior+0.001); if(ticks.length>6) ticks=ticks.filter(v=>![0.18,0.4].includes(v));
-    figs.push(`<figure><figcaption>Acuidade visual com correção · ${av.length} medidas</figcaption>${svgSerie(av,{min:0,max:pior,ticks,fmt:v=>sn(v),inv:true})}</figure>`); }
+  // gráfico da acuidade visual retirado a pedido do Dr. Bruno (23/10/2026); só a PIO
   sec.hidden=!figs.length; if(!figs.length) return;
   $("#graf").innerHTML=`<div class="graf-leg"><b class="od">● OD</b> &nbsp; <b class="oe">● OE</b> · passe o mouse num ponto para ver a data e o valor. Dados lidos dos campos e do texto das consultas (inclui as do iClinic).</div><div class="graf-wrap">${figs.join("")}</div>`; }
 /* ===== POSOLOGIA ABREVIADA (22/10/2026) =====
