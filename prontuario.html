@@ -316,7 +316,6 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
                   <span class="blank"></span><span class="h od">Olho direito</span><span class="h oe">Olho esquerdo</span>
                   <span class="lbl rowlbl">Sem correção</span><input id="av-sc-od" list="snellen"><input id="av-sc-oe" list="snellen">
                   <span class="lbl rowlbl">Com correção</span><input id="av-cc-od" list="snellen"><input id="av-cc-oe" list="snellen">
-                  <span class="lbl rowlbl">Perto</span><input id="av-pt-od" list="jaeger"><input id="av-pt-oe" list="jaeger">
                 </div></div>
               <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Refração <span class="hint">— -250 ou -2.5 vira -2,50</span></span><span><button type="button" class="link" id="repetir-ref" hidden>Repetir a refração anterior</button><button type="button" class="link" id="transpor" hidden>Transpor cilindro</button><span class="hint">cilindro sempre negativo</span><span class="status ok" id="aviso-cil" style="margin-left:8px"></span></span></div>
                 <div class="ref">
@@ -324,7 +323,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
                   <span class="eye" style="color:var(--od)">OD</span><input id="re-od-esf" inputmode="decimal"><input id="re-od-cil" inputmode="decimal"><input id="re-od-eixo" inputmode="numeric"><input id="re-od-av" list="snellen">
                   <span class="eye" style="color:var(--oe)">OE</span><input id="re-oe-esf" inputmode="decimal"><input id="re-oe-cil" inputmode="decimal"><input id="re-oe-eixo" inputmode="numeric"><input id="re-oe-av" list="snellen">
                 </div>
-                <div class="row" style="margin-top:6px"><label>Adição <input id="re-add" inputmode="decimal" style="width:90px;font-family:var(--f-mono);text-align:right"></label><span class="hint" id="ref-aviso"></span></div></div>
+                <div class="row" style="margin-top:6px;flex-wrap:wrap"><label>Adição <input id="re-add" inputmode="decimal" style="width:90px;font-family:var(--f-mono);text-align:right"></label><label>AV perto OD <input id="av-pt-od" list="jaeger" style="width:70px"></label><label>OE <input id="av-pt-oe" list="jaeger" style="width:70px"></label><span class="hint" id="ref-aviso"></span></div></div>
               <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Biomicroscopia</span><button type="button" class="link" data-normal="bio">Sem alterações em ambos os olhos</button></div><div class="grid-olho" id="bio"></div></div>
               <div><span class="rot">Pressão intraocular</span>
                 <div class="row"><label><b style="color:var(--od)">OD</b> <input id="pio-od" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label><label><b style="color:var(--oe)">OE</b> <input id="pio-oe" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label><span class="lbl">mmHg</span>
