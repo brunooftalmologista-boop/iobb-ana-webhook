@@ -10561,6 +10561,28 @@ app.post("/api/pedidos-lentes/:id", async (req, res) => {
   } catch (e) { console.error("pedidos-lentes upd", e.message); res.status(500).json({ error: "Não consegui salvar o pedido." }); }
 });
 
+// Posologia que o médico JÁ USOU para cada remédio (a mais recente), lida das receitas
+// das consultas feitas no sistema novo (as do iClinic não trouxeram receita). Só ele.
+app.get("/api/prontuario/posologias", requireMedico, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("prontuario_consultas").select("dados, updated_at")
+      .is("dados->>importado", null).order("updated_at", { ascending: false }).limit(3000);
+    if (error) throw error;
+    const mapa = {};
+    for (const c of data || []) {
+      const C = c.dados?.campos || {};
+      for (let i = 1; i <= 6; i++) {
+        const med = String(C[`col-${i}-med`] || "").trim(), pos = String(C[`col-${i}-pos`] || "").trim();
+        if (!med || !pos) continue;
+        const k = med.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (!mapa[k]) mapa[k] = { pos, qtd: String(C[`col-${i}-qtd`] || "").trim(), n: 0 };
+        mapa[k].n++;
+      }
+    }
+    res.json({ mapa });
+  } catch (e) { console.error("posologias", e.message); res.status(500).json({ error: "Não consegui ler as posologias." }); }
+});
+
 // Preferências do médico no prontuário (modelos de conduta, receitas favoritas): uma
 // linha JSON em settings por chave. Só ele lê e grava; conteúdo é dele, não de paciente.
 const PREF_PRONT = { modelos: "prontuario_modelos", favoritos: "prontuario_favoritos" };
