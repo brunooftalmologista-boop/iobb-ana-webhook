@@ -1520,7 +1520,11 @@ function montaLaudo(){ const C=segundaVia?.dados?.campos||null, imp=!!segundaVia
   const g=k=>imp?(C?.[k]||""):v(k);
   const av=o=>imp?(med?.[o==="od"?"aod":"aoe"]?`20/${med[o==="od"?"aod":"aoe"]}`:""):(v(`av-cc-${o}`)||v(`re-${o}-av`));
   const lin=[]; for(const [o,nome] of [["od","Olho direito"],["oe","Olho esquerdo"]]){ const r=fmtRefr(g(`re-${o}-esf`),g(`re-${o}-cil`),g(`re-${o}-eixo`)), a=av(o); if(r||a) lin.push(`${nome}: ${a||"—"}${r?` — refração ${r}`:""}`); }
-  if(g("re-add")){ const pt=imp?"":[v("av-pt-od"),v("av-pt-oe")].filter(Boolean); lin.push(`Perto: adição ${g("re-add")}${pt&&pt.length?` (${pt[0]===pt[1]||pt.length===1?pt[0]+" em ambos os olhos":`OD ${pt[0]}, OE ${pt[1]}`})`:""}`); }
+  // acuidade visual para PERTO: campos do atendimento; nas importadas do iClinic, a linha do texto
+  const ptImp=imp?(String(segundaVia.texto||"").match(/Acuidade visual para perto[^:\n]*:\s*([^\n]+)/i)||[])[1]:"";
+  const pt=imp?[]:[v("av-pt-od"),v("av-pt-oe")].filter(Boolean);
+  const ptTxt=ptImp?ptImp.trim().replace(/\.$/,""):pt.length?(pt.length===1||pt[0]===pt[1]?`${pt[0]} em ambos os olhos`:`OD ${pt[0]}, OE ${pt[1]}`):"";
+  if(g("re-add")||ptTxt) lin.push(`Perto: ${g("re-add")?`adição ${g("re-add")}`:""}${g("re-add")&&ptTxt?" — ":""}${ptTxt?`acuidade visual ${ptTxt}`:""}`);
   if(lin.length) S.push(["Acuidade visual com correção e refração",lin]);
   const bio=imp?loDoTexto(segundaVia.texto,/Biomicroscopia[^:\n]*:\s*([^\n]+)/i):loExame("bio",BIO); if(bio) S.push(["Biomicroscopia",bio]);
   const pod=imp?med?.pod:v("pio-od"), poe=imp?med?.poe:v("pio-oe");
