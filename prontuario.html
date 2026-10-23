@@ -2129,8 +2129,13 @@ const IND_ST={aberta:"em aberto",pausada:"agora não",retornou:"voltou a marcar"
 async function carregaIndicacoesPac(){ const box=$("#ind-lista"); if(!ficha?.paciente) return;
   try{ const r=await api("/api/indicacoes?status=todas"); const f8=String(ficha.paciente.telefone||"").replace(/\D/g,"").slice(-8);
     const minhas=(r.indicacoes||[]).filter(i=>String(i.paciente_telefone||"").replace(/\D/g,"").slice(-8)===f8);
-    box.innerHTML=minhas.map(i=>`<span class="tag" title="${esc(IND_ST[i.status]||i.status)}${i.valor?" · R$ "+Number(i.valor).toLocaleString("pt-BR"):""}">${esc(i.procedimento)}${i.olho?" "+esc(i.olho):""} · ${esc(IND_ST[i.status]||i.status)}</span>`).join("");
+    box.innerHTML=minhas.map(i=>`<span class="tag" title="${esc(IND_ST[i.status]||i.status)}${i.valor?" · R$ "+Number(i.valor).toLocaleString("pt-BR"):""}">${esc(i.procedimento)}${i.olho?" "+esc(i.olho):""} · ${esc(IND_ST[i.status]||i.status)} <button type="button" class="link" data-ind-apagar="${esc(i.id)}" title="Apagar (registrada por engano)" style="padding:0 2px;color:var(--danger)">✕</button></span>`).join("");
   }catch(_){ box.innerHTML=""; } }
+// ✕ na indicação: apaga a registrada por engano (2º clique confirma)
+$("#ind-lista").addEventListener("click",async e=>{ const b=e.target.closest("[data-ind-apagar]"); if(!b) return;
+  if(!b.dataset.conf){ b.dataset.conf="1"; b.textContent="apagar?"; setTimeout(()=>{ if(b.isConnected){ delete b.dataset.conf; b.textContent="✕"; } },4000); return; }
+  try{ await api(`/api/indicacoes/${encodeURIComponent(b.dataset.indApagar)}/apagar`,{method:"POST",body:"{}"}); $("#ind-st").textContent="Indicação apagada."; carregaIndicacoesPac(); }
+  catch(err){ $("#ind-st").textContent=err.msg||"Não consegui apagar."; } });
 $("#ind-abrir").addEventListener("click",()=>{ const s=$("#ind-proc"); if(!s.options.length) s.innerHTML='<option value="">Procedimento…</option>'+IND_PROCS.map(p=>`<option>${esc(p)}</option>`).join("")+'<option value="__outro">Outro — escrever</option>';
   s.value=""; $("#ind-proc-outro").hidden=true; $("#ind-proc-outro").value=""; $("#ind-olho").value=""; $("#ind-valor").value=""; $("#ind-form").hidden=false; $("#ind-abrir").hidden=true; $("#ind-st").textContent=""; s.focus(); });
 $("#ind-proc").addEventListener("change",()=>{ $("#ind-proc-outro").hidden=$("#ind-proc").value!=="__outro"; if(!$("#ind-proc-outro").hidden) $("#ind-proc-outro").focus(); });

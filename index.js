@@ -9737,6 +9737,19 @@ app.post("/api/indicacoes/:id", async (req, res) => {
   }
 });
 
+// Apagar indicação registrada por engano (23/10/2026: "indiquei catarata no prontuário
+// errado e não consegui tirar"). Só o médico. Diferente de "recusada": some do funil e das
+// contas, e a fila automática de mensagens ao paciente deixa de existir para ela.
+app.post("/api/indicacoes/:id/apagar", requireMedico, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("indicacoes").delete().eq("id", String(req.params.id)).select("id, paciente_nome, procedimento");
+    if (error) throw error;
+    if (!data || !data.length) return res.status(404).json({ ok: false, error: "Indicação não encontrada." });
+    console.log(`[Indicações] apagada por ${req.panelUser?.email}: ${data[0].paciente_nome} · ${data[0].procedimento}`);
+    res.json({ ok: true });
+  } catch (e) { console.error("[Indicações] apagar falhou:", e.message); res.status(500).json({ ok: false, error: "Não consegui apagar." }); }
+});
+
 app.post("/api/agenda/:id/cancel", async (req, res) => {
   try {
     const r = await cancelarAgendamento(req.params.id);
