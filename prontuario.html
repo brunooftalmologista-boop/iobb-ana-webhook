@@ -490,8 +490,11 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
                 <div id="en-corpo" hidden style="display:grid;gap:8px">
                   <div class="row" style="flex-wrap:wrap"><label style="flex:1 1 260px">Especialidade <input id="en-esp" list="lista-especialidades" placeholder="Ex.: Retina e vítreo, Neurologia…" autocomplete="off"></label>
                     <label>Prioridade <select id="en-prio" style="width:auto"><option value="">eletivo</option><option value="prioritário">prioritário</option><option value="urgente">urgente</option></select></label></div>
-                  <div class="campo"><label for="en-motivo">Motivo do encaminhamento</label><input id="en-motivo" placeholder="Ex.: avaliação de retinopatia diabética para tratamento"></div>
-                  <div class="campo"><label for="en-resumo">Resumo clínico / achados <span class="hint">(opcional)</span></label><textarea id="en-resumo" rows="2" placeholder="Ex.: AV 20/40 OD; edema macular ao OCT; PIO 15/16 mmHg"></textarea></div>
+                  <div class="campo"><label for="en-motivo">Justificativa (motivo do encaminhamento)</label><input id="en-motivo" placeholder="Ex.: avaliação de retinopatia diabética para tratamento"></div>
+                  <div class="campo cid-box"><label for="en-cid-busca">CID <span class="hint">— já vem com os diagnósticos da consulta; busque pelo nome ou pelo código</span></label>
+                    <input id="en-cid-busca" autocomplete="off" placeholder="Buscar CID…"><div class="cid-sug" id="en-cid-sug" role="listbox" hidden></div>
+                    <input type="hidden" id="en-cids"><div class="chips" id="en-cids-tags"></div></div>
+                  <div class="campo"><label for="en-resumo">Achados / resumo clínico <span class="hint">(opcional, entra na justificativa)</span></label><textarea id="en-resumo" rows="2" placeholder="Ex.: AV 20/40 OD; edema macular ao OCT; PIO 15/16 mmHg"></textarea></div>
                   <div class="campo"><label for="en-txt">Texto do encaminhamento (pode editar)</label><textarea id="en-txt" rows="8" style="font-size:14px"></textarea></div>
                   <div class="row"><button type="button" class="pri" id="gerar-en">Imprimir encaminhamento</button><button type="button" id="assinar-en">🔏 PDF assinado</button><span class="status" id="status-en"></span></div>
                 </div>
@@ -762,7 +765,7 @@ const nomeChip=c=>c.childNodes[0].textContent.trim();
 const marcados=g=>$$(`[data-grupo="${g}"] .chip[aria-pressed="true"]`);
 function normal(id){ for(const [k,,txt] of (id==="bio"?BIO:FO)) for(const o of ["od","oe"]){ const el=$(`#${id}-${k}-${o}`); if(!el.value) el.value=txt; } atualiza(); }
 $$("[data-normal]").forEach(b=>b.addEventListener("click",()=>normal(b.dataset.normal)));
-const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>el.id&&!["anexo-obs","anexo-tipo","ex-nome","ind-proc","ind-proc-outro","ind-olho","ind-valor","meduso-busca","mod-nome","lc-lente"].includes(el.id));
+const campos=()=>$$("#atendimento input:not([type=file]):not([type=checkbox]), #atendimento select, #atendimento textarea").filter(el=>el.id&&!["anexo-obs","anexo-tipo","ex-nome","ind-proc","ind-proc-outro","ind-olho","ind-valor","meduso-busca","mod-nome","lc-lente","en-cid-busca"].includes(el.id));
 document.addEventListener("keydown",e=>{ if(e.key!=="Enter"||e.target.tagName!=="INPUT"||!e.target.closest("#atendimento")||e.target.id==="anexo-obs") return;
   e.preventDefault(); normalizaCampo(e.target); const l=campos().filter(x=>x.type!=="hidden"),i=l.indexOf(e.target); if(i>=0&&l[i+1]) l[i+1].focus(); atualiza(); });
 document.addEventListener("focusout",e=>{ if(e.target.matches("#atendimento input")){ normalizaCampo(e.target); atualiza(); } });
@@ -1483,19 +1486,34 @@ $("#assinar-ro").addEventListener("click",()=>gerarRO(true));
 /* ===== ENCAMINHAMENTO / INTERCONSULTA (23/10/2026) =====
    Especialidade médica ou subespecialidade oftalmológica, prioridade, motivo e resumo;
    a hipótese diagnóstica vem da consulta. Sai pelo mesmo caminho do atestado (título próprio). */
-function textoEN(){ const nome=String(consultaAtual?.paciente_nome||ficha?.paciente?.nome||"").toUpperCase(), idade=ficha?.paciente?.idade;
-  const esp=v("en-esp").trim(), prio=v("en-prio"), mot=v("en-motivo").trim().replace(/\.$/,""), res=v("en-resumo").trim();
+function enCids(){ try{ return JSON.parse(v("en-cids")||"[]"); }catch(_){ return []; } }
+function cidsDaConsulta(){ return [...$$('[data-grupo="hd"] .chip[aria-pressed="true"]').filter(c=>c.dataset.cid).map(c=>[c.dataset.cid,nomeChip(c)]),...cidsEscolhidos()]; }
+function textoEN(){ const esp=v("en-esp").trim(), prio=v("en-prio"), mot=v("en-motivo").trim().replace(/\.$/,""), res=v("en-resumo").trim().replace(/\.$/,"");
   const oft=/retina|glaucoma|c[óo]rnea|catarata|oculopl|vias lacrimais|estrabismo|oftalmo|neuroftal|uve[ií]te|lentes de contato|refrativa|vis[ãa]o subnormal|oncologia ocular/i.test(esp);
-  const P=[`Ao(À) colega${esp?` de ${esp}`:""}${oft&&!/oftalmo/i.test(esp)?" (oftalmologia)":""},`,
-    `Encaminho o(a) paciente ${nome}${idade!=null?`, ${idade} anos,`:""} para ${mot||"avaliação e conduta"}.`];
-  const hd=hdComCid(); if(hd.length) P.push(`Hipótese diagnóstica: ${hd.join("; ")}.`);
-  if(res) P.push(`Resumo clínico: ${res.replace(/\.$/,"")}.`);
-  if(prio) P.push(`Prioridade: ${prio}.`);
-  P.push("Agradeço a atenção e coloco-me à disposição para esclarecimentos.");
+  const P=["Solicito:",`Encaminhamento para ${esp||"___"}${oft&&!/oftalmo/i.test(esp)?" (oftalmologia)":""}${prio?`, em caráter ${prio}`:""}.`];
+  const just=[mot,res].filter(Boolean).join(". "), cids=enCids();
+  P.push(`Justificativa: ${just?just+".":""}${cids.length?`${just?" ":""}CID-10: ${cids.map(([c,d])=>`${c} (${d})`).join("; ")}.`:""}`.replace(/Justificativa: $/,"Justificativa:"));
   return P.join("\n\n"); }
+function desenhaEnCids(){ $("#en-cids-tags").innerHTML=enCids().map(([c,d],i)=>`<span class="chip" aria-pressed="true">${esc(d)} (CID ${esc(c)}) <button type="button" class="link" data-en-tira="${i}" title="Tirar">✕</button></span>`).join(""); }
+let enSug=[], enI=0;
+function buscaEnCid(){ const q=semAcento(v("en-cid-busca")).trim(), box=$("#en-cid-sug"); if(q.length<2){ box.hidden=true; return; } carregaCidTodos();
+  const ts=q.split(/\s+/), casa=x=>ts.every(t=>x.k.includes(t)), ordem=(a,b)=>(a.k.startsWith(q)?0:1)-(b.k.startsWith(q)?0:1)||a.c.localeCompare(b.c);
+  const olho=CID_IDX.filter(casa).sort(ordem), ja=new Set(olho.map(x=>x.c)), resto=CID_TODOS?CID_TODOS.filter(x=>!ja.has(x.c)&&casa(x)).sort(ordem):[];
+  enSug=[...olho,...resto].slice(0,20); enI=0;
+  box.innerHTML=enSug.length?enSug.map((x,i)=>`<div role="option" data-i="${i}" class="${i===0?"on":""}"><b>${x.c}</b>${esc(x.d)}</div>`).join(""):'<div style="cursor:default;color:var(--muted)">Nenhum CID encontrado.</div>'; box.hidden=false; }
+function escolheEnCid(i){ const x=enSug[i]; if(!x) return; const l=enCids(); if(!l.some(([c])=>c===x.c)) l.push([x.c,x.d]); $("#en-cids").value=JSON.stringify(l);
+  $("#en-cid-busca").value=""; $("#en-cid-sug").hidden=true; desenhaEnCids(); atualizaEN(); $("#en-cid-busca").dispatchEvent(new Event("input",{bubbles:true})); $("#en-cid-busca").focus(); }
+$("#en-cid-busca").addEventListener("focus",carregaCidTodos);
+$("#en-cid-busca").addEventListener("input",e=>{ if(e.isTrusted) buscaEnCid(); });
+$("#en-cid-busca").addEventListener("keydown",e=>{ const box=$("#en-cid-sug"); if(box.hidden) return;
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){ e.preventDefault(); enI=(enI+(e.key==="ArrowDown"?1:-1)+enSug.length)%Math.max(enSug.length,1); $$("#en-cid-sug div").forEach((d,i)=>d.classList.toggle("on",i===enI)); }
+  else if(e.key==="Enter"){ e.preventDefault(); e.stopPropagation(); escolheEnCid(enI); } else if(e.key==="Escape") box.hidden=true; });
+$("#en-cid-sug").addEventListener("mousedown",e=>{ const d=e.target.closest("[data-i]"); if(d){ e.preventDefault(); escolheEnCid(+d.dataset.i); } });
+$("#en-cid-busca").addEventListener("blur",()=>setTimeout(()=>{ $("#en-cid-sug").hidden=true; },150));
+$("#en-cids-tags").addEventListener("click",e=>{ const b=e.target.closest("[data-en-tira]"); if(!b) return; const l=enCids(); l.splice(+b.dataset.enTira,1); $("#en-cids").value=JSON.stringify(l); desenhaEnCids(); atualizaEN(); });
 function atualizaEN(){ if(v("en-editado")!=="1") $("#en-txt").value=textoEN(); }
 function mostraEN(){ const on=v("en-on")==="1"; $("#en-corpo").hidden=!on; $("#en-abrir").textContent=on?"remover da consulta":"+ encaminhamento"; }
-$("#en-abrir").addEventListener("click",()=>{ $("#en-on").value=v("en-on")==="1"?"":"1"; mostraEN(); atualizaEN(); $("#en-txt").dispatchEvent(new Event("input",{bubbles:true})); if(v("en-on")==="1") $("#en-esp").focus(); });
+$("#en-abrir").addEventListener("click",()=>{ $("#en-on").value=v("en-on")==="1"?"":"1"; if(v("en-on")==="1"&&!enCids().length) $("#en-cids").value=JSON.stringify(cidsDaConsulta()); desenhaEnCids(); mostraEN(); atualizaEN(); $("#en-txt").dispatchEvent(new Event("input",{bubbles:true})); if(v("en-on")==="1") $("#en-esp").focus(); });
 ["en-esp","en-motivo","en-resumo"].forEach(id=>$("#"+id).addEventListener("input",atualizaEN)); $("#en-prio").addEventListener("change",atualizaEN);
 $("#en-txt").addEventListener("input",e=>{ if(e.isTrusted) $("#en-editado").value="1"; });
 function statusEN(t,cls){ const x=$("#status-en"); x.textContent=t; x.className="status "+(cls||""); }
@@ -1503,11 +1521,13 @@ function gerarEN(assinar){
   if(!consultaAtual){ statusEN("Inicie o atendimento (ou abra a segunda via) primeiro.","erro"); return; }
   if(!v("en-esp").trim()){ statusEN("Escolha a especialidade.","erro"); return; }
   const texto=v("en-txt").trim(); if(!texto){ statusEN("Escreva o texto do encaminhamento.","erro"); return; }
-  const titulo="ENCAMINHAMENTO — "+v("en-esp").trim().toUpperCase(), timbrado=$("#rx-timbrado").checked, nome=String(consultaAtual.paciente_nome||"").toUpperCase();
+  const titulo="ENCAMINHAMENTO", timbrado=$("#rx-timbrado").checked, nome=String(consultaAtual.paciente_nome||"").toUpperCase();
   const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
-  if(assinar) return enviarAssinado("atestado",{nome,data,titulo,texto},statusEN);
+  const idade=ficha?.paciente?.idade;
+  if(assinar) return enviarAssinado("atestado",{nome,data,titulo,texto,paciente:nome,paciente_extra:idade!=null?[`${idade} anos`]:[]},statusEN);
   const folha=`${cabFolha(timbrado,data,"")}
 <h1 style="margin-top:4mm">${esc(titulo)}</h1>
+${pacFolha(nome,idade!=null?[`${idade} anos`]:[])}
 ${texto.split(/\n{2,}/).map(p=>`<p style="text-align:justify;line-height:1.5;margin:0 0 4mm">${esc(p).replace(/\n/g,"<br>")}</p>`).join("")}
 ${assFolha(true,timbrado,' style="margin-top:14mm"')}`;
   abrirReceita({titulo:`Encaminhamento - ${nome}`,folhas:[folha],timbrado,status:statusEN}); }
@@ -1883,7 +1903,7 @@ const chaveLocal=id=>"pront2-rasc-"+id;
 function rascunhoLocal(){ if(!atend) return; try{ localStorage.setItem(chaveLocal(atend.id),JSON.stringify({ts:Date.now(),dados:coletar()})); }catch(_){} }
 function durAtual(){ return durBase+(t0?(Date.now()-t0)/1000:0); }
 function atualiza(){
-  mostraLC(); calcLC(); marcaAlterados(); mostraLO(); mostraRO(); if(v("ro-on")==="1") atualizaRO(); mostraEN(); if(v("en-on")==="1") atualizaEN();   // lentes antes do texto, para o texto já sair com os graus novos
+  mostraLC(); calcLC(); marcaAlterados(); mostraLO(); mostraRO(); if(v("ro-on")==="1") atualizaRO(); mostraEN(); if(v("en-on")==="1"){ desenhaEnCids(); atualizaEN(); }   // lentes antes do texto, para o texto já sair com os graus novos
   $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar.";
   const r=receita();
   $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;

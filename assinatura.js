@@ -314,6 +314,7 @@ function corpoAtestado(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   doc.moveDown(0.8);
   tituloDoc(doc, String(d.titulo || "Atestado médico"));
+  if (d.paciente) blocoPaciente(doc, d.paciente, d.paciente_extra || []);   // encaminhamento: o texto não traz o nome
   doc.moveDown(0.8);
   String(d.texto || "").split(/\n{2,}/).forEach((par) => {
     doc.font("G6").fontSize(12.5).text(par.replace(/\n/g, " ").trim(), L, doc.y, { width: W, align: "justify", lineGap: 5 });
