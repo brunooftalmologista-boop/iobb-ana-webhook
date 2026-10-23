@@ -113,10 +113,7 @@ function seloVerde(doc, sx, sy, sw, texto) {
 function assinatura(doc, carimbo, rqe, selo) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   if (doc.y > doc.page.height - mm(62)) { novaPagina(doc); }
-  doc.y += mm(14);
-  const xl = L + W / 2 - mm(35);
-  doc.moveTo(xl, doc.y).lineTo(xl + mm(70), doc.y).lineWidth(0.8).strokeColor("#000").stroke();
-  doc.y += mm(2);
+  doc.y += mm(12);   // sem traço de assinatura: é documento assinado digitalmente (pedido dele, 22/10)
   doc.font("G6").fontSize(11).text("Dr. Bruno O. Borges", L, doc.y, { width: W, align: "center" })
     .text("Médico Oftalmologista", { width: W, align: "center" })
     .text(rqe ? "CRM: 17877 - RQE: 9314" : "CRM: 17877", { width: W, align: "center" });
@@ -355,7 +352,7 @@ function paginaIclinic(doc, d, via, meta) {
 async function documentoAssinado(tipo, d, cert) {
   const agora = new Date();
   const quando = agora.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const carimbo = `Documento assinado digitalmente com certificado ICP-Brasil de ${cert.titular} em ${quando}. Confira a assinatura em validar.iti.gov.br.`;
+  const carimbo = `Documento assinado digitalmente com certificado ICP-Brasil em ${quando}. Confira a assinatura em validar.iti.gov.br.`;
   const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : "Atestado" };
   const doc = new PDFDocument({ size: "A4", autoFirstPage: false, pdfVersion: "1.7",
     info: { Title: `${titulos[tipo] || "Documento"} - ${d.nome}`, Author: "Dr. Bruno O. Borges - CRM 17877", Creator: "IOBB - prontuário" } });
