@@ -11755,17 +11755,54 @@ app.get("/api/equipe/mensagens", async (req, res) => {
     const desde = String(req.query.desde || "");
     const ult = await ultimaEquipe();
     if (desde && (!ult || new Date(ult).getTime() <= new Date(desde).getTime())) return res.json({ eu, pessoas, mensagens: [] });
-    let q = supabase.from("equipe_mensagens").select("id, de, para, texto, urgente, created_at")
+    let q = supabase.from("equipe_mensagens").select("id, de, para, texto, urgente, created_at, anexo_path, anexo_nome, anexo_mime, anexo_tamanho")
       .or(`para.is.null,para.eq."${eu}",de.eq."${eu}"`);
     if (desde && !isNaN(new Date(desde))) q = q.gt("created_at", new Date(desde).toISOString()).order("created_at", { ascending: true }).limit(200);
     else q = q.gte("created_at", new Date(Date.now() - 7 * 864e5).toISOString()).order("created_at", { ascending: false }).limit(300);
     const { data, error } = await q;
     if (error) throw error;
     const mensagens = desde ? (data || []) : (data || []).reverse();
+    await linkAnexosEquipe(mensagens);
     res.json({ eu, pessoas, mensagens });
   } catch (e) {
     console.error("[Equipe] ler falhou:", e.message);
     res.status(500).json({ error: "Não consegui ler o chat." });
+  }
+});
+// ANEXOS NO CHAT (23/10/2026): foto, PDF ou documento, guardado no bucket PRIVADO do
+// prontuário (pasta equipe/); a mensagem leva só o caminho e o cliente recebe um link
+// assinado de 12 h. O arquivo vai cru no corpo (como os anexos do pré-exame).
+async function linkAnexosEquipe(ms) {
+  const com = ms.filter((m) => m.anexo_path);
+  if (!com.length) return;
+  const { data } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrls(com.map((m) => m.anexo_path), 43200);
+  com.forEach((m, i) => { m.anexo_url = data?.[i]?.signedUrl || null; });
+  for (const m of ms) delete m.anexo_path;
+}
+app.post("/api/equipe/anexo", express.raw({ type: () => true, limit: "20mb" }), async (req, res) => {
+  try {
+    const eu = quemEquipe(req);
+    if (!eu) return res.status(403).json({ error: "Acesso restrito à equipe." });
+    if (!req.body || !req.body.length) return res.status(400).json({ error: "Arquivo vazio." });
+    const para = req.query.para ? String(req.query.para) : null;
+    if (para && !SECRETARIAS.some(s => s.nome === para)) return res.status(400).json({ error: "Destinatário inválido." });
+    const nome = String(req.query.nome || "arquivo").slice(0, 120);
+    const mime = String(req.headers["content-type"] || "application/octet-stream").split(";")[0].slice(0, 100);
+    await garantirBucketProntuario();
+    const path = `equipe/${Date.now()}_${nome.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
+    const { error: eu1 } = await supabase.storage.from(BUCKET_PRONTUARIO).upload(path, req.body, { contentType: mime, upsert: false });
+    if (eu1) throw eu1;
+    const { data, error } = await supabase.from("equipe_mensagens").insert({
+      de: eu, para, texto: String(req.query.texto || "").trim().slice(0, 2000), urgente: req.query.urgente === "1",
+      anexo_path: path, anexo_nome: nome, anexo_mime: mime, anexo_tamanho: req.body.length,
+    }).select("id, de, para, texto, urgente, created_at, anexo_path, anexo_nome, anexo_mime, anexo_tamanho").single();
+    if (error) throw error;
+    ultimaMsgEquipe = data.created_at;
+    await linkAnexosEquipe([data]);
+    res.json({ ok: true, mensagem: data });
+  } catch (e) {
+    console.error("[Equipe] anexo falhou:", e.message);
+    res.status(500).json({ error: "Não consegui enviar o arquivo." });
   }
 });
 app.post("/api/equipe/mensagens", async (req, res) => {

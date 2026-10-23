@@ -65,7 +65,11 @@
   .ec-urg[hidden]{display:none}
   .ec-urg>div{width:min(460px,100%);background:var(--ec-bg);color:var(--ec-fg);border:3px solid var(--ec-alerta);border-radius:14px;padding:18px 20px;box-shadow:0 12px 40px rgba(0,0,0,.4);font:15px/1.45 system-ui,sans-serif}
   .ec-urg h3{margin:0 0 6px;color:var(--ec-alerta);font-size:18px} .ec-urg .ec-u-txt{white-space:pre-wrap;word-break:break-word;margin:8px 0 16px;font-size:16px}
-  .ec-urg .ec-u-ac{display:flex;gap:8px;justify-content:flex-end} .ec-btn-urg{background:var(--ec-alerta);color:#fff}`;
+  .ec-urg .ec-u-ac{display:flex;gap:8px;justify-content:flex-end} .ec-btn-urg{background:var(--ec-alerta);color:#fff}
+  .ec-clip{border:1px solid var(--ec-line)!important;background:var(--ec-out)!important;color:var(--ec-fg)!important;font-size:18px!important;padding:0 10px!important}
+  .ec-img{display:block;max-width:220px;max-height:220px;border-radius:8px;margin-top:4px;border:1px solid var(--ec-line)}
+  .ec-arq{display:inline-flex;gap:6px;align-items:center;margin-top:4px;padding:6px 10px;border:1px solid var(--ec-line);border-radius:8px;background:var(--ec-bg);color:var(--ec-fg);text-decoration:none;font-size:13px;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .ec-gaveta.arrastando .ec-lista{outline:3px dashed var(--ec-pri);outline-offset:-8px}`;
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
   /* ---------- gaveta ---------- */
@@ -73,7 +77,7 @@
   g.className = "ec-gaveta"; g.hidden = true; g.setAttribute("role", "dialog"); g.setAttribute("aria-label", "Chat da equipe");
   g.innerHTML = `<div class="ec-topo"><b>Chat da equipe</b><span><button type="button" class="ec-x ec-som"></button><button type="button" class="ec-x" title="Fechar" aria-label="Fechar">×</button></span></div>
     <div class="ec-abas"></div><div class="ec-lista"></div><div class="ec-st"></div><button type="button" class="ec-perm" hidden></button>
-    <div class="ec-pe"><textarea placeholder="Escreva… (Enter envia, Shift+Enter quebra linha)" aria-label="Mensagem"></textarea><div style="display:flex;flex-direction:column;gap:6px;justify-content:center"><label class="ec-urgchk" title="Abre uma janela na tela de quem recebe, que só fecha clicando em Ciente"><input type="checkbox" class="ec-urg-in"> ⚠️ Urgente</label><button type="button" class="ec-enviar" style="padding:8px 14px">Enviar</button></div></div>`;
+    <div class="ec-pe"><button type="button" class="ec-clip" title="Anexar foto, PDF ou documento (também dá para colar uma imagem com Ctrl+V ou arrastar o arquivo para cá)" aria-label="Anexar arquivo">📎</button><input type="file" class="ec-file" hidden accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"><textarea placeholder="Escreva… (Enter envia, Shift+Enter quebra linha)" aria-label="Mensagem"></textarea><div style="display:flex;flex-direction:column;gap:6px;justify-content:center"><label class="ec-urgchk" title="Abre uma janela na tela de quem recebe, que só fecha clicando em Ciente"><input type="checkbox" class="ec-urg-in"> ⚠️ Urgente</label><button type="button" class="ec-enviar" style="padding:8px 14px">Enviar</button></div></div>`;
   document.body.appendChild(g);
   const $abas = g.querySelector(".ec-abas"), $lista = g.querySelector(".ec-lista"), $txt = g.querySelector("textarea"), $st = g.querySelector(".ec-st");
 
@@ -86,12 +90,20 @@
     const hh = d.toLocaleTimeString("pt-BR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
     return d.toLocaleDateString("pt-BR", { timeZone: TZ }) === hoje ? hh : `${dia} ${hh}`; };
 
+  const tam = n => n > 1048576 ? (n / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+  function anexoHtml(m) {
+    if (!m.anexo_nome) return "";
+    if (!m.anexo_url) return `<div class="ec-arq">📎 ${esc(m.anexo_nome)} (link expirado: reabra o chat)</div>`;
+    if (/^image\//.test(m.anexo_mime || "")) return `<a href="${esc(m.anexo_url)}" target="_blank" rel="noopener" title="${esc(m.anexo_nome)}"><img class="ec-img" src="${esc(m.anexo_url)}" alt="${esc(m.anexo_nome)}" loading="lazy"></a>`;
+    return `<a class="ec-arq" href="${esc(m.anexo_url)}" target="_blank" rel="noopener">${/pdf/.test(m.anexo_mime || "") ? "📄" : "📎"} ${esc(m.anexo_nome)}${m.anexo_tamanho ? ` · ${tam(m.anexo_tamanho)}` : ""}</a>`;
+  }
+  const resumo = m => m.texto || (m.anexo_nome ? `📎 ${m.anexo_nome}` : "");
   function marcarVisto() { if (g.hidden) return; const ms = msgs.filter(m => conversaDe(m) === aba); if (ms.length) gravar(vistoKey(aba), ms[ms.length - 1].created_at); }
   function desenhar() {
     const convs = ["todos", ...pessoas.filter(p => p !== eu)];
     $abas.innerHTML = convs.map(c => `<button type="button" class="ec-aba${c === aba ? " ativa" : ""}" data-c="${esc(c)}">${c === "todos" ? "Todos" : esc(c)}${c !== aba && naoLidas(c) ? "<i></i>" : ""}</button>`).join("");
     const ms = msgs.filter(m => conversaDe(m) === aba);
-    $lista.innerHTML = ms.length ? ms.map(m => `<div class="ec-msg${m.de === eu ? " meu" : ""}${m.urgente ? " urg" : ""}"><small>${m.urgente ? "⚠️ URGENTE · " : ""}${m.de === eu ? "Você" : esc(m.de)} · ${hora(m.created_at)}</small>${esc(m.texto)}</div>`).join("")
+    $lista.innerHTML = ms.length ? ms.map(m => `<div class="ec-msg${m.de === eu ? " meu" : ""}${m.urgente ? " urg" : ""}"><small>${m.urgente ? "⚠️ URGENTE · " : ""}${m.de === eu ? "Você" : esc(m.de)} · ${hora(m.created_at)}</small>${esc(m.texto)}${anexoHtml(m)}</div>`).join("")
       : `<div class="ec-vazio">${aba === "todos" ? "Mensagens para toda a equipe aparecem aqui." : "Nenhuma mensagem com " + esc(aba) + " ainda."}</div>`;
     $lista.scrollTop = $lista.scrollHeight;
     const total = convs.reduce((n, c) => n + naoLidas(c), 0);
@@ -160,6 +172,33 @@
   }
   g.querySelector(".ec-enviar").addEventListener("click", enviar);
 
+  /* ---------- anexos (23/10/2026) ----------
+     📎, colar imagem (Ctrl+V) ou arrastar para a gaveta. O texto escrito vai junto como
+     legenda. Até 15 MB. O arquivo sobe cru; o servidor guarda no bucket privado. */
+  const $file = g.querySelector(".ec-file");
+  g.querySelector(".ec-clip").addEventListener("click", () => $file.click());
+  $file.addEventListener("change", () => { const f = $file.files[0]; $file.value = ""; if (f) enviarArquivo(f); });
+  async function enviarArquivo(f, again) {
+    if (f.size > 15 * 1048576) { $st.textContent = "Arquivo grande demais (máximo 15 MB)."; return; }
+    const $urg = g.querySelector(".ec-urg-in"), legenda = $txt.value.trim();
+    const nome = f.name || `imagem-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg")}`;
+    const qs = new URLSearchParams({ nome, texto: legenda, urgente: $urg.checked ? "1" : "", ...(aba === "todos" ? {} : { para: aba }) });
+    $st.style.color = "var(--ec-mut)"; $st.textContent = `Enviando ${nome}…`;
+    try {
+      const r = await fetch("/api/equipe/anexo?" + qs, { method: "POST", headers: { "Authorization": "Bearer " + ler("iobb_at"), "Content-Type": f.type || "application/octet-stream" }, body: f });
+      if (r.status === 401 && !again && await renovar()) return enviarArquivo(f, true);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.mensagem) throw new Error(d.error || "Não consegui enviar o arquivo.");
+      $txt.value = ""; $urg.checked = false; if (!msgs.some(x => x.id === d.mensagem.id)) msgs.push(d.mensagem); ultima = d.mensagem.created_at; marcarVisto(); desenhar();
+      $st.textContent = "";
+    } catch (e) { $st.textContent = e.message || "Não consegui enviar o arquivo."; }
+    finally { $st.style.color = ""; }
+  }
+  $txt.addEventListener("paste", e => { const it = [...(e.clipboardData?.items || [])].find(x => x.kind === "file"); if (it) { e.preventDefault(); const f = it.getAsFile(); if (f) enviarArquivo(f); } });
+  g.addEventListener("dragover", e => { if ([...(e.dataTransfer?.types || [])].includes("Files")) { e.preventDefault(); g.classList.add("arrastando"); } });
+  g.addEventListener("dragleave", e => { if (!g.contains(e.relatedTarget)) g.classList.remove("arrastando"); });
+  g.addEventListener("drop", e => { e.preventDefault(); g.classList.remove("arrastando"); const f = e.dataTransfer?.files?.[0]; if (f) enviarArquivo(f); });
+
   /* ---------- AVISOS (22/10/2026): "na prática ninguém vê, só se abrir o chat" ----------
      1) cartão no topo da tela com quem mandou e o texto; 2) mensagem URGENTE abre
      janela no meio que só fecha com "Ciente" (e o bip repete até lá); 3) notificação
@@ -177,14 +216,14 @@
   function mostraToast(lista) {
     const m = lista[lista.length - 1]; toastConv = conversaDe(m);
     toast.querySelector(".ec-t-de").textContent = `💬 ${m.de}${m.para ? " (para você)" : " (para todos)"}${lista.length > 1 ? ` · +${lista.length - 1} mensagem(ns)` : ""}`;
-    toast.querySelector(".ec-t-txt").textContent = m.texto;
+    toast.querySelector(".ec-t-txt").textContent = resumo(m);
     toast.hidden = false; clearTimeout(tToast); tToast = setTimeout(() => { toast.hidden = true; }, 90000);
   }
   toast.querySelector(".ec-t-x").addEventListener("click", () => { toast.hidden = true; });
   toast.querySelector(".ec-t-abrir").addEventListener("click", () => { toast.hidden = true; abrirEm(toastConv); });
   function mostraUrg() {
     const m = filaUrg[0]; if (!m) { urg.hidden = true; clearInterval(tBipUrg); tBipUrg = null; return; }
-    urg.querySelector(".ec-u-de").textContent = `De ${m.de} · ${hora(m.created_at)}`; urg.querySelector(".ec-u-txt").textContent = m.texto;
+    urg.querySelector(".ec-u-de").textContent = `De ${m.de} · ${hora(m.created_at)}`; urg.querySelector(".ec-u-txt").textContent = resumo(m);
     urg.hidden = false; if (!tBipUrg) tBipUrg = setInterval(bip, 12000);
   }
   urg.querySelector(".ec-u-ok").addEventListener("click", () => { filaUrg.shift(); mostraUrg(); });
@@ -192,7 +231,7 @@
   function notificarSistema(m) {
     try {
       if (!("Notification" in window) || Notification.permission !== "granted") return;
-      const titulo = `${m.urgente ? "⚠️ URGENTE — " : "💬 "}${m.de}`, opts = { body: String(m.texto).slice(0, 200), tag: "iobb-chat", renotify: true, icon: "/app-icons/icon-192.png", requireInteraction: !!m.urgente };
+      const titulo = `${m.urgente ? "⚠️ URGENTE — " : "💬 "}${m.de}`, opts = { body: String(resumo(m)).slice(0, 200), tag: "iobb-chat", renotify: true, icon: "/app-icons/icon-192.png", requireInteraction: !!m.urgente };
       const viaJanela = () => { try { const n = new Notification(titulo, opts); n.onclick = () => { window.focus(); abrirEm(conversaDe(m)); n.close(); }; } catch (_) {} };
       if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(r => r ? r.showNotification(titulo, opts) : viaJanela()).catch(viaJanela);
       else viaJanela();
