@@ -274,6 +274,31 @@ function imagensLaudo(doc, imagens) {
     doc.x = L; doc.y = y0 + hDisp + 24;
   }
 }
+// Receita de lentes de contato gelatinosas: lente escolhida, tabela por olho (colunas de
+// cilindro/eixo e adição só quando há) e orientações de uso.
+function corpoLentes(doc, d) {
+  const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
+  tituloDoc(doc, "Receita de lentes de contato");
+  blocoPaciente(doc, d.nome, []);
+  doc.font("G8").fontSize(11.5).fillColor("#000").text("Lente: ", L, doc.y, { continued: true }).font("G6").text(`${d.lente || ""} · gelatinosa`, { width: W });
+  doc.moveDown(0.6);
+  const cab = ["", "ESFÉRICO", ...(d.tem_cil ? ["CILINDRO", "EIXO"] : []), ...(d.tem_add ? ["ADIÇÃO"] : []), "CB", "DIÂM."];
+  const lin = (r) => [r[0], r[1] || "—", ...(d.tem_cil ? [r[2] || "—", r[3] || "—"] : []), ...(d.tem_add ? [r[4] || "—"] : []), r[5] || "—", r[6] || "—"];
+  const n = cab.length, w0 = W * 0.27, wi = (W - w0) / (n - 1), h = 22;
+  let y = doc.y;
+  [cab, ...(d.linhas || []).map(lin)].forEach((ln, i) => {
+    if (i === 0) doc.rect(L, y, W, h).fill(FUNDO).fillColor("#000");
+    let x = L; ln.forEach((t, j) => { const cw = j ? wi : w0;
+      doc.lineWidth(0.8).strokeColor("#9fb0c0").rect(x, y, cw, h).stroke();
+      doc.font(i === 0 || j === 0 ? "G8" : "G6").fontSize(i === 0 ? 10 : 11.5).fillColor("#000").text(String(t ?? ""), x + (j ? 0 : 6), y + (i === 0 ? 7 : 6), { width: cw - (j ? 0 : 12), align: j ? "center" : "left", lineBreak: false });
+      x += cw; });
+    y += h; });
+  doc.strokeColor("#000"); doc.x = L; doc.y = y + mm(6);
+  if ((d.orientacoes || []).length) {
+    doc.font("G8").fontSize(11.5).text("ORIENTAÇÕES DE USO:", L, doc.y, { characterSpacing: 0.4 });
+    doc.font("G6").fontSize(10).list(d.orientacoes, { bulletRadius: 1.6, textIndent: 10, width: W });
+  }
+}
 function corpoAtestado(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   doc.moveDown(0.8);
@@ -307,7 +332,7 @@ function corpoPedido(doc, d, exames) {
 async function documentoAssinado(tipo, d, cert) {
   const agora = new Date();
   const quando = agora.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : "Atestado" };
+  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", lentes: "Receita de lentes de contato", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : "Atestado" };
   const doc = new PDFDocument({ size: "A4", autoFirstPage: false, pdfVersion: "1.7",
     info: { Title: `${titulos[tipo] || "Documento"} - ${d.nome}`, Author: "Dr. Bruno O. Borges - CRM 17877", Creator: "IOBB - prontuário" } });
   doc.registerFont("G6", FONTE); doc.registerFont("G8", FONTE_NEGRITO);
@@ -319,6 +344,7 @@ async function documentoAssinado(tipo, d, cert) {
   else if (tipo === "oculos") paginas.push(["", () => { corpoOculos(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]);
   else if (tipo === "pedido") (d.separado ? d.exames.map(e => [e]) : [d.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista); assinatura(doc, quando, true, "Assinado digitalmente"); }]));
   else if (tipo === "laudo") paginas.push(["", () => { corpoLaudo(doc, d); assinatura(doc, quando, true, "Assinado digitalmente"); imagensLaudo(doc, d.imagens); }]);
+  else if (tipo === "lentes") paginas.push(["", () => { corpoLentes(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]);
   else if (tipo === "atestado") paginas.push(["", () => { corpoAtestado(doc, d); assinatura(doc, quando, true, "Assinado digitalmente"); }]);
   else throw new Error("tipo de documento desconhecido");
   for (const [via, desenha] of paginas) { novaPagina(doc); cabecalho(doc, d.data, via); desenha(); }
