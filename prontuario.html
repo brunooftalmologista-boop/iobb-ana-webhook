@@ -409,6 +409,16 @@ mark.alt{background:color-mix(in srgb,#e8a400 30%,transparent);color:inherit;fon
                 <div class="campo"><label for="at-txt">Texto</label><textarea id="at-txt" rows="4" style="min-height:80px;font-size:14px"></textarea></div>
                 <div class="row"><button type="button" class="pri" id="gerar-at">Imprimir</button><button type="button" id="assinar-at">🔏 PDF assinado</button><span class="status" id="status-at"></span></div>
               </div>
+              <div class="rx" id="lo-bloco">
+                <div class="row" style="align-items:center"><span class="rot" style="margin:0">Laudo oftalmológico</span><button type="button" class="link" id="lo-abrir">+ laudo oftalmológico</button><input type="hidden" id="lo-on"><input type="hidden" id="lo-editado"></div>
+                <div id="lo-corpo" hidden style="display:grid;gap:8px">
+                  <div class="hint">Montado com os dados desta consulta. Biomicroscopia e fundoscopia normais saem como "dentro da normalidade"; o que estiver alterado sai escrito. Dá para editar o texto; uma linha terminada em ":" vira título.</div>
+                  <div class="campo"><label for="lo-txt">Texto do laudo</label><textarea id="lo-txt" rows="12" style="font-size:14px"></textarea></div>
+                  <div class="row"><button type="button" class="link" id="lo-refazer">↻ remontar com os dados da consulta</button></div>
+                  <div class="campo"><label for="lo-concl">Conclusão <span class="hint">— sai em destaque no fim</span></label><input id="lo-concl" placeholder="Ex.: Necessita de óculos para longe e multifocais, por motivo de aumento de graus."></div>
+                  <div class="row"><button type="button" class="pri" id="gerar-lo">Imprimir laudo</button><button type="button" id="assinar-lo">🔏 PDF assinado</button><span class="status" id="status-lo"></span></div>
+                </div>
+              </div>
               <div class="campo"><label for="cd-txt">Observações da conduta (um item por linha)</label><textarea id="cd-txt" rows="3" placeholder="Orientações, colírios, encaminhamentos…"></textarea></div>
               <div class="row"><label>Retorno <select id="retorno"><option value="">—</option><option>7 dias</option><option>30 dias</option><option>3 meses</option><option>6 meses</option><option>1 ano</option></select></label></div>
             </div>
@@ -1440,6 +1450,55 @@ ${assFolha(true,timbrado,' style="margin-top:22mm"')}`;
   abrirReceita({titulo:`${titulo.charAt(0)+titulo.slice(1).toLowerCase()} - ${nome}`,folhas:[folha],timbrado,status:statusAt}); }
 $("#gerar-at").addEventListener("click",()=>gerarAtestado(false));
 $("#assinar-at").addEventListener("click",()=>gerarAtestado(true));
+/* ===== LAUDO OFTALMOLÓGICO (23/10/2026) =====
+   Texto montado da consulta aberta (ou da consulta da segunda via; nas importadas do
+   iClinic, o que não está em campo sai do texto): acuidade com correção + refração,
+   adição, biomicroscopia e fundoscopia ("dentro da normalidade" quando tudo normal,
+   senão só os achados alterados), PIO e hipótese diagnóstica. Editável; conclusão livre. */
+const fmtRefr=(e,c,x)=>{ if(!e&&!c) return ""; return `${e||"plano"}${c?` ${c} x ${String(x||"").replace(/[º°]/g,"")}º`:""}`; };
+function loExame(id,itens){ const temAlgo=itens.some(([k])=>v(`${id}-${k}-od`)||v(`${id}-${k}-oe`)); if(!temAlgo) return null;
+  const alt=o=>itens.filter(([k,,txt])=>!ehNormal(v(`${id}-${k}-${o}`),txt)&&v(`${id}-${k}-${o}`)).map(([k,nome])=>`${nome.toLowerCase()} ${v(`${id}-${k}-${o}`)}`);
+  const a=alt("od"), b=alt("oe"); if(!a.length&&!b.length) return ["Dentro da normalidade em ambos os olhos."];
+  return [`Olho direito: ${a.length?a.join("; ")+"; demais estruturas dentro da normalidade":"dentro da normalidade"}.`,`Olho esquerdo: ${b.length?b.join("; ")+"; demais estruturas dentro da normalidade":"dentro da normalidade"}.`]; }
+function loDoTexto(t,re){ const m=String(t||"").match(re); if(!m) return null; const x=m[1].trim(); if(!x) return null;
+  return [RE_NORMAL.test(semAcento(x).replace(/ em ambos os olhos\.?$/,"").replace(/\.$/,""))||/sem altera[cç][oõ]es em ambos/i.test(x)?"Dentro da normalidade em ambos os olhos.":ponto(x)]; }
+function montaLaudo(){ const C=segundaVia?.dados?.campos||null, imp=!!segundaVia?.dados?.importado, med=imp?medidasDe(segundaVia):null, S=[];
+  const g=k=>imp?(C?.[k]||""):v(k);
+  const av=o=>imp?(med?.[o==="od"?"aod":"aoe"]?`20/${med[o==="od"?"aod":"aoe"]}`:""):(v(`av-cc-${o}`)||v(`re-${o}-av`));
+  const lin=[]; for(const [o,nome] of [["od","Olho direito"],["oe","Olho esquerdo"]]){ const r=fmtRefr(g(`re-${o}-esf`),g(`re-${o}-cil`),g(`re-${o}-eixo`)), a=av(o); if(r||a) lin.push(`${nome}: ${a||"—"}${r?` — refração ${r}`:""}`); }
+  if(g("re-add")){ const pt=imp?"":[v("av-pt-od"),v("av-pt-oe")].filter(Boolean); lin.push(`Perto: adição ${g("re-add")}${pt&&pt.length?` (${pt[0]===pt[1]||pt.length===1?pt[0]+" em ambos os olhos":`OD ${pt[0]}, OE ${pt[1]}`})`:""}`); }
+  if(lin.length) S.push(["Acuidade visual com correção e refração",lin]);
+  const bio=imp?loDoTexto(segundaVia.texto,/Biomicroscopia[^:\n]*:\s*([^\n]+)/i):loExame("bio",BIO); if(bio) S.push(["Biomicroscopia",bio]);
+  const pod=imp?med?.pod:v("pio-od"), poe=imp?med?.poe:v("pio-oe");
+  if(pod||poe) S.push([`Tonometria de ${(!imp&&v("pio-met")||"aplanação").toLowerCase()} (pressão intraocular)`,[`Olho direito: ${pod?pod+" mmHg":"não aferida"} · Olho esquerdo: ${poe?poe+" mmHg":"não aferida"}`]]);
+  const fo=imp?loDoTexto(segundaVia.texto,/(?:Fundoscopia|Mapeamento de retina)[^:\n]*:\s*([^\n]+)/i):loExame("fo",FO); if(fo) S.push(["Fundoscopia",fo]);
+  let hd=[]; if(imp){ try{ hd=JSON.parse(C?.["hd-cids"]||"[]").map(([c,d])=>`${d} (CID ${c})`); }catch(_){}
+    if(!hd.length){ const m=String(segundaVia.texto||"").match(/Diagn[óo]stico[^:\n]*:\s*\n?((?:[^\n]+\n?)+?)(?:\n\n|$)/i); if(m) hd=m[1].split("\n").map(x=>x.trim()).filter(Boolean); } }
+  else hd=hdComCid();
+  if(hd.length) S.push(["Hipótese diagnóstica",[hd.join("; ")+"."]]);
+  return S.map(([t,ls])=>`${t}:\n${ls.join("\n")}`).join("\n\n"); }
+function mostraLO(){ const on=v("lo-on")==="1"; $("#lo-corpo").hidden=!on; $("#lo-abrir").textContent=on?"remover da consulta":"+ laudo oftalmológico"; }
+$("#lo-abrir").addEventListener("click",()=>{ const on=v("lo-on")!=="1"; $("#lo-on").value=on?"1":""; if(on&&(!v("lo-txt").trim()||v("lo-editado")!=="1")) $("#lo-txt").value=montaLaudo(); mostraLO(); $("#lo-txt").dispatchEvent(new Event("input",{bubbles:true})); });
+$("#lo-refazer").addEventListener("click",()=>{ $("#lo-txt").value=montaLaudo(); $("#lo-editado").value=""; $("#lo-txt").dispatchEvent(new Event("input",{bubbles:true})); statusLO("Remontado com os dados da consulta.","ok"); });
+$("#lo-txt").addEventListener("input",e=>{ if(e.isTrusted) $("#lo-editado").value="1"; });
+function statusLO(t,cls){ const x=$("#status-lo"); x.textContent=t; x.className="status "+(cls||""); }
+function loSecoes(){ return v("lo-txt").split(/\n\s*\n/).map(b=>b.split("\n").map(x=>x.trim()).filter(Boolean)).filter(b=>b.length).map(b=>/:$/.test(b[0])?{titulo:b[0].replace(/:$/,""),linhas:b.slice(1)}:{titulo:"",linhas:b}); }
+function gerarLO(assinar){
+  if(!consultaAtual){ statusLO("Inicie o atendimento (ou abra a segunda via da consulta) primeiro.","erro"); return; }
+  const secoes=loSecoes(); if(!secoes.length){ statusLO("O laudo está vazio.","erro"); return; }
+  const conclusao=v("lo-concl").trim(), timbrado=$("#rx-timbrado").checked;
+  const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+  const nome=String(consultaAtual.paciente_nome||"").toUpperCase();
+  if(assinar) return enviarAssinado("laudo_oft",{nome,data,secoes,conclusao},statusLO);
+  const folha=`${cabFolha(timbrado,data,"")}
+<h1>LAUDO OFTALMOLÓGICO</h1>
+${pacFolha(nome)}
+${secoes.map(sc=>`${sc.titulo?`<h3 class="uso" style="margin:3mm 0 1mm">${esc(sc.titulo.toUpperCase())}</h3>`:""}${sc.linhas.map(l=>`<div>${esc(l)}</div>`).join("")}`).join("")}
+${conclusao?`<p style="margin:5mm 0 0;font-weight:700">${esc(conclusao)}</p>`:""}
+${assFolha(true,timbrado,' style="margin-top:16mm"')}`;
+  abrirReceita({titulo:`Laudo oftalmológico - ${nome}`,folhas:[folha],timbrado,status:statusLO}); }
+$("#gerar-lo").addEventListener("click",()=>gerarLO(false));
+$("#assinar-lo").addEventListener("click",()=>gerarLO(true));
 /* ===== GRÁFICO DE PIO E ACUIDADE (22/10/2026) =====
    Pontos de TODAS as consultas da ficha: campos (pio-od/oe, av-cc-od/oe ou AV da refração)
    e, nas importadas do iClinic, o texto (padrões medidos no banco em 22/10: "Tonometria olho
@@ -1715,7 +1774,7 @@ const chaveLocal=id=>"pront2-rasc-"+id;
 function rascunhoLocal(){ if(!atend) return; try{ localStorage.setItem(chaveLocal(atend.id),JSON.stringify({ts:Date.now(),dados:coletar()})); }catch(_){} }
 function durAtual(){ return durBase+(t0?(Date.now()-t0)/1000:0); }
 function atualiza(){
-  mostraLC(); calcLC(); marcaAlterados();   // lentes antes do texto, para o texto já sair com os graus novos
+  mostraLC(); calcLC(); marcaAlterados(); mostraLO();   // lentes antes do texto, para o texto já sair com os graus novos
   $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar.";
   const r=receita();
   $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;

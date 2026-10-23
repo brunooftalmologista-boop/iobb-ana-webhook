@@ -298,6 +298,18 @@ function corpoLentes(doc, d) {
     doc.font("G6").fontSize(10).list(d.orientacoes, { bulletRadius: 1.6, textIndent: 10, width: W });
   }
 }
+// Laudo oftalmológico: seções (título + linhas) montadas no prontuário e conclusão em destaque.
+function corpoLaudoOft(doc, d) {
+  const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
+  tituloDoc(doc, "Laudo oftalmológico");
+  blocoPaciente(doc, d.nome, []);
+  for (const sc of d.secoes || []) {
+    if (doc.y > doc.page.height - doc.page.margins.bottom - mm(30)) { novaPagina(doc); doc.y = doc.page.margins.top + mm(6); }
+    if (sc.titulo) { doc.moveDown(0.4); doc.font("G8").fontSize(10.5).fillColor(AZUL).text(String(sc.titulo).toUpperCase(), L, doc.y, { characterSpacing: 1, width: W }); doc.fillColor("#000"); doc.moveDown(0.25); }
+    for (const l of sc.linhas || []) doc.font("G6").fontSize(12).fillColor("#000").text(String(l), L, doc.y, { width: W });
+  }
+  if (d.conclusao) { doc.moveDown(0.8); doc.font("G8").fontSize(12).text(String(d.conclusao), L, doc.y, { width: W }); }
+}
 function corpoAtestado(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   doc.moveDown(0.8);
@@ -331,7 +343,7 @@ function corpoPedido(doc, d, exames) {
 async function documentoAssinado(tipo, d, cert) {
   const agora = new Date();
   const quando = agora.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", lentes: "Receita de lentes de contato", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : "Atestado" };
+  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", laudo_oft: "Laudo oftalmológico", lentes: "Receita de lentes de contato", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : "Atestado" };
   const doc = new PDFDocument({ size: "A4", autoFirstPage: false, pdfVersion: "1.7",
     info: { Title: `${titulos[tipo] || "Documento"} - ${d.nome}`, Author: "Dr. Bruno O. Borges - CRM 17877", Creator: "IOBB - prontuário" } });
   // Texto em Helvetica (23/10/2026: Garamond ficava pequena e clara no papel); Garamond só no
@@ -347,6 +359,7 @@ async function documentoAssinado(tipo, d, cert) {
   else if (tipo === "oculos") paginas.push([`Paciente: ${d.nome}`, () => { corpoOculos(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]);
   else if (tipo === "pedido") (d.separado ? d.exames.map(e => [e]) : [d.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista); assinatura(doc, quando, true, "Assinado digitalmente"); }]));
   else if (tipo === "laudo") paginas.push(["", () => { corpoLaudo(doc, d); assinatura(doc, quando, true, "Assinado digitalmente"); imagensLaudo(doc, d.imagens); }]);
+  else if (tipo === "laudo_oft") paginas.push(["", () => { corpoLaudoOft(doc, d); assinatura(doc, quando, true, "Assinado digitalmente"); }]);
   else if (tipo === "lentes") paginas.push(["", () => { corpoLentes(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]);
   else if (tipo === "atestado") paginas.push(["", () => { corpoAtestado(doc, d); assinatura(doc, quando, true, "Assinado digitalmente"); }]);
   else throw new Error("tipo de documento desconhecido");
