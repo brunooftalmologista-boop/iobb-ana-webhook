@@ -945,8 +945,12 @@ async function renderFunil(){
       +   '<div style="font-size:12.5px;color:#6b7b8c">'+(IND_ROTULO[i.status]||esc(i.status))
       +     ' · há '+dias+' dia(s) · '+(i.toques||0)+' toque(s)'
       +     (i.respondeu_em?' · respondeu':'')
-      +     (i.motivo?' · '+esc(i.motivo):'')+'</div></div>'
+      +     (i.motivo?' · '+esc(i.motivo):'')+'</div>'
+      +   (i.observacoes?'<div class="ind-obs-txt" style="font-size:13px;margin-top:4px;white-space:pre-wrap;background:#f6f8fa;border-radius:6px;padding:5px 8px">📝 '+esc(i.observacoes)+'</div>':'')
+      +   '<div class="ind-obs-form" data-id="'+i.id+'" hidden style="margin-top:6px"><textarea rows="2" style="width:100%;padding:6px 8px;border:1px solid #cfd8e0;border-radius:6px;font:inherit">'+esc(i.observacoes||'')+'</textarea>'
+      +     '<div style="display:flex;gap:6px;margin-top:4px"><button class="pbtn primary ind-obs-salvar" data-id="'+i.id+'">Salvar observação</button><button class="pbtn ghost ind-obs-cancelar">Cancelar</button></div></div></div>'
       +   '<div style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">'
+      +     '<button class="pbtn ghost ind-obs-abrir" data-id="'+i.id+'" title="Observação sobre esta indicação (ex.: quer pensar, ligar em novembro, aguardando convênio)">📝 '+(i.observacoes?'Editar obs.':'Observação')+'</button>'
       +     (viva
               ? '<button class="pbtn ghost ind-act" data-id="'+i.id+'" data-st="fechada">✅ Fechou</button>'
                 + '<button class="pbtn ghost ind-act" data-id="'+i.id+'" data-st="recusada">🚫 Recusou</button>'
@@ -955,6 +959,19 @@ async function renderFunil(){
       + '</div></div>';
   }).join('');
 }
+// Observação da indicação (23/10/2026): campo livre por indicação, salvo no servidor.
+$('#ind-lista').addEventListener('click', async (e)=>{
+  const ab = e.target.closest('.ind-obs-abrir'), ca = e.target.closest('.ind-obs-cancelar'), sv = e.target.closest('.ind-obs-salvar');
+  if(ab){ const f=$('#ind-lista').querySelector('.ind-obs-form[data-id="'+ab.dataset.id+'"]'); f.hidden=false; f.querySelector('textarea').focus(); return; }
+  if(ca){ ca.closest('.ind-obs-form').hidden=true; return; }
+  if(!sv) return;
+  const txt = sv.closest('.ind-obs-form').querySelector('textarea').value.trim();
+  try{
+    const d = await api('/api/indicacoes/'+sv.dataset.id, {method:'POST', body:{observacoes:txt}});
+    if(!d || !d.ok){ toast((d&&d.error)||'Falha ao salvar.'); return; }
+    toast('Observação salva ✓'); await renderFunil();
+  }catch(err){ if(String(err.message)!=='401') toast('Falha de conexão.'); }
+});
 $('#ind-lista').addEventListener('click', async (e)=>{
   const b = e.target.closest('.ind-act');
   if(!b) return;
