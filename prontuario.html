@@ -184,6 +184,8 @@ table.lau tr.alt td,table.lau td.alt-c,table.lau td.alt-c input{color:#b02a2a;fo
 .mod-chip{display:inline-flex;align-items:center;border:1px solid var(--pri);border-radius:999px;background:var(--surface);overflow:hidden}
 .mod-chip button{border:0;background:none;padding:4px 10px;font:inherit;font-size:13px;color:var(--pri);cursor:pointer}
 .mod-chip button.x{padding:4px 8px 4px 2px;color:var(--muted)} .mod-chip button.x.conf{color:var(--warn);font-weight:600}
+input.alterado{background:color-mix(in srgb,#e8a400 16%,var(--surface)) !important;border-color:#c98a00 !important;font-weight:600}
+mark.alt{background:color-mix(in srgb,#e8a400 30%,transparent);color:inherit;font-weight:600;border-radius:3px;padding:0 2px}
 .trazido{border-color:#d9a400 !important;border-style:dashed !important;background:color-mix(in srgb,#d9a400 8%,var(--surface)) !important}
 .seg-alertas{border:1px solid var(--warn);border-left-width:4px;border-radius:6px;padding:8px 10px;background:color-mix(in srgb,var(--warn) 9%,var(--surface));font-size:14px;display:grid;gap:4px}
 .seg-alertas b{color:var(--warn)}
@@ -662,6 +664,22 @@ const FO=[["disco","Disco óptico","corado, bordos nítidos, relação escavaç�
 function montaGrade(id,itens){ const g=$("#"+id); g.innerHTML='<span class="blank"></span><span class="h od">Olho direito</span><span class="h oe">Olho esquerdo</span>';
   for(const [k,nome] of itens) g.insertAdjacentHTML("beforeend",`<span class="lbl rowlbl">${nome}</span><input id="${id}-${k}-od"><input id="${id}-${k}-oe">`); }
 montaGrade("bio",BIO); montaGrade("fo",FO);
+/* ACHADO ALTERADO EM DESTAQUE (23/10/2026): na biomicroscopia e na fundoscopia, o que
+   foge do texto normal (o do botão "normal" ou "sem alterações"/"normal"/"dentro da
+   normalidade") fica em âmbar no formulário e marcado na linha do tempo. */
+const RE_NORMAL=/^(sem altera[çc][õo]es|normais?|dentro da normalidade|nda|ndn|n[ãa]o avaliad[oa])\.?$/i;
+function ehNormal(valor,padrao){ const t=semAcento(String(valor||"").trim()).replace(/\.$/,""); return !t||t===semAcento(padrao)||RE_NORMAL.test(t); }
+function marcaAlterados(){ for(const [id,itens] of [["bio",BIO],["fo",FO]]) for(const [k,,txt] of itens) for(const o of ["od","oe"]){ const el=$(`#${id}-${k}-${o}`); if(el) el.classList.toggle("alterado",!ehNormal(el.value,txt)); } }
+document.addEventListener("input",e=>{ if(/^(bio|fo)-/.test(e.target.id||"")) marcaAlterados(); });
+// linha do tempo: trechos da biomicroscopia/fundoscopia fora do normal ganham <mark>
+let NORMAIS_TXT=null;   // calculado no 1º uso: semAcento é declarado mais abaixo (TDZ)
+function destacaAchados(rot,corpo){ const html=esc(corpo); if(!/biomicro|fundosc|\bfo\b|mapeamento/i.test(rot)) return html;
+  return html.split(/(\n|;\s*)/).map(seg=>{ if(/^(\n|;\s*)$/.test(seg)||!seg.trim()) return seg;
+    const sem=semAcento(seg).replace(/^(olho (direito|esquerdo)|od|oe|ao)\s*:\s*/,"").replace(/\.$/,"").trim();
+    NORMAIS_TXT=NORMAIS_TXT||[...BIO,...FO].map(x=>semAcento(x[2]));
+    const normal=!sem||RE_NORMAL.test(sem)||/sem altera[çc][õo]es|dentro da normalidade|normais?$/.test(sem)||NORMAIS_TXT.some(n=>sem.endsWith(n));
+    if(normal) return seg; const pre=(seg.match(/^((olho (direito|esquerdo)|OD|OE|AO)\s*:\s*)/i)||[""])[0];
+    return `${pre}<mark class="alt">${seg.slice(pre.length)}</mark>`; }).join(""); }
 function dioptria(v,ehEsf){
   let t=String(v||"").trim().replace(",",".").replace(/\s/g,""); if(!t) return "";
   if(/^(pl|plano|0+(\.0*)?)$/i.test(t)) return ehEsf?"Plano":"";
@@ -1697,7 +1715,7 @@ const chaveLocal=id=>"pront2-rasc-"+id;
 function rascunhoLocal(){ if(!atend) return; try{ localStorage.setItem(chaveLocal(atend.id),JSON.stringify({ts:Date.now(),dados:coletar()})); }catch(_){} }
 function durAtual(){ return durBase+(t0?(Date.now()-t0)/1000:0); }
 function atualiza(){
-  mostraLC(); calcLC();   // lentes antes do texto, para o texto já sair com os graus novos
+  mostraLC(); calcLC(); marcaAlterados();   // lentes antes do texto, para o texto já sair com os graus novos
   $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar.";
   const r=receita();
   $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
@@ -1836,7 +1854,7 @@ function desenhaTimeline(){
     const fim=!!c.finalizado_em;
     return `<div class="item-t"><div class="data-t ${fim?"":"cinza"}"><b>${dd}</b><i>${MES3[mm]}</i><em>${aa}</em></div>
       <div class="bloco-t"><div class="cab"><span>Por: <b>Dr. Bruno Borges</b>${c.dados?.importado?` <span class="tag">importado do iClinic${c.dados.iclinic_origem?" · "+esc(c.dados.iclinic_origem):""}</span>`:""}${fim?"":' <span class="tag and">em andamento</span>'}</span><span class="h">⏱ ${hhmm(c.data_consulta)}${c.duracao_seg?` (${durTexto(c.duracao_seg)})`:""}</span></div>
-      ${secs.map(s=>`<div class="secao-t">${s.rot?`<h4>${esc(s.rot)}</h4>`:""}<pre>${esc(s.corpo)}</pre></div>`).join("")||(fim?"":'<div class="secao-t"><pre class="hint">Atendimento ainda sem conteúdo.</pre></div>')}
+      ${secs.map(s=>`<div class="secao-t">${s.rot?`<h4>${esc(s.rot)}</h4>`:""}<pre>${destacaAchados(s.rot,s.corpo)}</pre></div>`).join("")||(fim?"":'<div class="secao-t"><pre class="hint">Atendimento ainda sem conteúdo.</pre></div>')}
       ${mostraAnexos&&anexos.length?`<div class="secao-t"><h4>Imagens e anexos</h4><div class="anexos-t">${anexos.map(arq).join("")}</div></div>`:""}
       ${(c.adendos||[]).map(a=>a.tipo==="reabertura"?`<div class="adendo"><small>${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`:`<div class="adendo"><small>Informações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`).join("")}
       <div class="rodape-t">${fim?`<button type="button" data-copiar="${c.id}">Copiar texto</button><button type="button" data-adendo="${c.id}">+ Inserir informações</button><button type="button" data-anexar-ex="${c.id}">+ Anexar exame</button>${c.dados?.campos&&Object.keys(c.dados.campos).length?`<button type="button" data-2via="${c.id}" title="Receita, pedido ou atestado desta consulta, com a data dela">🖨 Segunda via</button>`:""}${!c.dados?.importado&&diaBR(c.finalizado_em)===diaBR(Date.now())?`<button type="button" data-reabrir="${c.id}" title="Só no dia em que foi finalizado; a reabertura fica registrada">↺ Reabrir para editar</button>`:""}`:`<button type="button" class="pri" data-continuar="${c.id}">Continuar atendimento</button>`}</div>
