@@ -82,58 +82,82 @@ const RECOMENDA_OTICA = [
   "Sr. Óptico favor manter as marcas originais de fábrica em caso de multifocais.",
 ];
 
-function novaPagina(doc) { doc.addPage({ size: "A4", margins: { top: mm(16), bottom: mm(18), left: mm(20), right: mm(20) } }); }
+// ===== MOLDURA DOS DOCUMENTOS (visual único, 22/10/2026) =========================
+// Todos os PDFs assinados (receitas, pedido, atestado, laudo) usam o mesmo desenho:
+// logo + dados do médico com filete azul no topo, título espaçado, cartão do paciente,
+// assinatura com o cartão verde de verificação e rodapé discreto com o endereço.
+const AZUL = "#1f4e79", CINZA = "#5b6670", FUNDO = "#f2f5f8", VERDE = "#2e9e45";
+const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const dataExtenso = (d) => { const m = String(d || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${+m[1]} de ${MESES[+m[2] - 1]} de ${m[3]}` : String(d || ""); };
+function novaPagina(doc) { doc.addPage({ size: "A4", margins: { top: mm(16), bottom: mm(22), left: mm(20), right: mm(20) } }); }
 function cabecalho(doc, data, via) {
-  const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
-  if (via) doc.font("G6").fontSize(10).text(via, L, mm(10), { width: W, align: "right" });
-  doc.image(LOGO, L + W - mm(48.6), mm(16), { width: mm(48.6) });
-  doc.font("G6").fontSize(11.5).text(`Brasília, ${data}.`, L, mm(16) + mm(14), { width: W - mm(55) });
-  doc.y = mm(16) + mm(30); doc.x = L;
+  const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right, top = mm(13);
+  doc.image(LOGO, L, top, { width: mm(46) });
+  doc.font("G8").fontSize(12.5).fillColor(AZUL).text("Dr. Bruno O. Borges", L, top, { width: W, align: "right" });
+  doc.font("G6").fontSize(9.5).fillColor(CINZA).text("Médico Oftalmologista · CRM-DF 17877 · RQE 9314", { width: W, align: "right" })
+    .text("(61) 3033-6605 · (61) 98406-0001", { width: W, align: "right" });
+  const yR = top + mm(17);
+  doc.moveTo(L, yR).lineTo(L + W, yR).lineWidth(1.4).strokeColor(AZUL).stroke();
+  doc.font("G6").fontSize(10.5).fillColor(CINZA).text(`Brasília, ${dataExtenso(data)}`, L, yR + 7, { width: W, align: "right" });
+  if (via) doc.font("G8").fontSize(10).fillColor(AZUL).text(String(via).toUpperCase(), L, yR + 7, { characterSpacing: 0.8, lineBreak: false });
+  doc.fillColor("#000"); doc.x = L; doc.y = yR + mm(13);
 }
-// Rodapé em toda página. Desenhado com a margem de baixo zerada (senão o
-// pdfkit acha que o texto passou do fim da página e abre outra) e devolvendo
-// o cursor para onde estava.
+function tituloDoc(doc, titulo) {
+  const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
+  doc.font("G8").fontSize(15).fillColor(AZUL).text(String(titulo).toUpperCase(), L, doc.y, { width: W, align: "center", characterSpacing: 1.8 });
+  const y = doc.y + 4; doc.moveTo(L + W / 2 - mm(14), y).lineTo(L + W / 2 + mm(14), y).lineWidth(1).strokeColor(AZUL).stroke();
+  doc.fillColor("#000"); doc.x = L; doc.y = y + mm(6);
+}
+// Cartão do paciente: nome à esquerda; à direita, o que houver (idade, sexo, convênio…).
+function blocoPaciente(doc, nome, extras = []) {
+  const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right, y = doc.y;
+  const dir = extras.filter(Boolean), h = dir.length > 2 ? 46 : 38;
+  doc.roundedRect(L, y, W, h, 5).fill(FUNDO);
+  doc.font("G6").fontSize(8).fillColor(CINZA).text("PACIENTE", L + 12, y + 7, { characterSpacing: 1.2, lineBreak: false });
+  doc.font("G8").fontSize(13).fillColor("#000").text(String(nome || "").toUpperCase(), L + 12, y + 17, { width: W * 0.62, lineBreak: false, ellipsis: true });
+  dir.forEach((t, i) => doc.font("G6").fontSize(10).fillColor(CINZA).text(t, L + W * 0.5, y + 8 + i * 12.5, { width: W * 0.5 - 12, align: "right", lineBreak: false }));
+  doc.fillColor("#000"); doc.x = L; doc.y = y + h + mm(7);
+}
 function rodape(doc) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
-  const { x, y } = doc, mb = doc.page.margins.bottom;
+  const { x, y } = doc, mb = doc.page.margins.bottom, yr = doc.page.height - mm(15);
   doc.page.margins.bottom = 0;
-  doc.font("G6").fontSize(8.5).fillColor("#000")
-    .text("Instituto de Olhos Bruno Borges · Shopping Conjunto Nacional, sala 6017 · Brasília - DF · (61) 3033-6605 / (61) 98406-0001", L, doc.page.height - mm(12), { width: W, align: "center", lineBreak: false });
-  doc.page.margins.bottom = mb; doc.x = x; doc.y = y;
+  doc.moveTo(L, yr).lineTo(L + W, yr).lineWidth(0.5).strokeColor("#c9d3dc").stroke();
+  doc.font("G6").fontSize(8.5).fillColor(CINZA)
+    .text("Instituto de Olhos Bruno Borges · Shopping Conjunto Nacional, sala 6017 · Brasília - DF · (61) 3033-6605 · (61) 98406-0001", L, yr + 5, { width: W, align: "center", lineBreak: false });
+  doc.fillColor("#000"); doc.page.margins.bottom = mb; doc.x = x; doc.y = y;
 }
-// Selo verde (o mesmo da receita no visual iClinic): pílula verde com o ✓ e o texto.
-function seloVerde(doc, sx, sy, sw, texto) {
-  const sh = 15;
-  doc.roundedRect(sx, sy, sw, sh, sh / 2).fill("#2e9e45");
-  doc.circle(sx + 9, sy + sh / 2, 4.6).fill("#ffffff");
-  doc.moveTo(sx + 6.8, sy + sh / 2).lineTo(sx + 8.6, sy + sh / 2 + 1.9).lineTo(sx + 11.4, sy + sh / 2 - 2.1).lineWidth(1.3).strokeColor("#2e9e45").stroke();
-  doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#ffffff").text(texto, sx + 17, sy + 4, { width: sw - 20, lineBreak: false });
-  doc.fillColor("#000").strokeColor("#000");
-}
-function assinatura(doc, carimbo, rqe, selo) {
+// Assinatura: nome e registro centralizados + cartão verde de verificação (sem traço:
+// o documento é assinado digitalmente; o titular do certificado fica só na assinatura).
+function assinatura(doc, quando, rqe, selo) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
-  if (doc.y > doc.page.height - mm(62)) { novaPagina(doc); }
-  doc.y += mm(12);   // sem traço de assinatura: é documento assinado digitalmente (pedido dele, 22/10)
-  doc.font("G6").fontSize(11).text("Dr. Bruno O. Borges", L, doc.y, { width: W, align: "center" })
-    .text("Médico Oftalmologista", { width: W, align: "center" })
-    .text(rqe ? "CRM: 17877 - RQE: 9314" : "CRM: 17877", { width: W, align: "center" });
-  doc.moveDown(0.6);
-  doc.fontSize(8.5).text(carimbo, L, doc.y, { width: W, align: "center" });
-  if (selo) { const sw = mm(48), y = doc.y + mm(2); seloVerde(doc, L + (W - sw) / 2, y, sw, selo); doc.y = y + 15; }
+  if (doc.y > doc.page.height - doc.page.margins.bottom - mm(48)) { novaPagina(doc); doc.y = doc.page.margins.top + mm(10); }
+  doc.y += mm(10);
+  doc.font("G8").fontSize(12.5).fillColor("#000").text("Dr. Bruno O. Borges", L, doc.y, { width: W, align: "center" });
+  doc.font("G6").fontSize(10.5).fillColor(CINZA).text("Médico Oftalmologista", { width: W, align: "center" })
+    .text(rqe ? "CRM-DF 17877 · RQE 9314" : "CRM-DF 17877", { width: W, align: "center" });
+  const cw = mm(122), ch = 34, cx = L + (W - cw) / 2, cy = doc.y + mm(5);
+  doc.roundedRect(cx, cy, cw, ch, 8).fillAndStroke("#eef8f1", VERDE);
+  const r = 9, ox = cx + 12 + r, oy = cy + ch / 2;
+  doc.circle(ox, oy, r).fill(VERDE);
+  doc.moveTo(ox - 4, oy).lineTo(ox - 1, oy + 3.4).lineTo(ox + 4.6, oy - 3.4).lineWidth(1.8).strokeColor("#fff").stroke();
+  doc.font("G8").fontSize(10.5).fillColor(VERDE).text(`${selo || "Assinado digitalmente"} · ICP-Brasil`, ox + r + 8, cy + 6, { width: cw - 2 * r - 30, lineBreak: false });
+  doc.font("G6").fontSize(8.5).fillColor(CINZA).text(`Em ${quando}. Confira a assinatura em validar.iti.gov.br`, ox + r + 8, cy + 19, { width: cw - 2 * r - 30, lineBreak: false });
+  doc.fillColor("#000").strokeColor("#000"); doc.x = L; doc.y = cy + ch + 6;
 }
 
 function corpoOculos(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
-  doc.font("G6").fontSize(12.5).text(`Nome: ${d.nome}`, L, doc.y);
-  doc.moveDown(1.2);
-  doc.font("G8").fontSize(15).text(d.titulo, L, doc.y, { width: W, align: "center", characterSpacing: 0.8 });
-  doc.moveDown(0.8);
+  tituloDoc(doc, d.titulo);
+  blocoPaciente(doc, d.nome, []);
   const cols = [W * 0.34, W * 0.66 / 3, W * 0.66 / 3, W * 0.66 / 3], h = 22;
   const linhas = [["", "ESFÉRICO", "CILÍNDRO", "EIXO"], ...d.linhas];
   if (d.adicao) linhas.push(["ADIÇÃO", d.adicao]);
   let y = doc.y;
   for (const [i, ln] of linhas.entries()) {
     let x = L;
+    if (i === 0) doc.rect(L, y, W, h).fill(FUNDO).fillColor("#000");
+    doc.strokeColor("#9fb0c0");
     if (ln.length === 2) {   // adição ocupa as três colunas
       doc.rect(x, y, cols[0], h).stroke(); doc.rect(x + cols[0], y, W - cols[0], h).stroke();
       doc.font("G8").fontSize(11.5).text(ln[0], x + 6, y + 6, { width: cols[0] - 12 });
@@ -164,30 +188,25 @@ const viaDe = (m) => String((m && m.via) || "oftálmico");
 const usoDe = (m) => "USO " + viaDe(m).toUpperCase();
 function corpoColirios(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
-  doc.font("G6").fontSize(12.5).text(`Nome: ${d.nome}`, L, doc.y);
-  if (d.duas_vias) doc.text(`Idade: ${d.idade != null ? d.idade + " anos" : "________"}     Sexo: ${d.sexo || ""}`);
-  doc.moveDown(1.2);
-  doc.font("G8").fontSize(15).text("RECEITUÁRIO", L, doc.y, { width: W, align: "center", characterSpacing: 0.8 });
-  doc.moveDown(0.8);
+  tituloDoc(doc, "Receituário");
+  blocoPaciente(doc, d.nome, d.duas_vias ? [`Idade: ${d.idade_txt || (d.idade != null ? d.idade + " anos" : "________")}`, `Sexo: ${d.sexo || "________"}`] : []);
   d.meds.forEach((m, i) => {
     if (i === 0 || viaDe(m) !== viaDe(d.meds[i - 1])) {
-      if (i) doc.moveDown(0.3);
-      doc.font("G8").fontSize(11.5).text(usoDe(m), L, doc.y, { characterSpacing: 0.4 });
-      doc.moveDown(0.6);
+      if (i) doc.moveDown(0.4);
+      doc.font("G8").fontSize(10.5).fillColor(AZUL).text(usoDe(m), L, doc.y, { characterSpacing: 1 }); doc.fillColor("#000");
+      doc.moveDown(0.5);
     }
     const y = doc.y;
-    doc.font("G8").fontSize(12).text(`${i + 1}. ${m.med}`, L, y, { width: W - mm(35) });
+    doc.font("G8").fontSize(12).text(`${i + 1}.`, L, y, { width: mm(7) });
+    doc.font("G8").fontSize(12).text(m.med, L + mm(7), y, { width: W - mm(45) });
     const yFim = doc.y;
-    if (m.qtd) doc.font("G6").text(m.qtd, L + W - mm(35), y, { width: mm(35), align: "right" });
-    doc.font("G6").fontSize(11.5).text(m.pos, L + mm(5), Math.max(yFim, doc.y) + 2, { width: W - mm(5) });
+    if (m.qtd) doc.font("G6").fontSize(11).fillColor(CINZA).text(m.qtd, L + W - mm(36), y + 1, { width: mm(36), align: "right" }).fillColor("#000");
+    doc.font("G6").fontSize(11.5).text(m.pos, L + mm(7), Math.max(yFim, doc.y) + 2, { width: W - mm(7) });
     doc.moveDown(0.9);
   });
 }
-// Laudo de exame (Pentacam, topografia, paquimetria, microscopia) — mesmo conteúdo do
-// "Imprimir laudo" do prontuário, que já chega montado em blocos: título de olho (h2) e
-// tabelas (cabeçalho azul, linhas zebradas, valor alterado em vermelho). Telas do exame
-// vão depois da assinatura, a partir de página nova, 2 por página.
-const AZUL_LAUDO = "#1a3a5c";
+
+const AZUL_LAUDO = AZUL;
 function cabeLaudo(doc, need) { if (doc.y + need > doc.page.height - doc.page.margins.bottom - mm(8)) { novaPagina(doc); doc.y = doc.page.margins.top + mm(4); } }
 function tabelaLaudo(doc, t) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right, n = t.cab.length;
@@ -219,12 +238,8 @@ function tabelaLaudo(doc, t) {
 const semMu = (x) => String(x ?? "").replace(/\u03bc/g, "\u00b5");
 function corpoLaudo(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
-  doc.font("Helvetica-Bold").fontSize(11).fillColor("#000").text(String(d.nome || "").toUpperCase(), L, doc.y, { width: W });
-  doc.font("Helvetica").fontSize(9.5).text(`CPF: ${d.cpf || "Não informado"}`)
-    .text(`Data de nascimento: ${d.nascimento || "Não informado"}${d.idade != null ? ` (${d.idade} anos)` : ""}   |   Sexo: ${d.sexo || "Não informado"}`);
-  doc.moveDown(0.8);
-  doc.font("Helvetica-Bold").fontSize(12).fillColor(AZUL_LAUDO).text(String(d.titulo || "LAUDO"), L, doc.y, { width: W });
-  doc.font("Helvetica").fontSize(9.5).fillColor("#000").text(`Exame realizado em: ${d.data_exame || ""}`);
+  tituloDoc(doc, String(d.titulo || "Laudo").replace(/^LAUDO DE /i, "Laudo de "));
+  blocoPaciente(doc, d.nome, [`CPF: ${d.cpf || "não informado"}`, `Nascimento: ${d.nascimento || "não informado"}${d.idade != null ? ` (${d.idade} anos)` : ""}${d.sexo ? ` · ${d.sexo}` : ""}`, d.data_exame ? `Exame realizado em ${d.data_exame}` : ""]);
   if (d.metodo) { doc.moveDown(0.4); doc.text(semMu(d.metodo), { width: W }); }
   doc.moveDown(0.6);
   for (const b of d.blocos || []) {
@@ -253,9 +268,9 @@ function imagensLaudo(doc, imagens) {
 }
 function corpoAtestado(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
-  doc.moveDown(1.5);
-  doc.font("G8").fontSize(15).text(String(d.titulo || "ATESTADO MÉDICO"), L, doc.y, { width: W, align: "center", characterSpacing: 0.8 });
-  doc.moveDown(1.5);
+  doc.moveDown(0.8);
+  tituloDoc(doc, String(d.titulo || "Atestado médico"));
+  doc.moveDown(0.8);
   String(d.texto || "").split(/\n{2,}/).forEach((par) => {
     doc.font("G6").fontSize(12.5).text(par.replace(/\n/g, " ").trim(), L, doc.y, { width: W, align: "justify", lineGap: 5 });
     doc.moveDown(1);
@@ -264,11 +279,8 @@ function corpoAtestado(doc, d) {
 }
 function corpoPedido(doc, d, exames) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
-  doc.font("G6").fontSize(12.5).text(`Nome: ${d.nome}${d.idade != null ? `     Idade: ${d.idade} anos` : ""}`, L, doc.y);
-  if (d.convenio) doc.text(`Convênio: ${d.convenio}${d.carteirinha ? `     Carteirinha: ${d.carteirinha}` : ""}`);
-  doc.moveDown(1.2);
-  doc.font("G8").fontSize(15).text("SOLICITAÇÃO DE EXAMES", L, doc.y, { width: W, align: "center", characterSpacing: 0.8 });
-  doc.moveDown(0.8);
+  tituloDoc(doc, "Solicitação de exames");
+  blocoPaciente(doc, d.nome, [d.idade != null ? `${d.idade} anos` : "", d.convenio ? `Convênio: ${d.convenio}` : "", d.carteirinha ? `Carteirinha: ${d.carteirinha}` : ""]);
   doc.font("G6").fontSize(12).text("Solicito:", L, doc.y);
   doc.moveDown(0.4);
   exames.forEach((e, i) => {
@@ -284,92 +296,22 @@ function corpoPedido(doc, d, exames) {
   if (d.indicacao) { doc.moveDown(0.5); doc.font("G8").fontSize(11.5).text("Indicação clínica: ", L, doc.y, { continued: true }).font("G6").text(d.indicacao, { width: W }); }
 }
 
-// ===== RECEITA NO VISUAL DO iCLINIC (21/10/2026) ==============================
-// O Dr. Bruno quer a receita assinada igual à do iClinicRx: cabeçalho com os dados
-// dele à esquerda e o logo à direita, bloco do paciente, itens numerados e, no pé,
-// os dados do médico + "Assinada Digitalmente". Fonte Helvetica (como lá).
-const ENDERECO_UNIDADE = {
-  "Taguatinga": "QS 1 Rua 210 Lote 40, 615, B, Areal, CEP 71950-904",
-  "Conjunto Nacional": "Shopping Conjunto Nacional, sala 6017, 6º andar, Asa Norte",
-};
-function paginaIclinic(doc, d, via, meta) {
-  const L = mm(15), R = doc.page.width - mm(15), W = R - L, H = doc.page.height;
-  const cinzaLinha = "#cfd4da", azul = "#1f5b99";
-  const regua = (y) => doc.moveTo(L, y).lineTo(R, y).lineWidth(0.6).strokeColor(cinzaLinha).stroke();
-  const rotulo = (r, v, x, y, opt = {}) => { doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#000").text(r + " ", x, y, { continued: true, ...opt }).font("Helvetica").text(v, opt); };
-  // cabeçalho
-  doc.font("Helvetica").fontSize(9.5).fillColor("#000");
-  let y = mm(15);
-  for (const l of ["Dr. Bruno Borges", "Médico Oftalmologista", "CRM: 17877 - RQE: 9314", "Telefone: (61)3033-6605 / (61)98406-0001", "Shopping Conjunto Nacional sala 6017", "Brasília - DF"]) { doc.text(l, L, y, { lineBreak: false }); y += 12.2; }
-  doc.image(LOGO, R - mm(48), mm(19), { width: mm(48) });
-  y += 6; regua(y); y += 8;
-  // paciente
-  if (via) { doc.font("Helvetica-Bold").fontSize(9.5).text(via, L, y); y = doc.y + 1; }
-  rotulo("Nome do Paciente:", d.nome, L, y, { width: W }); y = doc.y + 1;
-  const idSexo = [d.idade_txt ? ["Idade:", d.idade_txt] : null, d.sexo ? ["Sexo:", d.sexo] : null].filter(Boolean);
-  if (idSexo.length) { doc.font("Helvetica-Bold").fontSize(9.5).text("", L, y, { continued: true });
-    idSexo.forEach(([r, v], i) => doc.font("Helvetica-Bold").text((i ? "   " : "") + r + " ", { continued: true }).font("Helvetica").text(v, { continued: i < idSexo.length - 1 }));
-    y = doc.y + 1; }
-  if (d.cpf) { rotulo("CPF:", d.cpf, L, y, { width: W }); y = doc.y + 1; }
-  if (d.endereco) { rotulo("Endereço: ", d.endereco, L, y, { width: W }); y = doc.y + 1; }
-  if (d.cidade) { rotulo("Cidade:", d.cidade, L, y, { width: W }); y = doc.y + 1; }
-  y += 10; regua(y); y += 16;
-  // itens
-  const variasVias = new Set(d.meds.map(viaDe)).size > 1;
-  d.meds.forEach((m, i) => {
-    if (variasVias && (i === 0 || viaDe(m) !== viaDe(d.meds[i - 1]))) {
-      doc.font("Helvetica-Bold").fontSize(9.5).fillColor(azul).text(usoDe(m), L + 4, y, { width: W - 4, characterSpacing: 0.4 });
-      y = doc.y + 8;
-    }
-    doc.font("Helvetica-Bold").fontSize(10.5).fillColor(azul).text(String(i + 1), L + 4, y, { width: 14 });
-    doc.fillColor("#000").text(`${m.med}${m.qtd ? " • " + m.qtd : ""}`, L + 32, y, { width: W - 32 });
-    doc.font("Helvetica").fontSize(10).fillColor("#000").text(m.pos, L + 32, doc.y + 2, { width: W - 32 });
-    y = doc.y + 14;
-  });
-  // pé (de baixo para cima)
-  const base = H - mm(22);
-  doc.font("Helvetica").fontSize(8.5).fillColor("#000").text(`Assinado digitalmente por ${meta.titular}`, L, base + 8, { width: W, lineBreak: false });
-  let yp = base - 62;
-  regua(yp - 6);
-  doc.font("Helvetica-Bold").fontSize(9).fillColor("#000").text("Prescrição Digital Emitida no IOBB", L, yp, { lineBreak: false });
-  doc.font("Helvetica").text("Emissão: ", L, yp + 13, { continued: true, lineBreak: false }).font("Helvetica-Bold").text(meta.emissao, { lineBreak: false });
-  // selo verde
-  const sx = L, sy = yp + 29, sw = mm(48), sh = 15;
-  seloVerde(doc, sx, sy, sw, "Assinada Digitalmente");
-  const mx = L + W * 0.42;
-  doc.fillColor("#000").font("Helvetica-Bold").fontSize(9).text("ID da Receita: ", mx, yp, { continued: true, lineBreak: false }).font("Helvetica").text(meta.id, { lineBreak: false });
-  if (d.codigo) doc.font("Helvetica-Bold").text("Código do Paciente: ", mx, yp + 13, { continued: true, lineBreak: false }).font("Helvetica").text(String(d.codigo), { lineBreak: false });
-  doc.font("Helvetica").text("Confira a assinatura em ", mx, yp + (d.codigo ? 26 : 13), { continued: true, lineBreak: false }).font("Helvetica-Bold").text("validar.iti.gov.br", { lineBreak: false });
-  let ym = yp - 6 - 58;
-  regua(ym - 6);
-  rotulo("Médico(a):", "Bruno Borges   ", L, ym, { lineBreak: false, continued: true }); doc.font("Helvetica-Bold").text("CRM: ", { continued: true }).font("Helvetica").text("17877   ", { continued: true }).font("Helvetica-Bold").text("UF: ", { continued: true }).font("Helvetica").text("DF");
-  rotulo("Endereço: ", ENDERECO_UNIDADE[d.unidade] || ENDERECO_UNIDADE["Conjunto Nacional"], L, ym + 13, { width: W });
-  rotulo("Cidade:", "Brasília - DF", L, ym + 26, { width: W });
-  rotulo("Telefone:", "(61) 3033-6605", L, ym + 39, { width: W });
-}
-
-// Monta o PDF, reserva o espaço da assinatura e assina com o .pfx.
 async function documentoAssinado(tipo, d, cert) {
   const agora = new Date();
   const quando = agora.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const carimbo = `Documento assinado digitalmente com certificado ICP-Brasil em ${quando}. Confira a assinatura em validar.iti.gov.br.`;
   const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : "Atestado" };
   const doc = new PDFDocument({ size: "A4", autoFirstPage: false, pdfVersion: "1.7",
     info: { Title: `${titulos[tipo] || "Documento"} - ${d.nome}`, Author: "Dr. Bruno O. Borges - CRM 17877", Creator: "IOBB - prontuário" } });
   doc.registerFont("G6", FONTE); doc.registerFont("G8", FONTE_NEGRITO);
   const partes = []; doc.on("data", (c) => partes.push(c));
   const fim = new Promise((ok, falha) => { doc.on("end", ok); doc.on("error", falha); });
-  if (tipo !== "colirios") doc.on("pageAdded", () => rodape(doc));
+  doc.on("pageAdded", () => rodape(doc));
   const paginas = [];   // [via, desenha]
-  if (tipo === "colirios") {
-    const meta = { titular: cert.titular, emissao: quando.replace(", ", " - "), id: crypto.randomBytes(5).toString("hex").toUpperCase().slice(0, 8) };
-    for (const via of (d.duas_vias ? ["1ª via Farmácia", "2ª via Paciente"] : [""])) {
-      doc.addPage({ size: "A4", margins: { top: 0, bottom: 0, left: 0, right: 0 } }); paginaIclinic(doc, d, via, meta);
-    }
-  } else if (tipo === "oculos") paginas.push(["", () => { corpoOculos(doc, d); assinatura(doc, carimbo, false, "Assinada Digitalmente"); }]);
-  else if (tipo === "pedido") (d.separado ? d.exames.map(e => [e]) : [d.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista); assinatura(doc, carimbo, true, "Assinado Digitalmente"); }]));
-  else if (tipo === "laudo") paginas.push(["", () => { corpoLaudo(doc, d); assinatura(doc, carimbo, true, "Assinado Digitalmente"); imagensLaudo(doc, d.imagens); }]);
-  else if (tipo === "atestado") paginas.push(["", () => { corpoAtestado(doc, d); assinatura(doc, carimbo, true, "Assinado Digitalmente"); }]);
+  if (tipo === "colirios") (d.duas_vias ? ["1ª via · farmácia", "2ª via · paciente"] : [""]).forEach(via => paginas.push([via, () => { corpoColirios(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]));
+  else if (tipo === "oculos") paginas.push(["", () => { corpoOculos(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]);
+  else if (tipo === "pedido") (d.separado ? d.exames.map(e => [e]) : [d.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista); assinatura(doc, quando, true, "Assinado digitalmente"); }]));
+  else if (tipo === "laudo") paginas.push(["", () => { corpoLaudo(doc, d); assinatura(doc, quando, true, "Assinado digitalmente"); imagensLaudo(doc, d.imagens); }]);
+  else if (tipo === "atestado") paginas.push(["", () => { corpoAtestado(doc, d); assinatura(doc, quando, true, "Assinado digitalmente"); }]);
   else throw new Error("tipo de documento desconhecido");
   for (const [via, desenha] of paginas) { novaPagina(doc); cabecalho(doc, d.data, via); desenha(); }
   // (a v4 já fecha a assinatura e o widget; fechar de novo duplica o ByteRange)
