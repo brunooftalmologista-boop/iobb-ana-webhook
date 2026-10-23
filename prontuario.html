@@ -825,7 +825,7 @@ ${v("rx-obs")?`<p class="sug" style="white-space:pre-wrap"><b>Observação:</b> 
 <h2>RECOMENDAÇÕES PARA AS ÓTICAS:</h2>
 <ul>${RECOMENDA_OTICA.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>
 <p class="prox">Data da próxima consulta: ${prox}</p>
-${assFolha(false,timbrado)}`;
+${assFolha(false,timbrado,"",true)}`;   // sem traço: o Dr. Bruno assina em cima do nome (23/10/2026)
   abrirReceita({titulo:`Receita de Óculos - ${nome}`,folhas:[corpo],timbrado,status});
 }
 // Janela de impressão das receitas (óculos e colírios): mesma folha, mesmo
@@ -838,7 +838,7 @@ const dataExt=d=>{ const m=String(d||"").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
 function cabFolha(timbrado,data,via,pacNaLinha){ return (timbrado?"":`<div class="topo"><img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges"><div class="med"><b>Dr. Bruno O. Borges</b><br>Médico Oftalmologista · CRM-DF 17877 · RQE 9314<br>(61) 3033-6605 · (61) 98406-0001</div></div>`)
   +`<div class="linha-data">${pacNaLinha?`<span class="pl">Paciente: <b>${esc(pacNaLinha)}</b></span>`:`<span class="v">${esc(via||"")}</span>`}<span>Brasília, ${esc(dataExt(data))}</span></div>`; }
 function pacFolha(nome,extras=[]){ const ex=extras.filter(Boolean); return `<div class="pac"><div><small>PACIENTE</small><b>${esc(nome)}</b></div>${ex.length?`<div class="ex">${ex.map(esc).join("<br>")}</div>`:""}</div>`; }
-function assFolha(rqe,timbrado,extra=""){ return `<div class="ass"${extra}><div class="linha"></div><b>Dr. Bruno O. Borges</b><br><small>Médico Oftalmologista<br>${rqe?"CRM-DF 17877 · RQE 9314":"CRM-DF 17877"}</small></div>`
+function assFolha(rqe,timbrado,extra="",semTraco=false){ return `<div class="ass"${extra}>${semTraco?"":`<div class="linha"></div>`}<b>Dr. Bruno O. Borges</b><br><small>Médico Oftalmologista<br>${rqe?"CRM-DF 17877 · RQE 9314":"CRM-DF 17877"}</small></div>`
   +(timbrado?"":`<div class="rod">Instituto de Olhos Bruno Borges · Shopping Conjunto Nacional, sala 6017 · Brasília - DF · (61) 3033-6605 · (61) 98406-0001</div>`); }
 function abrirReceita({titulo,folhas,timbrado,status}){
   const M=MARGENS_TIMBRADO;
