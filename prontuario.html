@@ -738,6 +738,9 @@ function avisos(){ const m=[]; for(const o of ["od","oe"]) if(v(`re-${o}-cil`)&&
   if(v("re-add")&&num(v("re-add"))>3.5) m.push("adição acima de +3,50, confira"); $("#ref-aviso").textContent=m.join(" · "); $("#ref-aviso").style.color=m.length?"var(--warn)":""; }
 
 /* ===== receita (modelo aprovado: logotipo ou papel timbrado) ===== */
+// Recomendações da receita de óculos (revisadas em 22/10/2026; iguais às do PDF assinado, em assinatura.js).
+const RECOMENDA_PACIENTE=["Faça seus óculos na ótica de sua preferência e traga-os para conferência antes de usá-los.", "Esta receita vale apenas para óculos: não serve para lentes de contato.", "Nos primeiros 15 dias de uso é normal um período de adaptação (leve tontura, dor de cabeça, sensação de chão desnivelado).", "Se o desconforto continuar após esse período, agende uma revisão sem custo.", "As lentes bifocais e multifocais exigem maior período de adaptação: use-as o tempo todo nos primeiros dias, pois isso acelera a adaptação, e, para enxergar degraus, abaixe a cabeça em vez de só os olhos.", "Faça revisão oftalmológica anual: após os 40 anos aumentam doenças silenciosas, como o glaucoma.", "Guarde esta receita: a ótica e o consultório podem precisar dela."];
+const RECOMENDA_OTICA=["A distância nasopupilar deve ser medida separadamente para cada olho, com pupilômetro ou sistema digital de medição.", "A altura do centro óptico deve ser aferida tanto para longe como para correção de perto; em multifocais, medir a altura com a armação já ajustada ao rosto.", "Manter a curva base da lente anterior sempre que possível.", "Para cada 2° de ângulo pantoscópico, descer 1 mm o centro óptico em relação ao centro pupilar (3 a 5 mm é o ideal). A armação deve ter ângulo pantoscópico de 7° a 12° e distância ao vértice habitual (12 a 14 mm).", "Em lentes personalizadas (free-form), informar ao laboratório DNP, altura, ângulo pantoscópico, distância ao vértice e curvatura da armação.", "Em casos de cilindros maiores que 2 dioptrias, indicar armações com a menor distância ao vértice possível.", "Em multifocais, manter as marcações de fábrica até a conferência no consultório.", "Dúvidas sobre a receita: contatar o consultório antes de confeccionar as lentes."];
 const SUGESTOES={
   multifocais:{padrao:"Varilux XR Series, Zeiss SmartLife Individual 3, Hoyalux iD MyStyle V+ ou Rodenstock Impression B.I.G. EXACT Sensitive",alto:"Varilux XR Series 1.67/1.74, Zeiss SmartLife Individual 3 1.67/1.74, Hoyalux iD MyStyle V+ 1.67/1.74 ou Rodenstock Impression B.I.G. EXACT Sensitive 1.67/1.74"},
   monofocais:{padrao:"Hoya Nulux com Hi-Vision LongLife, Zeiss ClearView com DuraVision Platinum ou Essilor com Crizal Sapphire",alto:"Hoya Nulux iDentity V+ 1.67/1.74 com No-Risk, Zeiss 1.67/1.74 com DuraVision Platinum ou Essilor Stylis 1.67/1.74 com Crizal Sapphire HR"},
@@ -794,21 +797,9 @@ ${v("rx-sug")?`<p class="sug">Lentes ${esc(TIPO_TEXTO[$("#rx-uso").value]||$("#r
 ${v("rx-obs")?`<p class="sug" style="white-space:pre-wrap"><b>Observação:</b> ${esc(v("rx-obs"))}</p>`:""}
 <h2>IMPORTANTE</h2>
 <h2>RECOMENDAÇÕES PARA O PACIENTE:</h2>
-<ul><li>Não deixe de conferir seus óculos com o médico oftalmologista antes de usá-los.</li>
-<li>Esta receita é adequada apenas para montagem de óculos.</li>
-<li>Nos 15 primeiros dias de uso efetivo é normal sentir tonturas, cefaléias, desníveis, etc.</li>
-<li>Se contudo, após esse período, ainda sentir algo, solicite uma revisão sem qualquer ônus.</li>
-<li>As lentes bifocais e multifocais exigem maior período de adaptação, cuidado ao subir e descer degraus.</li>
-<li>Um exame de vista é sempre oportuno antes de seu filho começar a estudar.</li>
-<li>Depois dos 40 anos, seja mais frequente ao consultório do seu oftalmologista.</li>
-<li>Faça seus óculos na ótica de sua preferência, trazendo-os depois para serem conferidos.</li></ul>
+<ul>${RECOMENDA_PACIENTE.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>
 <h2>RECOMENDAÇÕES PARA AS ÓTICAS:</h2>
-<ul><li>A distância nasopupilar deve ser medida separadamente para cada olho e com pupilômetro.</li>
-<li>A altura do centro óptico deve ser aferida tanto para longe como para correção de perto.</li>
-<li>A curva base da prescrição anterior deve ser sempre mantida.</li>
-<li>Para cada 2º graus de ângulo pantoscópico descer 1 mm do centro óptico da lente com relação ao centro pupilar ( 3 a 5 mm é o ideal ). A armação deve ter um ângulo pantoscópico correto (  7º a  12º graus ) e a distância ao vértice deve ser a habitual ( 1,5 cm ).</li>
-<li>Em casos de cilindros maiores que 2 dioptrias, indicar armações com a menor distância ao vértice possível.</li>
-<li>Sr. Óptico favor manter as marcas originais de fábrica em caso de multifocais.</li></ul>
+<ul>${RECOMENDA_OTICA.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>
 <p class="prox">Data da próxima consulta: ${prox}</p>
 ${assFolha(false,timbrado)}`;
   abrirReceita({titulo:`Receita de Óculos - ${nome}`,folhas:[corpo],timbrado,status});

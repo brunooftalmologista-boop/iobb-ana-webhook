@@ -63,23 +63,25 @@ function lerCertificado(pfx, senha) {
 }
 
 /* ---------------- montagem dos documentos ---------------- */
+// Revisadas com o Dr. Bruno em 22/10/2026 (as antigas eram de mais de 10 anos atrás).
 const RECOMENDA_PACIENTE = [
-  "Não deixe de conferir seus óculos com o médico oftalmologista antes de usá-los.",
-  "Esta receita é adequada apenas para montagem de óculos.",
-  "Nos 15 primeiros dias de uso efetivo é normal sentir tonturas, cefaléias, desníveis, etc.",
-  "Se contudo, após esse período, ainda sentir algo, solicite uma revisão sem qualquer ônus.",
-  "As lentes bifocais e multifocais exigem maior período de adaptação, cuidado ao subir e descer degraus.",
-  "Um exame de vista é sempre oportuno antes de seu filho começar a estudar.",
-  "Depois dos 40 anos, seja mais frequente ao consultório do seu oftalmologista.",
-  "Faça seus óculos na ótica de sua preferência, trazendo-os depois para serem conferidos.",
+  "Faça seus óculos na ótica de sua preferência e traga-os para conferência antes de usá-los.",
+  "Esta receita vale apenas para óculos: não serve para lentes de contato.",
+  "Nos primeiros 15 dias de uso é normal um período de adaptação (leve tontura, dor de cabeça, sensação de chão desnivelado).",
+  "Se o desconforto continuar após esse período, agende uma revisão sem custo.",
+  "As lentes bifocais e multifocais exigem maior período de adaptação: use-as o tempo todo nos primeiros dias, pois isso acelera a adaptação, e, para enxergar degraus, abaixe a cabeça em vez de só os olhos.",
+  "Faça revisão oftalmológica anual: após os 40 anos aumentam doenças silenciosas, como o glaucoma.",
+  "Guarde esta receita: a ótica e o consultório podem precisar dela.",
 ];
 const RECOMENDA_OTICA = [
-  "A distância nasopupilar deve ser medida separadamente para cada olho e com pupilômetro.",
-  "A altura do centro óptico deve ser aferida tanto para longe como para correção de perto.",
-  "A curva base da prescrição anterior deve ser sempre mantida.",
-  "Para cada 2º graus de ângulo pantoscópico descer 1 mm do centro óptico da lente com relação ao centro pupilar ( 3 a 5 mm é o ideal ). A armação deve ter um ângulo pantoscópico correto ( 7º a 12º graus ) e a distância ao vértice deve ser a habitual ( 1,5 cm ).",
+  "A distância nasopupilar deve ser medida separadamente para cada olho, com pupilômetro ou sistema digital de medição.",
+  "A altura do centro óptico deve ser aferida tanto para longe como para correção de perto; em multifocais, medir a altura com a armação já ajustada ao rosto.",
+  "Manter a curva base da lente anterior sempre que possível.",
+  "Para cada 2° de ângulo pantoscópico, descer 1 mm o centro óptico em relação ao centro pupilar (3 a 5 mm é o ideal). A armação deve ter ângulo pantoscópico de 7° a 12° e distância ao vértice habitual (12 a 14 mm).",
+  "Em lentes personalizadas (free-form), informar ao laboratório DNP, altura, ângulo pantoscópico, distância ao vértice e curvatura da armação.",
   "Em casos de cilindros maiores que 2 dioptrias, indicar armações com a menor distância ao vértice possível.",
-  "Sr. Óptico favor manter as marcas originais de fábrica em caso de multifocais.",
+  "Em multifocais, manter as marcações de fábrica até a conferência no consultório.",
+  "Dúvidas sobre a receita: contatar o consultório antes de confeccionar as lentes.",
 ];
 
 // ===== MOLDURA DOS DOCUMENTOS (visual único, 22/10/2026) =========================
@@ -131,8 +133,9 @@ function rodape(doc) {
 // o documento é assinado digitalmente; o titular do certificado fica só na assinatura).
 function assinatura(doc, quando, rqe, selo) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
-  if (doc.y > doc.page.height - doc.page.margins.bottom - mm(48)) { novaPagina(doc); doc.y = doc.page.margins.top + mm(10); }
-  doc.y += mm(10);
+  const sobra = doc.page.height - doc.page.margins.bottom - doc.y;
+  if (sobra < mm(40)) { novaPagina(doc); doc.y = doc.page.margins.top + mm(10); }
+  else doc.y += Math.min(mm(10), sobra - mm(40));   // aperta o respiro antes de mandar a assinatura sozinha para outra folha
   doc.font("G8").fontSize(12.5).fillColor("#000").text("Dr. Bruno O. Borges", L, doc.y, { width: W, align: "center" });
   doc.font("G6").fontSize(10.5).fillColor(CINZA).text("Médico Oftalmologista", { width: W, align: "center" })
     .text(rqe ? "CRM-DF 17877 · RQE 9314" : "CRM-DF 17877", { width: W, align: "center" });
@@ -174,13 +177,18 @@ function corpoOculos(doc, d) {
   doc.y = y + mm(5); doc.x = L;
   if (d.sugestao) { doc.font("G6").fontSize(11.5).text(d.sugestao, L, doc.y, { width: W }); doc.moveDown(0.8); }
   if (d.observacao) { doc.font("G8").fontSize(11.5).text("Observação: ", L, doc.y, { continued: true }).font("G6").text(d.observacao, { width: W }); doc.moveDown(0.8); }
+  // A receita de óculos tem de caber em UMA folha com a assinatura: a letra das
+  // recomendações diminui (10 → 8,5) até caber no espaço que sobrou.
+  const livre = doc.page.height - doc.page.margins.bottom - doc.y - mm(52);
+  const alt = (fs) => { doc.font("G6").fontSize(fs); return [...RECOMENDA_PACIENTE, ...RECOMENDA_OTICA].reduce((t, x) => t + doc.heightOfString(x, { width: W - 12 }), 0) + 3 * 11.5 * 1.6; };
+  const fs = [10, 9.5, 9, 8.5].find((f) => alt(f) <= livre) || 8.5;
   doc.font("G8").fontSize(11.5).text("IMPORTANTE", L, doc.y, { characterSpacing: 0.4 });
-  doc.moveDown(0.3).text("RECOMENDAÇÕES PARA O PACIENTE:", { characterSpacing: 0.4 });
-  doc.font("G6").fontSize(10).list(RECOMENDA_PACIENTE, { bulletRadius: 1.6, textIndent: 10, width: W });
-  doc.moveDown(0.5);
+  doc.moveDown(0.2).text("RECOMENDAÇÕES PARA O PACIENTE:", { characterSpacing: 0.4 });
+  doc.font("G6").fontSize(fs).list(RECOMENDA_PACIENTE, { bulletRadius: 1.6, textIndent: 10, width: W });
+  doc.moveDown(0.4);
   doc.font("G8").fontSize(11.5).text("RECOMENDAÇÕES PARA AS ÓTICAS:", L, doc.y, { characterSpacing: 0.4 });
-  doc.font("G6").fontSize(10).list(RECOMENDA_OTICA, { bulletRadius: 1.6, textIndent: 10, width: W });
-  doc.moveDown(0.8);
+  doc.font("G6").fontSize(fs).list(RECOMENDA_OTICA, { bulletRadius: 1.6, textIndent: 10, width: W });
+  doc.moveDown(0.6);
   doc.font("G8").fontSize(11.5).text(`Data da próxima consulta: ${d.proxima}`, L, doc.y);
 }
 // A receita vem agrupada pela via (o prontuário já ordena); sem via = colírio.
