@@ -127,7 +127,9 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
         <div class="campo"><label for="m-obs">Observação para o Dr. Bruno</label><textarea id="m-obs" placeholder="Ex.: usa óculos há 2 anos; trouxe exames de outra clínica"></textarea></div>
         <div class="linha" style="margin-top:10px"><div class="status" id="st-motivo"></div><button type="button" class="pri" id="salvar" style="flex:0 0 auto">Salvar</button></div>
 
-        <h3>Documentos do paciente</h3>
+        <h3>Dados do paciente</h3>
+        <!-- anexar/ler documentos retirado a pedido do Dr. Bruno (23/10/2026); os elementos ficam escondidos porque o script ainda os referencia -->
+        <div hidden>
         <div class="info" style="font-size:13.5px;color:var(--muted)">Anexe a carteirinha (frente e verso) e o RG ou CNH. Depois clique em “Ler documentos” uma vez: a leitura preenche os campos. Também dá para preencher à mão, sem documento. CPF e endereço são opcionais. Confira antes de salvar.</div>
         <div class="linha" style="margin-top:8px">
           <button type="button" class="pri" id="b-doc" style="flex:0 0 auto">Fotografar ou escolher arquivo</button>
@@ -140,6 +142,7 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
         </div>
         <div class="docs" id="docs"></div>
         <div class="status" id="st-doc"></div>
+        </div>
         <div id="dados-box">
           <div class="pend" id="doc-pend" hidden></div>
           <div class="grade">
@@ -164,7 +167,7 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
             <div class="campo"><label for="d-bairro">Bairro</label><input id="d-bairro"></div>
             <div class="campo"><label for="d-cidade">Cidade / UF</label><input id="d-cidade" placeholder="Brasília / DF"></div>
           </div>
-          <div class="linha" style="margin-top:10px"><div class="status" id="st-dados"></div><button type="button" id="b-ler" style="flex:0 0 auto">Ler documentos</button><button type="button" class="pri" id="b-dados" style="flex:0 0 auto">Conferi, salvar</button></div>
+          <div class="linha" style="margin-top:10px"><div class="status" id="st-dados"></div><button type="button" id="b-ler" hidden style="flex:0 0 auto">Ler documentos</button><button type="button" class="pri" id="b-dados" style="flex:0 0 auto">Conferi, salvar</button></div>
         </div>
 
         <h3>Exames realizados</h3>
