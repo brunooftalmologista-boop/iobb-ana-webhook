@@ -88,7 +88,7 @@ const RECOMENDA_OTICA = [
 // Todos os PDFs assinados (receitas, pedido, atestado, laudo) usam o mesmo desenho:
 // logo + dados do médico com filete azul no topo, título espaçado, cartão do paciente,
 // assinatura com o cartão verde de verificação e rodapé discreto com o endereço.
-const AZUL = "#1f4e79", CINZA = "#5b6670", FUNDO = "#f2f5f8", VERDE = "#2e9e45";
+const AZUL = "#1f4e79", CINZA = "#3d4852", FUNDO = "#f2f5f8", VERDE = "#2e9e45";
 const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 const dataExtenso = (d) => { const m = String(d || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${+m[1]} de ${MESES[+m[2] - 1]} de ${m[3]}` : String(d || ""); };
 function novaPagina(doc) { doc.addPage({ size: "A4", margins: { top: mm(16), bottom: mm(22), left: mm(20), right: mm(20) } }); }
@@ -102,13 +102,13 @@ function cabecalho(doc, data, via) {
   doc.moveTo(L, yR).lineTo(L + W, yR).lineWidth(1.4).strokeColor(AZUL).stroke();
   doc.font("G6").fontSize(10.5).fillColor(CINZA).text(`Brasília, ${dataExtenso(data)}`, L, yR + 7, { width: W, align: "right" });
   if (via) doc.font("G8").fontSize(10).fillColor(AZUL).text(String(via).toUpperCase(), L, yR + 7, { characterSpacing: 0.8, lineBreak: false });
-  doc.fillColor("#000"); doc.x = L; doc.y = yR + mm(13);
+  doc.fillColor("#000"); doc.x = L; doc.y = yR + mm(11);
 }
 function tituloDoc(doc, titulo) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   doc.font("G8").fontSize(15).fillColor(AZUL).text(String(titulo).toUpperCase(), L, doc.y, { width: W, align: "center", characterSpacing: 1.8 });
   const y = doc.y + 4; doc.moveTo(L + W / 2 - mm(14), y).lineTo(L + W / 2 + mm(14), y).lineWidth(1).strokeColor(AZUL).stroke();
-  doc.fillColor("#000"); doc.x = L; doc.y = y + mm(6);
+  doc.fillColor("#000"); doc.x = L; doc.y = y + mm(5);
 }
 // Cartão do paciente: nome à esquerda; à direita, o que houver (idade, sexo, convênio…).
 function blocoPaciente(doc, nome, extras = []) {
@@ -118,7 +118,7 @@ function blocoPaciente(doc, nome, extras = []) {
   doc.font("G6").fontSize(8).fillColor(CINZA).text("PACIENTE", L + 12, y + 7, { characterSpacing: 1.2, lineBreak: false });
   doc.font("G8").fontSize(13).fillColor("#000").text(String(nome || "").toUpperCase(), L + 12, y + 17, { width: W * 0.62, lineBreak: false, ellipsis: true });
   dir.forEach((t, i) => doc.font("G6").fontSize(10).fillColor(CINZA).text(t, L + W * 0.5, y + 8 + i * 12.5, { width: W * 0.5 - 12, align: "right", lineBreak: false }));
-  doc.fillColor("#000"); doc.x = L; doc.y = y + h + mm(7);
+  doc.fillColor("#000"); doc.x = L; doc.y = y + h + mm(5);
 }
 function rodape(doc) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
@@ -151,9 +151,8 @@ function assinatura(doc, quando, rqe, selo) {
 
 function corpoOculos(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
-  tituloDoc(doc, d.titulo);
-  blocoPaciente(doc, d.nome, []);
-  const cols = [W * 0.34, W * 0.66 / 3, W * 0.66 / 3, W * 0.66 / 3], h = 22;
+  tituloDoc(doc, d.titulo);   // paciente vai na linha da data (cabecalho): a receita de óculos é a mais cheia
+  const cols = [W * 0.34, W * 0.66 / 3, W * 0.66 / 3, W * 0.66 / 3], h = 20;
   const linhas = [["", "ESFÉRICO", "CILÍNDRO", "EIXO"], ...d.linhas];
   if (d.adicao) linhas.push(["ADIÇÃO", d.adicao]);
   let y = doc.y;
@@ -179,11 +178,10 @@ function corpoOculos(doc, d) {
   if (d.observacao) { doc.font("G8").fontSize(11.5).text("Observação: ", L, doc.y, { continued: true }).font("G6").text(d.observacao, { width: W }); doc.moveDown(0.8); }
   // A receita de óculos tem de caber em UMA folha com a assinatura: a letra das
   // recomendações diminui (10 → 8,5) até caber no espaço que sobrou.
-  const livre = doc.page.height - doc.page.margins.bottom - doc.y - mm(52);
-  const alt = (fs) => { doc.font("G6").fontSize(fs); return [...RECOMENDA_PACIENTE, ...RECOMENDA_OTICA].reduce((t, x) => t + doc.heightOfString(x, { width: W - 12 }), 0) + 3 * 11.5 * 1.6; };
-  const fs = [10, 9.5, 9, 8.5].find((f) => alt(f) <= livre) || 8.5;
-  doc.font("G8").fontSize(11.5).text("IMPORTANTE", L, doc.y, { characterSpacing: 0.4 });
-  doc.moveDown(0.2).text("RECOMENDAÇÕES PARA O PACIENTE:", { characterSpacing: 0.4 });
+  const livre = doc.page.height - doc.page.margins.bottom - doc.y - mm(45);
+  const alt = (fs) => { doc.font("G6").fontSize(fs); return [...RECOMENDA_PACIENTE, ...RECOMENDA_OTICA].reduce((t, x) => t + doc.heightOfString(x, { width: W - 12 }), 0) + 2 * 11.5 * 1.6; };
+  const fs = [11, 10.5, 10, 9.5, 9].find((f) => alt(f) <= livre) || 9;
+  doc.font("G8").fontSize(11.5).text("IMPORTANTE — RECOMENDAÇÕES PARA O PACIENTE:", L, doc.y, { characterSpacing: 0.4 });
   doc.font("G6").fontSize(fs).list(RECOMENDA_PACIENTE, { bulletRadius: 1.6, textIndent: 10, width: W });
   doc.moveDown(0.4);
   doc.font("G8").fontSize(11.5).text("RECOMENDAÇÕES PARA AS ÓTICAS:", L, doc.y, { characterSpacing: 0.4 });
@@ -342,7 +340,7 @@ async function documentoAssinado(tipo, d, cert) {
   doc.on("pageAdded", () => rodape(doc));
   const paginas = [];   // [via, desenha]
   if (tipo === "colirios") (d.duas_vias ? ["1ª via · farmácia", "2ª via · paciente"] : [""]).forEach(via => paginas.push([via, () => { corpoColirios(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]));
-  else if (tipo === "oculos") paginas.push(["", () => { corpoOculos(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]);
+  else if (tipo === "oculos") paginas.push([`Paciente: ${d.nome}`, () => { corpoOculos(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]);
   else if (tipo === "pedido") (d.separado ? d.exames.map(e => [e]) : [d.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista); assinatura(doc, quando, true, "Assinado digitalmente"); }]));
   else if (tipo === "laudo") paginas.push(["", () => { corpoLaudo(doc, d); assinatura(doc, quando, true, "Assinado digitalmente"); imagensLaudo(doc, d.imagens); }]);
   else if (tipo === "lentes") paginas.push(["", () => { corpoLentes(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]);

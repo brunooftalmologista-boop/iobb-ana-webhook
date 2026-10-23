@@ -810,9 +810,9 @@ function gerarPrescricao(assinar){
       linhas:[["OLHO DIREITO",r.od[0],r.od[1]==="—"?"":r.od[1],ex(r.od[2])],["OLHO ESQUERDO",r.oe[0],r.oe[1]==="—"?"":r.oe[1],ex(r.oe[2])]],
       adicao:mono?null:(r.add||"-"),sugestao:v("rx-sug")?`Lentes ${TIPO_TEXTO[$("#rx-uso").value]||$("#rx-uso").value} sugeridas: ${v("rx-sug")}`:"",observacao:v("rx-obs"),proxima:prox},status); }
   const corpo=`
-${cabFolha(timbrado,dataExame,"")}
+${cabFolha(timbrado,dataExame,"",timbrado?nome:"")}
 <h1>RECEITA DE ÓCULOS${perto?" PARA PERTO":""}</h1>
-${pacFolha(nome)}
+${timbrado?"":pacFolha(nome)}
 <table><thead><tr><th></th><th>ESFÉRICO</th><th>CILÍNDRO</th><th>EIXO</th></tr></thead><tbody>
 <tr><td>OLHO DIREITO</td>${cel(r.od[0],r.od[1]==="—"?"":r.od[1],r.od[2])}</tr>
 <tr><td>OLHO ESQUERDO</td>${cel(r.oe[0],r.oe[1]==="—"?"":r.oe[1],r.oe[2])}</tr>
@@ -820,8 +820,7 @@ ${mono?"":`<tr><td>ADIÇÃO</td><td colspan="3">${esc(r.add||"-")}</td></tr>`}
 </tbody></table>
 ${v("rx-sug")?`<p class="sug">Lentes ${esc(TIPO_TEXTO[$("#rx-uso").value]||$("#rx-uso").value)} sugeridas: ${esc(v("rx-sug"))}</p>`:""}
 ${v("rx-obs")?`<p class="sug" style="white-space:pre-wrap"><b>Observação:</b> ${esc(v("rx-obs"))}</p>`:""}
-<h2>IMPORTANTE</h2>
-<h2>RECOMENDAÇÕES PARA O PACIENTE:</h2>
+<h2>IMPORTANTE — RECOMENDAÇÕES PARA O PACIENTE:</h2>
 <ul>${RECOMENDA_PACIENTE.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>
 <h2>RECOMENDAÇÕES PARA AS ÓTICAS:</h2>
 <ul>${RECOMENDA_OTICA.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>
@@ -836,15 +835,15 @@ ${assFolha(false,timbrado)}`;
    logo e rodapé); em papel comum leva cabeçalho e rodapé. Traço para assinar à caneta. */
 const MESES_EXT=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 const dataExt=d=>{ const m=String(d||"").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m?`${+m[1]} de ${MESES_EXT[+m[2]-1]} de ${m[3]}`:String(d||""); };
-function cabFolha(timbrado,data,via){ return (timbrado?"":`<div class="topo"><img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges"><div class="med"><b>Dr. Bruno O. Borges</b><br>Médico Oftalmologista · CRM-DF 17877 · RQE 9314<br>(61) 3033-6605 · (61) 98406-0001</div></div>`)
-  +`<div class="linha-data"><span class="v">${esc(via||"")}</span><span>Brasília, ${esc(dataExt(data))}</span></div>`; }
+function cabFolha(timbrado,data,via,pacNaLinha){ return (timbrado?"":`<div class="topo"><img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges"><div class="med"><b>Dr. Bruno O. Borges</b><br>Médico Oftalmologista · CRM-DF 17877 · RQE 9314<br>(61) 3033-6605 · (61) 98406-0001</div></div>`)
+  +`<div class="linha-data">${pacNaLinha?`<span class="pl">Paciente: <b>${esc(pacNaLinha)}</b></span>`:`<span class="v">${esc(via||"")}</span>`}<span>Brasília, ${esc(dataExt(data))}</span></div>`; }
 function pacFolha(nome,extras=[]){ const ex=extras.filter(Boolean); return `<div class="pac"><div><small>PACIENTE</small><b>${esc(nome)}</b></div>${ex.length?`<div class="ex">${ex.map(esc).join("<br>")}</div>`:""}</div>`; }
 function assFolha(rqe,timbrado,extra=""){ return `<div class="ass"${extra}><div class="linha"></div><b>Dr. Bruno O. Borges</b><br><small>Médico Oftalmologista<br>${rqe?"CRM-DF 17877 · RQE 9314":"CRM-DF 17877"}</small></div>`
   +(timbrado?"":`<div class="rod">Instituto de Olhos Bruno Borges · Shopping Conjunto Nacional, sala 6017 · Brasília - DF · (61) 3033-6605 · (61) 98406-0001</div>`); }
 function abrirReceita({titulo,folhas,timbrado,status}){
   const M=MARGENS_TIMBRADO;
   const cssComum=`
-body{font:600 11.5pt/1.35 "EB Garamond",Garamond,"Times New Roman",serif;color:#000;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;-webkit-text-stroke:.25px #000}
+body{font:600 11.5pt/1.35 "EB Garamond",Garamond,"Times New Roman",serif;color:#000;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;-webkit-text-stroke:.3px #000}
 .barra{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px;background:#eef2f3;font:14px system-ui,sans-serif}
 .barra button{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid #1d6b74;background:#1d6b74;color:#fff;cursor:pointer}
 @media print{.barra{display:none}}
@@ -866,15 +865,16 @@ html,body{background:#fff;color-scheme:light}
 h1{color:#1f4e79;letter-spacing:.18em;font-size:1.25em}
 h1::after{content:"";display:block;width:28mm;margin:2mm auto 0;border-top:1.2px solid #1f4e79}
 .topo{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:3mm;border-bottom:1.6px solid #1f4e79}
-.topo img{width:46mm;height:auto} .topo .med{text-align:right;font-size:.82em;color:#5b6670;line-height:1.35} .topo .med b{font-size:1.25em;color:#1f4e79}
-.linha-data{display:flex;justify-content:space-between;align-items:baseline;margin:2.5mm 0 7mm;font-size:.92em;color:#5b6670}
+.topo img{width:46mm;height:auto} .topo .med{text-align:right;font-size:.82em;color:#2f3a44;line-height:1.35} .topo .med b{font-size:1.25em;color:#1f4e79}
+.linha-data{display:flex;justify-content:space-between;align-items:baseline;margin:2.5mm 0 7mm;font-size:.92em;color:#2f3a44}
+.linha-data .pl{color:#000;font-size:1.12em} .linha-data .pl b{text-transform:uppercase}
 .linha-data .v{color:#1f4e79;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 .pac{display:flex;justify-content:space-between;gap:6mm;align-items:center;background:#f2f5f8;border-radius:2mm;padding:2.5mm 4mm;margin:0 0 7mm}
-.pac small{display:block;font-size:.66em;letter-spacing:.14em;color:#5b6670} .pac b{font-size:1.12em;text-transform:uppercase}
-.pac .ex{text-align:right;font-size:.86em;color:#5b6670;line-height:1.35}
+.pac small{display:block;font-size:.66em;letter-spacing:.14em;color:#2f3a44} .pac b{font-size:1.12em;text-transform:uppercase}
+.pac .ex{text-align:right;font-size:.86em;color:#2f3a44;line-height:1.35}
 h3.uso{color:#1f4e79;font-size:.92em;letter-spacing:.1em}
-.ass{color:#000} .ass small{color:#5b6670;font-size:.9em}
-.rod{margin-top:12mm;padding-top:2mm;border-top:.6px solid #c9d3dc;text-align:center;font-size:.72em;color:#5b6670}
+.ass{color:#000} .ass small{color:#2f3a44;font-size:.9em}
+.rod{margin-top:12mm;padding-top:2mm;border-top:.6px solid #c9d3dc;text-align:center;font-size:.72em;color:#2f3a44}
 table th{background:#f2f5f8} table th,table td{border-color:#9fb0c0}
 @media print{.pac,table th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
   const cssLivre=`
@@ -896,8 +896,10 @@ html,body{background:#9aa5ab}
 .conteudo{height:100%;overflow:hidden;font-size:10.5pt;display:flex;flex-direction:column}
 .cab{justify-content:flex-end;margin-bottom:5mm}
 .nome{margin:0 0 4mm} h1{margin:0 0 4mm} table{margin-bottom:4mm} th,td{padding:4px 8px;font-size:1.05em}
-.sug{margin:0 0 3mm} h2{margin:2.5mm 0 1mm} ul{margin:0;padding-left:5mm;font-size:.86em} li{margin:0 0 .6mm}
-.prox{margin:4mm 0 0} .ass{margin-top:auto;padding-top:8mm}`;
+.sug{margin:0 0 2mm} h2{margin:1.6mm 0 .5mm} ul{margin:0;padding-left:5mm;font-size:.95em;line-height:1.28} li{margin:0}
+.prox{margin:2mm 0 0} .ass{margin-top:auto;padding-top:6mm}
+.linha-data{margin:0 0 3mm} h1{margin:0 0 3mm} h1::after{margin-top:1mm} .pac{margin:0 0 3.5mm;padding:1.6mm 3.5mm} table{margin-bottom:3mm} th,td{padding:2px 8px}
+.ass{padding-top:3mm}`;
   // Se o conteúdo não couber na área livre do timbrado, a fonte encolhe um pouco
   // até caber — nunca invade o logotipo nem o rodapé.
   const ajusta=`<script>(function(){document.querySelectorAll('.conteudo').forEach(function(c){var f=10.5;
