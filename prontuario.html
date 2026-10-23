@@ -1270,13 +1270,17 @@ document.addEventListener("click",async e=>{ const b=e.target.closest("[data-wpp
    cada lente — conferir com a caixa/teste. */
 // [nome, descarte, CB, diâmetro, marca, limites]. Alcon primeiro (o pacote da clínica é Alcon,
 // 23/10/2026); CB/diâmetro das Alcon conferidos nas fichas técnicas; as demais, de memória.
-// limites: maxCil (cilindro máximo fabricado) e eixos(esf,cil) → lista de eixos fabricados.
+// limites: cils (cilindros fabricados), passo do eixo (10° ou 5°), eixos(esf,cil) → eixos fabricados, maior (lente para cilindro alto).
 const P1A_EIXOS=(esf,cil)=>cil>=2.24?[10,20,160,170,180]:esf>0?[10,20,70,80,90,100,110,160,170,180]:null;
+const CIL_ATE=m=>[0.75,1.25,1.75,2.25,2.75].filter(c=>c<=m+0.001);
+const CIL_XR=[2.75,3.25,3.75,4.25,4.75,5.25,5.75];
 const LC_LENTES={
   esferica:[["Precision1","diária","8,3","14,2","Alcon"],["Dailies Total1","diária","8,5","14,1","Alcon"],["Air Optix plus HydraGlyde","mensal","8,6","14,2","Alcon"],["Air Optix Night & Day Aqua","mensal","8,6","13,8","Alcon"],
-    ["Acuvue Oasys MAX 1-Day","diária","8,5","14,3","Outras"],["1-Day Acuvue Oasys","diária","8,5","14,3","Outras"],["1-Day Acuvue Moist","diária","8,5","14,2","Outras"],["Acuvue Oasys","quinzenal","8,4","14,0","Outras"],["MyDay","diária","8,4","14,2","Outras"],["Biofinity","mensal","8,6","14,0","Outras"],["Bausch + Lomb Ultra","mensal","8,5","14,2","Outras"]],
-  torica:[["Precision1 for Astigmatism","diária","8,5","14,5","Alcon",{maxCil:2.25,eixos:P1A_EIXOS}],["Air Optix plus HydraGlyde for Astigmatism","mensal","8,7","14,5","Alcon",{maxCil:2.25}],
-    ["1-Day Acuvue Oasys for Astigmatism","diária","8,5","14,3","Outras"],["1-Day Acuvue Moist for Astigmatism","diária","8,5","14,5","Outras"],["Acuvue Oasys for Astigmatism","quinzenal","8,6","14,5","Outras"],["Biofinity Toric","mensal","8,7","14,5","Outras"],["Bausch + Lomb Ultra for Astigmatism","mensal","8,6","14,5","Outras"]],
+    ["Acuvue Oasys MAX 1-Day","diária","8,5","14,3","Outras"],["1-Day Acuvue Oasys","diária","8,5","14,3","Outras"],["1-Day Acuvue Moist","diária","8,5","14,2","Outras"],["Acuvue Oasys","quinzenal","8,4","14,0","Outras"],["MyDay","diária","8,4","14,2","Outras"],["Biofinity","mensal","8,6","14,0","Outras"],["Biofinity XR (graus altos, até ±20,00)","mensal","8,6","14,0","Outras"],["Bausch + Lomb Ultra","mensal","8,5","14,2","Outras"]],
+  torica:[["Precision1 for Astigmatism","diária","8,5","14,5","Alcon",{cils:CIL_ATE(2.25),eixos:P1A_EIXOS}],["Air Optix plus HydraGlyde for Astigmatism","mensal","8,7","14,5","Alcon",{cils:CIL_ATE(2.25)}],
+    ["Biofinity Toric","mensal","8,7","14,5","Outras",{cils:CIL_ATE(2.25),passo:5,maior:"Biofinity XR Toric"}],["Biofinity XR Toric (cilindro −2,75 a −5,75)","mensal","8,7","14,5","Outras",{cils:CIL_XR,passo:5}],
+    ["MyDay toric","diária","8,6","14,3","Outras",{cils:CIL_ATE(2.25)}],["Acuvue Oasys for Astigmatism","quinzenal","8,6","14,5","Outras",{cils:CIL_ATE(2.75)}],["1-Day Acuvue Oasys for Astigmatism","diária","8,5","14,3","Outras",{cils:CIL_ATE(2.75)}],
+    ["1-Day Acuvue Moist for Astigmatism","diária","8,5","14,5","Outras",{cils:CIL_ATE(2.25),eixos:()=>[10,20,60,70,80,90,100,110,120,160,170,180]}],["Bausch + Lomb Ultra for Astigmatism","mensal","8,6","14,5","Outras",{cils:CIL_ATE(2.75)}]],
   multifocal:[["Air Optix plus HydraGlyde Multifocal","mensal","8,6","14,2","Alcon"],["Dailies AquaComfort Plus Multifocal","diária","8,7","14,0","Alcon"],
     ["1-Day Acuvue Moist Multifocal","diária","8,4","14,3","Outras"],["Acuvue Oasys Multifocal","quinzenal","8,4","14,3","Outras"],["Biofinity Multifocal","mensal","8,6","14,0","Outras"],["Bausch + Lomb Ultra Multifocal","mensal","8,5","14,2","Outras"]]};
 const LC_CILS=[0.75,1.25,1.75,2.25,2.75];
@@ -1289,10 +1293,12 @@ function lcRefr(o){ let S=num(v(`re-${o}-esf`)), C=num(v(`re-${o}-cil`)), A=pars
 function lcTipoAuto(){ for(const o of ["od","oe"]){ const r=lcRefr(o); if(r&&Math.abs(lcVert(r.S+r.C)-lcVert(r.S))>=0.625) return "torica"; } return "esferica"; }
 function lcTipo(){ return v("lc-tipo")||lcTipoAuto(); }
 function lcCalcula(o,tipo,lim){ const r=lcRefr(o); if(!r) return null; const m1=lcVert(r.S), m2=lcVert(r.S+r.C), cyl=m2-m1; const out={};
-  if(tipo==="torica"&&Math.abs(cyl)>=0.625){ const esf=lcArred(m1); out.esf=lcFmt(esf,true); const cils=LC_CILS.filter(x=>!lim?.maxCil||x<=lim.maxCil+0.001), c=cils.reduce((a,b)=>Math.abs(b-Math.abs(cyl))<Math.abs(a-Math.abs(cyl))?b:a);
-    out.cil=lcFmt(-c); let ax=Math.round(r.A/10)*10; if(ax<=0) ax=180; if(ax>180) ax-=180; out.eixo=String(ax)+"º";
+  if(tipo==="torica"&&Math.abs(cyl)>=0.625){ const esf=lcArred(m1); out.esf=lcFmt(esf,true); const cils=lim?.cils||LC_CILS, cmax=Math.max(...cils), cmin=Math.min(...cils), c=cils.reduce((a,b)=>Math.abs(b-Math.abs(cyl))<Math.abs(a-Math.abs(cyl))?b:a);
+    const passo=lim?.passo||10; out.cil=lcFmt(-c); let ax=Math.round(r.A/passo)*passo; if(ax<=0) ax=180; if(ax>180) ax-=180; out.eixo=String(ax)+"º";
     const ok=lim?.eixos?.(esf,c); if(ok&&!ok.includes(ax)) out.avisoLente=`${o.toUpperCase()}: esta lente não é fabricada no eixo ${ax}º com cilindro ${lcFmt(-c)}${esf>0?" e grau positivo":""} (só ${ok.join(", ")}º); considere outra tórica.`;
-    if(lim?.maxCil&&Math.abs(cyl)>lim.maxCil+0.375) out.avisoLente=`${o.toUpperCase()}: cilindro de ${Math.abs(cyl).toFixed(2).replace(".",",")} passa do máximo desta lente (${lcFmt(-lim.maxCil)}); considere outra tórica.`; if(Math.abs(cyl)>3) out.aviso=`${o.toUpperCase()}: cilindro de ${Math.abs(cyl).toFixed(2).replace(".",",")} no plano da córnea passa do que as tóricas comuns fazem (até 2,75): considerar lente tórica personalizada ou rígida.`; }
+    if(Math.abs(cyl)>cmax+0.375) out.avisoLente=`${o.toUpperCase()}: cilindro de ${Math.abs(cyl).toFixed(2).replace(".",",")} passa do máximo desta lente (${lcFmt(-cmax)})${lim?.maior?`; a ${lim.maior} vai até −5,75`:"; considere outra tórica"}.`;
+    if(Math.abs(cyl)<cmin-0.375) out.avisoLente=`${o.toUpperCase()}: cilindro de ${Math.abs(cyl).toFixed(2).replace(".",",")} é menor que o mínimo desta lente (${lcFmt(-cmin)}): use a Biofinity Toric comum.`; if(Math.abs(cyl)>3&&!lim?.cils?.includes(5.75)) out.aviso=`${o.toUpperCase()}: cilindro de ${Math.abs(cyl).toFixed(2).replace(".",",")} no plano da córnea passa do que as tóricas comuns fazem (até 2,75): Biofinity XR Toric (até −5,75), lente personalizada ou rígida.`;
+    if(Math.abs(cyl)>6.125) out.aviso=`${o.toUpperCase()}: cilindro de ${Math.abs(cyl).toFixed(2).replace(".",",")} passa até da Biofinity XR Toric: considerar lente personalizada ou rígida.`; }
   else { out.esf=lcFmt(lcArred(m1+cyl/2),true); out.cil=""; out.eixo=""; if(Math.abs(cyl)>=0.625) out.aviso=`${o.toUpperCase()}: astigmatismo de ${Math.abs(cyl).toFixed(2).replace(".",",")} vai como equivalente esférico${tipo==="multifocal"?" (multifocal tórica é pouco disponível)":""}: a visão pode ficar menos nítida.`; }
   if(tipo==="multifocal"){ const ad=num(v("re-add")); out.add=ad?`${ad<=1.25?"LOW":ad<=2?"MED":"HIGH"} (${lcFmt(ad)})`:""; } else out.add="";
   return out; }
@@ -1313,7 +1319,7 @@ function lcListaLentes(){ const t=lcTipo(), sel=$("#lc-lente"), lst=LC_LENTES[t]
   if(sel.dataset.tipo!==t){ sel.innerHTML=html; sel.dataset.tipo=t; const g=v("lc-lente-v"), k=lst.findIndex(l=>l[0]===g); sel.value=g==="outra"?"outra":k>=0?String(k):"0"; }
   $("#lc-outra").hidden=sel.value!=="outra"; }
 function calcLC(){ if(v("lc-on")!=="1") return; lcListaLentes(); const t=lcTipo(), ed=lcEditados(), l=lcLenteSel(), avisos=[];
-  for(const o of ["od","oe"]){ const r=lcCalcula(o,t,l?.lim)||{esf:"",cil:"",eixo:"",add:""}; if(r.aviso) avisos.push(r.aviso); if(r.avisoLente) avisos.push(r.avisoLente);
+  for(const o of ["od","oe"]){ const r=lcCalcula(o,t,l?.lim)||{esf:"",cil:"",eixo:"",add:""}; if(r.aviso) avisos.push(r.aviso); else if(r.avisoLente) avisos.push(r.avisoLente);
     const vals={esf:r.esf,cil:r.cil,eixo:r.eixo,add:r.add,cb:l?.cb||"",dia:l?.dia||""};
     for(const [k,val] of Object.entries(vals)){ const id=`lc-${o}-${k}`; if(!ed.has(id)) $("#"+id).value=val||""; } }
   if(!ed.has("lc-orient")) $("#lc-orient").value=lcOrientPadrao(l?.descarte||"");
