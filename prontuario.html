@@ -233,6 +233,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
           <button type="button" data-ir="s-exames" data-at hidden>Exames complementares</button>
           <button type="button" data-ir="s-hd" data-at hidden>Hipótese diagnóstica / Conduta</button>
           <button type="button" data-ir="s-presc" data-at hidden>Prescrição</button>
+          <button type="button" data-ir="s-docs" data-at hidden>Relatórios e atestados</button>
           <button type="button" data-ir="s-evolucao" data-at hidden>Evolução</button>
           <button type="button" data-ir="s-anexos" data-at hidden>Imagens e anexos</button>
           <button type="button" data-ir="s-iclinic" data-at hidden>Texto do atendimento</button>
@@ -401,24 +402,6 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
                 <div class="row"><label>Olhos <select id="ex-olho" style="width:auto"><option>Ambos os olhos</option><option>Olho direito</option><option>Olho esquerdo</option></select></label><label style="gap:6px"><input type="checkbox" id="ex-separado" style="width:auto"> Um exame por folha (convênio)</label></div>
                 <div class="row"><button type="button" class="pri" id="gerar-ped">Imprimir pedido de exames</button><button type="button" id="assinar-ped">🔏 PDF assinado</button><span class="status" id="status-ped"></span></div>
               </div>
-              <div class="rx" id="at-bloco">
-                <span class="rot" style="margin:0">Atestado / declaração <span class="hint">— o texto se monta sozinho; dá para editar antes de imprimir</span></span>
-                <div class="row" style="flex-wrap:wrap"><label>Tipo <select id="at-tipo" style="width:auto"><option value="comparecimento">Declaração de comparecimento</option><option value="afastamento">Atestado de afastamento</option><option value="livre">Texto livre</option></select></label></div>
-                <div class="row" id="at-comp" style="flex-wrap:wrap"><label>Turno <select id="at-turno" style="width:auto"><option value="">pelo horário</option><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option><option value="manha-tarde">Manhã e tarde</option></select></label><label class="at-hora">Das <input id="at-de" placeholder="14h00" style="width:80px"></label><label class="at-hora">às <input id="at-ate" placeholder="15h00" style="width:80px"></label><label style="flex:1 1 240px">Acompanhante <input id="at-acomp" placeholder="opcional — nome de quem acompanhou"></label></div>
-                <div class="row" id="at-afast" hidden style="flex-wrap:wrap"><label>Dias <input id="at-dias" inputmode="numeric" style="width:64px"></label><label>A partir de <input id="at-inicio" type="date" style="width:auto"></label><label style="gap:6px"><input type="checkbox" id="at-cid" style="width:auto"> Incluir o CID (só com autorização do paciente)</label></div>
-                <div class="campo"><label for="at-txt">Texto</label><textarea id="at-txt" rows="4" style="min-height:80px;font-size:14px"></textarea></div>
-                <div class="row"><button type="button" class="pri" id="gerar-at">Imprimir</button><button type="button" id="assinar-at">🔏 PDF assinado</button><span class="status" id="status-at"></span></div>
-              </div>
-              <div class="rx" id="lo-bloco">
-                <div class="row" style="align-items:center"><span class="rot" style="margin:0">Laudo oftalmológico</span><button type="button" class="link" id="lo-abrir">+ laudo oftalmológico</button><input type="hidden" id="lo-on"><input type="hidden" id="lo-editado"></div>
-                <div id="lo-corpo" hidden style="display:grid;gap:8px">
-                  <div class="hint">Montado com os dados desta consulta. Biomicroscopia e fundoscopia normais saem como "dentro da normalidade"; o que estiver alterado sai escrito. Dá para editar o texto; uma linha terminada em ":" vira título.</div>
-                  <div class="campo"><label for="lo-txt">Texto do laudo</label><textarea id="lo-txt" rows="12" style="font-size:14px"></textarea></div>
-                  <div class="row"><button type="button" class="link" id="lo-refazer">↻ remontar com os dados da consulta</button></div>
-                  <div class="campo"><label for="lo-concl">Conclusão <span class="hint">— sai em destaque no fim</span></label><input id="lo-concl" placeholder="Ex.: Necessita de óculos para longe e multifocais, por motivo de aumento de graus."></div>
-                  <div class="row"><button type="button" class="pri" id="gerar-lo">Imprimir laudo</button><button type="button" id="assinar-lo">🔏 PDF assinado</button><span class="status" id="status-lo"></span></div>
-                </div>
-              </div>
               <div class="campo"><label for="cd-txt">Observações da conduta (um item por linha)</label><textarea id="cd-txt" rows="3" placeholder="Orientações, colírios, encaminhamentos…"></textarea></div>
               <div class="row"><label>Retorno <select id="retorno"><option value="">—</option><option>7 dias</option><option>30 dias</option><option>3 meses</option><option>6 meses</option><option>1 ano</option></select></label></div>
             </div>
@@ -467,6 +450,41 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
                 <button type="button" class="link" id="col-mais" style="justify-self:start;padding-left:0">+ outro medicamento</button>
                 <div class="row"><label style="gap:6px"><input type="checkbox" id="col-2vias" style="width:auto"> Antibiótico (2 vias, com idade e sexo)</label><label id="col-sexo-l" hidden>Sexo <select id="col-sexo" style="width:auto"><option value="">—</option><option>Feminino</option><option>Masculino</option></select></label></div>
                 <div class="row"><button type="button" class="pri" id="gerar-col">Imprimir receita de colírios</button><button type="button" id="assinar-col">🔏 PDF assinado</button><span class="status" id="status-col"></span></div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Relatórios e atestados (23/10/2026): documentos que não são prescrição -->
+          <article class="folha-sec" id="s-docs">
+            <div class="t"><span>Relatórios e atestados</span></div>
+            <div class="c">
+              <div class="rx" id="at-bloco">
+                <span class="rot" style="margin:0">Atestado / declaração <span class="hint">— o texto se monta sozinho; dá para editar antes de imprimir</span></span>
+                <div class="row" style="flex-wrap:wrap"><label>Tipo <select id="at-tipo" style="width:auto"><option value="comparecimento">Declaração de comparecimento</option><option value="afastamento">Atestado de afastamento</option><option value="livre">Texto livre</option></select></label></div>
+                <div class="row" id="at-comp" style="flex-wrap:wrap"><label>Turno <select id="at-turno" style="width:auto"><option value="">pelo horário</option><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option><option value="manha-tarde">Manhã e tarde</option></select></label><label class="at-hora">Das <input id="at-de" placeholder="14h00" style="width:80px"></label><label class="at-hora">às <input id="at-ate" placeholder="15h00" style="width:80px"></label><label style="flex:1 1 240px">Acompanhante <input id="at-acomp" placeholder="opcional — nome de quem acompanhou"></label></div>
+                <div class="row" id="at-afast" hidden style="flex-wrap:wrap"><label>Dias <input id="at-dias" inputmode="numeric" style="width:64px"></label><label>A partir de <input id="at-inicio" type="date" style="width:auto"></label><label style="gap:6px"><input type="checkbox" id="at-cid" style="width:auto"> Incluir o CID (só com autorização do paciente)</label></div>
+                <div class="campo"><label for="at-txt">Texto</label><textarea id="at-txt" rows="4" style="min-height:80px;font-size:14px"></textarea></div>
+                <div class="row"><button type="button" class="pri" id="gerar-at">Imprimir</button><button type="button" id="assinar-at">🔏 PDF assinado</button><span class="status" id="status-at"></span></div>
+              </div>
+              <div class="rx" id="lo-bloco">
+                <div class="row" style="align-items:center"><span class="rot" style="margin:0">Laudo oftalmológico</span><button type="button" class="link" id="lo-abrir">+ laudo oftalmológico</button><input type="hidden" id="lo-on"><input type="hidden" id="lo-editado"></div>
+                <div id="lo-corpo" hidden style="display:grid;gap:8px">
+                  <div class="hint">Montado com os dados desta consulta. Biomicroscopia e fundoscopia normais saem como "dentro da normalidade"; o que estiver alterado sai escrito. Dá para editar o texto; uma linha terminada em ":" vira título.</div>
+                  <div class="campo"><label for="lo-txt">Texto do laudo</label><textarea id="lo-txt" rows="12" style="font-size:14px"></textarea></div>
+                  <div class="row"><button type="button" class="link" id="lo-refazer">↻ remontar com os dados da consulta</button></div>
+                  <div class="campo"><label for="lo-concl">Conclusão <span class="hint">— sai em destaque no fim</span></label><input id="lo-concl" placeholder="Ex.: Necessita de óculos para longe e multifocais, por motivo de aumento de graus."></div>
+                  <div class="row"><button type="button" class="pri" id="gerar-lo">Imprimir laudo</button><button type="button" id="assinar-lo">🔏 PDF assinado</button><span class="status" id="status-lo"></span></div>
+                </div>
+              </div>
+              <div class="rx" id="ro-bloco">
+                <div class="row" style="align-items:center"><span class="rot" style="margin:0">Relatório para a ótica <span class="hint">— não adaptação aos óculos</span></span><button type="button" class="link" id="ro-abrir">+ relatório para a ótica</button><input type="hidden" id="ro-on"><input type="hidden" id="ro-editado"></div>
+                <div id="ro-corpo" hidden style="display:grid;gap:8px">
+                  <div class="campo"><label for="ro-queixa">Queixa do paciente <span class="hint">(opcional)</span></label><input id="ro-queixa" placeholder="Ex.: visão embaçada para perto e tontura ao andar"></div>
+                  <div><span class="rot">Motivo(s) <span class="hint">— cada um acrescenta um parágrafo pronto</span></span><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:4px 12px"><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="dnp" style="width:auto;margin-top:3px"> Distância nasopupilar / centração</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="altura" style="width:auto;margin-top:3px"> Altura de montagem (multifocal)</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="grau" style="width:auto;margin-top:3px"> Lente não confere com a receita</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="eixo" style="width:auto;margin-top:3px"> Eixo do cilindro divergente</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="curva" style="width:auto;margin-top:3px"> Curva base diferente da anterior</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="armacao" style="width:auto;margin-top:3px"> Ajuste da armação</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="corredor" style="width:auto;margin-top:3px"> Campo de visão estreito no multifocal</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="tipo" style="width:auto;margin-top:3px"> Troca do tipo de lente</label></div></div>
+                  <label style="gap:6px"><input type="checkbox" id="ro-grau" checked style="width:auto"> Incluir o grau desta receita no relatório</label>
+                  <div class="campo"><label for="ro-txt">Texto do relatório (pode editar)</label><textarea id="ro-txt" rows="9" style="font-size:14px"></textarea></div>
+                  <div class="row"><button type="button" class="pri" id="gerar-ro">Imprimir relatório</button><button type="button" id="assinar-ro">🔏 PDF assinado</button><span class="status" id="status-ro"></span></div>
+                </div>
               </div>
             </div>
           </article>
@@ -1406,6 +1424,41 @@ async function carregaPedidosLC(){ const sec=$("#sec-lentes"); sec.hidden=true; 
     $("#ped-lc").innerHTML=ps.map(p=>{ const pg=(p.pagamentos||[]).reduce((s,x)=>s+Number(x.valor||0),0), f=Math.max(0,Number(p.valor_total||0)-pg);
       return `<div style="padding:6px 0;border-bottom:1px dashed var(--line)"><b>#${String(p.numero||"").padStart(4,"0")}</b> · ${esc(p.lente)} · ${SIT[p.situacao]||p.situacao} · ${ddmmaa(p.created_at)}<br><small>Total ${BRL(p.valor_total)} · pago ${BRL(pg)} · ${f>0?`<b style="color:var(--danger)">falta ${BRL(f)}</b>`:"quitado"}</small></div>`; }).join("")+`<div class="hint" style="margin-top:6px">A equipe acompanha em Agenda › 📦 Lentes.</div>`;
     sec.hidden=false; }catch(_){} }
+/* ===== RELATÓRIO PARA A ÓTICA — NÃO ADAPTAÇÃO (23/10/2026) =====
+   Motivos marcados viram parágrafos prontos; o grau vem da refração desta consulta (ou da
+   segunda via). Texto editável; sai impresso ou assinado (pelo mesmo caminho do atestado,
+   com título próprio). */
+const RO_MOTIVOS={"dnp": "Solicito a conferência da distância nasopupilar (DNP) e da centração das lentes. A DNP deve ser medida separadamente para cada olho, com pupilômetro ou sistema digital, e o centro óptico deve coincidir com o centro pupilar.", "altura": "Solicito a verificação da altura de montagem: a cruz de montagem do multifocal deve coincidir com o centro pupilar, medida com a armação já ajustada ao rosto do paciente.", "grau": "Ao lensômetro, as lentes entregues não conferem com a prescrição. Solicito a reconfecção conforme a receita abaixo.", "eixo": "O eixo do cilindro das lentes está divergente do prescrito. Solicito a correção do eixo conforme a receita abaixo.", "curva": "A curva base das lentes novas difere da dos óculos anteriores, o que pode causar distorção e desconforto. Solicito, se possível, manter a curva base anterior.", "armacao": "Solicito o ajuste da armação: ângulo pantoscópico entre 7° e 12°, distância ao vértice de 12 a 14 mm e curvatura adequada ao rosto, com as plaquetas bem posicionadas.", "corredor": "O paciente refere campo de visão estreito para intermediário e perto. Sugiro a troca por lente multifocal de desenho com corredor mais amplo (ou personalizada).", "tipo": "Após avaliação, indico a troca do tipo de lente por não adaptação, conforme a receita abaixo."};
+function roGrau(){ const l=o=>{ const e=v(`re-${o}-esf`),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`); return e||c?`${e||"plano"}${c?` ${c} x ${x}º`:""}`:"—"; };
+  if(!v("re-od-esf")&&!v("re-od-cil")&&!v("re-oe-esf")&&!v("re-oe-cil")) return "";
+  return `Receita: olho direito ${l("od")}; olho esquerdo ${l("oe")}${v("re-add")?`; adição ${v("re-add")}`:""}.`; }
+function textoRO(){ const nome=String(consultaAtual?.paciente_nome||ficha?.paciente?.nome||"").toUpperCase(), q=v("ro-queixa").trim();
+  const data=consultaAtual?new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ}):"";
+  const mot=$$(".ro-mot:checked").map(c=>RO_MOTIVOS[c.value]).filter(Boolean);
+  const P=[`Prezados,`,`O(a) paciente ${nome}, com óculos prescritos nesta clínica${data?` (consulta de ${data})`:""}, refere dificuldade de adaptação${q?`: ${q.replace(/\.$/,"")}`:""}.`,...mot];
+  if($("#ro-grau").checked){ const g=roGrau(); if(g) P.push(g); }
+  P.push("Coloco-me à disposição para esclarecimentos.");
+  return P.join("\n\n"); }
+function atualizaRO(){ if(v("ro-editado")!=="1") $("#ro-txt").value=textoRO(); }
+function mostraRO(){ const on=v("ro-on")==="1"; $("#ro-corpo").hidden=!on; $("#ro-abrir").textContent=on?"remover da consulta":"+ relatório para a ótica"; }
+$("#ro-abrir").addEventListener("click",()=>{ $("#ro-on").value=v("ro-on")==="1"?"":"1"; mostraRO(); atualizaRO(); $("#ro-txt").dispatchEvent(new Event("input",{bubbles:true})); });
+$("#ro-corpo").addEventListener("change",e=>{ if(e.target.classList.contains("ro-mot")||e.target.id==="ro-grau"){ $("#ro-editado").value=""; atualizaRO(); } });
+$("#ro-queixa").addEventListener("input",()=>{ if(v("ro-editado")!=="1") atualizaRO(); });
+$("#ro-txt").addEventListener("input",e=>{ if(e.isTrusted) $("#ro-editado").value="1"; });
+function statusRO(t,cls){ const x=$("#status-ro"); x.textContent=t; x.className="status "+(cls||""); }
+function gerarRO(assinar){
+  if(!consultaAtual){ statusRO("Inicie o atendimento (ou abra a segunda via) primeiro.","erro"); return; }
+  const texto=v("ro-txt").trim(); if(!texto){ statusRO("Escreva o texto do relatório.","erro"); return; }
+  const titulo="RELATÓRIO PARA A ÓTICA", timbrado=$("#rx-timbrado").checked, nome=String(consultaAtual.paciente_nome||"").toUpperCase();
+  const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+  if(assinar) return enviarAssinado("atestado",{nome,data,titulo,texto},statusRO);
+  const folha=`${cabFolha(timbrado,data,"")}
+<h1 style="margin-top:4mm">${titulo}</h1>
+${texto.split(/\n{2,}/).map(p=>`<p style="text-align:justify;line-height:1.5;margin:0 0 4mm">${esc(p).replace(/\n/g,"<br>")}</p>`).join("")}
+${assFolha(true,timbrado,' style="margin-top:14mm"')}`;
+  abrirReceita({titulo:`Relatório para a ótica - ${nome}`,folhas:[folha],timbrado,status:statusRO}); }
+$("#gerar-ro").addEventListener("click",()=>gerarRO(false));
+$("#assinar-ro").addEventListener("click",()=>gerarRO(true));
 /* ===== ATESTADO E DECLARAÇÃO (22/10/2026) =====
    Comparecimento (horário de/até + acompanhante), afastamento (dias, início e CID só com
    autorização — Res. CFM 1.658/2002) ou texto livre. O texto se monta dos campos até ser
@@ -1770,7 +1823,7 @@ const chaveLocal=id=>"pront2-rasc-"+id;
 function rascunhoLocal(){ if(!atend) return; try{ localStorage.setItem(chaveLocal(atend.id),JSON.stringify({ts:Date.now(),dados:coletar()})); }catch(_){} }
 function durAtual(){ return durBase+(t0?(Date.now()-t0)/1000:0); }
 function atualiza(){
-  mostraLC(); calcLC(); marcaAlterados(); mostraLO();   // lentes antes do texto, para o texto já sair com os graus novos
+  mostraLC(); calcLC(); marcaAlterados(); mostraLO(); mostraRO(); if(v("ro-on")==="1") atualizaRO();   // lentes antes do texto, para o texto já sair com os graus novos
   $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar.";
   const r=receita();
   $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
