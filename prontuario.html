@@ -782,9 +782,9 @@ function gerarPrescricao(assinar){
       linhas:[["OLHO DIREITO",r.od[0],r.od[1]==="—"?"":r.od[1],ex(r.od[2])],["OLHO ESQUERDO",r.oe[0],r.oe[1]==="—"?"":r.oe[1],ex(r.oe[2])]],
       adicao:mono?null:(r.add||"-"),sugestao:v("rx-sug")?`Lentes ${TIPO_TEXTO[$("#rx-uso").value]||$("#rx-uso").value} sugeridas: ${v("rx-sug")}`:"",observacao:v("rx-obs"),proxima:prox},status); }
   const corpo=`
-<div class="cab">${timbrado?"":`<img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges">`}<span>Brasília, ${dataExame}.</span></div>
-<p class="nome">Nome: ${esc(nome)}</p>
+${cabFolha(timbrado,dataExame,"")}
 <h1>RECEITA DE ÓCULOS${perto?" PARA PERTO":""}</h1>
+${pacFolha(nome)}
 <table><thead><tr><th></th><th>ESFÉRICO</th><th>CILÍNDRO</th><th>EIXO</th></tr></thead><tbody>
 <tr><td>OLHO DIREITO</td>${cel(r.od[0],r.od[1]==="—"?"":r.od[1],r.od[2])}</tr>
 <tr><td>OLHO ESQUERDO</td>${cel(r.oe[0],r.oe[1]==="—"?"":r.oe[1],r.oe[2])}</tr>
@@ -810,11 +810,21 @@ ${v("rx-obs")?`<p class="sug" style="white-space:pre-wrap"><b>Observação:</b> 
 <li>Em casos de cilindros maiores que 2 dioptrias, indicar armações com a menor distância ao vértice possível.</li>
 <li>Sr. Óptico favor manter as marcas originais de fábrica em caso de multifocais.</li></ul>
 <p class="prox">Data da próxima consulta: ${prox}</p>
-<div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877</div>`;
+${assFolha(false,timbrado)}`;
   abrirReceita({titulo:`Receita de Óculos - ${nome}`,folhas:[corpo],timbrado,status});
 }
 // Janela de impressão das receitas (óculos e colírios): mesma folha, mesmo
 // papel timbrado, mesma fonte. "folhas" = uma página por item (2 vias = 2).
+/* ===== FOLHA IMPRESSA NO VISUAL ÚNICO (22/10/2026) =====
+   Mesmo desenho dos PDFs assinados. No papel timbrado sai só o miolo (o papel já tem
+   logo e rodapé); em papel comum leva cabeçalho e rodapé. Traço para assinar à caneta. */
+const MESES_EXT=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const dataExt=d=>{ const m=String(d||"").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m?`${+m[1]} de ${MESES_EXT[+m[2]-1]} de ${m[3]}`:String(d||""); };
+function cabFolha(timbrado,data,via){ return (timbrado?"":`<div class="topo"><img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges"><div class="med"><b>Dr. Bruno O. Borges</b><br>Médico Oftalmologista · CRM-DF 17877 · RQE 9314<br>(61) 3033-6605 · (61) 98406-0001</div></div>`)
+  +`<div class="linha-data"><span class="v">${esc(via||"")}</span><span>Brasília, ${esc(dataExt(data))}</span></div>`; }
+function pacFolha(nome,extras=[]){ const ex=extras.filter(Boolean); return `<div class="pac"><div><small>PACIENTE</small><b>${esc(nome)}</b></div>${ex.length?`<div class="ex">${ex.map(esc).join("<br>")}</div>`:""}</div>`; }
+function assFolha(rqe,timbrado,extra=""){ return `<div class="ass"${extra}><div class="linha"></div><b>Dr. Bruno O. Borges</b><br><small>Médico Oftalmologista<br>${rqe?"CRM-DF 17877 · RQE 9314":"CRM-DF 17877"}</small></div>`
+  +(timbrado?"":`<div class="rod">Instituto de Olhos Bruno Borges · Shopping Conjunto Nacional, sala 6017 · Brasília - DF · (61) 3033-6605 · (61) 98406-0001</div>`); }
 function abrirReceita({titulo,folhas,timbrado,status}){
   const M=MARGENS_TIMBRADO;
   const cssComum=`
@@ -834,12 +844,29 @@ h2{font-size:1.04em;letter-spacing:.04em;font-weight:800}
 .ass .linha{width:70mm;border-top:1px solid #000;margin:0 auto 2mm}
 .via{text-align:right;font-size:.9em;margin:0 0 2mm}
 h3.uso{font-size:1.04em;letter-spacing:.04em;font-weight:800;margin:0 0 4mm}
-ol.meds{margin:0;padding-left:6mm} .meds li{margin:0 0 6mm} .med-n{display:flex;justify-content:space-between;gap:8mm} .med-p{margin-top:1.5mm}`;
+ol.meds{margin:0;padding-left:6mm} .meds li{margin:0 0 6mm} .med-n{display:flex;justify-content:space-between;gap:8mm} .med-p{margin-top:1.5mm}
+/* visual único (22/10/2026): igual aos PDFs assinados, mas com traço para assinar à caneta */
+html,body{background:#fff;color-scheme:light}
+h1{color:#1f4e79;letter-spacing:.18em;font-size:1.25em}
+h1::after{content:"";display:block;width:28mm;margin:2mm auto 0;border-top:1.2px solid #1f4e79}
+.topo{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:3mm;border-bottom:1.6px solid #1f4e79}
+.topo img{width:46mm;height:auto} .topo .med{text-align:right;font-size:.82em;color:#5b6670;line-height:1.35} .topo .med b{font-size:1.25em;color:#1f4e79}
+.linha-data{display:flex;justify-content:space-between;align-items:baseline;margin:2.5mm 0 7mm;font-size:.92em;color:#5b6670}
+.linha-data .v{color:#1f4e79;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.pac{display:flex;justify-content:space-between;gap:6mm;align-items:center;background:#f2f5f8;border-radius:2mm;padding:2.5mm 4mm;margin:0 0 7mm}
+.pac small{display:block;font-size:.66em;letter-spacing:.14em;color:#5b6670} .pac b{font-size:1.12em;text-transform:uppercase}
+.pac .ex{text-align:right;font-size:.86em;color:#5b6670;line-height:1.35}
+h3.uso{color:#1f4e79;font-size:.92em;letter-spacing:.1em}
+.ass{color:#000} .ass small{color:#5b6670;font-size:.9em}
+.rod{margin-top:12mm;padding-top:2mm;border-top:.6px solid #c9d3dc;text-align:center;font-size:.72em;color:#5b6670}
+table th{background:#f2f5f8} table th,table td{border-color:#9fb0c0}
+@media print{.pac,table th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
   const cssLivre=`
 @page{size:A4;margin:16mm 20mm 18mm}
 .folha{max-width:170mm;margin:0 auto;padding:6mm 5mm}
 @media print{.folha{padding:0}}
 .cab{margin-bottom:12mm} .cab img{width:48.6mm;height:auto} .cab{flex-direction:row-reverse}
+.topo{margin-bottom:0}
 .nome{margin:0 0 8mm} h1{margin:0 0 6mm} table{margin-bottom:6mm} th,td{padding:6px 8px;font-size:12pt}
 .sug{margin:0 0 6mm} h2{margin:5mm 0 2mm} ul{margin:0;padding-left:5mm;font-size:10.5pt} li{margin:0 0 1mm}
 .prox{margin:7mm 0 0} .ass{margin-top:16mm}
@@ -1130,13 +1157,13 @@ function gerarPedido(assinar){
   const p=ficha?.paciente||{}, doc=p.documentos||{}, conv=String(doc.operadora||p.convenio||"").trim();
   const temConv=conv&&!/particular/i.test(conv);
   const folha=lista=>`
-<div class="cab">${timbrado?"":`<img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges">`}<span>Brasília, ${data}.</span></div>
-<p class="nome">Nome: ${esc(nome)}${p.idade!=null?` &nbsp;&nbsp; Idade: ${esc(p.idade)} anos`:""}${temConv?`<br>Convênio: ${esc(conv)}${doc.carteirinha?` &nbsp;&nbsp; Carteirinha: ${esc(doc.carteirinha)}`:""}`:""}</p>
+${cabFolha(timbrado,data,"")}
 <h1>SOLICITAÇÃO DE EXAMES</h1>
+${pacFolha(nome,[p.idade!=null?`${p.idade} anos`:"",temConv?`Convênio: ${conv}`:"",temConv&&doc.carteirinha?`Carteirinha: ${doc.carteirinha}`:""])}
 <p>Solicito:</p>
 <ol class="meds">${lista.map(e=>`<li><div class="med-n"><span>${esc(e)}</span><span>${esc(olho)}</span></div>${just[e]?`<div class="med-p">Justificativa: ${esc(just[e])}</div>`:""}</li>`).join("")}</ol>
 ${ind?`<p class="sug"><b>Indicação clínica:</b> ${esc(ind)}</p>`:""}
-<div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877 - RQE: 9314</div>`;
+${assFolha(true,timbrado)}`;
   if(assinar) return enviarAssinado("pedido",{nome,data,idade:p.idade??null,convenio:temConv?conv:"",carteirinha:temConv?(doc.carteirinha||""):"",exames:exs,olho,indicacao:ind,justificativas:just,separado:$("#ex-separado").checked},statusPed);
   const folhas=$("#ex-separado").checked?exs.map(e=>folha([e])):[folha(exs)];
   abrirReceita({titulo:`Pedido de exames - ${nome}`,folhas,timbrado,status:statusPed});
@@ -1252,10 +1279,10 @@ function gerarAtestado(assinar){
   const nome=String(consultaAtual.paciente_nome||"").toUpperCase(), timbrado=$("#rx-timbrado").checked;
   if(assinar) return enviarAssinado("atestado",{nome,data,titulo,texto},statusAt);
   const folha=`
-<div class="cab">${timbrado?"":`<img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges">`}<span>Brasília, ${data}.</span></div>
+${cabFolha(timbrado,data,"")}
 <h1 style="margin-top:6mm">${titulo}</h1>
 ${texto.split(/\n{2,}/).map(p=>`<p style="text-align:justify;line-height:1.6;margin:0 0 5mm">${esc(p).replace(/\n/g,"<br>")}</p>`).join("")}
-<div class="ass" style="margin-top:22mm"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877 - RQE: 9314</div>`;
+${assFolha(true,timbrado,' style="margin-top:22mm"')}`;
   abrirReceita({titulo:`${titulo.charAt(0)+titulo.slice(1).toLowerCase()} - ${nome}`,folhas:[folha],timbrado,status:statusAt}); }
 $("#gerar-at").addEventListener("click",()=>gerarAtestado(false));
 $("#assinar-at").addEventListener("click",()=>gerarAtestado(true));
@@ -1475,15 +1502,14 @@ function gerarColirios(assinar){
   const timbrado=$("#rx-timbrado").checked;
   const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   const nome=String(consultaAtual.paciente_nome||"").toUpperCase(), idade=ficha?.paciente?.idade;
-  const folha=via=>`${via?`<p class="via">${via}</p>`:""}
-<div class="cab">${timbrado?"":`<img src="/prontuario/logo.png" alt="Instituto de Olhos Bruno Borges">`}<span>Brasília, ${data}.</span></div>
-<p class="nome">Nome: ${esc(nome)}${duasVias?`<br>Idade: ${idade!=null?esc(idade)+" anos":"________"} &nbsp;&nbsp; Sexo: ${esc(sexo)}`:""}</p>
+  const folha=via=>`${cabFolha(timbrado,data,via)}
 <h1>RECEITUÁRIO</h1>
+${pacFolha(nome,duasVias?[`Idade: ${idade!=null?idade+" anos":"________"}`,`Sexo: ${sexo||"________"}`]:[])}
 ${gruposVia(ms).map(([via,lista,ini])=>`<h3 class="uso">${VIA_UP[via]||"USO "+via.toUpperCase()}</h3>
 <ol class="meds" start="${ini}">${lista.map(m=>`<li><div class="med-n"><span>${esc(m.med)}</span><span>${esc(m.qtd||"")}</span></div><div class="med-p">${esc(m.pos)}</div></li>`).join("")}</ol>`).join("")}
-<div class="ass"><div class="linha"></div>Dr. Bruno O. Borges<br>Médico Oftalmologista<br>CRM: 17877</div>`;
+${assFolha(false,timbrado)}`;
   if(assinar) return enviarAssinado("colirios",{nome,data,idade:idade??null,sexo,duas_vias:duasVias,meds:gruposVia(ms).flatMap(([,l])=>l).map(m=>({med:m.med,qtd:m.qtd,pos:m.pos,via:m.via}))},statusCol);
-  abrirReceita({titulo:`Receita - ${nome}`,folhas:duasVias?[folha("1ª via — farmácia"),folha("2ª via — paciente")]:[folha("")],timbrado,status:statusCol});
+  abrirReceita({titulo:`Receita - ${nome}`,folhas:duasVias?[folha("1ª via · farmácia"),folha("2ª via · paciente")]:[folha("")],timbrado,status:statusCol});
 }
 try{ $("#rx-timbrado").checked=localStorage.getItem("rx-timbrado")!=="0"; }catch(_){ $("#rx-timbrado").checked=true; }
 $("#rx-timbrado").addEventListener("change",()=>{ try{ localStorage.setItem("rx-timbrado",$("#rx-timbrado").checked?"1":"0"); }catch(_){} });
