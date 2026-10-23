@@ -233,7 +233,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
           <button type="button" data-ir="s-exames" data-at hidden>Exames complementares</button>
           <button type="button" data-ir="s-hd" data-at hidden>Hipótese diagnóstica / Conduta</button>
           <button type="button" data-ir="s-presc" data-at hidden>Prescrição</button>
-          <button type="button" data-ir="s-docs" data-at hidden>Relatórios e atestados</button>
+          <button type="button" data-ir="s-docs" data-at hidden>Relatórios, atestados e encaminhamentos</button>
           <button type="button" data-ir="s-evolucao" data-at hidden>Evolução</button>
           <button type="button" data-ir="s-anexos" data-at hidden>Imagens e anexos</button>
           <button type="button" data-ir="s-iclinic" data-at hidden>Texto do atendimento</button>
@@ -455,7 +455,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
 
           <!-- Relatórios e atestados (23/10/2026): documentos que não são prescrição -->
           <article class="folha-sec" id="s-docs">
-            <div class="t"><span>Relatórios e atestados</span></div>
+            <div class="t"><span>Relatórios, atestados e encaminhamentos</span></div>
             <div class="c">
               <div class="rx" id="at-bloco">
                 <span class="rot" style="margin:0">Atestado / declaração <span class="hint">— o texto se monta sozinho; dá para editar antes de imprimir</span></span>
@@ -484,6 +484,18 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
                   <div class="campo"><label for="ro-txt">Texto do relatório (pode editar)</label><textarea id="ro-txt" rows="9" style="font-size:14px"></textarea></div>
                   <div class="row"><button type="button" class="pri" id="gerar-ro">Imprimir relatório</button><button type="button" id="assinar-ro">🔏 PDF assinado</button><span class="status" id="status-ro"></span></div>
                 </div>
+              </div>
+              <div class="rx" id="en-bloco">
+                <div class="row" style="align-items:center"><span class="rot" style="margin:0">Encaminhamento / interconsulta</span><button type="button" class="link" id="en-abrir">+ encaminhamento</button><input type="hidden" id="en-on"><input type="hidden" id="en-editado"></div>
+                <div id="en-corpo" hidden style="display:grid;gap:8px">
+                  <div class="row" style="flex-wrap:wrap"><label style="flex:1 1 260px">Especialidade <input id="en-esp" list="lista-especialidades" placeholder="Ex.: Retina e vítreo, Neurologia…" autocomplete="off"></label>
+                    <label>Prioridade <select id="en-prio" style="width:auto"><option value="">eletivo</option><option value="prioritário">prioritário</option><option value="urgente">urgente</option></select></label></div>
+                  <div class="campo"><label for="en-motivo">Motivo do encaminhamento</label><input id="en-motivo" placeholder="Ex.: avaliação de retinopatia diabética para tratamento"></div>
+                  <div class="campo"><label for="en-resumo">Resumo clínico / achados <span class="hint">(opcional)</span></label><textarea id="en-resumo" rows="2" placeholder="Ex.: AV 20/40 OD; edema macular ao OCT; PIO 15/16 mmHg"></textarea></div>
+                  <div class="campo"><label for="en-txt">Texto do encaminhamento (pode editar)</label><textarea id="en-txt" rows="8" style="font-size:14px"></textarea></div>
+                  <div class="row"><button type="button" class="pri" id="gerar-en">Imprimir encaminhamento</button><button type="button" id="assinar-en">🔏 PDF assinado</button><span class="status" id="status-en"></span></div>
+                </div>
+                <datalist id="lista-especialidades"><option>Retina e vítreo</option><option>Glaucoma</option><option>Córnea e doenças externas</option><option>Catarata</option><option>Plástica ocular (oculoplástica)</option><option>Vias lacrimais</option><option>Estrabismo</option><option>Oftalmopediatria</option><option>Neuroftalmologia</option><option>Uveíte</option><option>Lentes de contato</option><option>Cirurgia refrativa</option><option>Visão subnormal</option><option>Oncologia ocular</option><option>Clínica médica</option><option>Cardiologia</option><option>Endocrinologia</option><option>Neurologia</option><option>Reumatologia</option><option>Otorrinolaringologia</option><option>Dermatologia</option><option>Pediatria</option><option>Infectologia</option><option>Nefrologia</option><option>Geriatria</option><option>Neurocirurgia</option><option>Alergia e imunologia</option><option>Hematologia</option><option>Oncologia</option><option>Psiquiatria</option><option>Genética médica</option><option>Cirurgia de cabeça e pescoço</option></datalist>
               </div>
             </div>
           </article>
@@ -1468,6 +1480,39 @@ ${assFolha(true,timbrado,' style="margin-top:14mm"')}`;
   abrirReceita({titulo:`Relatório para a ótica - ${nome}`,folhas:[folha],timbrado,status:statusRO}); }
 $("#gerar-ro").addEventListener("click",()=>gerarRO(false));
 $("#assinar-ro").addEventListener("click",()=>gerarRO(true));
+/* ===== ENCAMINHAMENTO / INTERCONSULTA (23/10/2026) =====
+   Especialidade médica ou subespecialidade oftalmológica, prioridade, motivo e resumo;
+   a hipótese diagnóstica vem da consulta. Sai pelo mesmo caminho do atestado (título próprio). */
+function textoEN(){ const nome=String(consultaAtual?.paciente_nome||ficha?.paciente?.nome||"").toUpperCase(), idade=ficha?.paciente?.idade;
+  const esp=v("en-esp").trim(), prio=v("en-prio"), mot=v("en-motivo").trim().replace(/\.$/,""), res=v("en-resumo").trim();
+  const oft=/retina|glaucoma|c[óo]rnea|catarata|oculopl|vias lacrimais|estrabismo|oftalmo|neuroftal|uve[ií]te|lentes de contato|refrativa|vis[ãa]o subnormal|oncologia ocular/i.test(esp);
+  const P=[`Ao(À) colega${esp?` de ${esp}`:""}${oft&&!/oftalmo/i.test(esp)?" (oftalmologia)":""},`,
+    `Encaminho o(a) paciente ${nome}${idade!=null?`, ${idade} anos,`:""} para ${mot||"avaliação e conduta"}.`];
+  const hd=hdComCid(); if(hd.length) P.push(`Hipótese diagnóstica: ${hd.join("; ")}.`);
+  if(res) P.push(`Resumo clínico: ${res.replace(/\.$/,"")}.`);
+  if(prio) P.push(`Prioridade: ${prio}.`);
+  P.push("Agradeço a atenção e coloco-me à disposição para esclarecimentos.");
+  return P.join("\n\n"); }
+function atualizaEN(){ if(v("en-editado")!=="1") $("#en-txt").value=textoEN(); }
+function mostraEN(){ const on=v("en-on")==="1"; $("#en-corpo").hidden=!on; $("#en-abrir").textContent=on?"remover da consulta":"+ encaminhamento"; }
+$("#en-abrir").addEventListener("click",()=>{ $("#en-on").value=v("en-on")==="1"?"":"1"; mostraEN(); atualizaEN(); $("#en-txt").dispatchEvent(new Event("input",{bubbles:true})); if(v("en-on")==="1") $("#en-esp").focus(); });
+["en-esp","en-motivo","en-resumo"].forEach(id=>$("#"+id).addEventListener("input",atualizaEN)); $("#en-prio").addEventListener("change",atualizaEN);
+$("#en-txt").addEventListener("input",e=>{ if(e.isTrusted) $("#en-editado").value="1"; });
+function statusEN(t,cls){ const x=$("#status-en"); x.textContent=t; x.className="status "+(cls||""); }
+function gerarEN(assinar){
+  if(!consultaAtual){ statusEN("Inicie o atendimento (ou abra a segunda via) primeiro.","erro"); return; }
+  if(!v("en-esp").trim()){ statusEN("Escolha a especialidade.","erro"); return; }
+  const texto=v("en-txt").trim(); if(!texto){ statusEN("Escreva o texto do encaminhamento.","erro"); return; }
+  const titulo="ENCAMINHAMENTO — "+v("en-esp").trim().toUpperCase(), timbrado=$("#rx-timbrado").checked, nome=String(consultaAtual.paciente_nome||"").toUpperCase();
+  const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
+  if(assinar) return enviarAssinado("atestado",{nome,data,titulo,texto},statusEN);
+  const folha=`${cabFolha(timbrado,data,"")}
+<h1 style="margin-top:4mm">${esc(titulo)}</h1>
+${texto.split(/\n{2,}/).map(p=>`<p style="text-align:justify;line-height:1.5;margin:0 0 4mm">${esc(p).replace(/\n/g,"<br>")}</p>`).join("")}
+${assFolha(true,timbrado,' style="margin-top:14mm"')}`;
+  abrirReceita({titulo:`Encaminhamento - ${nome}`,folhas:[folha],timbrado,status:statusEN}); }
+$("#gerar-en").addEventListener("click",()=>gerarEN(false));
+$("#assinar-en").addEventListener("click",()=>gerarEN(true));
 /* ===== ATESTADO E DECLARAÇÃO (22/10/2026) =====
    Comparecimento (horário de/até + acompanhante), afastamento (dias, início e CID só com
    autorização — Res. CFM 1.658/2002) ou texto livre. O texto se monta dos campos até ser
@@ -1838,7 +1883,7 @@ const chaveLocal=id=>"pront2-rasc-"+id;
 function rascunhoLocal(){ if(!atend) return; try{ localStorage.setItem(chaveLocal(atend.id),JSON.stringify({ts:Date.now(),dados:coletar()})); }catch(_){} }
 function durAtual(){ return durBase+(t0?(Date.now()-t0)/1000:0); }
 function atualiza(){
-  mostraLC(); calcLC(); marcaAlterados(); mostraLO(); mostraRO(); if(v("ro-on")==="1") atualizaRO();   // lentes antes do texto, para o texto já sair com os graus novos
+  mostraLC(); calcLC(); marcaAlterados(); mostraLO(); mostraRO(); if(v("ro-on")==="1") atualizaRO(); mostraEN(); if(v("en-on")==="1") atualizaEN();   // lentes antes do texto, para o texto já sair com os graus novos
   $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar.";
   const r=receita();
   $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;

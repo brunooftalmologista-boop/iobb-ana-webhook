@@ -343,7 +343,7 @@ function corpoPedido(doc, d, exames) {
 async function documentoAssinado(tipo, d, cert) {
   const agora = new Date();
   const quando = agora.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", laudo_oft: "Laudo oftalmológico", lentes: "Receita de lentes de contato", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : /ÓTICA/.test(String(d.titulo)) ? "Relatório para a ótica" : "Atestado" };
+  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", laudo_oft: "Laudo oftalmológico", lentes: "Receita de lentes de contato", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : /ÓTICA/.test(String(d.titulo)) ? "Relatório para a ótica" : /ENCAMINHA/.test(String(d.titulo)) ? "Encaminhamento" : "Atestado" };
   const doc = new PDFDocument({ size: "A4", autoFirstPage: false, pdfVersion: "1.7",
     info: { Title: `${titulos[tipo] || "Documento"} - ${d.nome}`, Author: "Dr. Bruno O. Borges - CRM 17877", Creator: "IOBB - prontuário" } });
   // Texto em Helvetica (23/10/2026: Garamond ficava pequena e clara no papel); Garamond só no

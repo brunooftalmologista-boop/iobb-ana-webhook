@@ -11100,7 +11100,7 @@ app.post("/api/prontuario/documento-assinado", requireMedico, express.json({ lim
     if (!cert) return res.status(409).json({ error: "Cadastre o certificado digital primeiro (botão “Certificado digital”)." });
     if (tipo === "colirios") await completarReceita(dados, tel, nome, consulta_id);
     const pdf = await assin.documentoAssinado(tipo, dados, cert);
-    const rotulo = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", laudo_oft: "Laudo oftalmológico", lentes: "Receita de lentes de contato", atestado: /DECLARA/.test(String(dados.titulo)) ? "Declaração" : /ÓTICA/.test(String(dados.titulo)) ? "Relatório para a ótica" : "Atestado" }[tipo];
+    const rotulo = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", laudo_oft: "Laudo oftalmológico", lentes: "Receita de lentes de contato", atestado: /DECLARA/.test(String(dados.titulo)) ? "Declaração" : /ÓTICA/.test(String(dados.titulo)) ? "Relatório para a ótica" : /ENCAMINHA/.test(String(dados.titulo)) ? "Encaminhamento" : "Atestado" }[tipo];
     const assinadaO = /^(Receita|Declara)/.test(rotulo) ? "assinada" : "assinado";
     let anexo = null;
     if (ult8(tel) && primNome(nome)) {
