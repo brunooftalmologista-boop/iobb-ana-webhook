@@ -1302,7 +1302,10 @@ function lcCalcula(o,tipo,lim){ const r=lcRefr(o); if(!r) return null; const m1=
   else { out.esf=lcFmt(lcArred(m1+cyl/2),true); out.cil=""; out.eixo=""; if(Math.abs(cyl)>=0.625) out.aviso=`${o.toUpperCase()}: astigmatismo de ${Math.abs(cyl).toFixed(2).replace(".",",")} vai como equivalente esférico${tipo==="multifocal"?" (multifocal tórica é pouco disponível)":""}: a visão pode ficar menos nítida.`; }
   if(tipo==="multifocal"){ const ad=num(v("re-add")); out.add=ad?`${ad<=1.25?"LOW":ad<=2?"MED":"HIGH"} (${lcFmt(ad)})`:""; } else out.add="";
   return out; }
-function lcLenteSel(){ const t=lcTipo(), i=$("#lc-lente").value; if(i==="outra") return {nome:v("lc-outra").trim()||"lente a definir",descarte:"",cb:"",dia:""}; const l=(LC_LENTES[t]||[])[+i]; return l?{nome:l[0],descarte:l[1],cb:l[2],dia:l[3],lim:l[5]||null}:null; }
+const LC_TIPO_NOME={esferica:"esférica",torica:"tórica",multifocal:"multifocal"};
+function lcLenteSel(){ const t=lcTipo(), i=$("#lc-lente").value;
+  if(i==="sem") return {nome:"",generica:true,tipoNome:LC_TIPO_NOME[t]||"",descarte:"",cb:"",dia:""};   // só os graus; marca a critério
+  if(i==="outra") return {nome:v("lc-outra").trim()||"lente a definir",descarte:"",cb:"",dia:""}; const l=(LC_LENTES[t]||[])[+i]; return l?{nome:l[0],descarte:l[1],cb:l[2],dia:l[3],lim:l[5]||null}:null; }
 function lcOrientPadrao(descarte){ const diaria=descarte==="diária";
   return [ "Lave e seque bem as mãos antes de colocar ou retirar as lentes.",
     diaria?"Lentes de descarte diário: use um par novo a cada dia e jogue fora ao retirar; não guarde nem reutilize.":`Troque as lentes a cada ${descarte==="quinzenal"?"15 dias":descarte==="mensal"?"30 dias":"período indicado pelo fabricante"}, contados a partir da abertura, mesmo que não tenham sido usadas todos os dias.`,
@@ -1315,8 +1318,8 @@ function lcOrientPadrao(descarte){ const diaria=descarte==="diária";
     "Esta receita é de lentes de contato e não serve para óculos. Faça revisão oftalmológica anual." ].filter(Boolean).join("\n"); }
 function lcListaLentes(){ const t=lcTipo(), sel=$("#lc-lente"), lst=LC_LENTES[t]||[];
   const grupo=m=>{ const it=lst.map((l,i)=>[l,i]).filter(([l])=>l[4]===m); return it.length?`<optgroup label="${m==="Alcon"?"Alcon":"Outras marcas"}">${it.map(([l,i])=>`<option value="${i}">${esc(l[0])} · ${l[1]}</option>`).join("")}</optgroup>`:""; };
-  const html=grupo("Alcon")+grupo("Outras")+`<option value="outra">Outra lente…</option>`;
-  if(sel.dataset.tipo!==t){ sel.innerHTML=html; sel.dataset.tipo=t; const g=v("lc-lente-v"), k=lst.findIndex(l=>l[0]===g); sel.value=g==="outra"?"outra":k>=0?String(k):"0"; }
+  const html=`<option value="sem">Sem marca (só os graus)</option>`+grupo("Alcon")+grupo("Outras")+`<option value="outra">Outra lente…</option>`;
+  if(sel.dataset.tipo!==t){ sel.innerHTML=html; sel.dataset.tipo=t; const g=v("lc-lente-v"), k=lst.findIndex(l=>l[0]===g); sel.value=g==="outra"||g==="sem"?g:k>=0?String(k):"0"; }
   $("#lc-outra").hidden=sel.value!=="outra"; }
 function calcLC(){ if(v("lc-on")!=="1") return; lcListaLentes(); const t=lcTipo(), ed=lcEditados(), l=lcLenteSel(), avisos=[];
   for(const o of ["od","oe"]){ const r=lcCalcula(o,t,l?.lim)||{esf:"",cil:"",eixo:"",add:""}; if(r.aviso) avisos.push(r.aviso); else if(r.avisoLente) avisos.push(r.avisoLente);
@@ -1327,28 +1330,29 @@ function calcLC(){ if(v("lc-on")!=="1") return; lcListaLentes(); const t=lcTipo(
   $("#lc-calc").textContent=[t==="multifocal"?"":(temAdd&&(ficha?.paciente?.idade??0)>=40?"Há adição na refração: para longe e perto, escolha o tipo Multifocal.":""),...avisos].filter(Boolean).join(" "); }
 document.addEventListener("input",e=>{ const id=e.target.id||""; if(!e.isTrusted||!/^lc-(od|oe)-|^lc-orient$/.test(id)) return; const ed=lcEditados(); ed.add(id); $("#lc-editados").value=JSON.stringify([...ed]); });
 $("#lc-tipo").addEventListener("change",()=>{ $("#lc-lente-v").value=""; const ed=lcEditados(); for(const id of [...ed]) if(id!=="lc-orient") ed.delete(id); $("#lc-editados").value=JSON.stringify([...ed]); $("#lc-lente").dataset.tipo=""; calcLC(); atualiza(); });
-$("#lc-lente").addEventListener("change",()=>{ const sv=$("#lc-lente").value; $("#lc-lente-v").value=sv==="outra"?"outra":((LC_LENTES[lcTipo()]||[])[+sv]||[])[0]||""; const ed=lcEditados(); for(const id of [...ed]) if(/-(cb|dia)$|lc-orient/.test(id)) ed.delete(id); $("#lc-editados").value=JSON.stringify([...ed]); calcLC(); atualiza(); });
+$("#lc-lente").addEventListener("change",()=>{ const sv=$("#lc-lente").value; $("#lc-lente-v").value=sv==="outra"||sv==="sem"?sv:((LC_LENTES[lcTipo()]||[])[+sv]||[])[0]||""; const ed=lcEditados(); for(const id of [...ed]) if(/-(cb|dia)$|lc-orient/.test(id)) ed.delete(id); $("#lc-editados").value=JSON.stringify([...ed]); calcLC(); atualiza(); });
 $("#lc-abrir").addEventListener("click",()=>{ const on=v("lc-on")!=="1"; $("#lc-on").value=on?"1":""; mostraLC(); if(on){ calcLC(); } atualiza(); });
 function mostraLC(){ const on=v("lc-on")==="1"; $("#lc-corpo").hidden=!on; $("#lc-abrir").textContent=on?"remover da consulta":"+ receita de lentes de contato"; }
 function statusLC(t,cls){ const x=$("#status-lc"); x.textContent=t; x.className="status "+(cls||""); }
 function lcLinhas(){ const g=o=>["esf","cil","eixo","add","cb","dia"].map(k=>v(`lc-${o}-${k}`).trim()); return [["OLHO DIREITO",...g("od")],["OLHO ESQUERDO",...g("oe")]]; }
+function lcNomeLente(l){ if(!l) return ""; if(l.generica) return `gelatinosa ${l.tipoNome}, marca a critério`; return `${l.nome}${l.descarte?` (descarte ${l.descarte})`:""}`; }
 function textoLC(){ if(v("lc-on")!=="1") return ""; const l=lcLenteSel(); const f=(o)=>{ const [esf,cil,eixo,add,cb,dia]=["esf","cil","eixo","add","cb","dia"].map(k=>v(`lc-${o}-${k}`).trim()); return `${esf||"—"}${cil?` ${cil} x ${eixo}`:""}${add?` · adição ${add}`:""}${cb?` · CB ${cb}`:""}${dia?` · DIA ${dia}`:""}`; };
-  return `Lentes de contato gelatinosas (${l?.nome||""}${l?.descarte?", "+l.descarte:""}):\nOD: ${f("od")}\nOE: ${f("oe")}`; }
+  return `Lentes de contato ${l?.generica?`gelatinosas ${({esférica:"esféricas",tórica:"tóricas",multifocal:"multifocais"})[l.tipoNome]||""} (marca a critério)`:`gelatinosas (${l?.nome||""}${l?.descarte?", "+l.descarte:""})`}:\nOD: ${f("od")}\nOE: ${f("oe")}`; }
 function gerarLC(assinar){
   if(!consultaAtual){ statusLC("Inicie o atendimento primeiro.","erro"); return; }
   const ln=lcLinhas(); if(!ln.some(r=>r[1])){ statusLC("Preencha a refração (ou os graus da lente) antes.","erro"); return; }
-  const l=lcLenteSel(); if(!l||!l.nome){ statusLC("Escolha a lente.","erro"); return; }
-  const temCil=ln.some(r=>r[2]), temAdd=ln.some(r=>r[4]);
+  const l=lcLenteSel(); if(!l||(!l.nome&&!l.generica)){ statusLC("Escolha a lente.","erro"); return; }
+  const temCil=ln.some(r=>r[2]), temAdd=ln.some(r=>r[4]), temCB=ln.some(r=>r[5]||r[6]);
   const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   const nome=String(consultaAtual.paciente_nome||"").toUpperCase(), timbrado=$("#rx-timbrado").checked, orient=v("lc-orient").split("\n").map(x=>x.trim()).filter(Boolean);
-  const lente=`${l.nome}${l.descarte?` (descarte ${l.descarte})`:""}`;
-  if(assinar) return enviarAssinado("lentes",{nome,data,lente,linhas:ln,tem_cil:temCil,tem_add:temAdd,orientacoes:orient},statusLC);
-  const cab=["","ESFÉRICO",...(temCil?["CILINDRO","EIXO"]:[]),...(temAdd?["ADIÇÃO"]:[]),"CB","DIÂM."];
-  const lin=r=>[r[0],r[1]||"—",...(temCil?[r[2]||"—",r[3]||"—"]:[]),...(temAdd?[r[4]||"—"]:[]),r[5]||"—",r[6]||"—"];
+  const lente=lcNomeLente(l);
+  if(assinar) return enviarAssinado("lentes",{nome,data,lente,generica:!!l.generica,linhas:ln,tem_cil:temCil,tem_add:temAdd,tem_cb:temCB,orientacoes:orient},statusLC);
+  const cab=["","ESFÉRICO",...(temCil?["CILINDRO","EIXO"]:[]),...(temAdd?["ADIÇÃO"]:[]),...(temCB?["CB","DIÂM."]:[])];
+  const lin=r=>[r[0],r[1]||"—",...(temCil?[r[2]||"—",r[3]||"—"]:[]),...(temAdd?[r[4]||"—"]:[]),...(temCB?[r[5]||"—",r[6]||"—"]:[])];
   const folha=`${cabFolha(timbrado,data,"")}
 <h1>RECEITA DE LENTES DE CONTATO</h1>
 ${pacFolha(nome)}
-<p class="sug"><b>Lente:</b> ${esc(lente)} · gelatinosa</p>
+<p class="sug"><b>Lente:</b> ${esc(lente)}${l.generica?"":" · gelatinosa"}</p>
 <table><thead><tr>${cab.map(c=>`<th>${c}</th>`).join("")}</tr></thead><tbody>${ln.map(r=>`<tr>${lin(r).map(c=>`<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>
 <h2>ORIENTAÇÕES DE USO:</h2>
 <ul>${orient.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>

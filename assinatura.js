@@ -280,10 +280,11 @@ function corpoLentes(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   tituloDoc(doc, "Receita de lentes de contato");
   blocoPaciente(doc, d.nome, []);
-  doc.font("G8").fontSize(11.5).fillColor("#000").text("Lente: ", L, doc.y, { continued: true }).font("G6").text(`${d.lente || ""} · gelatinosa`, { width: W });
+  doc.font("G8").fontSize(11.5).fillColor("#000").text("Lente: ", L, doc.y, { continued: true }).font("G6").text(`${d.lente || ""}${d.generica ? "" : " · gelatinosa"}`, { width: W });
   doc.moveDown(0.6);
-  const cab = ["", "ESFÉRICO", ...(d.tem_cil ? ["CILINDRO", "EIXO"] : []), ...(d.tem_add ? ["ADIÇÃO"] : []), "CB", "DIÂM."];
-  const lin = (r) => [r[0], r[1] || "—", ...(d.tem_cil ? [r[2] || "—", r[3] || "—"] : []), ...(d.tem_add ? [r[4] || "—"] : []), r[5] || "—", r[6] || "—"];
+  const temCB = d.tem_cb !== false;   // sem marca e sem CB/diâmetro: a tabela fica só com os graus
+  const cab = ["", "ESFÉRICO", ...(d.tem_cil ? ["CILINDRO", "EIXO"] : []), ...(d.tem_add ? ["ADIÇÃO"] : []), ...(temCB ? ["CB", "DIÂM."] : [])];
+  const lin = (r) => [r[0], r[1] || "—", ...(d.tem_cil ? [r[2] || "—", r[3] || "—"] : []), ...(d.tem_add ? [r[4] || "—"] : []), ...(temCB ? [r[5] || "—", r[6] || "—"] : [])];
   const n = cab.length, w0 = W * 0.27, wi = (W - w0) / (n - 1), h = 22;
   let y = doc.y;
   [cab, ...(d.linhas || []).map(lin)].forEach((ln, i) => {
