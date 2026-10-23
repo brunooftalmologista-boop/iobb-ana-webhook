@@ -222,7 +222,7 @@ const MOTIVOS=[
   ["Visão",["Revisão de rotina","Baixa visual para longe","Baixa visual para perto","Baixa visual para longe e perto","Óculos fracos","Má adaptação aos óculos","Visão embaçada","Visão dupla","Moscas volantes ou flashes"]],
   ["Desconforto",["Dor de cabeça","Olho vermelho","Irritação","Coceira","Lacrimejamento","Olho seco","Dor no olho","Cisco ou trauma no olho"]],
   ["Lente de contato",["Adaptação de lente de contato","Teste de lente de contato","Desconforto com a lente","Renovar a lente"]],
-  ["Acompanhamento",["Ceratocone","Avaliação para cirurgia refrativa","Catarata","Glaucoma / pressão do olho","Diabetes (fundo de olho)","Pós-operatório","Retorno para mostrar exames"]],
+  ["Acompanhamento",["Retorno","Ceratocone","Avaliação para cirurgia refrativa","Catarata","Glaucoma / pressão do olho","Diabetes (fundo de olho)","Pós-operatório","Retorno para mostrar exames"]],
 ];
 $("#motivos").innerHTML=MOTIVOS.map(([g,xs])=>`<div style="margin:8px 0 4px;font-size:13px;color:var(--muted)">${g}</div><div class="chips">${xs.map(x=>`<span class="chip" role="button" tabindex="0" aria-pressed="false">${esc(x)}</span>`).join("")}</div>`).join("");
 
