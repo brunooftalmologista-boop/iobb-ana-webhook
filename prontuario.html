@@ -843,7 +843,10 @@ function assFolha(rqe,timbrado,extra=""){ return `<div class="ass"${extra}><div 
 function abrirReceita({titulo,folhas,timbrado,status}){
   const M=MARGENS_TIMBRADO;
   const cssComum=`
-body{font:600 11.5pt/1.35 "EB Garamond",Garamond,"Times New Roman",serif;color:#000;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;-webkit-text-stroke:.3px #000}
+body{font:400 11pt/1.35 Arial,Helvetica,"Liberation Sans",sans-serif;color:#000;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+/* Arial no texto (23/10/2026: "letras pequenas e claras, difícil do paciente ler"); Garamond só no título e no nome do médico */
+h1,.topo .med b{font-family:"EB Garamond",Garamond,"Times New Roman",serif}
+b,th,td:first-child,h2,h3,.prox{font-weight:700}
 .barra{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px;background:#eef2f3;font:14px system-ui,sans-serif}
 .barra button{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid #1d6b74;background:#1d6b74;color:#fff;cursor:pointer}
 @media print{.barra{display:none}}

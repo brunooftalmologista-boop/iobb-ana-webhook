@@ -95,7 +95,7 @@ function novaPagina(doc) { doc.addPage({ size: "A4", margins: { top: mm(16), bot
 function cabecalho(doc, data, via) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right, top = mm(13);
   doc.image(LOGO, L, top, { width: mm(46) });
-  doc.font("G8").fontSize(12.5).fillColor(AZUL).text("Dr. Bruno O. Borges", L, top, { width: W, align: "right" });
+  doc.font("GT").fontSize(13).fillColor(AZUL).text("Dr. Bruno O. Borges", L, top, { width: W, align: "right" });
   doc.font("G6").fontSize(9.5).fillColor(CINZA).text("Médico Oftalmologista · CRM-DF 17877 · RQE 9314", { width: W, align: "right" })
     .text("(61) 3033-6605 · (61) 98406-0001", { width: W, align: "right" });
   const yR = top + mm(17);
@@ -106,7 +106,7 @@ function cabecalho(doc, data, via) {
 }
 function tituloDoc(doc, titulo) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
-  doc.font("G8").fontSize(15).fillColor(AZUL).text(String(titulo).toUpperCase(), L, doc.y, { width: W, align: "center", characterSpacing: 1.8 });
+  doc.font("GT").fontSize(15).fillColor(AZUL).text(String(titulo).toUpperCase(), L, doc.y, { width: W, align: "center", characterSpacing: 1.8 });
   const y = doc.y + 4; doc.moveTo(L + W / 2 - mm(14), y).lineTo(L + W / 2 + mm(14), y).lineWidth(1).strokeColor(AZUL).stroke();
   doc.fillColor("#000"); doc.x = L; doc.y = y + mm(5);
 }
@@ -334,7 +334,11 @@ async function documentoAssinado(tipo, d, cert) {
   const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", lentes: "Receita de lentes de contato", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : "Atestado" };
   const doc = new PDFDocument({ size: "A4", autoFirstPage: false, pdfVersion: "1.7",
     info: { Title: `${titulos[tipo] || "Documento"} - ${d.nome}`, Author: "Dr. Bruno O. Borges - CRM 17877", Creator: "IOBB - prontuário" } });
-  doc.registerFont("G6", FONTE); doc.registerFont("G8", FONTE_NEGRITO);
+  // Texto em Helvetica (23/10/2026: Garamond ficava pequena e clara no papel); Garamond só no
+  // título e no nome do médico (GT). Helvetica padrão é WinAnsi: o "−" (U+2212) vira "-".
+  doc.registerFont("G6", "Helvetica"); doc.registerFont("G8", "Helvetica-Bold"); doc.registerFont("GT", FONTE_NEGRITO);
+  const _text = doc.text.bind(doc), _h = doc.heightOfString.bind(doc), winAnsi = (t) => typeof t === "string" ? t.replace(/\u2212/g, "-").replace(/\u2192/g, "->") : t;
+  doc.text = (t, ...r) => _text(winAnsi(t), ...r); doc.heightOfString = (t, ...r) => _h(winAnsi(t), ...r);
   const partes = []; doc.on("data", (c) => partes.push(c));
   const fim = new Promise((ok, falha) => { doc.on("end", ok); doc.on("error", falha); });
   doc.on("pageAdded", () => rodape(doc));
