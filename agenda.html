@@ -621,7 +621,9 @@ function agRender(){
 function statusAtend(a){
   if(a.compareceu===false) return 'faltou';
   if(a.atendido_em) return 'atendido';
-  if(a.compareceu===true) return 'aguardando';
+  // "veio" marcado antes de 26/10/2026 (ou esquecido no aguardando) em dia que já
+  // passou = foi atendido; "aguardando" só faz sentido no próprio dia.
+  if(a.compareceu===true) return new Date(a.inicio).toDateString()===new Date().toDateString() || new Date(a.inicio)>new Date() ? 'aguardando' : 'atendido';
   return null;
 }
 const ST_TXT={aguardando:'Aguardando atendimento', atendido:'Atendido', faltou:'Não compareceu'};
