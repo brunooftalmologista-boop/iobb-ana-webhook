@@ -7290,6 +7290,8 @@ Se a imagem ou o PDF estiver ilegível (ou protegido por senha), peça em uma fr
       const horizonteTxt = ultimoSlot
         ? `\n⛔ ATÉ ONDE VOCÊ ENXERGA: esta lista vai só até **${ultimoSlot.dia}**. Sobre datas DEPOIS dessa você NÃO TEM INFORMAÇÃO — e não ter informação NÃO É a mesma coisa que não ter vaga. É TERMINANTEMENTE PROIBIDO dizer "não tenho disponibilidade", "não temos vaga" ou "a agenda está cheia" para uma data além de ${ultimoSlot.dia}. O que você faz nesse caso: diga, com naturalidade, que a SUA agenda só enxerga até ${ultimoSlot.dia} e que marcação com essa antecedência quem faz é a equipe — e que você já vai passar o pedido para eles entrarem em contato. 🚫 NUNCA diga "a agenda ainda não está aberta" (regra do Dr. Bruno, 24/09/2026): isso é uma afirmação sobre a CLÍNICA, e é falsa — a agenda existe e está aberta; você é que não alcança aquela data. Pior: convida o paciente a perguntar "e quando abre?", que você não tem como responder, e faz quem tem data marcada (viagem, férias, cirurgia) achar que precisa ligar de novo depois. Fale do SEU limite, não do limite da clínica. Emita [PREAGENDAMENTO] com a data/período que o paciente pediu. Se ele aceitar algo mais próximo, ofereça um horário DA LISTA.`
         : "";
+      // Dias fechados (feriado/bloqueio) ditos com todas as letras — ver blocoDiasFechados.
+      const fechadosTxt = blocoDiasFechados(await diasFechados(20));
       if (slotsOferta === null) {
         dynEstavel += `\n\n### Agenda temporariamente indisponível\nNão foi possível consultar a agenda agora. NÃO invente horários e NÃO diga que não há vagas. Colete a preferência (unidade + período manhã/tarde) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       } else if (slotsOferta.length > 0) {
@@ -7301,6 +7303,7 @@ Se a imagem ou o PDF estiver ilegível (ou protegido por senha), peça em uma fr
       } else {
         dynEstavel += `\n\n### Sem vagas nos próximos dias\nNão há horários livres nos próximos dias em NENHUMA das duas unidades. NÃO invente horário. Colete a preferência (unidade + período) e os dados, registre o [PREAGENDAMENTO] e explique que a equipe confirma o horário exato assim que retornar.`;
       }
+      dynEstavel += fechadosTxt;
     }
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -7519,6 +7522,10 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       // Ofereceu vaga que NÃO está livre. Só na etapa de OFERTA: na mensagem de
       // confirmação o horário já saiu da lista (acabou de ser ocupado por ele).
       const ofertaFalsa = etapaDeOferta ? ofertaInexistente(reply, slotsVigentes, meusAgendamentos) : null;
+      // Ofereceu dia FECHADO (feriado/bloqueio) — com ou sem horário. Ver citouDiaFechado.
+      let fechadosAg = new Set();
+      if (/\d{1,2}\/\d{1,2}(?!\/?\d)/.test(String(reply || ""))) fechadosAg = await diasFechados(20);
+      const diaFechado = citouDiaFechado(reply, fechadosAg, meusAgendamentos);
       // Pediu a ficha em conta-gotas (um dado por mensagem).
       const agendouOcupado = etapaDeOferta ? null : agendarEmVagaOcupada(reply, slotsVigentes, meusAgendamentos);
       const anunciouSemAgendar = anunciouAgendamentoSemAgendar(reply, slotsVigentes, meusAgendamentos);
@@ -7581,13 +7588,14 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       const tocouQueroAgendar = /^\s*quero agendar\s*$/i.test(String(text || ""));
       const ofertaCegaCampanha = (tocouQueroAgendar && etapaDeOferta && campanhaSabeConvenio)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (unidadeNoDiaErrado || despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = unidadeNoDiaErrado || despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (diaFechado || unidadeNoDiaErrado || despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
+        const motivo = diaFechado || unidadeNoDiaErrado || despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
         await registrarErro(
-          unidadeNoDiaErrado ? "unidade_nao_abre_hoje"
+          diaFechado ? "ofereceu_dia_fechado"
+            : unidadeNoDiaErrado ? "unidade_nao_abre_hoje"
             : despedidaFechada ? "despedida_dia_fechado"
             : unidadeDoPaciente ? "unidade_pedida_ignorada"
             : carteirinhaRepetida ? "carteirinha_pedida_2x"
@@ -7630,7 +7638,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
         // voltava a perguntar do convênio em vez de fechar. Em 17/08, 10 das 21
         // respostas chegaram ao paciente sem horário mesmo depois da reescrita.
         // A âncora é exatamente o porto seguro que consertou as outras travas.
-        const travaDeHorario = !!(unidadeDoPaciente || contradicao || maisCedo || precoSeco || precoSemConvenio || ofertaFalsa || fichaCedo || agendouOcupado);
+        const travaDeHorario = !!(diaFechado || unidadeDoPaciente || contradicao || maisCedo || precoSeco || precoSemConvenio || ofertaFalsa || fichaCedo || agendouOcupado);
         // ⚠️ Na trava de UNIDADE a âncora tem de ser filtrada ANTES: a genérica
         // devolve a vaga mais próxima no tempo, que é justamente a da unidade
         // errada — ancorar nela mandaria a Ana repetir o erro com mais convicção.
@@ -7652,7 +7660,8 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           system: [
             { type: "text", text: SYSTEM_PROMPT, cache_control: cacheControl() },
             ...(dynEstavel ? [{ type: "text", text: dynEstavel.replace(/^\n+/, ""), cache_control: cacheControl() }] : []),
-            { type: "text", text: dynVolatil + (despedidaFechada
+            { type: "text", text: dynVolatil + (diaFechado ? instrucaoDiaFechadoNaAgenda(diaFechado)
+              : despedidaFechada
               ? instrucaoDiaFechado(despedidaFechada, new Date(Date.now() + 864e5).toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit" }))
               : unidadeDoPaciente ? instrucaoUnidadeDoPaciente(unidadeDoPaciente)
               : carteirinhaRepetida ? instrucaoCarteirinhaJaRecebida(carteirinhaRepetida)
@@ -7721,7 +7730,10 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
             const escalando = /3033-6605|99299[-\s.]?7639|equipe[^.!?]{0,25}em contato|repassar (sua|a) solicita|peço desculpas pelo transtorno/i.test(reply);
             const aindaErrada = escalando ? null
               : (contradizHojeAmanha(reply, slotsVigentes, meusAgendamentos)
-                 || unidadeContradizOferta(reply, slotsVigentes));
+                 || unidadeContradizOferta(reply, slotsVigentes)
+                 // 26/10/2026: a reescrita trocou 02/11 14h00 por 02/11 14h20 (Finados) e saiu.
+                 || citouDiaFechado(reply, fechadosAg, meusAgendamentos)
+                 || (etapaDeOferta && (diaFechado || ofertaFalsa) ? ofertaInexistente(reply, slotsVigentes, meusAgendamentos) : null));
             // 🔁 UMA VEZ SÓ POR CONVERSA. A frase determinística é o último
             // recurso — e último recurso repetido vira robô.
             // Caso real (01/09, 14h34–14h45): o paciente perguntou se podia
@@ -13309,6 +13321,47 @@ async function diasFechados(diasAFrente = 9) {
     }
     return new Set([...porDia].filter(([, n]) => n >= 12).map(([ymd]) => ymd));
   } catch (e) { console.error("[Agenda] Falha ao ler bloqueios:", e.message); return new Set(); }
+}
+// ===== DIA FECHADO (feriado/bloqueio) NA LISTA DA ANA ======================
+// 26/10/2026: duas pacientes ouviram "segunda-feira, 02/11" — Finados, dia
+// bloqueado inteiro desde 27/08. A lista de vagas só traz os dias QUE TÊM vaga;
+// o dia bloqueado simplesmente some, e a Ana preenche o buraco com a regra fixa
+// ("segunda é dia de Conjunto"). É o mesmo "silêncio vira invenção" de 14/09:
+// o conserto é AFIRMAR o fechado, não esperar que ela deduza pela ausência.
+// E a trava de vaga inexistente pegou "02/11 às 14h00", mas mandou reescrever
+// dizendo "o dia está completo" — a reescrita escolheu 14h20 no MESMO dia, e o
+// recheque da reescrita não olhava vaga inexistente. Saiu.
+function blocoDiasFechados(fechados) {
+  if (!fechados || !fechados.size) return "";
+  const linhas = [...fechados].sort().map(ymd => {
+    const d = new Date(`${ymd}T12:00:00-03:00`);
+    const uni = unidadeDoDia(d);
+    const rot = d.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit" });
+    return `- ${rot}${uni ? ` (seria dia de ${uni})` : ""} → FECHADO, sem atendimento em nenhuma unidade`;
+  });
+  return `\n\n🚫 DIAS FECHADOS (feriado ou bloqueio da agenda — a clínica NÃO atende):\n${linhas.join("\n")}\nNesses dias NÃO existe horário nenhum. Não ofereça, não os chame de "próximo dia útil" e não deduza pela regra do dia da semana ("segunda é dia de Conjunto"). Se o paciente pedir um desses dias, diga que nesse dia não teremos atendimento e ofereça o dia de atendimento mais próximo que esteja na lista de horários.`;
+}
+// A resposta cita (para oferecer) uma data fechada? Ignora a frase que já diz
+// que o dia está fechado e as consultas que o próprio paciente tem.
+function citouDiaFechado(reply, fechados, meusAgendamentos) {
+  if (!fechados || !fechados.size || !reply) return null;
+  const ddmmDe = (ymd) => `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}`;
+  const alvo = new Map([...fechados].map(ymd => [ddmmDe(ymd), ymd]));
+  const dele = new Set((meusAgendamentos || []).map(a => new Date(a.inicio).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" })));
+  const semMd = String(reply).replace(/[*_~`]/g, "");
+  for (const frase of semMd.split(/(?<=[.!?\n])/)) {
+    if (/feriado|fechad|n[ãa]o (teremos|haver[áa]|h[áa]|vamos ter|tem) atendimento|sem atendimento|n[ãa]o atendemos|n[ãa]o abrimos/i.test(frase)) continue;
+    for (const m of frase.matchAll(/(\d{1,2})\/(\d{1,2})(?!\/?\d)/g)) {
+      const dm = `${m[1].padStart(2, "0")}/${m[2].padStart(2, "0")}`;
+      if (alvo.has(dm) && !dele.has(dm)) return `ofereceu ${dm}, dia FECHADO na agenda (feriado/bloqueio) — não há atendimento nesse dia`;
+    }
+  }
+  return null;
+}
+function instrucaoDiaFechadoNaAgenda(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. A clínica estará FECHADA nesse dia — nenhum horário dele existe, nem de manhã nem à tarde.
+Reescreva: se foi o paciente quem pediu esse dia, diga com naturalidade que nesse dia não teremos atendimento; depois ofereça UM horário COPIADO DA LISTA de vagas livres, no dia de atendimento mais próximo do que ele pediu (respeitando unidade e período, se ele disse). NUNCA cite de novo a data fechada como opção.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 function proximoDiaDaUnidade(unidadeNome, agora = new Date(), fechados = new Set()) {
   const horaBR = Number(agora.toLocaleString("en-US", { timeZone: TZ_BR, hour: "2-digit", hour12: false }));
