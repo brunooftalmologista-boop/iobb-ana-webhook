@@ -522,8 +522,9 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
           </article>
 
           <article class="folha-sec" id="s-iclinic">
-            <div class="t"><span>Texto do atendimento <span class="hint" style="font-weight:400">— para relatório</span></span><button type="button" class="pri" id="copiar">Copiar</button></div>
-            <div class="c"><pre class="saida" id="saida"></pre><div class="status" id="status"></div></div>
+            <div class="t"><span>Texto do atendimento <span class="hint" style="font-weight:400">— para relatório</span></span><span style="display:flex;gap:8px"><button type="button" id="txt-editar">✏️ Editar texto</button><button type="button" class="pri" id="copiar">Copiar</button></span></div>
+            <div class="c"><div class="hint" id="txt-aviso" hidden>Texto editado à mão: é ele que vai ser salvo e copiado. Mudanças no formulário não alteram mais este texto. <button type="button" class="link" id="txt-auto">↺ voltar ao texto automático</button></div>
+              <pre class="saida" id="saida"></pre><textarea id="texto-editado" class="saida" rows="18" hidden style="width:100%;font:inherit;white-space:pre-wrap"></textarea><div class="status" id="status"></div></div>
           </article>
         </div>
       </section>
@@ -796,6 +797,10 @@ function exComp(){ const L=[];
   const mapa=[...marcados("mapa").map(nomeChip),...linhas("mapa-txt")]; if(mapa.length) L.push(`Mapeamento de retina: ${mapa.map(ponto).join(" ")}`);
   for(const t of linhas("exc-txt")) L.push(ponto(t));
   return L.length?`Exames complementares:\n${L.join("\n")}`:""; }
+// Texto do atendimento editável (26/10/2026): editado à mão, vale o que ele escreveu
+// (salvar, finalizar e copiar); o campo #texto-editado vai no rascunho como os outros.
+function textoFinal(){ const e=v("texto-editado"); return e.trim()?e:textoIclinic(); }
+function mostraTextoEditado(){ const ed=!!v("texto-editado").trim(); $("#saida").hidden=ed; $("#texto-editado").hidden=!ed; $("#txt-aviso").hidden=!ed; $("#txt-editar").hidden=ed; }
 function textoIclinic(){ const L=[];
   const ev=linhas("evol-txt"); if(ev.length) L.push(`Evolução:\n${ev.join("\n")}`);
   const qp=bloco("Queixa principal",[...marcados("qp").map(nomeChip),...linhas("qp-txt")]); if(qp) L.push(qp);
@@ -1905,7 +1910,7 @@ function rascunhoLocal(){ if(!atend) return; try{ localStorage.setItem(chaveLoca
 function durAtual(){ return durBase+(t0?(Date.now()-t0)/1000:0); }
 function atualiza(){
   mostraLC(); calcLC(); marcaAlterados(); mostraLO(); mostraRO(); if(v("ro-on")==="1") atualizaRO(); mostraEN(); if(v("en-on")==="1"){ desenhaEnCids(); atualizaEN(); }   // lentes antes do texto, para o texto já sair com os graus novos
-  $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar.";
+  $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar."; mostraTextoEditado();
   const r=receita();
   $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
   $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol(); seguranca(); desenhaCids(); desenhaJust(); $("#ex-ind").placeholder="Ex.: acompanhamento semestral";
@@ -2158,14 +2163,16 @@ $$("#menu button").forEach(b=>b.addEventListener("click",()=>{
   $("#"+b.dataset.ir).scrollIntoView({behavior:"smooth"}); }));
 async function salvar(silencioso){
   if(!atend) return false;
-  try{ const r=await api(`/api/prontuario/atendimento/${atend.id}`,{method:"POST",body:JSON.stringify({dados:coletar(),texto:textoIclinic(),duracao_seg:durAtual()})});
+  try{ const r=await api(`/api/prontuario/atendimento/${atend.id}`,{method:"POST",body:JSON.stringify({dados:coletar(),texto:textoFinal(),duracao_seg:durAtual()})});
     atend=r.consulta; sujo=false; try{ localStorage.removeItem(chaveLocal(atend.id)); }catch(_){}
     status(`Rascunho salvo às ${hhmm(atend.updated_at)}.`,"ok"); return true;
   }catch(e){ if(!silencioso||e.status===401) status(e.status===401?MSG_SESSAO:(e.msg||"Não consegui salvar."),"erro"); return false; }
 }
 setInterval(()=>{ if(atend&&sujo) salvar(true); },30000);
 window.addEventListener("beforeunload",e=>{ if(atend&&sujo){ e.preventDefault(); e.returnValue=""; } });
-$("#copiar").addEventListener("click",()=>copiarTxt(textoIclinic(),()=>status("Texto copiado.","ok"),()=>status("Não consegui copiar: selecione o texto e use Ctrl+C.","erro")));
+$("#txt-editar").addEventListener("click",()=>{ const t=$("#texto-editado"); t.value=textoIclinic()||""; mostraTextoEditado(); if(!t.value.trim()){ t.value=" "; } mostraTextoEditado(); t.focus(); t.dispatchEvent(new Event("input",{bubbles:true})); });
+$("#txt-auto").addEventListener("click",()=>{ $("#texto-editado").value=""; mostraTextoEditado(); $("#texto-editado").dispatchEvent(new Event("input",{bubbles:true})); status("Voltou ao texto automático.","ok"); });
+$("#copiar").addEventListener("click",()=>copiarTxt(textoFinal(),()=>status("Texto copiado.","ok"),()=>status("Não consegui copiar: selecione o texto e use Ctrl+C.","erro")));
 // repetir a refração da última consulta finalizada
 $("#repetir-ref").addEventListener("click",()=>{ const c=(ficha.consultas||[]).find(x=>x.finalizado_em&&(x.dados?.campos?.["re-od-esf"]||x.dados?.campos?.["re-oe-esf"])); if(!c) return;
   for(const id of ["re-od-esf","re-od-cil","re-od-eixo","re-oe-esf","re-oe-cil","re-oe-eixo","re-add"]){ const el=$("#"+id); if(el) el.value=c.dados.campos[id]||""; }
@@ -2180,7 +2187,7 @@ function abrirFinalizar(){ try{ window.EquipeChat&&EquipeChat.fechar(); }catch(_
 $("#gf-voltar").addEventListener("click",()=>{ $("#g-fim").hidden=true; });
 $("#gf-ok").addEventListener("click",async()=>{
   let txt="";
-  try{ txt=textoIclinic(); if($("#gf-copiar").checked) copiarTxt(txt,()=>{},()=>{}); }
+  try{ txt=textoFinal(); if($("#gf-copiar").checked) copiarTxt(txt,()=>{},()=>{}); }
   catch(e){ diag("finalizar_erro_texto",(e&&e.stack||String(e)).slice(0,600)); $("#gf-st").textContent="Erro ao montar o texto: "+(e&&e.message||e)+". Avise o suporte."; $("#gf-st").className="status erro"; return; }
   if(!atend){ diag("finalizar_sem_atendimento","atend=null com a gaveta aberta"); $("#gf-st").textContent="O atendimento não está mais aberto nesta tela. Recarregue a página (F5) e clique em “Continuar atendimento”."; $("#gf-st").className="status erro"; return; }
   try{ await api(`/api/prontuario/atendimento/${atend.id}/finalizar`,{method:"POST",body:JSON.stringify({dados:coletar(),texto:txt,duracao_seg:durAtual()})});
