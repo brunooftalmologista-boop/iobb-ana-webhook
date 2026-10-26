@@ -124,8 +124,9 @@
   .ag-wslot .ag-hold{font-size:10px}
   .ag-day-empty{font-size:11px;color:var(--muted);text-align:center;padding:12px 4px}
   /* faltou/compareceu na grade: a secretária enxerga sem abrir o agendamento */
-  .ag-pres{font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:6px;margin-left:2px;vertical-align:middle}
-  .ag-pres.veio{background:#0a7d3c;color:#fff}
+  .ag-pres{font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:6px;margin-left:2px;vertical-align:middle;white-space:nowrap;display:inline-block}
+  .ag-pres.aguardando{background:#f2a900;color:#3b2a00}
+  .ag-pres.atendido{background:#0a7d3c;color:#fff}
   .ag-pres.faltou{background:#b3261e;color:#fff}
   .ag-pres.conf{background:#25d366;color:#08301c}
 
@@ -344,11 +345,12 @@
       <div id="agdet-e-erro" style="color:#d33;font-size:13px;margin-top:8px;display:none"></div>
     </div>
     <div id="agdet-presenca" style="margin-top:14px;padding-top:12px;border-top:1px solid #e3e9ef">
-      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Comparecimento</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Status do atendimento</div>
       <div id="agdet-presenca-estado" style="font-size:13px;margin-bottom:8px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="pbtn ghost" id="agdet-veio">Compareceu</button>
-        <button class="pbtn ghost" id="agdet-faltou">Faltou</button>
+        <button class="pbtn ghost" id="agdet-aguardando">Aguardando atendimento</button>
+        <button class="pbtn ghost" id="agdet-atendido">Atendido</button>
+        <button class="pbtn ghost" id="agdet-faltou">Não compareceu</button>
         <button class="pbtn ghost" id="agdet-limpar">Limpar</button>
       </div>
     </div>
@@ -530,7 +532,7 @@ function blocoFicha(a){
 // ============================================================================
 const VIEW = 'grade';   // a lista "Transferir" (para o iClinic) saiu em 21/10/2026
 const SUB = {
-  grade: 'Verde = vaga livre (clique para marcar) · vermelho = marcado pela Ana · clique num paciente para ver a ficha e registrar comparecimento',
+  grade: 'Verde = vaga livre (clique para marcar) · vermelho = marcado pela Ana · clique num paciente para ver a ficha e marcar o status do atendimento',
   transf: 'Clique em qualquer campo para copiá-lo · “copiar ficha” copia o bloco completo · marque ✓ quando passar pro prontuário · ➕ marca um horário livre na hora',
 };
 function aplicarView(){
@@ -615,9 +617,18 @@ function agRender(){
 }
 // Selo de comparecimento na própria grade — a secretária vê num relance quem
 // já foi marcado e quem ainda falta marcar, sem abrir agendamento por agendamento.
+// Status do atendimento (26/10/2026): aguardando → atendido, ou não compareceu.
+function statusAtend(a){
+  if(a.compareceu===false) return 'faltou';
+  if(a.atendido_em) return 'atendido';
+  if(a.compareceu===true) return 'aguardando';
+  return null;
+}
+const ST_TXT={aguardando:'Aguardando atendimento', atendido:'Atendido', faltou:'Não compareceu'};
+const ST_TAG={aguardando:'aguardando', atendido:'atendido', faltou:'não compareceu'};
 function tagPresenca(a){
-  if(a.compareceu===true)  return '<span class="ag-pres veio">veio</span>';
-  if(a.compareceu===false) return '<span class="ag-pres faltou">faltou</span>';
+  const st=statusAtend(a);
+  if(st) return `<span class="ag-pres ${st}">${ST_TAG[st]}</span>`;
   // Confirmação do lembrete da véspera (antes só aparecia na aba "Transferir", que saiu em 21/10/2026)
   if(a.confirmado_em) return `<span class="ag-pres conf" title="Confirmou pelo WhatsApp em ${esc(dataBR(a.confirmado_em)+' às '+horaBR(a.confirmado_em))}">✓ confirmou</span>`;
   return '';
@@ -757,32 +768,44 @@ function openAgDetails(id){
 }
 function closeAgDetails(){ $('#agdet-modal').classList.remove('show'); }
 
-// Comparecimento: só faz sentido depois que a consulta aconteceu, então para
-// horário futuro os botões ficam escondidos — evita a recepção marcar presença
-// de quem ainda nem chegou.
-function renderPresenca(a){
-  const passou = new Date(a.inicio).getTime() <= Date.now();
-  const box=$('#agdet-presenca');
-  if(!passou){ box.style.display='none'; return; }
-  box.style.display='block';
-  const est=$('#agdet-presenca-estado');
-  if(a.compareceu===true)       est.innerHTML='<b style="color:#0a7d3c">Compareceu</b>'+(a.compareceu_por?' — marcado por '+esc(a.compareceu_por):'');
-  else if(a.compareceu===false) est.innerHTML='<b style="color:#b3261e">Faltou</b>'+(a.compareceu_por?' — marcado por '+esc(a.compareceu_por):'');
-  else                          est.innerHTML='<span style="color:#6b7b8c">Ainda não marcado</span>';
-  // O botão da marcação atual fica destacado — sem isso "Compareceu" aparece
-  // sempre verde e parece já selecionado mesmo quando ninguém marcou nada.
-  $('#agdet-veio').className   = 'pbtn '+(a.compareceu===true ?'primary':'ghost');
-  $('#agdet-faltou').className = 'pbtn '+(a.compareceu===false?'danger':'ghost');
+// Status do atendimento: aparece a partir do DIA da consulta (o paciente pode
+// chegar antes do horário e já ficar "aguardando"); em dia futuro fica escondido.
+function diaChegou(a){
+  const d=new Date(a.inicio), h=new Date();
+  return d.getTime()<=h.getTime() || d.toDateString()===h.toDateString();
 }
-async function setPresenca(v){
+function renderPresenca(a){
+  const box=$('#agdet-presenca');
+  if(!diaChegou(a)){ box.style.display='none'; return; }
+  box.style.display='block';
+  const st=statusAtend(a), est=$('#agdet-presenca-estado');
+  const cor={aguardando:'#a06d00', atendido:'#0a7d3c', faltou:'#b3261e'};
+  const por = st==='atendido' ? a.atendido_por : a.compareceu_por;
+  const quando = st==='atendido' ? a.atendido_em : a.compareceu_em;
+  est.innerHTML = st
+    ? `<b style="color:${cor[st]}">${ST_TXT[st]}</b>`+(quando?' · '+esc(horaBR(quando)):'')+(por?' — marcado por '+esc(por):'')
+    : '<span style="color:#6b7b8c">Ainda não marcado</span>';
+  // O botão do status atual fica destacado.
+  $('#agdet-aguardando').className = 'pbtn '+(st==='aguardando'?'primary':'ghost');
+  $('#agdet-atendido').className   = 'pbtn '+(st==='atendido'  ?'primary':'ghost');
+  $('#agdet-faltou').className     = 'pbtn '+(st==='faltou'    ?'danger' :'ghost');
+}
+async function setPresenca(st){
   if(!agDetId) return;
   try{
-    const d = await api('/api/agenda/'+agDetId+'/presenca', {method:'POST', body:{compareceu:v}});
+    const d = await api('/api/agenda/'+agDetId+'/presenca', {method:'POST', body:{status:st}});
     if(!d || !d.ok){ toast((d&&d.error)||'Falha ao marcar.'); return; }
     // Atualiza o cache local para o modal e a grade refletirem sem recarregar.
     const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
-    if(a){ a.compareceu=v; a.compareceu_por=null; renderPresenca(a); }
-    toast(v===true?'Marcado: compareceu ✓':(v===false?'Marcado: faltou':'Marcação removida'));
+    if(a){
+      const agora=new Date().toISOString();
+      if(st===null){ a.compareceu=null; a.compareceu_em=a.compareceu_por=a.atendido_em=a.atendido_por=null; }
+      else if(st==='faltou'){ a.compareceu=false; a.compareceu_em=agora; a.compareceu_por=null; a.atendido_em=a.atendido_por=null; }
+      else if(st==='aguardando'){ a.compareceu=true; a.compareceu_em=agora; a.compareceu_por=null; a.atendido_em=a.atendido_por=null; }
+      else { a.compareceu=true; a.atendido_em=agora; a.atendido_por=null; }
+      renderPresenca(a);
+    }
+    toast(st?'Marcado: '+ST_TXT[st]:'Marcação removida');
     agRefresh();
   }catch(e){ if(String(e.message)!=='401') toast('Falha de conexão.'); }
 }
@@ -1066,9 +1089,10 @@ $('#agdet-editar').onclick = entrarModoEdicao;
 $('#agdet-voltar').onclick = ()=>{ sairModoEdicao(); openAgDetails(agDetId); };
 $('#agdet-salvar').onclick = salvarEdicao;
 
-$('#agdet-veio').onclick   = ()=>setPresenca(true);
-$('#agdet-faltou').onclick = ()=>setPresenca(false);
-$('#agdet-limpar').onclick = ()=>setPresenca(null);
+$('#agdet-aguardando').onclick = ()=>setPresenca('aguardando');
+$('#agdet-atendido').onclick   = ()=>setPresenca('atendido');
+$('#agdet-faltou').onclick     = ()=>setPresenca('faltou');
+$('#agdet-limpar').onclick     = ()=>setPresenca(null);
 $('#agdet-fechar').onclick = closeAgDetails;
 $('#agdet-ficha').onclick  = ()=>{
   const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));

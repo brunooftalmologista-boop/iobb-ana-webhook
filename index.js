@@ -3286,7 +3286,7 @@ async function fichaHistoricaDoPaciente(telefone) {
 // recusar por coluna inexistente, refazemos a consulta sem elas e a agenda
 // continua funcionando — só sem a marcação de presença.
 const COLS_AGENDA_BASE = "id, unidade, inicio, fim, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, origem, hold_expira_em, confirmado_em, encaixe";
-const COLS_AGENDA_PRESENCA = COLS_AGENDA_BASE + ", compareceu, compareceu_em, compareceu_por";
+const COLS_AGENDA_PRESENCA = COLS_AGENDA_BASE + ", compareceu, compareceu_em, compareceu_por, atendido_em, atendido_por";
 let avisouSemComparecimento = false;
 
 async function listarAgendamentos({ de, ate, unidade }) {
@@ -9575,22 +9575,37 @@ app.post("/api/marketing/optouts", async (req, res) => {
 // claro que não veio). É um campo SEPARADO do status: 'confirmado' ali quer
 // dizer "a vaga está reservada" e alimenta a trava anti-overbooking — presença
 // é outra coisa. compareceu = true | false | null (ainda não marcado).
+// Desde 26/10/2026 a recepção marca STATUS DE ATENDIMENTO, não mais "veio/faltou":
+//   aguardando = chegou (compareceu=true, atendido_em=null)
+//   atendido   = já passou pelo médico (compareceu=true, atendido_em preenchido)
+//   faltou     = não compareceu (compareceu=false)
+// `compareceu` continua sendo a verdade para funil, histórico e métricas.
 app.post("/api/agenda/:id/presenca", async (req, res) => {
   try {
-    const v = req.body?.compareceu;
-    if (v !== true && v !== false && v !== null) {
-      return res.status(400).json({ ok: false, error: "compareceu deve ser true, false ou null." });
+    let st = req.body?.status;
+    if (st === undefined) { // cliente antigo: {compareceu: true|false|null}
+      const v = req.body?.compareceu;
+      st = v === true ? "aguardando" : v === false ? "faltou" : v === null ? null : "?";
     }
-    const patch = v === null
-      ? { compareceu: null, compareceu_em: null, compareceu_por: null }
-      : { compareceu: v, compareceu_em: new Date().toISOString(), compareceu_por: req.panelUser?.email || null };
+    if (!["aguardando", "atendido", "faltou", null].includes(st)) {
+      return res.status(400).json({ ok: false, error: "status deve ser aguardando, atendido, faltou ou null." });
+    }
+    const agora = new Date().toISOString(), quem = req.panelUser?.email || null;
+    const patch = st === null ? { compareceu: null, compareceu_em: null, compareceu_por: null, atendido_em: null, atendido_por: null }
+      : st === "faltou" ? { compareceu: false, compareceu_em: agora, compareceu_por: quem, atendido_em: null, atendido_por: null }
+      : st === "aguardando" ? { compareceu: true, compareceu_em: agora, compareceu_por: quem, atendido_em: null, atendido_por: null }
+      : { compareceu: true, atendido_em: agora, atendido_por: quem };
+    if (st === "atendido") { // pulou o "aguardando": a chegada fica registrada junto
+      const { data: atual } = await supabase.from("appointments").select("compareceu").eq("id", req.params.id).maybeSingle();
+      if (atual && atual.compareceu !== true) Object.assign(patch, { compareceu_em: agora, compareceu_por: quem });
+    }
     const { error } = await supabase.from("appointments").update(patch).eq("id", req.params.id);
     if (error) {
       console.error("[Agenda] /presenca falhou:", error.message);
       const faltaColuna = /column .* does not exist/i.test(error.message || "");
       return res.status(500).json({ ok: false, error: faltaColuna ? "Falta rodar sql/comparecimento.sql no Supabase." : error.message });
     }
-    res.json({ ok: true, compareceu: v });
+    res.json({ ok: true, status: st, compareceu: patch.compareceu, atendido_em: patch.atendido_em ?? null });
   } catch (e) {
     console.error("[Agenda] /presenca falhou:", e.message);
     res.status(500).json({ ok: false, error: e.message });
@@ -10753,8 +10768,12 @@ async function salvarAtendimento(req, res, finalizar) {
     const { data: salvo, error: e2 } = await supabase.from("prontuario_consultas").update(upd).eq("id", c.id).select("*").single();
     if (e2) throw e2;
     if (finalizar && c.appointment_id) {
-      await supabase.from("appointments").update({ compareceu: true, compareceu_em: new Date().toISOString(), compareceu_por: "Dr. Bruno (prontuário)" })
+      const agora = new Date().toISOString();
+      await supabase.from("appointments").update({ compareceu: true, compareceu_em: agora, compareceu_por: "Dr. Bruno (prontuário)" })
         .eq("id", c.appointment_id).is("compareceu", null);
+      // Finalizar o atendimento = paciente atendido (sai do "aguardando" sozinho).
+      await supabase.from("appointments").update({ compareceu: true, atendido_em: agora, atendido_por: "Dr. Bruno (prontuário)" })
+        .eq("id", c.appointment_id).is("atendido_em", null);
     }
     res.json({ ok: true, consulta: salvo });
   } catch (e) {

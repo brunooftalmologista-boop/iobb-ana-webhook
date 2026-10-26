@@ -507,11 +507,12 @@
     <p id="agdet-quando"></p>
     <div id="agdet-body"></div>
     <div id="agdet-presenca" style="margin-top:14px;padding-top:12px;border-top:1px solid #e3e9ef">
-      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Comparecimento</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Status do atendimento</div>
       <div id="agdet-presenca-estado" style="font-size:13px;margin-bottom:8px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn" id="agdet-veio">Compareceu</button>
-        <button class="btn ghost" id="agdet-faltou">Faltou</button>
+        <button class="btn ghost" id="agdet-aguardando">Aguardando atendimento</button>
+        <button class="btn ghost" id="agdet-atendido">Atendido</button>
+        <button class="btn ghost" id="agdet-faltou">Não compareceu</button>
         <button class="btn ghost" id="agdet-limpar">Limpar</button>
       </div>
     </div>
@@ -1949,39 +1950,57 @@ async function remarcarAgendamento(){
   finally{ b.disabled=false; }
 }
 
-// Comparecimento: só faz sentido depois que a consulta aconteceu, então para
-// horário futuro os botões ficam escondidos — evita a recepção marcar presença
-// de quem ainda nem chegou.
+// Status do atendimento (26/10/2026): aguardando → atendido, ou não compareceu.
+// Aparece a partir do DIA da consulta; em dia futuro fica escondido.
+function statusAtend(a){
+  if(a.compareceu===false) return 'faltou';
+  if(a.atendido_em) return 'atendido';
+  if(a.compareceu===true) return 'aguardando';
+  return null;
+}
+const ST_TXT={aguardando:'Aguardando atendimento', atendido:'Atendido', faltou:'Não compareceu'};
 function renderPresenca(a){
-  const passou = new Date(a.inicio).getTime() <= Date.now();
+  const d=new Date(a.inicio), h=new Date();
   const box=$('#agdet-presenca');
-  if(!passou){ box.style.display='none'; return; }
+  if(d.getTime()>h.getTime() && d.toDateString()!==h.toDateString()){ box.style.display='none'; return; }
   box.style.display='block';
-  const est=$('#agdet-presenca-estado');
-  if(a.compareceu===true)       est.innerHTML='<b style="color:#0a7d3c">Compareceu</b>'+(a.compareceu_por?' — marcado por '+esc(a.compareceu_por):'');
-  else if(a.compareceu===false) est.innerHTML='<b style="color:#b3261e">Faltou</b>'+(a.compareceu_por?' — marcado por '+esc(a.compareceu_por):'');
-  else                          est.innerHTML='<span style="color:#6b7b8c">Ainda não marcado</span>';
+  const st=statusAtend(a), est=$('#agdet-presenca-estado');
+  const cor={aguardando:'#a06d00', atendido:'#0a7d3c', faltou:'#b3261e'};
+  const por = st==='atendido' ? a.atendido_por : a.compareceu_por;
+  est.innerHTML = st ? `<b style="color:${cor[st]}">${ST_TXT[st]}</b>`+(por?' — marcado por '+esc(por):'')
+                     : '<span style="color:#6b7b8c">Ainda não marcado</span>';
+  $('#agdet-aguardando').className = 'btn'+(st==='aguardando'?'':' ghost');
+  $('#agdet-atendido').className   = 'btn'+(st==='atendido'  ?'':' ghost');
+  $('#agdet-faltou').className     = 'btn'+(st==='faltou'    ?'':' ghost');
 }
 
-async function setPresenca(v){
+async function setPresenca(st){
   if(!agDetId) return;
   try{
     const r=await fetch(API_BASE.replace(/\/$/,'')+'/api/agenda/'+agDetId+'/presenca',{
       method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+AUTH},
-      body:JSON.stringify({compareceu:v}) });
+      body:JSON.stringify({status:st}) });
     if(r.status===401){ logout(); return; }
     const d=await r.json().catch(()=>({}));
     if(!r.ok){ toast(d.error||('Erro '+r.status)); return; }
     // Atualiza o cache local para o modal e a lista refletirem sem recarregar.
     const a=(agBooked||[]).find(x=>String(x.id)===String(agDetId));
-    if(a){ a.compareceu=v; a.compareceu_por=null; renderPresenca(a); }
-    toast(v===true?'Marcado: compareceu ✓':(v===false?'Marcado: faltou':'Marcação removida'));
+    if(a){
+      const agora=new Date().toISOString();
+      if(st===null){ a.compareceu=null; a.compareceu_por=a.atendido_em=a.atendido_por=null; }
+      else if(st==='faltou'){ a.compareceu=false; a.compareceu_por=null; a.atendido_em=null; }
+      else if(st==='aguardando'){ a.compareceu=true; a.compareceu_por=null; a.atendido_em=null; }
+      else { a.compareceu=true; a.atendido_em=agora; a.atendido_por=null; }
+      renderPresenca(a);
+    }
+    toast(st?'Marcado: '+ST_TXT[st]:'Marcação removida');
     agRefresh();
   }catch(e){ toast('Falha de conexão.'); }
 }
 function closeAgDetails(){ $('#agdet-modal').classList.remove('show'); }
-$('#agdet-veio').onclick   = ()=>setPresenca(true);
-$('#agdet-faltou').onclick = ()=>setPresenca(false);
+$('#agdet-aguardando').onclick = ()=>setPresenca('aguardando');
+$('#agdet-atendido').onclick   = ()=>setPresenca('atendido');
+$('#agdet-faltou').onclick     = ()=>setPresenca('faltou');
 $('#agdet-limpar').onclick = ()=>setPresenca(null);
 // encaixe=true: paciente extra; semHora=true: só o dia veio (o horário a secretária digita)
 let agBookEnc=false;
