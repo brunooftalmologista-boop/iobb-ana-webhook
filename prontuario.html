@@ -477,7 +477,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
                 </div>
               </div>
               <div class="rx" id="ro-bloco">
-                <div class="row" style="align-items:center"><span class="rot" style="margin:0">Relatório para a ótica <span class="hint">— não adaptação aos óculos</span></span><button type="button" class="link" id="ro-abrir">+ relatório para a ótica</button><input type="hidden" id="ro-on"><input type="hidden" id="ro-emitido"><input type="hidden" id="ro-editado"></div>
+                <div class="row" style="align-items:center"><span class="rot" style="margin:0">Relatório para a ótica <span class="hint">— não adaptação aos óculos</span></span><button type="button" class="link" id="ro-abrir">+ relatório para a ótica</button><input type="hidden" id="ro-on"><input type="hidden" id="docs-emitidos"><input type="hidden" id="ro-editado"></div>
                 <div id="ro-corpo" hidden style="display:grid;gap:8px">
                   <div class="campo"><label for="ro-queixa">Queixa do paciente <span class="hint">(opcional)</span></label><input id="ro-queixa" placeholder="Ex.: visão embaçada para perto e tontura ao andar"></div>
                   <div><span class="rot">Motivo(s) <span class="hint">— cada um acrescenta um parágrafo pronto</span></span><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:4px 12px"><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="dnp" style="width:auto;margin-top:3px"> Distância nasopupilar / centração</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="altura" style="width:auto;margin-top:3px"> Altura de montagem (multifocal)</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="grau" style="width:auto;margin-top:3px"> Lente não confere com a receita</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="eixo" style="width:auto;margin-top:3px"> Eixo do cilindro divergente</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="curva" style="width:auto;margin-top:3px"> Curva base diferente da anterior</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="armacao" style="width:auto;margin-top:3px"> Ajuste da armação</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="corredor" style="width:auto;margin-top:3px"> Campo de visão estreito no multifocal</label><label style="gap:6px;align-items:flex-start"><input type="checkbox" class="ro-mot" value="tipo" style="width:auto;margin-top:3px"> Troca do tipo de lente</label></div></div>
@@ -801,6 +801,11 @@ function exComp(){ const L=[];
 // (salvar, finalizar e copiar); o campo #texto-editado vai no rascunho como os outros.
 function textoFinal(){ const e=v("texto-editado"); return e.trim()?e:textoIclinic(); }
 function mostraTextoEditado(){ const ed=!!v("texto-editado").trim(); $("#saida").hidden=ed; $("#texto-editado").hidden=!ed; $("#txt-aviso").hidden=!ed; $("#txt-editar").hidden=ed; }
+// "Tudo que eu escrevo no prontuário deve ficar salvo" (Dr. Bruno, 28/10/2026): todo
+// documento GERADO no atendimento (impresso ou assinado) entra no texto, após a conduta.
+// Só o do atendimento aberto — a 2ª via de consulta antiga não mexe no de hoje.
+const emitido=k=>v("docs-emitidos").split(",").includes(k);
+function marcaEmitido(k){ if(segundaVia||emitido(k)) return; $("#docs-emitidos").value=[...v("docs-emitidos").split(",").filter(Boolean),k].join(","); atualiza(); }
 function textoIclinic(){ const L=[];
   const ev=linhas("evol-txt"); if(ev.length) L.push(`Evolução:\n${ev.join("\n")}`);
   const qp=bloco("Queixa principal",[...marcados("qp").map(nomeChip),...linhas("qp-txt")]); if(qp) L.push(qp);
@@ -821,10 +826,13 @@ function textoIclinic(){ const L=[];
   const hd=bloco("Hipótese diagnóstica",hdComCid()); if(hd) L.push(hd);
   const cd=bloco("Conduta",[...marcados("cd").map(nomeChip),...linhas("cd-txt")]); if(cd) L.push(cd);
   if(v("rx-emitida")==="1"){ const rp=receita(), g=o=>[o[0],o[1]!=="—"?o[1]+(o[2]!=="—"?"x"+o[2]:""):""].filter(Boolean).join(" ");
-    L.push(`Receita de óculos: lentes ${TIPO_TEXTO[v("rx-uso")]||v("rx-uso")}${rp.perto?` (OD ${g(rp.od)}; OE ${g(rp.oe)})`:""}.`); }
-  if(v("ro-emitido")==="1"&&v("ro-on")==="1"&&v("ro-txt").trim()){   // sem a saudação e o fecho da carta
+    L.push(`Receita de óculos: lentes ${TIPO_TEXTO[v("rx-uso")]||v("rx-uso")}${rp.perto?` (OD ${g(rp.od)}; OE ${g(rp.oe)})`:""}.${v("rx-obs").trim()?` Observação: ${v("rx-obs").trim().replace(/\.$/,"")}.`:""}`); }
+  if(emitido("ro")&&v("ro-on")==="1"&&v("ro-txt").trim()){   // sem a saudação e o fecho da carta
     const ro=v("ro-txt").trim().split(/\n{2,}/).filter(p=>!/^prezad|^coloco-me/i.test(p.trim())).join("\n");
-    if(ro) L.push(`Relatório para a ótica (não adaptação aos óculos):\n${ro}`); }   // logo após a conduta (Dr. Bruno, 28/10/2026)
+    if(ro) L.push(`Relatório para a ótica (não adaptação aos óculos):\n${ro}`); }
+  if(emitido("at")&&v("at-txt").trim()) L.push(`${$("#at-tipo").value==="comparecimento"?"Declaração de comparecimento":"Atestado médico"} emitido:\n${v("at-txt").trim()}`);
+  if(emitido("lo")&&v("lo-on")==="1"&&(v("lo-txt").trim()||v("lo-concl").trim())) L.push(`Laudo oftalmológico emitido:\n${[v("lo-txt").trim(),v("lo-concl").trim()?`Conclusão: ${v("lo-concl").trim()}`:""].filter(Boolean).join("\n")}`);
+  if(emitido("en")&&v("en-on")==="1"&&v("en-txt").trim()) L.push(`Encaminhamento emitido:\n${v("en-txt").trim()}`);   // logo após a conduta (Dr. Bruno, 28/10/2026)
   const lc=textoLC(); if(lc) L.push(lc);
   const meds=medicamentos(); if(meds.length) L.push(bloco("Prescrição de medicamentos",meds.map(m=>`${m.med}${m.qtd?" ("+m.qtd+")":""}: ${m.pos||"posologia não informada"}`)));
   const ex=bloco("Exames solicitados",examesPedidos()); if(ex) L.push(ex);
@@ -1497,7 +1505,7 @@ function gerarRO(assinar){
   const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   // Gerado (impresso ou assinado) → o relatório entra no texto do atendimento, para
   // ficar registrado o que foi à ótica (Dr. Bruno, 28/10/2026). Não na 2ª via.
-  if(!segundaVia&&$("#ro-emitido").value!=="1"){ $("#ro-emitido").value="1"; atualiza(); }
+  marcaEmitido("ro");
   if(assinar) return enviarAssinado("atestado",{nome,data,titulo,texto},statusRO);
   const folha=`${cabFolha(timbrado,data,"")}
 <h1 style="margin-top:4mm">${titulo}</h1>
@@ -1547,6 +1555,7 @@ function gerarEN(assinar){
   const titulo="ENCAMINHAMENTO", timbrado=$("#rx-timbrado").checked, nome=String(consultaAtual.paciente_nome||"").toUpperCase();
   const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   const idade=ficha?.paciente?.idade;
+  marcaEmitido("en");
   if(assinar) return enviarAssinado("atestado",{nome,data,titulo,texto,paciente:nome,paciente_extra:idade!=null?[`${idade} anos`]:[]},statusEN);
   const folha=`${cabFolha(timbrado,data,"")}
 <h1 style="margin-top:4mm">${esc(titulo)}</h1>
@@ -1591,6 +1600,7 @@ function gerarAtestado(assinar){
   const titulo=$("#at-tipo").value==="comparecimento"?"DECLARAÇÃO DE COMPARECIMENTO":"ATESTADO MÉDICO";
   const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   const nome=String(consultaAtual.paciente_nome||"").toUpperCase(), timbrado=$("#rx-timbrado").checked;
+  marcaEmitido("at");
   if(assinar) return enviarAssinado("atestado",{nome,data,titulo,texto},statusAt);
   const folha=`
 ${cabFolha(timbrado,data,"")}
@@ -1643,6 +1653,7 @@ function gerarLO(assinar){
   const conclusao=v("lo-concl").trim(), timbrado=$("#rx-timbrado").checked;
   const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   const nome=String(consultaAtual.paciente_nome||"").toUpperCase();
+  marcaEmitido("lo");
   if(assinar) return enviarAssinado("laudo_oft",{nome,data,secoes,conclusao},statusLO);
   const folha=`${cabFolha(timbrado,data,"")}
 <h1>LAUDO OFTALMOLÓGICO</h1>
