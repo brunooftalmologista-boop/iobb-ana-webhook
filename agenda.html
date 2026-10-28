@@ -960,6 +960,7 @@ async function renderFunil(){
   }
   // Mais antiga primeiro: quem está esperando há mais tempo é quem esfria.
   const ord = [...linhas].sort((a,b)=> new Date(a.created_at)-new Date(b.created_at));
+  const medico = emailLogado()==='bruno@iobb.local';   // apagar é só do médico (o servidor confere também)
   $('#ind-lista').innerHTML = ord.map(i=>{
     const dias = Math.floor((Date.now()-new Date(i.created_at).getTime())/86400000);
     const viva = ['aberta','pausada'].includes(i.status);
@@ -980,6 +981,7 @@ async function renderFunil(){
               ? '<button class="pbtn ghost ind-act" data-id="'+i.id+'" data-st="fechada">✅ Fechou</button>'
                 + '<button class="pbtn ghost ind-act" data-id="'+i.id+'" data-st="recusada">🚫 Recusou</button>'
               : '<button class="pbtn ghost ind-act" data-id="'+i.id+'" data-st="aberta">↩︎ Reabrir</button>')
+      +     (medico ? '<button class="pbtn ghost ind-apagar" data-id="'+i.id+'" data-nome="'+esc(i.paciente_nome||'')+'" title="Tira da lista de vez (registro por engano ou paciente que não deve ser acompanhado)" style="color:#b42318">🗑️ Excluir</button>' : '')
       +   '</div>'
       + '</div></div>';
   }).join('');
@@ -1010,6 +1012,19 @@ $('#ind-lista').addEventListener('click', async (e)=>{
     toast('Atualizado ✓');
     await renderFunil();
   }catch(e){ if(String(e.message)!=='401') toast('Falha de conexão.'); }
+});
+// Excluir da lista (28/10/2026): apaga a indicação de vez — some do funil, das contas e
+// da fila automática de mensagens. Diferente de "Recusou", que fica no histórico.
+$('#ind-lista').addEventListener('click', async (e)=>{
+  const b = e.target.closest('.ind-apagar');
+  if(!b) return;
+  if(!confirm('Excluir '+(b.dataset.nome||'este paciente')+' da lista de indicações? Não fica no histórico e não dá para desfazer.')) return;
+  try{
+    const d = await api('/api/indicacoes/'+b.dataset.id+'/apagar', {method:'POST', body:{}});
+    if(!d || !d.ok){ toast((d&&d.error)||'Falha ao excluir.'); return; }
+    toast('Excluído da lista ✓');
+    await renderFunil();
+  }catch(err){ if(String(err.message)!=='401') toast('Falha de conexão.'); }
 });
 $('#ag-indicacoes').onclick = abrirIndicacoes;
 $('#ind-fechar').onclick = ()=> $('#ind-modal').classList.remove('show');
