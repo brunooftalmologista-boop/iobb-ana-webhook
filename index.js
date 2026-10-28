@@ -1747,15 +1747,21 @@ const RE_PEDIDO_DE_CARTEIRINHA = /(n[úu]mero|foto|imagem|c[óo]pia)\s+(d[ao]s?\
 // nome inexistente e morria no catch, calada.
 const RE_IMAGEM_RECEBIDA = /\[(imagem|foto|documento|arquivo)[^\]]{0,20}recebid/i;
 const RE_CONTEXTO_CONVENIO = /conv[êe]nio|unimed|carteirinha|plano de sa[úu]de/i;
-function esqueceuPedirCarteirinha(reply, messages, registros) {
+const RE_RECEBEU_CARTEIRINHA = /identifiquei (sua|a) carteirinha|li (sua|a) carteirinha|recebi (sua|a) carteirinha/i;
+function esqueceuPedirCarteirinha(reply, messages, registros, cartaoDoTurno = null) {
   const comConvenio = (registros || []).some(r => {
     const c = String(r.convenio || "").trim();
     return c && c !== "-" && !/^particular$/i.test(c) && convenioAtendido(c);
   });
   if (!comConvenio) return null;
+  // O cartão chegou NESTE turno (bloco [CARTEIRINHA]) — pedir de novo seria
+  // pedir o que acabou de vir (varredura de 28/10/2026).
+  if (cartaoDoTurno) return null;
   const t = String(reply || "");
   // A própria mensagem já pede? Então está certa.
   if (RE_PEDIDO_DE_CARTEIRINHA.test(t)) return null;
+  // A própria mensagem diz que leu/recebeu o cartão.
+  if (RE_LEU_CARTEIRINHA.test(t) || RE_RECEBEU_CARTEIRINHA.test(t)) return null;
   const hist = Array.isArray(messages) ? messages : [];
   // Já pediu em algum momento da conversa — pedir uma vez basta, e insistir é
   // justamente o erro oposto (caso Virginia, 03/09).
@@ -1906,7 +1912,9 @@ const RE_PEDIDO_LEGITIMO = /n[ãa]o consig|n[ãa]o consegui|n[ãa]o (ficou|est[�
 const RE_LEU_VARIAS = /carteirinhas/i;
 function pediuCarteirinhaDeNovo(reply, messages) {
   const t = String(reply || "");
-  const hist = Array.isArray(messages) ? messages : [];
+  // Só a conversa RECENTE (varredura de 28/10/2026): uma leitura de cartão de
+  // dois meses e meio antes bloqueava o pedido do cartão novo.
+  const hist = (Array.isArray(messages) ? messages : []).slice(-15);
   const leituras = hist.filter(m => m.role === "assistant" && RE_LEU_CARTEIRINHA.test(String(m.content || "")));
   if (!leituras.length) return null;
   if (leituras.some(m => RE_LEU_VARIAS.test(String(m.content || "")))) return null;
@@ -2199,7 +2207,7 @@ function instrucaoMaisCedo(motivo) {
 // segura comportamento, trava segura.
 // Só reprova quando ela pede MENOS do que falta: pedir um dado quando só falta
 // aquele é o certo e não dispara nada.
-function fichaEmContaGotas(reply, messages) {
+function fichaEmContaGotas(reply, messages, jaSabeForma = false) {
   // ⏱️ SÓ VALE COM HORÁRIO NA MESA (01/10/2026). A trava nasceu para a fase de
   // FICHA — paciente aceitou um horário e a Ana pinga um dado por vez. Mas ela
   // também disparava na fase de QUALIFICAÇÃO: "Quanto é a consulta?" → "No
@@ -2214,14 +2222,28 @@ function fichaEmContaGotas(reply, messages) {
   if (!horariosOferecidos(reply).length && !horariosOferecidos(ultimaDaAna?.content).length) return null;
   const pedeNome  = /nome completo/i.test(reply);
   const pedeNasc  = /data de nascimento|sua data de nasc|o nascimento/i.test(reply);
-  const pedeForma = /particular ou (por )?(conv[êe]nio|plano)|qual (é o )?conv[êe]nio|tem conv[êe]nio|tem algum (plano|conv[êe]nio)|ser[áa] particular/i.test(reply);
+  // Varredura de 28/10/2026 (76 dos 83 disparos eram falsos): "convênio ou
+  // particular", "continua pelo Saúde Caixa?" e "pelo GEAP ou particular?" também
+  // perguntam a forma de atendimento.
+  const pedeForma = /particular ou (por )?(conv[êe]nio|plano)|conv[êe]nio ou particular|qual (é o )?conv[êe]nio|tem conv[êe]nio|tem algum (plano|conv[êe]nio)|ser[áa] particular|continua (como|pel[oa]) [^.!?\n]{1,40}\?|pel[oa] [^.!?\n]{1,40} ou particular/i.test(reply);
   const pediu = [pedeNome, pedeNasc, pedeForma].filter(Boolean).length;
   if (!pediu) return null;
+  // Pedir SÓ a forma de atendimento é o formato certo (é o que define agenda e
+  // antecedência) — a trava é para nome/nascimento pingados um por vez.
+  if (!pedeNome && !pedeNasc) return null;
   // O que o paciente JÁ informou, lido do histórico. Conservador: na dúvida
   // considera que JÁ tem (assim a trava não cobra dado que ele já deu).
   const ditoPeloPaciente = (messages || []).filter(m => m.role === "user").map(m => String(m.content || "")).join(" \n ");
-  const temNasc  = /\b\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\/.-]\s*\d{2,4}\b/.test(ditoPeloPaciente);
-  const temForma = /particular|conv[êe]nio|unimed|plano de sa[úu]de|amhpdf|saude caixa|sa[úu]de caixa|geap|cassi|fascal|serpro|tjdft|mpf|mpdft/i.test(ditoPeloPaciente);
+  // Nascimento também com espaços: "05 10 1973" (ano de 4 dígitos, para não
+  // confundir com telefone ou hora).
+  const temNasc  = /\b\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\/.-]\s*\d{2,4}\b|\b\d{1,2}\s+\d{1,2}\s+(19|20)\d{2}\b/.test(ditoPeloPaciente);
+  // Forma de atendimento: "plano" solto ("mesmo plano", "sem plano"), qualquer
+  // nome das listas de convênio (atendidos e não atendidos, palavra inteira) e
+  // o convênio que a campanha já trouxe.
+  const pacNorm = ` ${_normFicha(ditoPeloPaciente)} `;
+  const temForma = jaSabeForma
+    || /particular|conv[êe]nio|unimed|\bplano\b|plano de sa[úu]de|amhpdf|saude caixa|sa[úu]de caixa|geap|cassi|fascal|serpro|tjdft|mpf|mpdft/i.test(ditoPeloPaciente)
+    || [...CONVENIOS_ATENDIDOS, ...CONVENIOS_NAO_ATENDIDOS.map(_normFicha)].some(x => x && pacNorm.includes(` ${x} `));
   const falta = (pedeNome ? 1 : 0) + (temNasc ? 0 : 1) + (temForma ? 0 : 1);
   if (pediu >= falta) return null;
   return `pediu ${pediu} dado(s) da ficha quando ainda faltam ${falta} — vai ter que voltar a perguntar`;
@@ -2273,8 +2295,15 @@ function instrucaoAgendarVagaLivre(motivo) {
 // (Unidade e convênio PODEM vir antes/junto: definem qual agenda e antecedência.)
 function fichaAntesDoHorario(reply, messages, slots) {
   if (!Array.isArray(slots) || !slots.length) return null;   // sem agenda não há o que oferecer
-  const pedeNomeOuNasc = /nome completo|data de nascimento/i.test(reply);
+  // Varredura de 28/10/2026: "nome completo do titular do plano" (dado da
+  // carteirinha) e "anotei o nome completo" (já recebido) não pedem a ficha.
+  const semFalsos = String(reply || "")
+    .replace(/nome completo d[oa] (titular( d[oa] plano)?|plano)|anotei (o |seu )?nome completo/gi, " ");
+  const pedeNomeOuNasc = /nome completo|data de nascimento/i.test(semFalsos);
   if (!pedeNomeOuNasc) return null;
+  // Idade mínima ("a partir dos 8 anos") e recado registrado para a equipe: não
+  // há horário a oferecer nessas respostas.
+  if (/a partir dos 8 anos|registr\w+[^.]{0,40}equipe/i.test(reply)) return null;
   const TEM_HORA = /\d{1,2}\s*[h:]\s*\d{2}|[àa]s\s+\d{1,2}\s*h/i;
   if (TEM_HORA.test(String(reply).replace(/[*_~`]/g, ""))) return null;   // ofereceu junto: ok
   // Algum horário já esteve na mesa nesta conversa? (oferta anterior da Ana)
@@ -2426,6 +2455,9 @@ function citouConvenioForaComoAtendido(reply) {
     // resposta certa em qualquer mensagem. Sem isto a trava reprovava a própria
     // ficha do agendamento ("particular | motivo: Consulta").
     if (/^particular\b/i.test(frag) || /^motivo\s*:/i.test(frag)) continue;
+    // Forma de PAGAMENTO não é convênio: os 3 convenio_inventado do último mês
+    // eram "aceitamos PIX, cartão…" (varredura de 28/10/2026).
+    if (/pix|dinheiro|cart[ãa]o|d[ée]bito|cr[ée]dito|boleto/i.test(frag)) continue;
     if (!convenioAtendido(frag)) fora.push(frag);
   }
   if (!fora.length) return null;
@@ -2677,7 +2709,8 @@ function precoSemHorario(reply, slots, messages) {
 // "você tem convênio?" na mesma mensagem.
 // Só vale para o preço da CONSULTA (200). Cirurgia, lente e teste têm valor
 // particular independente de plano e são informados de forma espontânea.
-const RE_SABE_FORMA_ATENDIMENTO = /particular|conv[êe]nio|plano de sa[úu]de|unimed|carteirinha|reembolso/i;
+// "\bplano\b": "sou sem plano" já diz a forma (varredura de 28/10/2026).
+const RE_SABE_FORMA_ATENDIMENTO = /particular|conv[êe]nio|plano de sa[úu]de|\bplano\b|unimed|carteirinha|reembolso/i;
 function precoSemSaberConvenio(reply, messages, jaSabeDeOutraFonte = false) {
   // O sistema pode SABER a forma de atendimento sem que ela apareça nas
   // mensagens — é o caso do paciente da campanha, cujo convênio veio da fila.
@@ -2763,7 +2796,9 @@ const CONVENIOS_NAO_ATENDIDOS = [
 function convenioAtendido(nome) {
   const n = _normFicha(nome);
   if (!n) return false;
-  if (CONVENIOS_NAO_ATENDIDOS.some(x => n.includes(x))) return false;
+  // PALAVRA INTEIRA, como na leitura da carteirinha: "Unimed Patos de Minas"
+  // contém "inas" e foi recusada (varredura de 28/10/2026).
+  if (CONVENIOS_NAO_ATENDIDOS.some(x => ` ${n} `.includes(` ${_normFicha(x)} `))) return false;
   // UNIMED: TODA Unimed é atendida, regional inclusive (Dr. Bruno, 25/08/2026).
   // "Sempre agendar unimed, assim como os outros planos que atendemos. Pedir dados
   // da carteirinha (ou foto) para as secretárias solicitarem a autorização, mas já
@@ -7597,7 +7632,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       const anunciouSemAgendar = anunciouAgendamentoSemAgendar(reply, slotsVigentes, meusAgendamentos);
       const convenioInventado = citouConvenioForaComoAtendido(reply);
       const fichaCedo = etapaDeOferta ? fichaAntesDoHorario(reply, messages, slotsVigentes) : null;
-      const contaGotas = (etapaDeOferta && !fichaCedo) ? fichaEmContaGotas(reply, messages) : null;
+      const contaGotas = (etapaDeOferta && !fichaCedo) ? fichaEmContaGotas(reply, messages, campanhaSabeConvenio) : null;
       const cancPrevia = extrairCancelar(reply);
       const cancelouSoNaFala = prometeuCancelarSemBloco(reply, cancPrevia.limpo, cancPrevia.registros, meusAgendamentos);
       // Prometeu avisar a equipe e não emitiu [RECADO] — ninguém fica sabendo.
@@ -8035,7 +8070,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     // Aqui embaixo o agendamento JÁ FOI GRAVADO e o bloco técnico já saiu do
     // texto: anexar a frase não pode quebrar nada.
     try {
-      const faltaCartao = esqueceuPedirCarteirinha(reply, messages, ag.registros);
+      const faltaCartao = esqueceuPedirCarteirinha(reply, messages, ag.registros, cart.registro);
       if (faltaCartao) {
         reply += "\n\nAproveitando: poderia me enviar uma foto da sua carteirinha ou o número dela? Assim já anexo ao seu agendamento — o horário já está garantido.";
         console.log("[Carteirinha] Pedido acrescentado à resposta (sem reescrita).");
