@@ -11,11 +11,14 @@
   const dataBR = (iso) => iso ? new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "";
   function iniciar() {
     const nome = $("#agbook-nome"); if (!nome || nome.dataset.autoc) return; nome.dataset.autoc = "1";
+    // 28/10/2026: também pelo TELEFONE — a secretária digita o número de quem já é
+    // paciente e a lista abre igual. `campo` é onde a lista está aberta agora.
+    const telIn = $("#agbook-tel"); let campo = nome;
     const caixa = document.createElement("div");
     caixa.style.cssText = "position:absolute;z-index:10050;background:#fff;color:#1f2d33;border:1px solid #cfd8e0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:280px;overflow:auto;font:14px/1.35 system-ui,sans-serif;display:none";
     document.body.appendChild(caixa);
     let res = [], sel = -1, t = null, ultimaQ = "";
-    const posiciona = () => { const r = nome.getBoundingClientRect(); caixa.style.left = (r.left + scrollX) + "px"; caixa.style.top = (r.bottom + scrollY + 2) + "px"; caixa.style.width = r.width + "px"; };
+    const posiciona = () => { const r = campo.getBoundingClientRect(); caixa.style.left = (r.left + scrollX) + "px"; caixa.style.top = (r.bottom + scrollY + 2) + "px"; caixa.style.width = r.width + "px"; };
     const fecha = () => { caixa.style.display = "none"; sel = -1; };
     function desenha() {
       if (!res.length) { fecha(); return; }
@@ -25,12 +28,14 @@
           ${p.proxima ? `<br><small style="color:#b45309;font-weight:600">⚠️ já tem consulta marcada em ${dataBR(p.proxima)}</small>` : ""}</div>`).join("");
       posiciona(); caixa.style.display = "block";
     }
+    // pelo telefone só busca com 8+ dígitos (o servidor casa pelos 8 últimos: com ou sem 9º dígito)
+    const termo = () => campo === telIn ? (String(telIn.value).replace(/\D/g, "").length >= 8 ? telIn.value.replace(/\D/g, "") : "") : nome.value.trim();
     async function busca() {
-      const q = nome.value.trim(); if (q.length < 3 || q === ultimaQ) { if (q.length < 3) fecha(); return; } ultimaQ = q;
+      const q = termo(); if (q.length < 3 || q === ultimaQ) { if (q.length < 3) fecha(); return; } ultimaQ = q;
       try {
         const r = await fetch(`/api/preexame/busca?q=${encodeURIComponent(q)}`, { headers: { Authorization: "Bearer " + (localStorage.getItem("iobb_at") || "") } });
         if (!r.ok) { fecha(); return; }
-        const d = await r.json(); if (nome.value.trim() !== q) return;
+        const d = await r.json(); if (termo() !== q) return;
         res = (d.pacientes || []).slice(0, 8); sel = -1; desenha();
       } catch (_) { fecha(); }
     }
@@ -47,18 +52,21 @@
       }
       const obs = $("#agbook-obs");
       if (obs && p.nascimento && !/Nascimento:/i.test(obs.value)) obs.value = [obs.value.trim(), `Nascimento: ${p.nascimento}`].filter(Boolean).join("\n");
-      fecha(); ultimaQ = nome.value.trim();
+      fecha(); ultimaQ = termo();
     }
-    nome.addEventListener("input", () => { clearTimeout(t); t = setTimeout(busca, 300); });
-    nome.addEventListener("keydown", (e) => {
-      if (caixa.style.display === "none") return;
-      if (e.key === "ArrowDown") { e.preventDefault(); sel = Math.min(res.length - 1, sel + 1); desenha(); }
-      else if (e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(0, sel - 1); desenha(); }
-      else if (e.key === "Enter" && sel >= 0) { e.preventDefault(); escolhe(sel); }
-      else if (e.key === "Escape") fecha();
-    });
+    const liga = (el) => {
+      el.addEventListener("input", () => { campo = el; clearTimeout(t); t = setTimeout(busca, 300); });
+      el.addEventListener("keydown", (e) => {
+        if (caixa.style.display === "none") return;
+        if (e.key === "ArrowDown") { e.preventDefault(); sel = Math.min(res.length - 1, sel + 1); desenha(); }
+        else if (e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(0, sel - 1); desenha(); }
+        else if (e.key === "Enter" && sel >= 0) { e.preventDefault(); escolhe(sel); }
+        else if (e.key === "Escape") fecha();
+      });
+      el.addEventListener("blur", () => setTimeout(fecha, 150));
+    };
+    liga(nome); if (telIn) liga(telIn);
     caixa.addEventListener("mousedown", (e) => { const d = e.target.closest("[data-i]"); if (d) { e.preventDefault(); escolhe(+d.dataset.i); } });
-    nome.addEventListener("blur", () => setTimeout(fecha, 150));
     addEventListener("scroll", () => { if (caixa.style.display !== "none") posiciona(); }, true);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
