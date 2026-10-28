@@ -3959,9 +3959,14 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
               // ao cartão das 14h00 e a Ana remarcou sozinha para as 15h00.
               const falasDaAna = (iUser >= 0 ? linhas.slice(iUser + 1) : []).filter(m => m.role === "assistant").map(m => String(m.content || ""));
               // (a) o paciente pediu a mudança? horário, data, dia da semana ou verbo
-              const pediuMudanca = /\d{1,2}\s*[h:]\s*\d{0,2}|\d{1,2}\/\d{1,2}|\b(segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|amanh[ãa]|hoje|semana que vem|pr[óo]xima semana)|\b(remarc|desmarc|cancel|adiar|antecip|mud|troc|transfer|outro hor[áa]rio|outra data|mais cedo|mais tarde)\w*/i.test(txt);
-              // (b) ou aceitou uma troca que a ANA acabou de propor com ESTE horário
-              const RE_OFERTA = /\b(tenho|consigo|posso (reservar|marcar|agendar|deixar)|reservo|pode ser\?|serve (para|pra) (voc[êe]|a senhora|o senhor)|que tal)/i;
+              // Turno também é pedido ("prefiro pela manhã") — varredura de 28/10/2026.
+              // "boa tarde" fica de fora: é saudação, e cortesia não remarca.
+              const pediuMudanca = /\d{1,2}\s*[h:]\s*\d{0,2}|\d{1,2}\/\d{1,2}|\b(segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|amanh[ãa]|hoje|semana que vem|pr[óo]xima semana|(?<!boa\s)(?:manh[ãa]|tarde))|\b(remarc|desmarc|cancel|adiar|antecip|mud|troc|transfer|outro hor[áa]rio|outra data|mais cedo|mais tarde)\w*/i.test(txt);
+              // (b) ou aceitou uma troca que a ANA acabou de propor com ESTE horário.
+              // "Está disponível… confirma?", "correto?" e "quer trocar?" também são
+              // oferta (varredura de 28/10/2026). "confirma"/"confirmar" sim,
+              // "confirmado"/"confirmação" não — esses são o cartão de cortesia.
+              const RE_OFERTA = /\b(tenho|consigo|posso (reservar|marcar|agendar|deixar)|reservo|pode ser\?|serve (para|pra) (voc[êe]|a senhora|o senhor)|que tal|dispon[íi]vel|confirmar?(?![\wà-ú])|correto\?|quer trocar)/i;
               const aceitouOferta = falasDaAna.some(f => RE_OFERTA.test(f) && !/confira seus dados/i.test(f) && horariosOferecidos(f).includes(horaDoBloco));
               cortesia = !pediuMudanca && !aceitouOferta;
             } catch (e) { console.error("[Agendar] Não consegui ler a última mensagem do paciente:", e.message); }
@@ -4048,6 +4053,14 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
             return { ok: true, already: true };
           }
         } catch (e) { console.error("[Agendar] Falha ao checar se a vaga já é do paciente (segue):", e.message); }
+      }
+      // ⏮️ HORÁRIO QUE JÁ PASSOU (varredura de 28/10/2026): a Ana re-emitiu o
+      // bloco da consulta que a paciente JÁ FEZ, e ela recebeu "NÃO ficou
+      // reservado" sobre o atendimento de horas antes. Bloco no passado nunca é
+      // agendamento novo: ignora calado, só no log.
+      if (!existe && ini.getTime() < Date.now()) {
+        console.warn(`[Agendar] Bloco com início no PASSADO (${ini.toISOString()}, ${unidade}) ignorado — re-emissão de consulta já ocorrida.`);
+        return { ok: true, already: true };
       }
       if (!existe) {
         const usadas = vagasJaOferecidas(conversationId);
@@ -7692,6 +7705,15 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
                 .select("id").eq("origem", "bloqueio").in("status", ["reservado", "confirmado"])
                 .gte("inicio", d0.toISOString()).lt("inicio", d1.toISOString()).limit(1);
               fechado = !!(bloq && bloq.length);                // feriado bloqueado
+              // Bloqueio de UMA MANHÃ + agenda lotada à tarde também fica sem vaga
+              // livre, e era lido como feriado (varredura de 28/10/2026). Dia com
+              // consulta de paciente ativa está ABERTO.
+              if (fechado) {
+                const { data: consultas } = await supabase.from("appointments")
+                  .select("id").or("origem.is.null,origem.neq.bloqueio").in("status", ["reservado", "confirmado"])
+                  .gte("inicio", d0.toISOString()).lt("inicio", d1.toISOString()).limit(1);
+                if (consultas && consultas.length) fechado = false;
+              }
             }
           }
           despedidaFechada = despedidaParaDiaFechado(reply, fechado);
