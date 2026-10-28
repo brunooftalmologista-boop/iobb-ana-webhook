@@ -5676,9 +5676,13 @@ async function aguardarPacienteTerminar(phone, meuSeq) {
   const ate = Date.now() + ANA_DEBOUNCE_MS;
   while (Date.now() < ate) {
     await sleep(300);
-    if (seqPorPaciente.get(phone) !== meuSeq) return false;
+    if ((seqPorPaciente.get(phone) || 0) !== meuSeq) return false;
   }
-  return seqPorPaciente.get(phone) === meuSeq;
+  // `|| 0` (28/10/2026): foto/áudio de quem não mandou TEXTO desde o último
+  // restart chega com meuSeq = 0, mas o mapa devolve undefined — e
+  // undefined !== 0 abandonava o turno em silêncio. Era o "mídia some 7× mais
+  // que texto": 0 de 12 respondidas nesse caso, desde 12/09.
+  return (seqPorPaciente.get(phone) || 0) === meuSeq;
 }
 
 // Webhook principal
