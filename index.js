@@ -2858,6 +2858,38 @@ function fichaIncompleta(registros, reply, messages) {
   }
   return [...new Set(faltas)];
 }
+// 🗂️ O QUE fichaIncompleta DEVE JULGAR (varredura de 28/10/2026).
+//  (R) Re-emissão do bloco de uma consulta que o paciente JÁ TEM (mesmo
+//      instante): é despedida/lembrete, não agendamento novo — e a ficha dela
+//      era julgada de novo, gerando "ficha_incompleta_persistiu" falso.
+//  (T) Remarcação que não copiou a ficha antiga (caso Deise): o bloco novo vem
+//      sem nascimento/convênio, mas a consulta anterior do MESMO telefone e do
+//      MESMO primeiro nome já tem. Completa só o que falta, só dessa fonte.
+// Devolve CÓPIAS — o objeto original do bloco não muda.
+function completarFichaPelaOutraConsulta(registros, meusAgendamentos) {
+  const vazio = (x) => { const s = String(x || "").trim(); return !s || s === "-"; };
+  return (registros || []).map(r => {
+    const pn = primNome(r.nome);
+    if (!pn || (!vazio(r.nascimento) && !vazio(r.convenio))) return r;
+    const outra = (meusAgendamentos || []).filter(a => a.status !== "cancelado" && primNome(a.paciente_nome) === pn);
+    if (!outra.length) return r;
+    const novo = { ...r };
+    if (vazio(novo.nascimento)) {
+      const m = outra.map(a => String(a.observacoes || "").match(/Nascimento:\s*([0-9]{1,4}[\/.-][0-9]{1,2}[\/.-][0-9]{2,4})/i)).find(Boolean);
+      if (m) novo.nascimento = m[1];
+    }
+    if (vazio(novo.convenio)) {
+      const c = outra.map(a => String(a.convenio || "").trim()).find(s => s && s !== "-");
+      if (c) novo.convenio = c;
+    }
+    return novo;
+  });
+}
+function registrosParaJulgarFicha(registros, meusAgendamentos) {
+  const jaTem = new Set((meusAgendamentos || []).filter(a => a.status !== "cancelado").map(a => new Date(a.inicio).getTime()));
+  return completarFichaPelaOutraConsulta(registros, meusAgendamentos)
+    .filter(r => !jaTem.has(inicioDoBloco(r.inicio).getTime()));
+}
 function instrucaoFichaCompleta(faltas) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ia marcar a consulta com a ficha INCOMPLETA. Falta: ${faltas.join("; ")}.
 REGRA ABSOLUTA, SEM EXCEÇÃO: você NUNCA marca uma consulta sem nome completo, data de nascimento e a forma de atendimento (particular, ou QUAL convênio). A CARTEIRINHA NÃO ENTRA AQUI: peça-a junto, mas ela nunca impede o agendamento. Ficha incompleta vira problema no balcão: o paciente é cobrado errado, descobre ali que o plano não é atendido, ou a consulta atrasa.
@@ -7644,7 +7676,9 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       let faltasFicha = [];
       let semFormaPagamento = null;
       try {
-        faltasFicha = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
+        // Re-emissão de consulta existente fica fora; remarcação herda a ficha
+        // da consulta anterior (ver registrosParaJulgarFicha).
+        faltasFicha = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos), reply, messages);
         if (faltasFicha.length) semFormaPagamento = `ficha incompleta: falta ${faltasFicha.join("; ")}`;
       } catch (e) { console.error("[Ficha] Checagem falhou (segue sem travar):", e.message); }
       const maisCedo = etapaDeOferta ? existeVagaMaisCedo(reply, slotsVigentes, text, messages) : null;
@@ -7974,7 +8008,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           // que falhou 5 vezes. Se nem assim, a mensagem segue (o paciente não
           // pode ficar sem resposta) — mas a ficha vai marcada e a equipe avisada.
           try {
-            const aindaFalta = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
+            const aindaFalta = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos), reply, messages);
             if (aindaFalta.length) {
               console.warn(`[Ficha] Reescrita AINDA incompleta (${aindaFalta.join("; ")}) — insistindo.`);
               const r3 = await anthropicMessages({
@@ -7988,7 +8022,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
               }, { origem: "reescrita" });
               const novo3 = r3.data?.content?.[0]?.text;
               if (novo3 && novo3.trim()) reply = novo3;
-              const resta = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
+              const resta = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos), reply, messages);
               // ⛔ CONVÊNIO NÃO ATENDIDO NÃO PASSA — NUNCA. As duas insistências e o
               // "deixa passar" existem para DADO QUE FALTA (nome, nascimento): ali o
               // paciente não pode ficar sem resposta, e a equipe completa depois.
@@ -8028,6 +8062,10 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     const cart = extrairCarteirinha(reply);        // [CARTEIRINHA] (dados do cartão → ficha)
     const canc = extrairCancelar(cart.limpo);      // [CANCELAR] (desmarcar / parte da remarcação)
     const ag = extrairAgendar(canc.limpo);         // [AGENDAR] (agendamento REAL)
+    // O que a trava da ficha aceitou herdando da consulta anterior (remarcação
+    // da Deise) tem de ser o que se GRAVA — senão passa no juízo e entra vazio.
+    try { ag.registros = completarFichaPelaOutraConsulta(ag.registros, meusAgendamentos); }
+    catch (e) { console.error("[Ficha] Herança da consulta anterior falhou (segue o bloco como veio):", e.message); }
     const pre = extrairPreAgendamento(ag.limpo);   // depois [PREAGENDAMENTO] (fallback)
     const rec = extrairRecado(pre.limpo);          // por fim [RECADO], no texto já limpo
     const registros = pre.registros;
