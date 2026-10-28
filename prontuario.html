@@ -811,7 +811,6 @@ function textoIclinic(){ const L=[];
     .map(([r,a,b])=>par(r,a,b)).filter(Boolean); if(avs.length) L.push(avs.join("\n"));
   const rod=refr("od"),roe=refr("oe");
   if(rod) L.push(`Refração OD: ${rod}`); if(roe) L.push(`Refração OE: ${roe}`); if((rod||roe)&&v("re-add")) L.push(`Adição: ${v("re-add")}`);
-  if(v("rx-emitida")==="1") L.push(`Receita de óculos: lentes ${TIPO_TEXTO[v("rx-uso")]||v("rx-uso")}.`);
   const bio=grade("bio",BIO,"Biomicroscopia"); if(bio) L.push(bio);
   if(v("pio-od")||v("pio-oe")) L.push(`Pressão intraocular (${v("pio-met")}${v("pio-hora")?", às "+v("pio-hora"):""}):\n${cap(OD)}: ${v("pio-od")?v("pio-od")+" mmHg":"não aferida"}.\n${cap(OE)}: ${v("pio-oe")?v("pio-oe")+" mmHg":"não aferida"}.`);
   // dilatação registrada no pré-exame entra logo antes da fundoscopia (21/10/2026)
@@ -821,6 +820,7 @@ function textoIclinic(){ const L=[];
   const ec=exComp(); if(ec) L.push(ec);
   const hd=bloco("Hipótese diagnóstica",hdComCid()); if(hd) L.push(hd);
   const cd=bloco("Conduta",[...marcados("cd").map(nomeChip),...linhas("cd-txt")]); if(cd) L.push(cd);
+  if(v("rx-emitida")==="1") L.push(`Receita de óculos: lentes ${TIPO_TEXTO[v("rx-uso")]||v("rx-uso")}.`);   // logo após a conduta (Dr. Bruno, 28/10/2026)
   const lc=textoLC(); if(lc) L.push(lc);
   const meds=medicamentos(); if(meds.length) L.push(bloco("Prescrição de medicamentos",meds.map(m=>`${m.med}${m.qtd?" ("+m.qtd+")":""}: ${m.pos||"posologia não informada"}`)));
   const ex=bloco("Exames solicitados",examesPedidos()); if(ex) L.push(ex);
