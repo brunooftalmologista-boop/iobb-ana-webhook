@@ -8013,9 +8013,21 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     // pelo SISTEMA a partir do que vai ser gravado — não do que a Ana lembrou de
     // repetir. É a última chance de o paciente corrigir um nome, um nascimento
     // ou um convênio antes de a ficha chegar à recepção.
-    if (ag.registros.length) {
+    // 🪪 CARTÃO SÓ DE AGENDAMENTO NOVO (28/10/2026, caso Wandercleyson): ele já
+    // estava marcado hoje às 14h00 (turno anterior); no "Por nada" a Ana
+    // re-emitiu o bloco com 14h20 (a vaga das 14h00 já saíra da lista, ela
+    // copiou a vizinha). O código ignorou o bloco — a agenda ficou certa —, mas o
+    // cartão saiu DO BLOCO e disse 14h20. 20 casos assim em um mês. Re-emissão
+    // para quem já tem consulta ativa, sem [CANCELAR], não é agendamento novo e
+    // não gera cartão. Remarcação (vem com [CANCELAR]) continua gerando.
+    const registrosDoCartao = canc.registros.length ? ag.registros
+      : ag.registros.filter(r => !(meusAgendamentos || []).some(a => a.status !== "cancelado" && primNome(a.paciente_nome) && primNome(a.paciente_nome) === primNome(r.nome)));
+    // A trava de "falou uma hora, gravou outra" compara a PROSA com o bloco; com
+    // o cartão anexado sempre havia duas horas e ela nunca rodava.
+    const replySemCartao = reply;
+    if (registrosDoCartao.length) {
       try {
-        const resumo = resumoDaFicha(ag.registros, cart.registro, messages);
+        const resumo = resumoDaFicha(registrosDoCartao, cart.registro, messages);
         if (resumo) {
           // A versão escrita pela Ana sai ANTES de anexar a do código — senão
           // a paciente recebe a ficha duas vezes (caso Maria Luzimar, 26/09).
@@ -8078,7 +8090,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
         }
       } catch (e) { console.error("[Convênio] Checagem falhou (não impede o agendamento):", e.message); }
       for (const registro of ag.registros) {
-        const rAg = await processarAgendarDaAna({ registro, patient, from, conversationId: conversation.id, replyTexto: reply });
+        const rAg = await processarAgendarDaAna({ registro, patient, from, conversationId: conversation.id, replyTexto: replySemCartao });
         // ⚠️ `already: true` NÃO É "gravou" (22/09/2026 — caso Aline, 61 9642-5166).
         // As travas de re-emissão (cortesia, sem horário na prosa) recusam criar e
         // devolvem `{ ok: true, already: true }` — `ok` porque, para quem só
