@@ -2087,6 +2087,22 @@ function horariosOferecidos(texto) {
   }
   return [...achados];
 }
+// Para a trava de "um horário por vez": tira da conta o que NÃO é oferta
+// (varredura de 28/10/2026, 28 de 42 disparos eram assim): a hora que o
+// paciente pediu e a Ana recusou ("às 15h não tenho… o mais próximo é 16h20"),
+// a consulta que ele já tem ("sua consulta das 17h00 → 11h00") e a restrição
+// dele repetida ("após as 16h", "até as 12h", "começa às 9h").
+function horasDeOferta(reply, messages, meusAgendamentos) {
+  const hhmm = (d) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
+  const fora = new Set((meusAgendamentos || []).map(a => hhmm(a.inicio)));
+  for (const m of (messages || []).filter(x => x.role === "user").slice(-2)) {
+    const t = String(m.content || "");
+    for (const h of horariosOferecidos(t)) fora.add(h);
+    for (const x of t.matchAll(/(\d{1,2})\s*(?:h|:|horas?)\s*(\d{2})?/gi)) fora.add(`${String(x[1]).padStart(2, "0")}:${x[2] || "00"}`);
+  }
+  const limpo = String(reply || "").replace(/(?:at[ée]|ap[óo]s|depois d[ae]s?|antes d[ae]s?|come[çc]a)\s+(?:[àa]s?\s+)?\d{1,2}\s*[h:]\s*(?:\d{2})?/gi, " ");
+  return horariosOferecidos(limpo).filter(h => !fora.has(h));
+}
 // Não reescrevemos o texto: as travas que mexem na prosa já corromperam
 // mensagem CERTA neste projeto. Aqui pedimos a resposta de novo com a regra
 // explícita — custa uma chamada a mais só quando dispara, e o modelo devolve
@@ -2124,10 +2140,18 @@ const DOW_EN = { monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, sa
 const dowDoSlot = (d) => DOW_EN[d.toLocaleDateString("en-US", { timeZone: TZ_BR, weekday: "long" }).toLowerCase()] ?? -1;
 function existeVagaMaisCedo(reply, slots, pedidoPaciente, messages) {
   if (!Array.isArray(slots) || !slots.length) return null;
-  // Se o paciente amarrou a data (dia da semana, data, "semana que vem"), a
-  // oferta mais distante é o que ele pediu — não é erro.
-  if (/(\d{2}\/\d{2}|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|semana que vem|pr[óo]xima semana|semana seguinte|depois d|a partir d|m[êe]s que vem)/i
-      .test(String(pedidoPaciente || ""))) return null;
+  // Mensagem de CONFIRMAÇÃO (o paciente já aceitou): não se mexe no horário.
+  // Varredura de 28/10/2026: 27 dos 96 registros eram "Agendado para…", e a
+  // reescrita arriscava trocar um horário já aceito.
+  if (/agendad[oa] para|remarcad[oa] para|est[áa] (confirmad|agendad|marcad)|fica (confirmad|agendad|marcad)/i.test(String(reply || ""))) return null;
+  // Se o paciente amarrou a data (dia da semana, data, "semana que vem",
+  // "amanhã", "dia 30", um mês), a oferta mais distante é o que ele pediu — não
+  // é erro. Lê as 3 últimas mensagens dele, não só a última: "Pode ser semana
+  // que vem?" seguido de "Tarde." escapava (varredura de 28/10/2026).
+  const pedidoNorm = [String(pedidoPaciente || ""), ...(messages || []).filter(m => m.role === "user").slice(-3).map(m => String(m.content || ""))]
+    .join(" ").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/(\d{1,2}\/\d{1,2}|segunda|terca|quarta|quinta|sexta|sabado|domingo|semana que vem|proxima semana|semana seguinte|semana do|depois d|a partir d|mes que vem|amanha|(^|\s)dia \d{1,2}|novembro|dezembro|janeiro|fevereiro)/
+      .test(pedidoNorm)) return null;
   // ⚠️ O DIA PEDIDO SOBREVIVE À MUDANÇA DE TURNO (09/09/2026, caso Lidiane).
   // Ela escreveu "gostaria de uma agenda pra SEXTA-FEIRA" e, duas mensagens
   // depois, "tem horário à tarde?". A guarda acima só lia a ÚLTIMA mensagem —
@@ -2148,7 +2172,9 @@ function existeVagaMaisCedo(reply, slots, pedidoPaciente, messages) {
       s.start.toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" }) === `${m[1]}/${m[2]}`);
     if (!ofertado) continue;                       // horário citado não é da lista; outra trava cuida
     if (diasPedidos.size && diasPedidos.has(dowDoSlot(ofertado.start))) continue;   // é o dia que ele pediu
-    const maisCedo = slots.filter(s => hhmm(s.start) === alvo && s.start < ofertado.start)
+    // Mesma UNIDADE: 70 dos 96 registros apontavam vaga da outra unidade (o
+    // paciente pediu Conjunto Nacional e a trava sugeria terça, dia de Taguatinga).
+    const maisCedo = slots.filter(s => hhmm(s.start) === alvo && s.start < ofertado.start && s.unidade === ofertado.unidade)
       .sort((a, b) => a.start - b.start)[0];
     if (maisCedo) {
       const d = maisCedo.start.toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
@@ -2597,8 +2623,13 @@ function instrucaoCancelarDeVerdade(motivo) {
 // tinha como acertar e ainda inflava o contador. Mesmo ponto cego do detector de
 // escalonamento: punir a resposta certa é pior que deixar passar a errada.
 const RE_NAO_DA_PARA_MARCAR = /intercambio|intercâmbio|verificar (a )?(cobertura|se o plano|junto|com a operadora)|equipe (vai |ir[áa] )?(verific|confirm)|n[aã]o tenho como (confirmar|verificar)|precisamos verificar|confirma[cç][aã]o (é|e) feita|aguard(e|ar) (o )?retorno|\[RECADO\]|3033-6605|99299[-\s.]?7639/i;
-function precoSemHorario(reply, slots) {
+function precoSemHorario(reply, slots, messages) {
   if (!Array.isArray(slots) || !slots.length) return null;      // sem agenda, nada a oferecer
+  // Horário JÁ oferecido/aceito: a Ana está pedindo a ficha e cita o valor
+  // (varredura de 28/10/2026, ~11 casos). Não há o que oferecer de novo.
+  if (/nome completo|data de nascimento/i.test(reply)) return null;
+  if ((messages || []).filter(m => m.role === "assistant").slice(-2)
+      .some(m => /\d{1,2}\/\d{1,2}[^\n]{0,40}?[àa]s\s+\d{1,2}\s*[h:]/i.test(String(m.content || "")))) return null;
   // Conta como conversa de preço TAMBÉM o "o valor depende do modelo/da adaptação"
   // — a resposta-modelo de lente de contato. Ela está certa, mas não tem "R$" no
   // texto, então esta trava nunca disparava e a mensagem encerrava sem horário:
@@ -7497,13 +7528,13 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     // chamada extra, nunca entregamos frase remendada.
     try {
       const etapaDeOferta = !/\[(AGENDAR|PREAGENDAMENTO)\]/i.test(reply);
-      const horasBrutas = etapaDeOferta ? horariosOferecidos(reply) : [];
+      const horasBrutas = etapaDeOferta ? horasDeOferta(reply, messages, meusAgendamentos) : [];
       // N pacientes pedidos = até N horários na mesma oferta (ver quantosPacientesPediu).
       const horas = horasBrutas.length <= quantosPacientesPediu(messages) ? horasBrutas.slice(0, 1) : horasBrutas;
       const vazouInstrucao = RE_VAZOU_INSTRUCAO.test(reply);
       const contradicao = contradizHojeAmanha(reply, slotsVigentes, meusAgendamentos);
       const virouVerbete = RE_VERBETE.test(reply);
-      const precoSeco = precoSemHorario(reply, slotsVigentes);
+      const precoSeco = precoSemHorario(reply, slotsVigentes, messages);
       // FICHA INCOMPLETA. 5 casos em 4 dias desde que passei a registrar
       // (07-11/08): Iolanda, Domingos, Sônia e mais um sem nome — todos gravados
       // sem particular/convênio. A secretária só descobria no balcão, com o
@@ -7515,7 +7546,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
         faltasFicha = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
         if (faltasFicha.length) semFormaPagamento = `ficha incompleta: falta ${faltasFicha.join("; ")}`;
       } catch (e) { console.error("[Ficha] Checagem falhou (segue sem travar):", e.message); }
-      const maisCedo = existeVagaMaisCedo(reply, slotsVigentes, text, messages);
+      const maisCedo = etapaDeOferta ? existeVagaMaisCedo(reply, slotsVigentes, text, messages) : null;
       const unidadeErrada = unidadeContradizOferta(reply, slotsVigentes);
       const unidadeNoDiaErrado = afirmouUnidadeNoDiaErrado(reply);
       // Prometeu cancelar e não emitiu o bloco (ou emitiu menos que prometeu).
