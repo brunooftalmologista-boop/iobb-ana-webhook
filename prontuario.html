@@ -830,7 +830,7 @@ function textoIclinic(){ const L=[];
   if(emitido("ro")&&v("ro-on")==="1"&&v("ro-txt").trim()){   // sem a saudação e o fecho da carta
     const ro=v("ro-txt").trim().split(/\n{2,}/).filter(p=>!/^prezad|^coloco-me/i.test(p.trim())).join("\n");
     if(ro) L.push(`Relatório para a ótica (não adaptação aos óculos):\n${ro}`); }
-  if(emitido("at")&&v("at-txt").trim()) L.push(`${$("#at-tipo").value==="comparecimento"?"Declaração de comparecimento":"Atestado médico"} emitido:\n${v("at-txt").trim()}`);
+  if(emitido("at")&&v("at-txt").trim()) L.push(`${$("#at-tipo").value==="comparecimento"?"Declaração de comparecimento emitida":"Atestado médico emitido"}:\n${v("at-txt").trim()}`);
   if(emitido("lo")&&v("lo-on")==="1"&&(v("lo-txt").trim()||v("lo-concl").trim())) L.push(`Laudo oftalmológico emitido:\n${[v("lo-txt").trim(),v("lo-concl").trim()?`Conclusão: ${v("lo-concl").trim()}`:""].filter(Boolean).join("\n")}`);
   if(emitido("en")&&v("en-on")==="1"&&v("en-txt").trim()) L.push(`Encaminhamento emitido:\n${v("en-txt").trim()}`);   // logo após a conduta (Dr. Bruno, 28/10/2026)
   const lc=textoLC(); if(lc) L.push(lc);
