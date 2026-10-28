@@ -1176,8 +1176,14 @@ function detectUnidade(messages) {
   // recente ao mais antigo e devolve a ÚLTIMA unidade que o paciente citou.
   // Mensagens que citam as DUAS (menu) são ignoradas — não expressam preferência.
   const usuarios = messages.filter(m => m.role === "user").slice(-8).reverse();
+  // Menção NEGADA não é pedido (varredura de 28/10/2026): "Taguatinga é muito
+  // distante", "Taguatinga não dá", "fica longe" eram lidos como "quero
+  // Taguatinga" e a trava de unidade ignorada exigia justo a que ele recusou.
+  // Corta por oração e descarta a que traz a recusa.
+  const RE_RECUSA_UNIDADE = /\bnao (da|posso|consigo|quero|gosto|prefiro|fica bom|e bom|serve|tenho como|compensa)\b|longe|distante|fora de mao|dificil|complicado/;
   for (const m of usuarios) {
-    const t = (m.content || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const t = (m.content || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .split(/[.,;!?\n]|\s+mas\s+|\s+porem\s+/).filter(o => !RE_RECUSA_UNIDADE.test(o)).join(" , ");
     const tag  = t.includes("taguatinga") || t.includes("aguas claras");
     const conj = t.includes("conjunto") || t.includes("asa norte");
     if (tag && conj) continue;                 // menu com as duas → não é preferência
@@ -1614,6 +1620,18 @@ function unidadeIgnorada(reply, messages, slots, meusAgendamentos) {
   const pediuDiaDe = /(ter[cç]a|quinta)/.test(ult) ? "taguatinga"
                    : /(segunda|quarta|sexta)/.test(ult) ? "conjunto" : null;
   if (pediuDiaDe === ofereceu) return null;
+  // Pediu uma DATA (dd/mm): o dia da semana dela decide a unidade, como no
+  // pedido por nome do dia (varredura de 28/10/2026).
+  for (const x of ult.matchAll(/(?<!\d)(\d{1,2})\/(\d{1,2})(?!\/?\d)/g)) {
+    const [dia, mes] = [Number(x[1]), Number(x[2])];
+    if (!dia || dia > 31 || !mes || mes > 12) continue;
+    const ano = Number(new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR }).slice(0, 4));
+    let d = new Date(`${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}T12:00:00-03:00`);
+    if (d.getTime() < Date.now() - 60 * 86400000) d = new Date(`${ano + 1}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}T12:00:00-03:00`);
+    if (isNaN(d.getTime())) continue;
+    const u = unidadeDoDia(d);
+    if (u && (/taguatinga/i.test(u) ? "taguatinga" : "conjunto") === ofereceu) return null;
+  }
   for (const rel of [["hoje", 0], ["amanha", 1]]) {
     if (!new RegExp(`\\b${rel[0]}`).test(ult)) continue;
     const d = new Date(Date.now() + rel[1] * 86400000);
