@@ -2207,12 +2207,21 @@ $("#gf-ok").addEventListener("click",async()=>{
   try{ txt=textoFinal(); if($("#gf-copiar").checked) copiarTxt(txt,()=>{},()=>{}); }
   catch(e){ diag("finalizar_erro_texto",(e&&e.stack||String(e)).slice(0,600)); $("#gf-st").textContent="Erro ao montar o texto: "+(e&&e.message||e)+". Avise o suporte."; $("#gf-st").className="status erro"; return; }
   if(!atend){ diag("finalizar_sem_atendimento","atend=null com a gaveta aberta"); $("#gf-st").textContent="O atendimento não está mais aberto nesta tela. Recarregue a página (F5) e clique em “Continuar atendimento”."; $("#gf-st").className="status erro"; return; }
-  try{ await api(`/api/prontuario/atendimento/${atend.id}/finalizar`,{method:"POST",body:JSON.stringify({dados:coletar(),texto:txt,duracao_seg:durAtual()})});
-    try{ localStorage.removeItem(chaveLocal(atend.id)); }catch(_){}
+  // Varredura de 28/10/2026: duplo clique mandava dois POSTs e o segundo voltava
+  // 409 "já foi finalizado" — a tela mostrava ERRO num atendimento que tinha
+  // dado certo. Botão travado durante o envio; e 409 "já foi finalizado" segue o
+  // caminho do sucesso, mas SEM apagar o rascunho local (não sabemos se o texto
+  // gravado é o desta tela — o rascunho fica como cópia de segurança).
+  const btnOk=$("#gf-ok"); if(btnOk.disabled) return; btnOk.disabled=true;
+  try{ let jaFinalizado=false;
+    try{ await api(`/api/prontuario/atendimento/${atend.id}/finalizar`,{method:"POST",body:JSON.stringify({dados:coletar(),texto:txt,duracao_seg:durAtual()})}); }
+    catch(e){ if(e.status===409&&/j[áa] foi finalizado/i.test(e.msg||"")) jaFinalizado=true; else throw e; }
+    if(!jaFinalizado){ try{ localStorage.removeItem(chaveLocal(atend.id)); }catch(_){} }
     $("#g-fim").hidden=true; sujo=false; pararRelogio(); atend=null; consultaAtual=null; modoAtend(false);
     await abrirFicha(ficha.paciente.telefone,ficha.paciente.nome,true);
-    status($("#gf-copiar").checked?"Atendimento finalizado. O texto foi copiado.":"Atendimento finalizado.","ok");
+    status(jaFinalizado?"Este atendimento já estava finalizado.":$("#gf-copiar").checked?"Atendimento finalizado. O texto foi copiado.":"Atendimento finalizado.","ok");
   }catch(e){ diag("finalizar_falhou",`status ${e.status||"?"}: ${e.msg||e.message||e}`); $("#gf-st").textContent=e.status===401?MSG_SESSAO:(e.msg||"Não consegui finalizar."); $("#gf-st").className="status erro"; }
+  finally{ btnOk.disabled=false; }
 });
 // DIAGNÓSTICO (21/10/2026): "não consigo finalizar" aconteceu várias vezes sem
 // nenhuma requisição chegar ao servidor. Anota no error_log do servidor o que
