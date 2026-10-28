@@ -820,14 +820,21 @@ function textoIclinic(){ const L=[];
   const ec=exComp(); if(ec) L.push(ec);
   const hd=bloco("Hipótese diagnóstica",hdComCid()); if(hd) L.push(hd);
   const cd=bloco("Conduta",[...marcados("cd").map(nomeChip),...linhas("cd-txt")]); if(cd) L.push(cd);
-  if(v("rx-emitida")==="1") L.push(`Receita de óculos: lentes ${TIPO_TEXTO[v("rx-uso")]||v("rx-uso")}.`);   // logo após a conduta (Dr. Bruno, 28/10/2026)
+  if(v("rx-emitida")==="1"){ const rp=receita(), g=o=>[o[0],o[1]!=="—"?o[1]+(o[2]!=="—"?"x"+o[2]:""):""].filter(Boolean).join(" ");
+    L.push(`Receita de óculos: lentes ${TIPO_TEXTO[v("rx-uso")]||v("rx-uso")}${rp.perto?` (OD ${g(rp.od)}; OE ${g(rp.oe)})`:""}.`); }   // logo após a conduta (Dr. Bruno, 28/10/2026)
   const lc=textoLC(); if(lc) L.push(lc);
   const meds=medicamentos(); if(meds.length) L.push(bloco("Prescrição de medicamentos",meds.map(m=>`${m.med}${m.qtd?" ("+m.qtd+")":""}: ${m.pos||"posologia não informada"}`)));
   const ex=bloco("Exames solicitados",examesPedidos()); if(ex) L.push(ex);
   if(v("retorno")) L.push(`Retorno em ${v("retorno")}.`);
   return L.join("\n\n"); }
+// Óculos para PERTO: o esférico já sai somado à adição AQUI, num lugar só — o quadro
+// da tela, o "copiar" e a receita mostram o mesmo grau (antes só a impressão somava
+// e a tela mostrava o de longe; Dr. Bruno, 28/10/2026).
 function receita(){ const l=o=>{ const e=v(`re-${o}-esf`)||(v(`re-${o}-cil`)?"Plano":""),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`); return [e||"—",c||"—",c?(x?x+"°":"?"):"—"]; };
-  return {od:l("od"),oe:l("oe"),add:v("re-add"),uso:$("#rx-uso").value}; }
+  const r={od:l("od"),oe:l("oe"),add:v("re-add"),uso:$("#rx-uso").value};
+  if(r.uso==="perto"&&r.add){ const soma=(e)=>dioptria(String(num(e==="—"?"":e)+num(r.add)),true);
+    r.od=[soma(r.od[0]),r.od[1],r.od[2]]; r.oe=[soma(r.oe[0]),r.oe[1],r.oe[2]]; r.perto=true; }
+  return r; }
 function avisos(){ const m=[]; for(const o of ["od","oe"]) if(v(`re-${o}-cil`)&&!v(`re-${o}-eixo`)) m.push(`${o.toUpperCase()}: cilindro sem eixo`);
   if(v("re-add")&&num(v("re-add"))>3.5) m.push("adição acima de +3,50, confira"); $("#ref-aviso").textContent=m.join(" · "); $("#ref-aviso").style.color=m.length?"var(--warn)":""; }
 
@@ -857,8 +864,6 @@ function gerarPrescricao(assinar){
   if(!consultaAtual){ status("Inicie o atendimento primeiro.","erro"); return; }
   let r=receita(); const tipo=$("#rx-uso").value; const perto=tipo==="perto";
   const mono=perto||String(tipo).startsWith("monofocais");
-  if(perto&&r.add){ const soma=(e)=>dioptria(String(num(e==="—"?"":e)+num(r.add)),true);
-    r={...r, od:[soma(r.od[0]),r.od[1],r.od[2]], oe:[soma(r.oe[0]),r.oe[1],r.oe[2]]}; }
   if(!v("re-od-esf")&&!v("re-od-cil")&&!v("re-oe-esf")&&!v("re-oe-cil")){ status("Preencha a refração (em Anamnese e exame oftalmológico) antes de imprimir.","erro"); return; }
   if(!mono&&!v("re-add")){ status("Lente multifocal ou ocupacional precisa de adição: preencha a adição na refração (ou escolha Monofocal).","erro"); return; }
   const dt=new Date(consultaAtual.inicio);
@@ -1894,7 +1899,7 @@ ${assFolha(false,timbrado)}`;
 try{ $("#rx-timbrado").checked=localStorage.getItem("rx-timbrado")!=="0"; }catch(_){ $("#rx-timbrado").checked=true; }
 $("#rx-timbrado").addEventListener("change",()=>{ try{ localStorage.setItem("rx-timbrado",$("#rx-timbrado").checked?"1":"0"); }catch(_){} });
 function copiarTxt(txt,onOk,onFalha){ try{ navigator.clipboard.writeText(txt).then(onOk,onFalha); }catch(_){ onFalha&&onFalha(); } }
-$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiarTxt(`Receita de óculos (lentes ${TIPO_TEXTO[r.uso]||r.uso})\nOlho direito: esférico ${r.od[0]}, cilíndrico ${r.od[1]}, eixo ${r.od[2]}\nOlho esquerdo: esférico ${r.oe[0]}, cilíndrico ${r.oe[1]}, eixo ${r.oe[2]}${r.add?"\nAdição: "+r.add:""}`,()=>statusRx("Receita copiada.","ok"),()=>statusRx("Não consegui copiar.","erro")); });
+$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiarTxt(`Receita de óculos (lentes ${TIPO_TEXTO[r.uso]||r.uso})\nOlho direito: esférico ${r.od[0]}, cilíndrico ${r.od[1]}, eixo ${r.od[2]}\nOlho esquerdo: esférico ${r.oe[0]}, cilíndrico ${r.oe[1]}, eixo ${r.oe[2]}${r.add&&!r.perto?"\nAdição: "+r.add:""}`,()=>statusRx("Receita copiada.","ok"),()=>statusRx("Não consegui copiar.","erro")); });
 
 /* ===== modelos prontos ===== */
 const MODELOS={
@@ -1934,7 +1939,7 @@ function atualiza(){
   $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar."; mostraTextoEditado();
   const r=receita();
   $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
-  $("#rx-add").textContent=r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol(); seguranca(); desenhaCids(); desenhaJust(); $("#ex-ind").placeholder="Ex.: acompanhamento semestral";
+  $("#rx-add").textContent=r.perto?`Para perto: grau de longe + adição ${r.add} (já somada acima).`:r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol(); seguranca(); desenhaCids(); desenhaJust(); $("#ex-ind").placeholder="Ex.: acompanhamento semestral";
   if(atend){ sujo=true; rascunhoLocal(); status("Alterações não salvas.",""); }
 }
 
