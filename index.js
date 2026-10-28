@@ -2669,7 +2669,10 @@ function prometeuRecadoSemBloco(replyBruto, textoLimpo) {
   // [AGENDAR] e [PREAGENDAMENTO] SÃO o registro daquele caso — não precisam de recado.
   if (/\[(AGENDAR|PREAGENDAMENTO|RECADO)\]/i.test(String(replyBruto))) return null;
   const t = String(textoLimpo || "");
-  const frase = t.split(/(?<=[.!?\n])/).find(f => RE_PROMETE_REGISTRO.test(f)) || "";
+  // "Vou repassar o seu elogio à equipe" é gentileza, não pedido pendente
+  // (varredura de 28/10/2026).
+  const frase = t.split(/(?<=[.!?\n])/).find(f => RE_PROMETE_REGISTRO.test(f)
+    && !/repass\w*\s+((o|os)\s+)?((seu|seus)\s+)?(elogio|agradecimento)/i.test(f)) || "";
   if (!frase) return null;
   if (RE_ANOTA_DADO_DA_FICHA.test(frase)) return null;
   if (!RE_PROMESSA_COM_EQUIPE.test(t)) return null;
@@ -5531,6 +5534,38 @@ async function notificarRecadoEquipe(recado, patient, from) {
   await espelharParaSecretaria(`[Recado ${recado.tipo}${recado.prioritario ? "/PRIORITÁRIO" : ""}]`, texto);
 }
 
+// 🔁 UM RECADO POR CONVERSA POR HORA (varredura de 28/10/2026). A Ana re-emite o
+// [RECADO] a cada turno enquanto a equipe não responde — um paciente gerou 8
+// recados em 9 minutos, e cada um virou uma notificação no WhatsApp da equipe.
+// A memória fica no processo (Map); depois de um restart, uma consulta pequena
+// ao error_log (1 linha, só created_at/detalhe) cobre a janela. Exceção: recado
+// PRIORITÁRIO depois de um comum passa — a urgência é informação nova.
+const RECADO_JANELA_MIN = 60;
+const ultimoRecadoPorConversa = new Map();   // conversationId -> { ts, prioritario }
+async function recadoRecenteNaConversa(conversationId, prioritario) {
+  if (!conversationId) return false;
+  const janela = RECADO_JANELA_MIN * 60000;
+  if (ultimoRecadoPorConversa.size > 1000) {
+    for (const [k, v] of ultimoRecadoPorConversa) if (Date.now() - v.ts >= janela) ultimoRecadoPorConversa.delete(k);
+  }
+  let ult = ultimoRecadoPorConversa.get(String(conversationId));
+  if (!ult || Date.now() - ult.ts >= janela) {
+    try {
+      const { data } = await supabase.from("error_log").select("created_at, detalhe")
+        .eq("etapa", "recado_emitido").eq("conversation_id", conversationId)
+        .gte("created_at", new Date(Date.now() - janela).toISOString())
+        .order("created_at", { ascending: false }).limit(1);
+      if (data && data[0]) {
+        ult = { ts: instanteDaMensagem(data[0].created_at), prioritario: /PRIORIT/i.test(String(data[0].detalhe || "")) };
+        ultimoRecadoPorConversa.set(String(conversationId), ult);
+      }
+    } catch (e) { console.error("[Recado] Checagem de recado recente falhou (segue avisando):", e.message); return false; }
+  }
+  if (!ult || !(Date.now() - ult.ts < janela)) return false;   // NaN também libera
+  if (prioritario && !ult.prioritario) return false;
+  return true;
+}
+
 // Marca a conversa como "precisa da equipe" para o painel destacar a caixa
 // (amarelo = 'action'; vermelho = 'urgent'). Limpa ao abrir a conversa no painel.
 // Best-effort: nunca derruba o fluxo.
@@ -8283,7 +8318,16 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       // Sinaliza no painel que a conversa precisa da equipe (pré-agendamento/encaixe).
       await marcarPendenciaEquipe(conversation.id, "urgent");
     }
+    else if (rec.recado && await recadoRecenteNaConversa(conversation.id, !!rec.recado.prioritario)) {
+      // Mesmo recado a cada turno: um paciente gerou 8 recados em 9 minutos
+      // (varredura de 28/10/2026). A equipe já foi avisada há menos de 1h e a
+      // pendência continua marcada — não repete a notificação nem o registro
+      // (que reiniciaria a cobrança de recado sem resposta).
+      console.log(`[Recado] Já houve recado nesta conversa há menos de ${RECADO_JANELA_MIN} min — não notifico de novo (${rec.recado.tipo || "?"}).`);
+      await marcarPendenciaEquipe(conversation.id, "urgent");
+    }
     else if (rec.recado) {
+      ultimoRecadoPorConversa.set(String(conversation.id), { ts: Date.now(), prioritario: !!rec.recado.prioritario });
       await notificarRecadoEquipe(rec.recado, patient, from);
       await marcarPendenciaEquipe(conversation.id, "urgent");   // recado = a equipe precisa retornar
       // Registro informativo (não é erro): alimenta a cobrança de recado sem
