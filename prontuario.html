@@ -415,7 +415,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
                 <span class="rot" style="margin:0">Prescrição de óculos <span class="hint">— preenchida a partir da refração</span></span>
                 <div style="overflow-x:auto"><table aria-label="Receita"><thead><tr><th></th><th>Esférico</th><th>Cilíndrico</th><th>Eixo</th></tr></thead><tbody id="rx-body"></tbody></table></div>
                 <div class="hint" id="rx-add"></div>
-                <div class="row"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="perto">Óculos para perto</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option><option value="bifocais">Bifocal (flat-top 28)</option></select></label>
+                <div class="row"><input type="hidden" id="rx-emitida"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="perto">Óculos para perto</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option><option value="bifocais">Bifocal (flat-top 28)</option></select></label>
                   <label style="gap:6px"><input type="checkbox" id="rx-timbrado" style="width:auto"> Papel timbrado (sem logotipo)</label></div>
                 <div class="campo"><label for="rx-sug">Lentes sugeridas (pode editar)</label><textarea id="rx-sug" rows="2" style="min-height:48px;font-size:14px"></textarea></div>
                 <div class="campo"><label for="rx-obs">Observação na receita (opcional) <span class="hint">— sai impressa, para o paciente e a ótica</span></label><textarea id="rx-obs" rows="3" style="min-height:56px;font-size:14px" placeholder="Ex.: Óculos para longe. Aumentar o grau de longe para melhorar a visão de perto embaça a visão de longe…"></textarea></div>
@@ -811,6 +811,7 @@ function textoIclinic(){ const L=[];
     .map(([r,a,b])=>par(r,a,b)).filter(Boolean); if(avs.length) L.push(avs.join("\n"));
   const rod=refr("od"),roe=refr("oe");
   if(rod) L.push(`Refração OD: ${rod}`); if(roe) L.push(`Refração OE: ${roe}`); if((rod||roe)&&v("re-add")) L.push(`Adição: ${v("re-add")}`);
+  if(v("rx-emitida")==="1") L.push(`Receita de óculos: lentes ${TIPO_TEXTO[v("rx-uso")]||v("rx-uso")}.`);
   const bio=grade("bio",BIO,"Biomicroscopia"); if(bio) L.push(bio);
   if(v("pio-od")||v("pio-oe")) L.push(`Pressão intraocular (${v("pio-met")}${v("pio-hora")?", às "+v("pio-hora"):""}):\n${cap(OD)}: ${v("pio-od")?v("pio-od")+" mmHg":"não aferida"}.\n${cap(OE)}: ${v("pio-oe")?v("pio-oe")+" mmHg":"não aferida"}.`);
   // dilatação registrada no pré-exame entra logo antes da fundoscopia (21/10/2026)
@@ -873,6 +874,9 @@ function gerarPrescricao(assinar){
   // e o conteúdo fica na área livre: 50 mm em cima, 47 mm embaixo, 20 mm dos
   // lados. Na tela aparece a foto do papel por trás, só para conferir o encaixe.
   const timbrado=$("#rx-timbrado").checked;
+  // Receita gerada → o tipo de lente entra no texto do atendimento (Dr. Bruno, 28/10/2026).
+  // Só a do atendimento aberto: a 2ª via de consulta antiga não mexe no de hoje.
+  if(!segundaVia&&$("#rx-emitida").value!=="1"){ $("#rx-emitida").value="1"; atualiza(); }
   if(assinar===true){ const ex=x=>x&&x!=="—"?x.replace("°","")+"º":"";
     return enviarAssinado("oculos",{nome,data:dataExame,titulo:`RECEITA DE ÓCULOS${perto?" PARA PERTO":""}`,
       linhas:[["OLHO DIREITO",r.od[0],r.od[1]==="—"?"":r.od[1],ex(r.od[2])],["OLHO ESQUERDO",r.oe[0],r.oe[1]==="—"?"":r.oe[1],ex(r.oe[2])]],
