@@ -2573,7 +2573,9 @@ const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendame
 // Varredura de 28/10/2026: pergunta ("ficou agendado para 9h?"), "não vejo /
 // não consta agendamento", "para eu confirmar" e "agendada pela equipe" também
 // não são a Ana anunciando que ELA marcou.
-const RE_AGENDA_NAO_CONTA = /posso agendar|gostaria de agendar|para agendar|vou agendar|quer que eu agende|deseja agendar|precisa (ser )?agendad|n[aã]o (foi|ficou|est[áa]) (agendad|confirmad|reservad)|se (precisar|quiser|desejar)|caso (queira|precise|deseje)|para (eu |que eu )?(reservar|separar|guardar)|quer que eu (reserve|separe|guarde)|posso (reservar|separar|guardar)|(reservo|separo|guardo)[^.!?\n]{0,30}\?|\?\s*$|n[aã]o (vejo|consta)|para (eu )?confirmar|agendad[ao] pela equipe/i;
+// Mas pergunta que AFIRMA o agendamento ("Agendado para quinta às 10h, tudo
+// certo?") continua contando: é anúncio com um "certo?" no fim.
+const RE_AGENDA_NAO_CONTA = /posso agendar|gostaria de agendar|para agendar|vou agendar|quer que eu agende|deseja agendar|precisa (ser )?agendad|n[aã]o (foi|ficou|est[áa]) (agendad|confirmad|reservad)|se (precisar|quiser|desejar)|caso (queira|precise|deseje)|para (eu |que eu )?(reservar|separar|guardar)|quer que eu (reserve|separe|guarde)|posso (reservar|separar|guardar)|(reservo|separo|guardo)[^.!?\n]{0,30}\?|^(?![^\n]*(agendad[oa] para|marcad[oa] para|reservad[oa] para|est[áa] (agendad|marcad|reservad|confirmad)|fic(ou|a) (agendad|marcad|reservad|confirmad)))[^\n]*\?\s*$|n[aã]o (vejo|consta)|para (eu )?confirmar(?![^.!?\n]*(agendad|marcad|reservad))|agendad[ao] pela equipe/i;
 function anunciouAgendamentoSemAgendar(reply, slots, meusAgendamentos) {
   const limpo = extrairAgendar(reply).limpo;
   if (!RE_ANUNCIOU_AGENDAMENTO.test(limpo)) return null;
