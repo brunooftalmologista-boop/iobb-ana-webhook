@@ -1539,7 +1539,9 @@ Reescreva a mensagem inteira com o bairro certo. Se estiver em dúvida sobre o b
 // ⚠️ NÃO trava quando ela RECUSA ("não consigo encaixar", "não trabalhamos com
 // encaixe") nem quando "encaixa" aparece no sentido comum ("a sexta é a que se
 // encaixa lá") — medido contra 30 dias de conversas.
-const RE_PROMETE_ENCAIXE = /(equipe|recep[çc][ãa]o|elas?)[^.!?\n]{0,40}(encaix|verifica[^.!?\n]{0,20}possibilidade)|(verifica|ver|tenta)[^.!?\n]{0,25}encaix|possibilidade de encaix|consigo (te )?encaix|d[áa] para encaix|pode vir antes|chegar antes[^.!?\n]{0,30}(encaix|pode vir)|se (estiver )?chegando antes[^.!?\n]{0,30}pode vir/i;
+// "elas?" com fronteira (lookbehind — \b não serve com acento): sem ela casava
+// dentro de "pela"/"janela" (varredura de 28/10/2026).
+const RE_PROMETE_ENCAIXE = /(equipe|recep[çc][ãa]o|(?<![\wà-ú])elas?(?![\wà-ú]))[^.!?\n]{0,40}(encaix|verifica[^.!?\n]{0,20}possibilidade)|(verifica|ver|tenta)[^.!?\n]{0,25}encaix|possibilidade de encaix|consigo (te )?encaix|d[áa] para encaix|pode vir antes|chegar antes[^.!?\n]{0,30}(encaix|pode vir)|se (estiver )?chegando antes[^.!?\n]{0,30}pode vir/i;
 const RE_ENCAIXE_NEGADO = /n[ãa]o (consigo|posso|d[áa]|trabalhamos|fazemos|h[áa]) [^.!?\n]{0,25}encaix|sem encaix|n[ãa]o (fa[çc]o|ofere[çc]o) encaix/i;
 function prometeuEncaixe(reply) {
   const t = String(reply || "");
@@ -2246,7 +2248,9 @@ function agendarEmVagaOcupada(reply, slots, meusAgendamentos) {
   for (const r of registros) {
     const bruto = String(r.inicio || "").trim();
     if (!bruto || bruto === "-") continue;
-    const t = new Date(bruto).getTime();
+    // inicioDoBloco, nunca new Date() cru: hora sem fuso é Brasília. Caso Elza
+    // (14/10/2026): o bloco das 15h era lido como 12h, uma vaga "ocupada".
+    const t = inicioDoBloco(bruto).getTime();
     if (isNaN(t)) continue;
     if (meus.has(t)) continue;                       // é a consulta que ele já tem (soma de serviço/remarcação)
     if (slots.some(sl => sl.start.getTime() === t)) continue;   // vaga livre: ok
@@ -2333,10 +2337,23 @@ function ofertaInexistente(reply, slots, meusAgendamentos) {
   // ⚠️ TIRA O MARKDOWN ANTES DE CASAR. A Ana escreve "às **17h**" em negrito, e
   // com os asteriscos no meio o \\s+ seguido de \\d nunca casava — a trava passava
   // batido justamente na forma que ela mais usa para oferecer horário.
-  const semMd = String(reply).replace(/[*_~`]/g, "");
-  for (const m of semMd.matchAll(/(\d{2})\/(\d{2})(?!\/?\d)[^.\n]{0,40}?[àa]s\s+(\d{1,2})\s*(?:h|:)\s*(\d{2})?/gi)) {
+  // Varredura de 28/10/2026 — três furos de falso positivo:
+  //  (1) FAIXA DE FUNCIONAMENTO não é oferta. "Conjunto Nacional atende amanhã,
+  //      29/10, das 8h às 18h, por ordem de chegada" saía como "ofereceu 08:00".
+  //      Sai antes a faixa (a mesma regex de horariosOferecidos) e o "a partir
+  //      das 16h30".
+  //  (2) O "as" de dentro de "das" ancorava a hora: a âncora agora exige que
+  //      "às" seja palavra solta — lookbehind, porque \b não funciona com acento.
+  //  (3) A hora que o paciente PEDIU e a Ana RECUSOU ("às 14h não tenho, o mais
+  //      próximo é 14h20") não é oferta: só o 14h20 é.
+  const semMd = String(reply).replace(/[*_~`]/g, "")
+    .replace(/\bdas\s+\d{1,2}\s*[h:]?\s*(?:\d{2})?\s*[àa]s\s+\d{1,2}\s*[h:]?\s*(?:\d{2})?/gi, " ")
+    .replace(/a\s+partir\s+d[ae]s?\s+\d{1,2}\s*[h:]?\s*(?:\d{2})?/gi, " ");
+  for (const m of semMd.matchAll(/(\d{2})\/(\d{2})(?!\/?\d)[^.\n]{0,40}?(?<![\wà-ú])[àa]s\s+(\d{1,2})\s*(?:h|:)\s*(\d{2})?/gi)) {
     const dia = `${m[1]}/${m[2]}`;
     const hora = `${String(m[3]).padStart(2, "0")}:${m[4] || "00"}`;
+    const depois = semMd.slice(m.index + m[0].length, m.index + m[0].length + 25);
+    if (/n[ãa]o\s+(tenho|temos|h[áa])|ocupad|indispon/i.test(depois)) continue;   // hora recusada, não oferecida
     if (dele.has(`${dia} ${hora}`)) continue;
     const existe = slots.some(s => ddmm(s.start) === dia && hhmm(s.start) === hora);
     if (!existe) return `ofereceu ${dia} às ${hora}, que NÃO está na lista de vagas livres`;
@@ -2503,7 +2520,10 @@ const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendame
 // As formas CONDICIONAIS e as PERGUNTAS continuam livres: "para eu reservar
 // esse horário, me confirma o nome completo?" é justamente a frase certa que o
 // prompt manda usar, e "reservo para você?" é uma oferta, não uma promessa.
-const RE_AGENDA_NAO_CONTA = /posso agendar|gostaria de agendar|para agendar|vou agendar|quer que eu agende|deseja agendar|precisa (ser )?agendad|n[aã]o (foi|ficou|est[áa]) (agendad|confirmad|reservad)|se (precisar|quiser|desejar)|caso (queira|precise|deseje)|para (eu |que eu )?(reservar|separar|guardar)|quer que eu (reserve|separe|guarde)|posso (reservar|separar|guardar)|(reservo|separo|guardo)[^.!?\n]{0,30}\?/i;
+// Varredura de 28/10/2026: pergunta ("ficou agendado para 9h?"), "não vejo /
+// não consta agendamento", "para eu confirmar" e "agendada pela equipe" também
+// não são a Ana anunciando que ELA marcou.
+const RE_AGENDA_NAO_CONTA = /posso agendar|gostaria de agendar|para agendar|vou agendar|quer que eu agende|deseja agendar|precisa (ser )?agendad|n[aã]o (foi|ficou|est[áa]) (agendad|confirmad|reservad)|se (precisar|quiser|desejar)|caso (queira|precise|deseje)|para (eu |que eu )?(reservar|separar|guardar)|quer que eu (reserve|separe|guarde)|posso (reservar|separar|guardar)|(reservo|separo|guardo)[^.!?\n]{0,30}\?|\?\s*$|n[aã]o (vejo|consta)|para (eu )?confirmar|agendad[ao] pela equipe/i;
 function anunciouAgendamentoSemAgendar(reply, slots, meusAgendamentos) {
   const limpo = extrairAgendar(reply).limpo;
   if (!RE_ANUNCIOU_AGENDAMENTO.test(limpo)) return null;
@@ -2515,9 +2535,13 @@ function anunciouAgendamentoSemAgendar(reply, slots, meusAgendamentos) {
   const ddmm = (d) => new Date(d).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
   const hhmm = (d) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
   const semMd = String(limpo).replace(/[*_~`]/g, "");
+  // A hora casa com ou sem o zero à esquerda: a Ana escreve "9h00" e o relógio
+  // devolve "09:00" (varredura de 28/10/2026). (?<!\d) impede "9h00" de casar
+  // dentro de "19h00".
   for (const a of (meusAgendamentos || [])) {
-    const h = hhmm(a.inicio).replace(":", "h");
-    if (semMd.includes(ddmm(a.inicio)) && (semMd.includes(h) || semMd.includes(hhmm(a.inicio)))) return null;
+    const [hh, mi] = hhmm(a.inicio).split(":");
+    const reHora = new RegExp(`(?<!\\d)0?${Number(hh)}\\s*[h:]\\s*${mi}`);
+    if (semMd.includes(ddmm(a.inicio)) && reHora.test(semMd)) return null;
   }
   // Anunciou. O bloco saiu, com início válido?
   const regs = extrairAgendar(reply).registros || [];
@@ -3030,7 +3054,14 @@ function contradizHojeAmanha(texto, slots, meusAgendamentos) {
   const falaDeConsultaExistente = falaDeCancelamento || !ofereceHorario
     || /(sua|seu|a|o)s?\s+(consulta|agendamento)s?\s+(de|do|da|em|para)?\s*hoje|(sua|seu)s?\s+(consulta|agendamento)s?|voc[êe]s?\s+(tem|t[êe]m|est[áa]|est[ãa]o)|est[áaãõ]\w*\s+(agendad|marcad|confirmad)|vejo aqui/i.test(texto);
   if (/\bhoje\b/i.test(texto) && !hojeNegado && !falaDeConsultaExistente && Array.isArray(slots)) {
-    const horas = horariosOferecidos(texto);
+    // Só as horas das FRASES DO "HOJE" (varredura de 28/10/2026). "Hoje é dia do
+    // Conjunto… o mais próximo é amanhã, 29/09, 12h00" era lido como "hoje às
+    // 12h00": a hora pertence a outra data. Frase que cita "amanhã" ou outra
+    // data dd/mm não fala de hoje.
+    const frasesDeHoje = String(texto).replace(RE_BLOCOS_TECNICOS, " ").split(/(?<=[.!?\n])/)
+      .filter(f => /\bhoje(?![\wà-ú])/i.test(f) && !/amanh[ãa]/i.test(f)
+        && ![...f.matchAll(/(\d{2})\/(\d{2})(?!\/?\d)/g)].some(x => `${x[1]}/${x[2]}` !== hojeStr));
+    const horas = horariosOferecidos(frasesDeHoje.join(" "));
     if (horas.length) {
       const diaBR = (d) => d.toLocaleDateString("en-CA", { timeZone: TZ_BR });
       const hojeISO = `${hoje.ano}-${dd(hoje.mes)}-${dd(hoje.dia)}`;
