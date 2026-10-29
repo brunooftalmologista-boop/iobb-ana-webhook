@@ -12354,8 +12354,82 @@ async function rodarFollowUpLeads() {
     console.log(`[FollowUp] ciclo: ${leads.length} lead(s) processado(s).`);
   } catch (e) { console.error("[FollowUp] exceção:", e.message); }
 }
+// ── Follow-up de quem ADIOU ("depois eu agendo") — Dr. Bruno, 29/10/2026 ─────
+// O follow-up acima exige pergunta da Ana no ar; depois de "depois eu agendo"
+// ela responde "fico à disposição" e ninguém mais volta a falar. Em 60 dias
+// foram 20 conversas assim e só 4 receberam follow-up. Aqui: UMA mensagem fixa
+// (sem API), o mais tarde possível ANTES de a janela de 24h fechar — por volta
+// de 20h depois da fala dele —, só em dia útil dentro da faixa do follow-up. Se
+// a janela fecha à noite ou no fim de semana, vai no último horário permitido
+// antes disso; se não houver nenhum, não vai.
+const RE_ADIOU = /\b(depois (eu )?(agendo|marco|vejo|retorno|falo|confirmo|entro em contato|te (aviso|chamo|falo))|mais tarde (eu )?(agendo|marco|retorno|vejo|confirmo)|vou (ver|verificar|olhar|consultar) (a |minha |a minha )?agenda|vou (me )?organizar|vou pensar|vou ver (e|depois|direitinho)|te (aviso|retorno|falo|chamo)|retorno (depois|mais tarde|em breve)|qualquer coisa (eu )?(retorno|aviso|chamo|agendo)|assim que (eu )?(puder|souber|conseguir))/;
+// Quem já disse QUANDO ("em novembro", "mês que vem", "depois das férias") não é
+// cobrado amanhã — a pergunta "conseguiu ver a data?" soaria como não ter ouvido.
+const RE_ADIOU_COM_PRAZO = /(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|mes que vem|proximo mes|ano que vem|proximo ano|depois d[ao]s? (ferias|festas|carnaval|natal|ano novo|viagem|cirurgia|exame))/;
+const RE_ADIOU_NEGOU = /(nao quero|sem interesse|nao tenho interesse|ja (resolvi|agendei|marquei)|parar de receber|nao me mand|cancel|desmarc)/;
+function horarioDeFollowUp(d) {   // dia útil, dentro da faixa FOLLOWUP_HORA_INICIO..FIM (Brasília)
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: TZ_BR, weekday: "short", hour: "numeric", hourCycle: "h23" })
+    .formatToParts(d).map(x => [x.type, x.value]));
+  const h = Number(p.hour);
+  return !["Sat", "Sun"].includes(p.weekday) && h >= FOLLOWUP_HORA_INICIO && h < FOLLOWUP_HORA_FIM;
+}
+// Agora é a hora? Sim se já passou ~20h da fala, ou se depois deste ciclo não
+// sobra nenhum ciclo permitido antes de a janela fechar (23h30 de margem).
+function horaDoFollowUpAdiado(falaMs, agoraMs = Date.now()) {
+  const desde = agoraMs - falaMs, fecha = falaMs + 23.5 * 3600e3;
+  if (desde < 3 * 3600e3 || agoraMs > fecha || !horarioDeFollowUp(new Date(agoraMs))) return false;
+  if (desde >= 20 * 3600e3) return true;
+  for (let t = agoraMs + 30 * 60e3; t <= fecha; t += 30 * 60e3) if (horarioDeFollowUp(new Date(t))) return false;
+  return true;   // último ciclo permitido antes de a janela fechar
+}
+async function rodarFollowUpAdiado() {
+  if (!(await followUpAtivo())) return;
+  if (!horarioDeFollowUp(new Date())) return;
+  try {
+    // EGRESS: só as falas de paciente das últimas 24h (poucas centenas de linhas
+    // curtas), 48 ciclos/dia. O resto é filtrado aqui e só os candidatos vão ao banco.
+    const desde = new Date(Date.now() - 24 * 3600e3).toISOString();
+    const { data: falas, error } = await supabase.from("messages")
+      .select("conversation_id, content, timestamp").eq("role", "user").gte("timestamp", desde)
+      .order("timestamp", { ascending: false }).limit(1000);
+    if (error) { console.error("[FollowUp adiado] leitura falhou:", error.message); return; }
+    const ultima = new Map();                       // a ÚLTIMA fala de cada conversa
+    for (const m of falas || []) if (!ultima.has(m.conversation_id)) ultima.set(m.conversation_id, m);
+    const norm = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const candidatos = [...ultima.values()].filter(m => {
+      const t = norm(m.content);
+      return RE_ADIOU.test(t) && !RE_ADIOU_COM_PRAZO.test(t) && !RE_ADIOU_NEGOU.test(t) && !ehAgoraNao(m.content)
+        && horaDoFollowUpAdiado(instanteDaMensagem(m.timestamp));
+    });
+    if (!candidatos.length) return;
+    for (const m of candidatos) {
+      try {
+        const { data: conv } = await supabase.from("conversations").select("id, status, patients(phone, name)").eq("id", m.conversation_id).maybeSingle();
+        const phone = conv?.patients?.phone;
+        if (!conv || conv.status !== "bot" || !phone || String(phone).startsWith("55619900")) continue;   // equipe assumiu, sem telefone ou número de teste
+        // Já recebeu follow-up (qualquer um) depois desta fala? Uma vez só.
+        const { data: ja } = await supabase.from("messages").select("id").eq("conversation_id", conv.id)
+          .in("event", ["followup", "followup_adiado"]).gt("timestamp", m.timestamp).limit(1);
+        if (ja && ja.length) continue;
+        // Já marcou (por qualquer via, qualquer grafia do telefone)?
+        const { data: ag } = await supabase.from("appointments").select("id").in("paciente_telefone", fonesBR(phone))
+          .neq("status", "cancelado").gt("inicio", new Date().toISOString()).limit(1);
+        if (ag && ag.length) continue;
+        const nome = nomePlausivel(conv.patients?.name) ? (String(conv.patients.name).trim().split(/\s+/)[0] || "") : "";
+        const msg = `Oi${nome ? ", " + nome : ""}! Passando para saber se conseguiu ver a melhor data para a sua consulta. Se quiser, já verifico um horário para você 😊`;
+        const waId = await sendWhatsApp(phone, msg);
+        await supabase.from("messages").insert({ conversation_id: conv.id, role: "assistant", content: msg, wa_message_id: waId, event: "followup_adiado" });
+        await supabase.from("conversations").update({ last_message: msg, updated_at: new Date().toISOString() }).eq("id", conv.id);
+        console.log(`[FollowUp adiado] enviado para ${maskFone(phone)} (conv ${conv.id}).`);
+      } catch (e) {
+        console.error("[FollowUp adiado] envio falhou:", e?.response?.data ? JSON.stringify(e.response.data) : e.message);
+      }
+    }
+  } catch (e) { console.error("[FollowUp adiado] exceção:", e.message); }
+}
 function startFollowUp() {
   setInterval(() => rodarFollowUpLeads().catch(e => console.error("[FollowUp] scheduler:", e.message)), 30 * 60 * 1000);
+  setInterval(() => rodarFollowUpAdiado().catch(e => console.error("[FollowUp adiado] scheduler:", e.message)), 30 * 60 * 1000);
   console.log(`[FollowUp] scheduler ativo (30 min), envio só em dia útil das ${FOLLOWUP_HORA_INICIO}h às ${FOLLOWUP_HORA_FIM}h. Envio real só com settings.followup_leads_enabled='true'.`);
 }
 
