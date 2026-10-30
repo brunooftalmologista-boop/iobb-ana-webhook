@@ -1176,8 +1176,14 @@ function detectUnidade(messages) {
   // recente ao mais antigo e devolve a ÚLTIMA unidade que o paciente citou.
   // Mensagens que citam as DUAS (menu) são ignoradas — não expressam preferência.
   const usuarios = messages.filter(m => m.role === "user").slice(-8).reverse();
+  // Menção NEGADA não é pedido (varredura de 28/10/2026): "Taguatinga é muito
+  // distante", "Taguatinga não dá", "fica longe" eram lidos como "quero
+  // Taguatinga" e a trava de unidade ignorada exigia justo a que ele recusou.
+  // Corta por oração e descarta a que traz a recusa.
+  const RE_RECUSA_UNIDADE = /\bnao (da|posso|consigo|quero|gosto|prefiro|fica bom|e bom|serve|tenho como|compensa)\b|longe|distante|fora de mao|dificil|complicado/;
   for (const m of usuarios) {
-    const t = (m.content || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const t = (m.content || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .split(/[.,;!?\n]|\s+mas\s+|\s+porem\s+/).filter(o => !RE_RECUSA_UNIDADE.test(o)).join(" , ");
     const tag  = t.includes("taguatinga") || t.includes("aguas claras");
     const conj = t.includes("conjunto") || t.includes("asa norte");
     if (tag && conj) continue;                 // menu com as duas → não é preferência
@@ -1539,7 +1545,9 @@ Reescreva a mensagem inteira com o bairro certo. Se estiver em dúvida sobre o b
 // ⚠️ NÃO trava quando ela RECUSA ("não consigo encaixar", "não trabalhamos com
 // encaixe") nem quando "encaixa" aparece no sentido comum ("a sexta é a que se
 // encaixa lá") — medido contra 30 dias de conversas.
-const RE_PROMETE_ENCAIXE = /(equipe|recep[çc][ãa]o|elas?)[^.!?\n]{0,40}(encaix|verifica[^.!?\n]{0,20}possibilidade)|(verifica|ver|tenta)[^.!?\n]{0,25}encaix|possibilidade de encaix|consigo (te )?encaix|d[áa] para encaix|pode vir antes|chegar antes[^.!?\n]{0,30}(encaix|pode vir)|se (estiver )?chegando antes[^.!?\n]{0,30}pode vir/i;
+// "elas?" com fronteira (lookbehind — \b não serve com acento): sem ela casava
+// dentro de "pela"/"janela" (varredura de 28/10/2026).
+const RE_PROMETE_ENCAIXE = /(equipe|recep[çc][ãa]o|(?<![\wà-ú])elas?(?![\wà-ú]))[^.!?\n]{0,40}(encaix|verifica[^.!?\n]{0,20}possibilidade)|(verifica|ver|tenta)[^.!?\n]{0,25}encaix|possibilidade de encaix|consigo (te )?encaix|d[áa] para encaix|pode vir antes|chegar antes[^.!?\n]{0,30}(encaix|pode vir)|se (estiver )?chegando antes[^.!?\n]{0,30}pode vir/i;
 const RE_ENCAIXE_NEGADO = /n[ãa]o (consigo|posso|d[áa]|trabalhamos|fazemos|h[áa]) [^.!?\n]{0,25}encaix|sem encaix|n[ãa]o (fa[çc]o|ofere[çc]o) encaix/i;
 function prometeuEncaixe(reply) {
   const t = String(reply || "");
@@ -1612,6 +1620,18 @@ function unidadeIgnorada(reply, messages, slots, meusAgendamentos) {
   const pediuDiaDe = /(ter[cç]a|quinta)/.test(ult) ? "taguatinga"
                    : /(segunda|quarta|sexta)/.test(ult) ? "conjunto" : null;
   if (pediuDiaDe === ofereceu) return null;
+  // Pediu uma DATA (dd/mm): o dia da semana dela decide a unidade, como no
+  // pedido por nome do dia (varredura de 28/10/2026).
+  for (const x of ult.matchAll(/(?<!\d)(\d{1,2})\/(\d{1,2})(?!\/?\d)/g)) {
+    const [dia, mes] = [Number(x[1]), Number(x[2])];
+    if (!dia || dia > 31 || !mes || mes > 12) continue;
+    const ano = Number(new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR }).slice(0, 4));
+    let d = new Date(`${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}T12:00:00-03:00`);
+    if (d.getTime() < Date.now() - 60 * 86400000) d = new Date(`${ano + 1}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}T12:00:00-03:00`);
+    if (isNaN(d.getTime())) continue;
+    const u = unidadeDoDia(d);
+    if (u && (/taguatinga/i.test(u) ? "taguatinga" : "conjunto") === ofereceu) return null;
+  }
   for (const rel of [["hoje", 0], ["amanha", 1]]) {
     if (!new RegExp(`\\b${rel[0]}`).test(ult)) continue;
     const d = new Date(Date.now() + rel[1] * 86400000);
@@ -1745,15 +1765,21 @@ const RE_PEDIDO_DE_CARTEIRINHA = /(n[úu]mero|foto|imagem|c[óo]pia)\s+(d[ao]s?\
 // nome inexistente e morria no catch, calada.
 const RE_IMAGEM_RECEBIDA = /\[(imagem|foto|documento|arquivo)[^\]]{0,20}recebid/i;
 const RE_CONTEXTO_CONVENIO = /conv[êe]nio|unimed|carteirinha|plano de sa[úu]de/i;
-function esqueceuPedirCarteirinha(reply, messages, registros) {
+const RE_RECEBEU_CARTEIRINHA = /identifiquei (sua|a) carteirinha|li (sua|a) carteirinha|recebi (sua|a) carteirinha/i;
+function esqueceuPedirCarteirinha(reply, messages, registros, cartaoDoTurno = null) {
   const comConvenio = (registros || []).some(r => {
     const c = String(r.convenio || "").trim();
     return c && c !== "-" && !/^particular$/i.test(c) && convenioAtendido(c);
   });
   if (!comConvenio) return null;
+  // O cartão chegou NESTE turno (bloco [CARTEIRINHA]) — pedir de novo seria
+  // pedir o que acabou de vir (varredura de 28/10/2026).
+  if (cartaoDoTurno) return null;
   const t = String(reply || "");
   // A própria mensagem já pede? Então está certa.
   if (RE_PEDIDO_DE_CARTEIRINHA.test(t)) return null;
+  // A própria mensagem diz que leu/recebeu o cartão.
+  if (RE_LEU_CARTEIRINHA.test(t) || RE_RECEBEU_CARTEIRINHA.test(t)) return null;
   const hist = Array.isArray(messages) ? messages : [];
   // Já pediu em algum momento da conversa — pedir uma vez basta, e insistir é
   // justamente o erro oposto (caso Virginia, 03/09).
@@ -1904,7 +1930,9 @@ const RE_PEDIDO_LEGITIMO = /n[ãa]o consig|n[ãa]o consegui|n[ãa]o (ficou|est[�
 const RE_LEU_VARIAS = /carteirinhas/i;
 function pediuCarteirinhaDeNovo(reply, messages) {
   const t = String(reply || "");
-  const hist = Array.isArray(messages) ? messages : [];
+  // Só a conversa RECENTE (varredura de 28/10/2026): uma leitura de cartão de
+  // dois meses e meio antes bloqueava o pedido do cartão novo.
+  const hist = (Array.isArray(messages) ? messages : []).slice(-15);
   const leituras = hist.filter(m => m.role === "assistant" && RE_LEU_CARTEIRINHA.test(String(m.content || "")));
   if (!leituras.length) return null;
   if (leituras.some(m => RE_LEU_VARIAS.test(String(m.content || "")))) return null;
@@ -2197,7 +2225,7 @@ function instrucaoMaisCedo(motivo) {
 // segura comportamento, trava segura.
 // Só reprova quando ela pede MENOS do que falta: pedir um dado quando só falta
 // aquele é o certo e não dispara nada.
-function fichaEmContaGotas(reply, messages) {
+function fichaEmContaGotas(reply, messages, jaSabeForma = false) {
   // ⏱️ SÓ VALE COM HORÁRIO NA MESA (01/10/2026). A trava nasceu para a fase de
   // FICHA — paciente aceitou um horário e a Ana pinga um dado por vez. Mas ela
   // também disparava na fase de QUALIFICAÇÃO: "Quanto é a consulta?" → "No
@@ -2212,14 +2240,28 @@ function fichaEmContaGotas(reply, messages) {
   if (!horariosOferecidos(reply).length && !horariosOferecidos(ultimaDaAna?.content).length) return null;
   const pedeNome  = /nome completo/i.test(reply);
   const pedeNasc  = /data de nascimento|sua data de nasc|o nascimento/i.test(reply);
-  const pedeForma = /particular ou (por )?(conv[êe]nio|plano)|qual (é o )?conv[êe]nio|tem conv[êe]nio|tem algum (plano|conv[êe]nio)|ser[áa] particular/i.test(reply);
+  // Varredura de 28/10/2026 (76 dos 83 disparos eram falsos): "convênio ou
+  // particular", "continua pelo Saúde Caixa?" e "pelo GEAP ou particular?" também
+  // perguntam a forma de atendimento.
+  const pedeForma = /particular ou (por )?(conv[êe]nio|plano)|conv[êe]nio ou particular|qual (é o )?conv[êe]nio|tem conv[êe]nio|tem algum (plano|conv[êe]nio)|ser[áa] particular|continua (como|pel[oa]) [^.!?\n]{1,40}\?|pel[oa] [^.!?\n]{1,40} ou particular/i.test(reply);
   const pediu = [pedeNome, pedeNasc, pedeForma].filter(Boolean).length;
   if (!pediu) return null;
+  // Pedir SÓ a forma de atendimento é o formato certo (é o que define agenda e
+  // antecedência) — a trava é para nome/nascimento pingados um por vez.
+  if (!pedeNome && !pedeNasc) return null;
   // O que o paciente JÁ informou, lido do histórico. Conservador: na dúvida
   // considera que JÁ tem (assim a trava não cobra dado que ele já deu).
   const ditoPeloPaciente = (messages || []).filter(m => m.role === "user").map(m => String(m.content || "")).join(" \n ");
-  const temNasc  = /\b\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\/.-]\s*\d{2,4}\b/.test(ditoPeloPaciente);
-  const temForma = /particular|conv[êe]nio|unimed|plano de sa[úu]de|amhpdf|saude caixa|sa[úu]de caixa|geap|cassi|fascal|serpro|tjdft|mpf|mpdft/i.test(ditoPeloPaciente);
+  // Nascimento também com espaços: "05 10 1973" (ano de 4 dígitos, para não
+  // confundir com telefone ou hora).
+  const temNasc  = /\b\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\/.-]\s*\d{2,4}\b|\b\d{1,2}\s+\d{1,2}\s+(19|20)\d{2}\b/.test(ditoPeloPaciente);
+  // Forma de atendimento: "plano" solto ("mesmo plano", "sem plano"), qualquer
+  // nome das listas de convênio (atendidos e não atendidos, palavra inteira) e
+  // o convênio que a campanha já trouxe.
+  const pacNorm = ` ${_normFicha(ditoPeloPaciente)} `;
+  const temForma = jaSabeForma
+    || /particular|conv[êe]nio|unimed|\bplano\b|plano de sa[úu]de|amhpdf|saude caixa|sa[úu]de caixa|geap|cassi|fascal|serpro|tjdft|mpf|mpdft/i.test(ditoPeloPaciente)
+    || [...CONVENIOS_ATENDIDOS, ...CONVENIOS_NAO_ATENDIDOS.map(_normFicha)].some(x => x && pacNorm.includes(` ${x} `));
   const falta = (pedeNome ? 1 : 0) + (temNasc ? 0 : 1) + (temForma ? 0 : 1);
   if (pediu >= falta) return null;
   return `pediu ${pediu} dado(s) da ficha quando ainda faltam ${falta} — vai ter que voltar a perguntar`;
@@ -2246,7 +2288,9 @@ function agendarEmVagaOcupada(reply, slots, meusAgendamentos) {
   for (const r of registros) {
     const bruto = String(r.inicio || "").trim();
     if (!bruto || bruto === "-") continue;
-    const t = new Date(bruto).getTime();
+    // inicioDoBloco, nunca new Date() cru: hora sem fuso é Brasília. Caso Elza
+    // (14/10/2026): o bloco das 15h era lido como 12h, uma vaga "ocupada".
+    const t = inicioDoBloco(bruto).getTime();
     if (isNaN(t)) continue;
     if (meus.has(t)) continue;                       // é a consulta que ele já tem (soma de serviço/remarcação)
     if (slots.some(sl => sl.start.getTime() === t)) continue;   // vaga livre: ok
@@ -2269,8 +2313,15 @@ function instrucaoAgendarVagaLivre(motivo) {
 // (Unidade e convênio PODEM vir antes/junto: definem qual agenda e antecedência.)
 function fichaAntesDoHorario(reply, messages, slots) {
   if (!Array.isArray(slots) || !slots.length) return null;   // sem agenda não há o que oferecer
-  const pedeNomeOuNasc = /nome completo|data de nascimento/i.test(reply);
+  // Varredura de 28/10/2026: "nome completo do titular do plano" (dado da
+  // carteirinha) e "anotei o nome completo" (já recebido) não pedem a ficha.
+  const semFalsos = String(reply || "")
+    .replace(/nome completo d[oa] (titular( d[oa] plano)?|plano)|anotei (o |seu )?nome completo/gi, " ");
+  const pedeNomeOuNasc = /nome completo|data de nascimento/i.test(semFalsos);
   if (!pedeNomeOuNasc) return null;
+  // Idade mínima ("a partir dos 8 anos") e recado registrado para a equipe: não
+  // há horário a oferecer nessas respostas.
+  if (/a partir dos 8 anos|registr\w+[^.]{0,40}equipe/i.test(reply)) return null;
   const TEM_HORA = /\d{1,2}\s*[h:]\s*\d{2}|[àa]s\s+\d{1,2}\s*h/i;
   if (TEM_HORA.test(String(reply).replace(/[*_~`]/g, ""))) return null;   // ofereceu junto: ok
   // Algum horário já esteve na mesa nesta conversa? (oferta anterior da Ana)
@@ -2333,10 +2384,23 @@ function ofertaInexistente(reply, slots, meusAgendamentos) {
   // ⚠️ TIRA O MARKDOWN ANTES DE CASAR. A Ana escreve "às **17h**" em negrito, e
   // com os asteriscos no meio o \\s+ seguido de \\d nunca casava — a trava passava
   // batido justamente na forma que ela mais usa para oferecer horário.
-  const semMd = String(reply).replace(/[*_~`]/g, "");
-  for (const m of semMd.matchAll(/(\d{2})\/(\d{2})(?!\/?\d)[^.\n]{0,40}?[àa]s\s+(\d{1,2})\s*(?:h|:)\s*(\d{2})?/gi)) {
+  // Varredura de 28/10/2026 — três furos de falso positivo:
+  //  (1) FAIXA DE FUNCIONAMENTO não é oferta. "Conjunto Nacional atende amanhã,
+  //      29/10, das 8h às 18h, por ordem de chegada" saía como "ofereceu 08:00".
+  //      Sai antes a faixa (a mesma regex de horariosOferecidos) e o "a partir
+  //      das 16h30".
+  //  (2) O "as" de dentro de "das" ancorava a hora: a âncora agora exige que
+  //      "às" seja palavra solta — lookbehind, porque \b não funciona com acento.
+  //  (3) A hora que o paciente PEDIU e a Ana RECUSOU ("às 14h não tenho, o mais
+  //      próximo é 14h20") não é oferta: só o 14h20 é.
+  const semMd = String(reply).replace(/[*_~`]/g, "")
+    .replace(/\bdas\s+\d{1,2}\s*[h:]?\s*(?:\d{2})?\s*[àa]s\s+\d{1,2}\s*[h:]?\s*(?:\d{2})?/gi, " ")
+    .replace(/a\s+partir\s+d[ae]s?\s+\d{1,2}\s*[h:]?\s*(?:\d{2})?/gi, " ");
+  for (const m of semMd.matchAll(/(\d{2})\/(\d{2})(?!\/?\d)[^.\n]{0,40}?(?<![\wà-ú])[àa]s\s+(\d{1,2})\s*(?:h|:)\s*(\d{2})?/gi)) {
     const dia = `${m[1]}/${m[2]}`;
     const hora = `${String(m[3]).padStart(2, "0")}:${m[4] || "00"}`;
+    const depois = semMd.slice(m.index + m[0].length, m.index + m[0].length + 25);
+    if (/n[ãa]o\s+(tenho|temos|h[áa])|ocupad|indispon/i.test(depois)) continue;   // hora recusada, não oferecida
     if (dele.has(`${dia} ${hora}`)) continue;
     const existe = slots.some(s => ddmm(s.start) === dia && hhmm(s.start) === hora);
     if (!existe) return `ofereceu ${dia} às ${hora}, que NÃO está na lista de vagas livres`;
@@ -2409,6 +2473,9 @@ function citouConvenioForaComoAtendido(reply) {
     // resposta certa em qualquer mensagem. Sem isto a trava reprovava a própria
     // ficha do agendamento ("particular | motivo: Consulta").
     if (/^particular\b/i.test(frag) || /^motivo\s*:/i.test(frag)) continue;
+    // Forma de PAGAMENTO não é convênio: os 3 convenio_inventado do último mês
+    // eram "aceitamos PIX, cartão…" (varredura de 28/10/2026).
+    if (/pix|dinheiro|cart[ãa]o|d[ée]bito|cr[ée]dito|boleto/i.test(frag)) continue;
     if (!convenioAtendido(frag)) fora.push(frag);
   }
   if (!fora.length) return null;
@@ -2503,7 +2570,12 @@ const RE_ANUNCIOU_AGENDAMENTO = /\bagendad[ao]\b|confirmo o agendamento|agendame
 // As formas CONDICIONAIS e as PERGUNTAS continuam livres: "para eu reservar
 // esse horário, me confirma o nome completo?" é justamente a frase certa que o
 // prompt manda usar, e "reservo para você?" é uma oferta, não uma promessa.
-const RE_AGENDA_NAO_CONTA = /posso agendar|gostaria de agendar|para agendar|vou agendar|quer que eu agende|deseja agendar|precisa (ser )?agendad|n[aã]o (foi|ficou|est[áa]) (agendad|confirmad|reservad)|se (precisar|quiser|desejar)|caso (queira|precise|deseje)|para (eu |que eu )?(reservar|separar|guardar)|quer que eu (reserve|separe|guarde)|posso (reservar|separar|guardar)|(reservo|separo|guardo)[^.!?\n]{0,30}\?/i;
+// Varredura de 28/10/2026: pergunta ("ficou agendado para 9h?"), "não vejo /
+// não consta agendamento", "para eu confirmar" e "agendada pela equipe" também
+// não são a Ana anunciando que ELA marcou.
+// Mas pergunta que AFIRMA o agendamento ("Agendado para quinta às 10h, tudo
+// certo?") continua contando: é anúncio com um "certo?" no fim.
+const RE_AGENDA_NAO_CONTA = /posso agendar|gostaria de agendar|para agendar|vou agendar|quer que eu agende|deseja agendar|precisa (ser )?agendad|n[aã]o (foi|ficou|est[áa]) (agendad|confirmad|reservad)|se (precisar|quiser|desejar)|caso (queira|precise|deseje)|para (eu |que eu )?(reservar|separar|guardar)|quer que eu (reserve|separe|guarde)|posso (reservar|separar|guardar)|(reservo|separo|guardo)[^.!?\n]{0,30}\?|^(?![^\n]*(agendad[oa] para|marcad[oa] para|reservad[oa] para|est[áa] (agendad|marcad|reservad|confirmad)|fic(ou|a) (agendad|marcad|reservad|confirmad)))[^\n]*\?\s*$|n[aã]o (vejo|consta)|para (eu )?confirmar(?![^.!?\n]*(agendad|marcad|reservad))|agendad[ao] pela equipe/i;
 function anunciouAgendamentoSemAgendar(reply, slots, meusAgendamentos) {
   const limpo = extrairAgendar(reply).limpo;
   if (!RE_ANUNCIOU_AGENDAMENTO.test(limpo)) return null;
@@ -2515,9 +2587,13 @@ function anunciouAgendamentoSemAgendar(reply, slots, meusAgendamentos) {
   const ddmm = (d) => new Date(d).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit" });
   const hhmm = (d) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: TZ_BR, hour: "2-digit", minute: "2-digit" });
   const semMd = String(limpo).replace(/[*_~`]/g, "");
+  // A hora casa com ou sem o zero à esquerda: a Ana escreve "9h00" e o relógio
+  // devolve "09:00" (varredura de 28/10/2026). (?<!\d) impede "9h00" de casar
+  // dentro de "19h00".
   for (const a of (meusAgendamentos || [])) {
-    const h = hhmm(a.inicio).replace(":", "h");
-    if (semMd.includes(ddmm(a.inicio)) && (semMd.includes(h) || semMd.includes(hhmm(a.inicio)))) return null;
+    const [hh, mi] = hhmm(a.inicio).split(":");
+    const reHora = new RegExp(`(?<!\\d)0?${Number(hh)}\\s*[h:]\\s*${mi}`);
+    if (semMd.includes(ddmm(a.inicio)) && reHora.test(semMd)) return null;
   }
   // Anunciou. O bloco saiu, com início válido?
   const regs = extrairAgendar(reply).registros || [];
@@ -2595,7 +2671,10 @@ function prometeuRecadoSemBloco(replyBruto, textoLimpo) {
   // [AGENDAR] e [PREAGENDAMENTO] SÃO o registro daquele caso — não precisam de recado.
   if (/\[(AGENDAR|PREAGENDAMENTO|RECADO)\]/i.test(String(replyBruto))) return null;
   const t = String(textoLimpo || "");
-  const frase = t.split(/(?<=[.!?\n])/).find(f => RE_PROMETE_REGISTRO.test(f)) || "";
+  // "Vou repassar o seu elogio à equipe" é gentileza, não pedido pendente
+  // (varredura de 28/10/2026).
+  const frase = t.split(/(?<=[.!?\n])/).find(f => RE_PROMETE_REGISTRO.test(f)
+    && !/repass\w*\s+((o|os)\s+)?((seu|seus)\s+)?(elogio|agradecimento)/i.test(f)) || "";
   if (!frase) return null;
   if (RE_ANOTA_DADO_DA_FICHA.test(frase)) return null;
   if (!RE_PROMESSA_COM_EQUIPE.test(t)) return null;
@@ -2653,7 +2732,8 @@ function precoSemHorario(reply, slots, messages) {
 // "você tem convênio?" na mesma mensagem.
 // Só vale para o preço da CONSULTA (200). Cirurgia, lente e teste têm valor
 // particular independente de plano e são informados de forma espontânea.
-const RE_SABE_FORMA_ATENDIMENTO = /particular|conv[êe]nio|plano de sa[úu]de|unimed|carteirinha|reembolso/i;
+// "\bplano\b": "sou sem plano" já diz a forma (varredura de 28/10/2026).
+const RE_SABE_FORMA_ATENDIMENTO = /particular|conv[êe]nio|plano de sa[úu]de|\bplano\b|unimed|carteirinha|reembolso/i;
 function precoSemSaberConvenio(reply, messages, jaSabeDeOutraFonte = false) {
   // O sistema pode SABER a forma de atendimento sem que ela apareça nas
   // mensagens — é o caso do paciente da campanha, cujo convênio veio da fila.
@@ -2739,7 +2819,9 @@ const CONVENIOS_NAO_ATENDIDOS = [
 function convenioAtendido(nome) {
   const n = _normFicha(nome);
   if (!n) return false;
-  if (CONVENIOS_NAO_ATENDIDOS.some(x => n.includes(x))) return false;
+  // PALAVRA INTEIRA, como na leitura da carteirinha: "Unimed Patos de Minas"
+  // contém "inas" e foi recusada (varredura de 28/10/2026).
+  if (CONVENIOS_NAO_ATENDIDOS.some(x => ` ${n} `.includes(` ${_normFicha(x)} `))) return false;
   // UNIMED: TODA Unimed é atendida, regional inclusive (Dr. Bruno, 25/08/2026).
   // "Sempre agendar unimed, assim como os outros planos que atendemos. Pedir dados
   // da carteirinha (ou foto) para as secretárias solicitarem a autorização, mas já
@@ -2780,6 +2862,38 @@ function fichaIncompleta(registros, reply, messages) {
     }
   }
   return [...new Set(faltas)];
+}
+// 🗂️ O QUE fichaIncompleta DEVE JULGAR (varredura de 28/10/2026).
+//  (R) Re-emissão do bloco de uma consulta que o paciente JÁ TEM (mesmo
+//      instante): é despedida/lembrete, não agendamento novo — e a ficha dela
+//      era julgada de novo, gerando "ficha_incompleta_persistiu" falso.
+//  (T) Remarcação que não copiou a ficha antiga (caso Deise): o bloco novo vem
+//      sem nascimento/convênio, mas a consulta anterior do MESMO telefone e do
+//      MESMO primeiro nome já tem. Completa só o que falta, só dessa fonte.
+// Devolve CÓPIAS — o objeto original do bloco não muda.
+function completarFichaPelaOutraConsulta(registros, meusAgendamentos) {
+  const vazio = (x) => { const s = String(x || "").trim(); return !s || s === "-"; };
+  return (registros || []).map(r => {
+    const pn = primNome(r.nome);
+    if (!pn || (!vazio(r.nascimento) && !vazio(r.convenio))) return r;
+    const outra = (meusAgendamentos || []).filter(a => a.status !== "cancelado" && primNome(a.paciente_nome) === pn);
+    if (!outra.length) return r;
+    const novo = { ...r };
+    if (vazio(novo.nascimento)) {
+      const m = outra.map(a => String(a.observacoes || "").match(/Nascimento:\s*([0-9]{1,4}[\/.-][0-9]{1,2}[\/.-][0-9]{2,4})/i)).find(Boolean);
+      if (m) novo.nascimento = m[1];
+    }
+    if (vazio(novo.convenio)) {
+      const c = outra.map(a => String(a.convenio || "").trim()).find(s => s && s !== "-");
+      if (c) novo.convenio = c;
+    }
+    return novo;
+  });
+}
+function registrosParaJulgarFicha(registros, meusAgendamentos) {
+  const jaTem = new Set((meusAgendamentos || []).filter(a => a.status !== "cancelado").map(a => new Date(a.inicio).getTime()));
+  return completarFichaPelaOutraConsulta(registros, meusAgendamentos)
+    .filter(r => !jaTem.has(inicioDoBloco(r.inicio).getTime()));
 }
 function instrucaoFichaCompleta(faltas) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ia marcar a consulta com a ficha INCOMPLETA. Falta: ${faltas.join("; ")}.
@@ -3030,7 +3144,14 @@ function contradizHojeAmanha(texto, slots, meusAgendamentos) {
   const falaDeConsultaExistente = falaDeCancelamento || !ofereceHorario
     || /(sua|seu|a|o)s?\s+(consulta|agendamento)s?\s+(de|do|da|em|para)?\s*hoje|(sua|seu)s?\s+(consulta|agendamento)s?|voc[êe]s?\s+(tem|t[êe]m|est[áa]|est[ãa]o)|est[áaãõ]\w*\s+(agendad|marcad|confirmad)|vejo aqui/i.test(texto);
   if (/\bhoje\b/i.test(texto) && !hojeNegado && !falaDeConsultaExistente && Array.isArray(slots)) {
-    const horas = horariosOferecidos(texto);
+    // Só as horas das FRASES DO "HOJE" (varredura de 28/10/2026). "Hoje é dia do
+    // Conjunto… o mais próximo é amanhã, 29/09, 12h00" era lido como "hoje às
+    // 12h00": a hora pertence a outra data. Frase que cita "amanhã" ou outra
+    // data dd/mm não fala de hoje.
+    const frasesDeHoje = String(texto).replace(RE_BLOCOS_TECNICOS, " ").split(/(?<=[.!?\n])/)
+      .filter(f => /\bhoje(?![\wà-ú])/i.test(f) && !/amanh[ãa]/i.test(f)
+        && ![...f.matchAll(/(\d{2})\/(\d{2})(?!\/?\d)/g)].some(x => `${x[1]}/${x[2]}` !== hojeStr));
+    const horas = horariosOferecidos(frasesDeHoje.join(" "));
     if (horas.length) {
       const diaBR = (d) => d.toLocaleDateString("en-CA", { timeZone: TZ_BR });
       const hojeISO = `${hoje.ano}-${dd(hoje.mes)}-${dd(hoje.dia)}`;
@@ -3875,9 +3996,14 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
               // ao cartão das 14h00 e a Ana remarcou sozinha para as 15h00.
               const falasDaAna = (iUser >= 0 ? linhas.slice(iUser + 1) : []).filter(m => m.role === "assistant").map(m => String(m.content || ""));
               // (a) o paciente pediu a mudança? horário, data, dia da semana ou verbo
-              const pediuMudanca = /\d{1,2}\s*[h:]\s*\d{0,2}|\d{1,2}\/\d{1,2}|\b(segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|amanh[ãa]|hoje|semana que vem|pr[óo]xima semana)|\b(remarc|desmarc|cancel|adiar|antecip|mud|troc|transfer|outro hor[áa]rio|outra data|mais cedo|mais tarde)\w*/i.test(txt);
-              // (b) ou aceitou uma troca que a ANA acabou de propor com ESTE horário
-              const RE_OFERTA = /\b(tenho|consigo|posso (reservar|marcar|agendar|deixar)|reservo|pode ser\?|serve (para|pra) (voc[êe]|a senhora|o senhor)|que tal)/i;
+              // Turno também é pedido ("prefiro pela manhã") — varredura de 28/10/2026.
+              // "boa tarde" fica de fora: é saudação, e cortesia não remarca.
+              const pediuMudanca = /\d{1,2}\s*[h:]\s*\d{0,2}|\d{1,2}\/\d{1,2}|\b(segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|amanh[ãa]|hoje|semana que vem|pr[óo]xima semana|(?<!boa\s)(?:manh[ãa]|tarde))|\b(remarc|desmarc|cancel|adiar|antecip|mud|troc|transfer|outro hor[áa]rio|outra data|mais cedo|mais tarde)\w*/i.test(txt);
+              // (b) ou aceitou uma troca que a ANA acabou de propor com ESTE horário.
+              // "Está disponível… confirma?", "correto?" e "quer trocar?" também são
+              // oferta (varredura de 28/10/2026). "confirma"/"confirmar" sim,
+              // "confirmado"/"confirmação" não — esses são o cartão de cortesia.
+              const RE_OFERTA = /\b(tenho|consigo|posso (reservar|marcar|agendar|deixar)|reservo|pode ser\?|serve (para|pra) (voc[êe]|a senhora|o senhor)|que tal|dispon[íi]vel|confirmar?(?![\wà-ú])|correto\?|quer trocar)/i;
               const aceitouOferta = falasDaAna.some(f => RE_OFERTA.test(f) && !/confira seus dados/i.test(f) && horariosOferecidos(f).includes(horaDoBloco));
               cortesia = !pediuMudanca && !aceitouOferta;
             } catch (e) { console.error("[Agendar] Não consegui ler a última mensagem do paciente:", e.message); }
@@ -3905,9 +4031,6 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
           // avisado, e ele viria amanhã achando que faria os dois.
           // Só é remarcação quando o MOTIVO é o mesmo serviço (igual, ou um
           // contido no outro: "Consulta" ⊂ "Consulta de avaliação").
-          const normMotivo = (x) => String(x || "Consulta").trim().toLowerCase()
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
-          const mA = normMotivo(doMesmoPaciente[0].motivo), mB = normMotivo(motivo);
           // 08/09/2026 — caso Laís: "Consulta" às 14h00 e "Avaliação de ceratocone"
           // às 14h20, criados com 2 minutos de diferença, os DOIS mantidos. A
           // comparação por texto viu dois serviços diferentes; são a MESMA visita
@@ -3917,11 +4040,9 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
           // EXAME e uma CONSULTA, de propósito, em sequência. É essa distinção
           // que importa — exame × consulta —, não a igualdade das palavras.
           // Dois EXAMES diferentes continuam sendo agendamentos adicionais.
-          const ehExame = (m) => /paquimetria|topografia|ceratoscopia|mapeamento|microscopia|tonometria|cdpo|curva diaria|retinografia|gonioscopia|pentacam|sobrecarga|campimetr|teste de lente|exame/i.test(m);
-          const mesmoServico = mA === mB || mA.includes(mB) || mB.includes(mA)
-            || (!ehExame(mA) && !ehExame(mB));   // duas consultas/avaliações = uma visita só
+          const mesmoServico = mesmoServicoDaAgenda(doMesmoPaciente[0].motivo, motivo);
           if (!mesmoServico) {
-            console.log(`[Agendar] Serviço DIFERENTE na mesma conversa ("${mA}" x "${mB}") — agendamento adicional, NÃO cancelo o anterior.`);
+            console.log(`[Agendar] Serviço DIFERENTE na mesma conversa ("${doMesmoPaciente[0].motivo}" x "${motivo}") — agendamento adicional, NÃO cancelo o anterior.`);
           } else {
           idParaCancelar = doMesmoPaciente[0].id;   // remarcação DESTE paciente: cancela o antigo SÓ se o novo gravar
           console.log(`[Agendar] Reagendamento (${nome || "sem nome"}): novo ${ini.toISOString()}, antigo ${new Date(doMesmoPaciente[0].inicio).toISOString()} (id ${idParaCancelar}).`);
@@ -3964,6 +4085,14 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
             return { ok: true, already: true };
           }
         } catch (e) { console.error("[Agendar] Falha ao checar se a vaga já é do paciente (segue):", e.message); }
+      }
+      // ⏮️ HORÁRIO QUE JÁ PASSOU (varredura de 28/10/2026): a Ana re-emitiu o
+      // bloco da consulta que a paciente JÁ FEZ, e ela recebeu "NÃO ficou
+      // reservado" sobre o atendimento de horas antes. Bloco no passado nunca é
+      // agendamento novo: ignora calado, só no log.
+      if (!existe && ini.getTime() < Date.now()) {
+        console.warn(`[Agendar] Bloco com início no PASSADO (${ini.toISOString()}, ${unidade}) ignorado — re-emissão de consulta já ocorrida.`);
+        return { ok: true, already: true };
       }
       if (!existe) {
         const usadas = vagasJaOferecidas(conversationId);
@@ -4121,6 +4250,41 @@ async function processarCarteirinhaDaAna({ registro, from, conversationId }) {
   } catch (e) {
     console.error("[Carteirinha] Falha (não fatal):", e.message);
   }
+}
+
+// ===== REMARCOU E A ANTIGA FICOU ===========================================
+// Caso Adão Inacio (29/10/2026): tocou em "Remarcar" no lembrete, aceitou 06/11 às
+// 14h40 e ouviu "Remarcado". A consulta nova entrou, mas a de 30/10 às 14h00 ficou
+// ativa — marcada pela secretária, não pela Ana. O cancelamento automático dentro
+// de processarAgendarDaAna só enxerga consulta de origem "ana"; a da secretária
+// depende do [CANCELAR], que ou não veio ou trouxe um horário que não casou (e
+// "nada ativo nesse horário" é silêncio de propósito). Paciente segura de que
+// mudou, vaga presa e falta registrada no dia. A prova é o ESTADO FINAL: depois de
+// gravar o novo, relê a agenda e vê se a antiga saiu.
+const RE_ANUNCIOU_REMARCACAO = /\bremarcad[ao]\b|\bremarquei\b|\bremarcamos\b/i;
+const RE_PEDIU_MEXER_NA_CONSULTA = /(desmar[cq]|cancel|remar[cq]|adiar|antecip|imprevisto|outro dia|outra data|outro hor[aá]rio|mais cedo|mais tarde|pr[oó]xima semana|semana que vem|mudar|trocar|desist|esquec|deixa\s+(pra|para)\s+l|n[aã]o\s+(vou|posso|poderei|consigo|conseguirei|irei|quero|vai\s+dar|d[aá]))/i;
+// Exame × consulta são dois serviços; duas consultas/avaliações são uma visita só.
+function mesmoServicoDaAgenda(a, b) {
+  const norm = (x) => String(x || "Consulta").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+  const ehExame = (m) => /paquimetria|topografia|ceratoscopia|mapeamento|microscopia|tonometria|cdpo|curva diaria|retinografia|gonioscopia|pentacam|sobrecarga|campimetr|teste de lente|exame/i.test(m);
+  const mA = norm(a), mB = norm(b);
+  return mA === mB || mA.includes(mB) || mB.includes(mA) || (!ehExame(mA) && !ehExame(mB));
+}
+// Das consultas que o paciente tinha no início do turno (`antes`), quais continuam
+// ativas (`ativas`, lidas agora) e deveriam ter saído com este bloco. Vazio quando
+// alguma já saiu: a remarcação funcionou, e o que sobrou é outra consulta dele.
+function sobrouDaRemarcacao(registro, antes, ativas, agoraMs = Date.now()) {
+  const novo = inicioDoBloco(registro.inicio).getTime();
+  const pn = primNome(registro.nome);
+  const tinha = (antes || []).filter(a => {
+    const t = new Date(a.inicio).getTime();
+    return t !== novo && t > agoraMs
+      && (!pn || !primNome(a.paciente_nome) || primNome(a.paciente_nome) === pn)
+      && mesmoServicoDaAgenda(a.motivo, registro.motivo);
+  });
+  const sobrou = (ativas || []).filter(a => tinha.some(t => t.id === a.id));
+  return sobrou.length === tinha.length ? sobrou : [];
 }
 
 async function processarCancelarDaAna({ registro, from, conversationId }) {
@@ -5400,6 +5564,38 @@ async function notificarRecadoEquipe(recado, patient, from) {
   const topo = recado.prioritario ? "⚠️ *PRIORITÁRIO*\n" : "";
   const texto = `${topo}🔔 *RECADO PARA A EQUIPE*\nTipo: ${recado.tipo}\nPaciente: ${nome} / ${tel}\nResumo: ${recado.resumo || "—"}`;
   await espelharParaSecretaria(`[Recado ${recado.tipo}${recado.prioritario ? "/PRIORITÁRIO" : ""}]`, texto);
+}
+
+// 🔁 UM RECADO POR CONVERSA POR HORA (varredura de 28/10/2026). A Ana re-emite o
+// [RECADO] a cada turno enquanto a equipe não responde — um paciente gerou 8
+// recados em 9 minutos, e cada um virou uma notificação no WhatsApp da equipe.
+// A memória fica no processo (Map); depois de um restart, uma consulta pequena
+// ao error_log (1 linha, só created_at/detalhe) cobre a janela. Exceção: recado
+// PRIORITÁRIO depois de um comum passa — a urgência é informação nova.
+const RECADO_JANELA_MIN = 60;
+const ultimoRecadoPorConversa = new Map();   // conversationId -> { ts, prioritario }
+async function recadoRecenteNaConversa(conversationId, prioritario) {
+  if (!conversationId) return false;
+  const janela = RECADO_JANELA_MIN * 60000;
+  if (ultimoRecadoPorConversa.size > 1000) {
+    for (const [k, v] of ultimoRecadoPorConversa) if (Date.now() - v.ts >= janela) ultimoRecadoPorConversa.delete(k);
+  }
+  let ult = ultimoRecadoPorConversa.get(String(conversationId));
+  if (!ult || Date.now() - ult.ts >= janela) {
+    try {
+      const { data } = await supabase.from("error_log").select("created_at, detalhe")
+        .eq("etapa", "recado_emitido").eq("conversation_id", conversationId)
+        .gte("created_at", new Date(Date.now() - janela).toISOString())
+        .order("created_at", { ascending: false }).limit(1);
+      if (data && data[0]) {
+        ult = { ts: instanteDaMensagem(data[0].created_at), prioritario: /PRIORIT/i.test(String(data[0].detalhe || "")) };
+        ultimoRecadoPorConversa.set(String(conversationId), ult);
+      }
+    } catch (e) { console.error("[Recado] Checagem de recado recente falhou (segue avisando):", e.message); return false; }
+  }
+  if (!ult || !(Date.now() - ult.ts < janela)) return false;   // NaN também libera
+  if (prioritario && !ult.prioritario) return false;
+  return true;
 }
 
 // Marca a conversa como "precisa da equipe" para o painel destacar a caixa
@@ -7547,7 +7743,9 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       let faltasFicha = [];
       let semFormaPagamento = null;
       try {
-        faltasFicha = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
+        // Re-emissão de consulta existente fica fora; remarcação herda a ficha
+        // da consulta anterior (ver registrosParaJulgarFicha).
+        faltasFicha = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos), reply, messages);
         if (faltasFicha.length) semFormaPagamento = `ficha incompleta: falta ${faltasFicha.join("; ")}`;
       } catch (e) { console.error("[Ficha] Checagem falhou (segue sem travar):", e.message); }
       const maisCedo = etapaDeOferta ? existeVagaMaisCedo(reply, slotsVigentes, text, messages) : null;
@@ -7566,7 +7764,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       const anunciouSemAgendar = anunciouAgendamentoSemAgendar(reply, slotsVigentes, meusAgendamentos);
       const convenioInventado = citouConvenioForaComoAtendido(reply);
       const fichaCedo = etapaDeOferta ? fichaAntesDoHorario(reply, messages, slotsVigentes) : null;
-      const contaGotas = (etapaDeOferta && !fichaCedo) ? fichaEmContaGotas(reply, messages) : null;
+      const contaGotas = (etapaDeOferta && !fichaCedo) ? fichaEmContaGotas(reply, messages, campanhaSabeConvenio) : null;
       const cancPrevia = extrairCancelar(reply);
       const cancelouSoNaFala = prometeuCancelarSemBloco(reply, cancPrevia.limpo, cancPrevia.registros, meusAgendamentos);
       // Prometeu avisar a equipe e não emitiu [RECADO] — ninguém fica sabendo.
@@ -7608,6 +7806,15 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
                 .select("id").eq("origem", "bloqueio").in("status", ["reservado", "confirmado"])
                 .gte("inicio", d0.toISOString()).lt("inicio", d1.toISOString()).limit(1);
               fechado = !!(bloq && bloq.length);                // feriado bloqueado
+              // Bloqueio de UMA MANHÃ + agenda lotada à tarde também fica sem vaga
+              // livre, e era lido como feriado (varredura de 28/10/2026). Dia com
+              // consulta de paciente ativa está ABERTO.
+              if (fechado) {
+                const { data: consultas } = await supabase.from("appointments")
+                  .select("id").or("origem.is.null,origem.neq.bloqueio").in("status", ["reservado", "confirmado"])
+                  .gte("inicio", d0.toISOString()).lt("inicio", d1.toISOString()).limit(1);
+                if (consultas && consultas.length) fechado = false;
+              }
             }
           }
           despedidaFechada = despedidaParaDiaFechado(reply, fechado);
@@ -7868,7 +8075,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           // que falhou 5 vezes. Se nem assim, a mensagem segue (o paciente não
           // pode ficar sem resposta) — mas a ficha vai marcada e a equipe avisada.
           try {
-            const aindaFalta = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
+            const aindaFalta = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos), reply, messages);
             if (aindaFalta.length) {
               console.warn(`[Ficha] Reescrita AINDA incompleta (${aindaFalta.join("; ")}) — insistindo.`);
               const r3 = await anthropicMessages({
@@ -7882,7 +8089,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
               }, { origem: "reescrita" });
               const novo3 = r3.data?.content?.[0]?.text;
               if (novo3 && novo3.trim()) reply = novo3;
-              const resta = fichaIncompleta(extrairAgendar(reply).registros, reply, messages);
+              const resta = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos), reply, messages);
               // ⛔ CONVÊNIO NÃO ATENDIDO NÃO PASSA — NUNCA. As duas insistências e o
               // "deixa passar" existem para DADO QUE FALTA (nome, nascimento): ali o
               // paciente não pode ficar sem resposta, e a equipe completa depois.
@@ -7922,6 +8129,10 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     const cart = extrairCarteirinha(reply);        // [CARTEIRINHA] (dados do cartão → ficha)
     const canc = extrairCancelar(cart.limpo);      // [CANCELAR] (desmarcar / parte da remarcação)
     const ag = extrairAgendar(canc.limpo);         // [AGENDAR] (agendamento REAL)
+    // O que a trava da ficha aceitou herdando da consulta anterior (remarcação
+    // da Deise) tem de ser o que se GRAVA — senão passa no juízo e entra vazio.
+    try { ag.registros = completarFichaPelaOutraConsulta(ag.registros, meusAgendamentos); }
+    catch (e) { console.error("[Ficha] Herança da consulta anterior falhou (segue o bloco como veio):", e.message); }
     const pre = extrairPreAgendamento(ag.limpo);   // depois [PREAGENDAMENTO] (fallback)
     const rec = extrairRecado(pre.limpo);          // por fim [RECADO], no texto já limpo
     const registros = pre.registros;
@@ -8004,7 +8215,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     // Aqui embaixo o agendamento JÁ FOI GRAVADO e o bloco técnico já saiu do
     // texto: anexar a frase não pode quebrar nada.
     try {
-      const faltaCartao = esqueceuPedirCarteirinha(reply, messages, ag.registros);
+      const faltaCartao = esqueceuPedirCarteirinha(reply, messages, ag.registros, cart.registro);
       if (faltaCartao) {
         reply += "\n\nAproveitando: poderia me enviar uma foto da sua carteirinha ou o número dela? Assim já anexo ao seu agendamento — o horário já está garantido.";
         console.log("[Carteirinha] Pedido acrescentado à resposta (sem reescrita).");
@@ -8060,6 +8271,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     // Prioridade: [AGENDAR] (marca de verdade) > [PREAGENDAMENTO] (fallback) > [RECADO].
     // A Ana nunca deve emitir mais de um, mas se emitir, o agendamento real vence.
     let agendouOk = false;
+    const gravadosAgora = [];   // blocos que criaram consulta nova neste turno
     if (ag.registros.length) {
       // Grava os horários confirmados — UM registro POR PACIENTE (agendamento
       // múltiplo emite vários blocos na mesma mensagem). Cada gravação já fecha
@@ -8122,7 +8334,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
             if (!existe || !existe.length) {
               agendouOk = false;
               console.warn(`[Agendar] Nada ativo em ${registro.inicio} (${registro.unidade}) para ${maskFone(from)} — o cancelamento do antigo NÃO será autorizado.`);
-            }
+            } else if (!rAg.already) gravadosAgora.push(registro);
           } catch (e) {
             agendouOk = false;   // na dúvida, não cancela: consulta a mais é melhor que nenhuma
             console.error("[Agendar] Falha ao conferir o estado final (não autorizo cancelar):", e.message);
@@ -8139,7 +8351,16 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       // Sinaliza no painel que a conversa precisa da equipe (pré-agendamento/encaixe).
       await marcarPendenciaEquipe(conversation.id, "urgent");
     }
+    else if (rec.recado && await recadoRecenteNaConversa(conversation.id, !!rec.recado.prioritario)) {
+      // Mesmo recado a cada turno: um paciente gerou 8 recados em 9 minutos
+      // (varredura de 28/10/2026). A equipe já foi avisada há menos de 1h e a
+      // pendência continua marcada — não repete a notificação nem o registro
+      // (que reiniciaria a cobrança de recado sem resposta).
+      console.log(`[Recado] Já houve recado nesta conversa há menos de ${RECADO_JANELA_MIN} min — não notifico de novo (${rec.recado.tipo || "?"}).`);
+      await marcarPendenciaEquipe(conversation.id, "urgent");
+    }
     else if (rec.recado) {
+      ultimoRecadoPorConversa.set(String(conversation.id), { ts: Date.now(), prioritario: !!rec.recado.prioritario });
       await notificarRecadoEquipe(rec.recado, patient, from);
       await marcarPendenciaEquipe(conversation.id, "urgent");   // recado = a equipe precisa retornar
       // Registro informativo (não é erro): alimenta a cobrança de recado sem
@@ -8192,9 +8413,8 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       // Rita, André), onde barrar é inofensivo: o [AGENDAR] seguinte cai no
       // re-emit idêntico e a consulta nunca fica fora da agenda.
       // Nenhum dos 45 cancelamentos pedidos de verdade seria barrado.
-      const RE_PEDIU_CANCELAR = /(desmar[cq]|cancel|remar[cq]|adiar|antecip|imprevisto|outro dia|outra data|outro hor[aá]rio|mais cedo|mais tarde|pr[oó]xima semana|semana que vem|mudar|trocar|desist|esquec|deixa\s+(pra|para)\s+l|n[aã]o\s+(vou|posso|poderei|consigo|conseguirei|irei|quero|vai\s+dar|d[aá]))/i;
       let falasDoPaciente = (history || []).filter(m => m.role === "user").slice(-6).map(m => String(m.content || ""));
-      let houvePedido = RE_PEDIU_CANCELAR.test(String(text || ""));
+      let houvePedido = RE_PEDIU_MEXER_NA_CONSULTA.test(String(text || ""));
       // O discriminador que o texto não dá, a agenda dá: se depois do cancelamento
       // ainda sobra OUTRA consulta ativa do mesmo telefone, é limpeza de duplicata
       // ou de remarcação — deixa passar. Só barra quando ficaria sem nenhuma.
@@ -8212,7 +8432,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           const { data: falas } = await supabase.from("messages").select("content, timestamp")
             .eq("conversation_id", conversation.id).eq("role", "user")
             .order("timestamp", { ascending: false }).limit(15);
-          const pedidos = (falas || []).filter(m => RE_PEDIU_CANCELAR.test(String(m.content || "")))
+          const pedidos = (falas || []).filter(m => RE_PEDIU_MEXER_NA_CONSULTA.test(String(m.content || "")))
             .map(m => instanteDaMensagem(m.timestamp)).filter(t => !isNaN(t));
           falasDoPaciente = (falas || []).slice(0, 6).reverse().map(m => String(m.content || ""));
           // Alvo não encontrado entre as ativas = nada a cancelar; cai no fluxo
@@ -8220,7 +8440,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           houvePedido = !consultasAlvo.length
             || consultasAlvo.some(a => pedidos.some(t => t > new Date(a.created_at).getTime()));
         } catch (e) {
-          houvePedido = falasDoPaciente.some(t => RE_PEDIU_CANCELAR.test(t));   // sem banco: regra de 29/09
+          houvePedido = falasDoPaciente.some(t => RE_PEDIU_MEXER_NA_CONSULTA.test(t));   // sem banco: regra de 29/09
           console.error("[Cancelar] Não consegui conferir pedido × consulta (uso as últimas falas):", e.message);
         }
       }
@@ -8257,6 +8477,42 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           await processarCancelarDaAna({ registro, from, conversationId: conversation.id });
         }
       }
+    }
+
+    // Remarcou e a antiga ficou? (ver sobrouDaRemarcacao) Só age com UMA consulta
+    // sobrando e pedido do paciente mais novo que ela. Fora disso a consulta fica e
+    // a equipe é avisada: mesma regra do [CANCELAR] — na dúvida, manter.
+    if (gravadosAgora.length && (canc.registros.length || RE_ANUNCIOU_REMARCACAO.test(replySemCartao))) {
+      try {
+        const { data: ativas } = await supabase.from("appointments").select("id, inicio, unidade, created_at")
+          .in("paciente_telefone", fonesBR(from)).in("status", ["reservado", "confirmado"])
+          .gte("inicio", new Date().toISOString());
+        const { data: falas } = await supabase.from("messages").select("content, timestamp")
+          .eq("conversation_id", conversation.id).eq("role", "user")
+          .order("timestamp", { ascending: false }).limit(15);
+        const pedidos = (falas || []).filter(m => RE_PEDIU_MEXER_NA_CONSULTA.test(String(m.content || "")))
+          .map(m => instanteDaMensagem(m.timestamp)).filter(t => !isNaN(t));
+        for (const registro of gravadosAgora) {
+          const sobra = sobrouDaRemarcacao(registro, meusAgendamentos, ativas);
+          if (!sobra.length) continue;
+          const oQue = sobra.map(a => `${a.unidade} ${fmtDataHoraBR(a.inicio)}`).join("; ");
+          const pediu = sobra.length === 1
+            && pedidos.some(t => t > new Date(sobra[0].created_at).getTime());
+          const r = pediu ? await cancelarAgendamento(sobra[0].id) : { ok: false };
+          if (r.ok) {
+            console.warn(`[Agendar] Remarcação sem [CANCELAR] efetivo: antiga ${sobra[0].id} cancelada pela conferência.`);
+            await registrarErro("remarcacao_antiga_cancelada", `antiga=${oQue} nova=${registro.unidade} ${registro.inicio}`,
+              { conversationId: conversation.id, telefone: from }).catch(() => {});
+            await espelharParaSecretaria("[Cancelado pela Ana]",
+              `❌ *CANCELAMENTO (via Ana — remarcação)*\n👤 ${registro.nome || from}\n📱 ${from}\n🕐 ${oQue}`);
+            continue;
+          }
+          await registrarErro("remarcacao_antiga_ficou", `antiga=${oQue} nova=${registro.unidade} ${registro.inicio}`,
+            { conversationId: conversation.id, telefone: from }).catch(() => {});
+          await marcarPendenciaEquipe(conversation.id, "urgent").catch(() => {});
+          await notificarClinica(`⚠️ *A Ana remarcou, mas a consulta antiga continua na agenda*\n👤 ${registro.nome || from}\n📱 ${from}\n🕐 Antiga: ${oQue}\n\nConfirmem com o paciente qual vale e cancelem a outra.`).catch(() => {});
+        }
+      } catch (e) { console.error("[Agendar] Conferência da remarcação falhou:", e.message); }
     }
 
     // A Ana recusou o convênio nesta mensagem? Então a consulta que ELA marcou nesta
@@ -12164,8 +12420,82 @@ async function rodarFollowUpLeads() {
     console.log(`[FollowUp] ciclo: ${leads.length} lead(s) processado(s).`);
   } catch (e) { console.error("[FollowUp] exceção:", e.message); }
 }
+// ── Follow-up de quem ADIOU ("depois eu agendo") — Dr. Bruno, 29/10/2026 ─────
+// O follow-up acima exige pergunta da Ana no ar; depois de "depois eu agendo"
+// ela responde "fico à disposição" e ninguém mais volta a falar. Em 60 dias
+// foram 20 conversas assim e só 4 receberam follow-up. Aqui: UMA mensagem fixa
+// (sem API), o mais tarde possível ANTES de a janela de 24h fechar — por volta
+// de 20h depois da fala dele —, só em dia útil dentro da faixa do follow-up. Se
+// a janela fecha à noite ou no fim de semana, vai no último horário permitido
+// antes disso; se não houver nenhum, não vai.
+const RE_ADIOU = /\b(depois (eu )?(agendo|marco|vejo|retorno|falo|confirmo|entro em contato|te (aviso|chamo|falo))|mais tarde (eu )?(agendo|marco|retorno|vejo|confirmo)|vou (ver|verificar|olhar|consultar) (a |minha |a minha )?agenda|vou (me )?organizar|vou pensar|vou ver (e|depois|direitinho)|te (aviso|retorno|falo|chamo)|retorno (depois|mais tarde|em breve)|qualquer coisa (eu )?(retorno|aviso|chamo|agendo)|assim que (eu )?(puder|souber|conseguir))/;
+// Quem já disse QUANDO ("em novembro", "mês que vem", "depois das férias") não é
+// cobrado amanhã — a pergunta "conseguiu ver a data?" soaria como não ter ouvido.
+const RE_ADIOU_COM_PRAZO = /(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|mes que vem|proximo mes|ano que vem|proximo ano|depois d[ao]s? (ferias|festas|carnaval|natal|ano novo|viagem|cirurgia|exame))/;
+const RE_ADIOU_NEGOU = /(nao quero|sem interesse|nao tenho interesse|ja (resolvi|agendei|marquei)|parar de receber|nao me mand|cancel|desmarc)/;
+function horarioDeFollowUp(d) {   // dia útil, dentro da faixa FOLLOWUP_HORA_INICIO..FIM (Brasília)
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: TZ_BR, weekday: "short", hour: "numeric", hourCycle: "h23" })
+    .formatToParts(d).map(x => [x.type, x.value]));
+  const h = Number(p.hour);
+  return !["Sat", "Sun"].includes(p.weekday) && h >= FOLLOWUP_HORA_INICIO && h < FOLLOWUP_HORA_FIM;
+}
+// Agora é a hora? Sim se já passou ~20h da fala, ou se depois deste ciclo não
+// sobra nenhum ciclo permitido antes de a janela fechar (23h30 de margem).
+function horaDoFollowUpAdiado(falaMs, agoraMs = Date.now()) {
+  const desde = agoraMs - falaMs, fecha = falaMs + 23.5 * 3600e3;
+  if (desde < 3 * 3600e3 || agoraMs > fecha || !horarioDeFollowUp(new Date(agoraMs))) return false;
+  if (desde >= 20 * 3600e3) return true;
+  for (let t = agoraMs + 30 * 60e3; t <= fecha; t += 30 * 60e3) if (horarioDeFollowUp(new Date(t))) return false;
+  return true;   // último ciclo permitido antes de a janela fechar
+}
+async function rodarFollowUpAdiado() {
+  if (!(await followUpAtivo())) return;
+  if (!horarioDeFollowUp(new Date())) return;
+  try {
+    // EGRESS: só as falas de paciente das últimas 24h (poucas centenas de linhas
+    // curtas), 48 ciclos/dia. O resto é filtrado aqui e só os candidatos vão ao banco.
+    const desde = new Date(Date.now() - 24 * 3600e3).toISOString();
+    const { data: falas, error } = await supabase.from("messages")
+      .select("conversation_id, content, timestamp").eq("role", "user").gte("timestamp", desde)
+      .order("timestamp", { ascending: false }).limit(1000);
+    if (error) { console.error("[FollowUp adiado] leitura falhou:", error.message); return; }
+    const ultima = new Map();                       // a ÚLTIMA fala de cada conversa
+    for (const m of falas || []) if (!ultima.has(m.conversation_id)) ultima.set(m.conversation_id, m);
+    const norm = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const candidatos = [...ultima.values()].filter(m => {
+      const t = norm(m.content);
+      return RE_ADIOU.test(t) && !RE_ADIOU_COM_PRAZO.test(t) && !RE_ADIOU_NEGOU.test(t) && !ehAgoraNao(m.content)
+        && horaDoFollowUpAdiado(instanteDaMensagem(m.timestamp));
+    });
+    if (!candidatos.length) return;
+    for (const m of candidatos) {
+      try {
+        const { data: conv } = await supabase.from("conversations").select("id, status, patients(phone, name)").eq("id", m.conversation_id).maybeSingle();
+        const phone = conv?.patients?.phone;
+        if (!conv || conv.status !== "bot" || !phone || String(phone).startsWith("55619900")) continue;   // equipe assumiu, sem telefone ou número de teste
+        // Já recebeu follow-up (qualquer um) depois desta fala? Uma vez só.
+        const { data: ja } = await supabase.from("messages").select("id").eq("conversation_id", conv.id)
+          .in("event", ["followup", "followup_adiado"]).gt("timestamp", m.timestamp).limit(1);
+        if (ja && ja.length) continue;
+        // Já marcou (por qualquer via, qualquer grafia do telefone)?
+        const { data: ag } = await supabase.from("appointments").select("id").in("paciente_telefone", fonesBR(phone))
+          .neq("status", "cancelado").gt("inicio", new Date().toISOString()).limit(1);
+        if (ag && ag.length) continue;
+        const nome = nomePlausivel(conv.patients?.name) ? (String(conv.patients.name).trim().split(/\s+/)[0] || "") : "";
+        const msg = `Oi${nome ? ", " + nome : ""}! Passando para saber se conseguiu ver a melhor data para a sua consulta. Se quiser, já verifico um horário para você 😊`;
+        const waId = await sendWhatsApp(phone, msg);
+        await supabase.from("messages").insert({ conversation_id: conv.id, role: "assistant", content: msg, wa_message_id: waId, event: "followup_adiado" });
+        await supabase.from("conversations").update({ last_message: msg, updated_at: new Date().toISOString() }).eq("id", conv.id);
+        console.log(`[FollowUp adiado] enviado para ${maskFone(phone)} (conv ${conv.id}).`);
+      } catch (e) {
+        console.error("[FollowUp adiado] envio falhou:", e?.response?.data ? JSON.stringify(e.response.data) : e.message);
+      }
+    }
+  } catch (e) { console.error("[FollowUp adiado] exceção:", e.message); }
+}
 function startFollowUp() {
   setInterval(() => rodarFollowUpLeads().catch(e => console.error("[FollowUp] scheduler:", e.message)), 30 * 60 * 1000);
+  setInterval(() => rodarFollowUpAdiado().catch(e => console.error("[FollowUp adiado] scheduler:", e.message)), 30 * 60 * 1000);
   console.log(`[FollowUp] scheduler ativo (30 min), envio só em dia útil das ${FOLLOWUP_HORA_INICIO}h às ${FOLLOWUP_HORA_FIM}h. Envio real só com settings.followup_leads_enabled='true'.`);
 }
 
