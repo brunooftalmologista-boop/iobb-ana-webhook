@@ -6637,7 +6637,7 @@ app.post("/webhook", async (req, res) => {
       const alvo = await recebeuCampanhaRecente(from);
       if (alvo) {
         const primeiro = (alvo.primeiro_nome || String(patient?.name || "").split(/\s+/)[0] || "").trim();
-        const resposta = `Sem problema${primeiro ? `, ${primeiro}` : ""}! 😊 Fico à disposição: quando quiser marcar ${alvo.campanha === CAMPANHA_RETORNO ? "o seu retorno" : "a sua revisão"}, é só me mandar uma mensagem aqui que eu vejo os horários na hora.\n\nSe preferir falar com a equipe, o telefone é (61) 3033-6605.`;
+        const resposta = `Sem problema${primeiro ? `, ${primeiro}` : ""}! 😊 Fico à disposição: quando quiser marcar a sua ${alvo.campanha === CAMPANHA_RETORNO ? "reavaliação" : "revisão"}, é só me mandar uma mensagem aqui que eu vejo os horários na hora.\n\nSe preferir falar com a equipe, o telefone é (61) 3033-6605.`;
         await marcarAgoraNao(alvo.fone_chave);
         await sendWhatsApp(from, resposta).catch(e => console.error("[Reengajar] Falha ao responder 'agora não':", e.message));
         await saveMessage(conversation.id, "assistant", resposta).catch(e => console.error("[Reengajar] Falha ao salvar resposta:", e.message));
@@ -7080,7 +7080,7 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
           const quando = camp.ultima_consulta
             ? new Date(`${camp.ultima_consulta}T12:00:00-03:00`).toLocaleDateString("pt-BR", { timeZone: TZ_BR, month: "long", year: "numeric" })
             : null;
-          dynEstavel += `\n\n### Este paciente respondeu ${camp.campanha === CAMPANHA_RETORNO ? `ao lembrete do retorno de ${camp.mes_referencia} orientado pelo Dr. Bruno na última consulta` : "à campanha de revisão anual"} — VOCÊ JÁ TEM OS DADOS DELE`
+          dynEstavel += `\n\n### Este paciente respondeu ${camp.campanha === CAMPANHA_RETORNO ? `ao lembrete da reavaliação em ${camp.mes_referencia} orientada pelo Dr. Bruno na última consulta (chame de reavaliação, não de retorno)` : "à campanha de revisão anual"} — VOCÊ JÁ TEM OS DADOS DELE`
             + `\n- Nome completo (do cadastro): **${camp.nome || "—"}**`
             + (quando ? `\n- Última consulta aqui: ${quando}, no ${camp.unidade || "—"}.` : "")
             + (conv ? `\n- Como foi atendido daquela vez: **${ehParticular ? "Particular" : conv}**.` : "")
