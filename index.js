@@ -10462,6 +10462,15 @@ async function consultasDoPaciente(tel, nome) {
   return (data || []).filter(c => primNome(c.paciente_nome) === pn);
 }
 
+// Consultas do paciente + as dos cadastros juntados com o dele, da mais nova para a mais antiga.
+async function consultasDoGrupo(tel, nome, grupo) {
+  const consultas = await consultasDoPaciente(tel, nome);
+  if (grupo.chaves.length < 2) return consultas;
+  const { data: outras } = await supabase.from("prontuario_consultas").select("*").in("paciente_chave", grupo.chaves).order("data_consulta", { ascending: false }).limit(300);
+  const vistos = new Set(consultas.map(c => c.id));
+  return [...consultas, ...(outras || []).filter(c => !vistos.has(c.id))].sort((a, b) => String(b.data_consulta).localeCompare(String(a.data_consulta)));
+}
+
 // Busca de pacientes por nome ou telefone (agenda + prontuário).
 app.get("/api/prontuario/busca", requireMedico, async (req, res) => {
   try {
@@ -10712,15 +10721,10 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
     for (const a of [...meus].reverse()) { idade = idadeDe(a.observacoes); if (idade) break; }
     const { data: pac } = await supabase.from("prontuario_pacientes").select("*").eq("chave", chave).maybeSingle();
     const grupo = await chavesDoGrupo(chave, pac);
-    let consultas = await consultasDoPaciente(tel, nome);
+    const consultas = await consultasDoGrupo(tel, nome, grupo);
     // cabeçalho: o que falta neste cadastro vem do principal (ex.: CPF/nascimento do iClinic)
     const docsGrupo = { ...(pac?.dados || {}) };
     for (const [k, v] of Object.entries(grupo.principalDados)) if (v && !docsGrupo[k] && !/^juntad/.test(k)) docsGrupo[k] = v;
-    if (grupo.chaves.length > 1) {
-      const { data: outras } = await supabase.from("prontuario_consultas").select("*").in("paciente_chave", grupo.chaves).order("data_consulta", { ascending: false }).limit(300);
-      const vistos = new Set(consultas.map(c => c.id));
-      consultas = [...consultas, ...(outras || []).filter(c => !vistos.has(c.id))].sort((a, b) => String(b.data_consulta).localeCompare(String(a.data_consulta)));
-    }
     let preexames = [];
     if (meus.length) {
       const { data: ps } = await supabase.from("prontuario_preexame").select("appointment_id, motivos, colirio, motivo_outro, observacao, feito_por, updated_at")
@@ -11193,6 +11197,100 @@ app.post("/api/prontuario/documento-assinado", requireMedico, express.json({ lim
     console.error("[Assinatura] documento falhou:", e.message);
     res.status(500).json({ error: "Não consegui gerar o documento assinado." });
   }
+});
+
+// ===== PRONTUÁRIO COMPLETO EM PDF (Dr. Bruno, 30/10/2026) =====================
+// "Histórico inteiro, para entregar ao paciente, e exames realizados anexados, com
+// assinatura digital." Em segundo plano: baixar e juntar dezenas de exames passa do
+// tempo de uma requisição; a tela acompanha pelo token. Só consulta FINALIZADA entra
+// (a aberta ainda pode mudar) e só EXAME: receitas e atestados já estão no texto. O
+// laudo assinado é o resultado de um exame, entra junto. O arquivo gerado fica
+// anexado à consulta mais recente, com o 📲 WhatsApp dos outros documentos assinados.
+const { gerarProntuarioCompleto } = require("./prontuario-completo");
+const jobsProntuario = new Map();   // token → { chave, etapa, feito, erro, ... }
+const dataBR = (d) => new Date(d).toLocaleDateString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit", year: "numeric" });
+function rotuloDoExame(x) {
+  const obs = String(x.observacao || "").replace(/\s*\(assinad[oa] digitalmente\)/i, "").trim();
+  if (obs && !/^Exame \(iClinic\)$/i.test(obs)) return obs;
+  const nome = String(x.nome || "").replace(/\.[^.]+$/, "");
+  return !nome || /^Exame iClinic/i.test(nome) ? "Exame" : nome;
+}
+function dataDoExame(x, consultas) {
+  const c = consultas.find(k => k.id === x.consulta_id);
+  if (c) return new Date(c.data_consulta);
+  const m = String(x.nome || "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T12:00:00-03:00`) : new Date(x.created_at);
+}
+async function examesDoProntuario(chaves, consultas, etapa) {
+  const { data: rows } = await supabase.from("prontuario_anexos").select("*").in("paciente_chave", chaves)
+    .or("tipo.eq.exame,and(tipo.eq.assinado,nome.ilike.Laudo*)").order("created_at", { ascending: true }).limit(1000);
+  const lista = (rows || []).map(x => ({ x, quando: dataDoExame(x, consultas) })).sort((a, b) => a.quando - b.quando);
+  const exames = [], indisponiveis = [];
+  const item = ({ x, quando }) => ({ data: dataBR(quando), rotulo: rotuloDoExame(x) });
+  const paraBaixar = lista.filter(l => {
+    if (!/msword|wordprocessing|zip|xps|rfc822/i.test(String(l.x.mime || ""))) return true;
+    indisponiveis.push({ ...item(l), motivo: "formato que não pode ser juntado ao PDF" });
+    return false;
+  });
+  for (let i = 0; i < paraBaixar.length; i += 4) {
+    etapa(`Baixando exames (${Math.min(i + 4, paraBaixar.length)} de ${paraBaixar.length})…`);
+    await Promise.all(paraBaixar.slice(i, i + 4).map(async (l, j) => {
+      const { data, error } = await supabase.storage.from(BUCKET_PRONTUARIO).download(l.x.path);
+      if (error || !data) { console.error("[Prontuário completo] sem o arquivo", l.x.id, error?.message); indisponiveis.push({ ...item(l), motivo: "arquivo indisponível" }); return; }
+      exames[i + j] = { ...item(l), buf: Buffer.from(await data.arrayBuffer()) };
+    }));
+  }
+  return { exames: exames.filter(Boolean), indisponiveis };
+}
+async function montarProntuarioCompleto(job, tel, nome) {
+  const etapa = (t) => { job.etapa = t; };
+  const cert = await certificadoDoMedico();
+  if (!cert) throw Object.assign(new Error("Cadastre o certificado digital primeiro (botão “Certificado digital”)."), { publico: true });
+  etapa("Lendo o histórico…");
+  const { data: pac } = await supabase.from("prontuario_pacientes").select("*").eq("chave", job.chave).maybeSingle();
+  const grupo = await chavesDoGrupo(job.chave, pac);
+  const todas = await consultasDoGrupo(tel, nome, grupo);
+  const fechadas = todas.filter(c => c.finalizado_em);
+  const comTexto = fechadas.filter(c => String(c.texto || "").trim() || (c.adendos || []).length)
+    .sort((a, b) => String(a.data_consulta).localeCompare(String(b.data_consulta)));
+  const consultas = comTexto.map(c => ({ data: dataBR(c.data_consulta), texto: c.texto || "",
+    adendos: (c.adendos || []).map(a => ({ data: dataBR(a.em), texto: a.texto })) }));
+  const { exames, indisponiveis } = await examesDoProntuario(grupo.chaves, todas, etapa);
+  if (!consultas.length && !exames.length) throw Object.assign(new Error("Este paciente não tem consulta finalizada nem exame para colocar no PDF."), { publico: true });
+  const dd = { ...grupo.principalDados, ...(pac?.dados || {}) };
+  const nomeExibido = comTexto[comTexto.length - 1]?.paciente_nome || pac?.nome || nome;
+  const hoje = dataBR(new Date());
+  const r = await gerarProntuarioCompleto({
+    paciente: { nome: nomeExibido, cpf: dd.cpf || "", nascimento: dd.nascimento || "", sexo: dd.sexo || "", data: hoje },
+    consultas, exames, indisponiveis, cert: { pfx: cert.pfx, senha: cert.senha, titular: cert.titular },
+  }, etapa);
+  etapa("Guardando o arquivo…");
+  const anexo = await guardarAnexo({
+    tel, nome, tipo: "assinado", nomeArq: `Prontuário completo assinado - ${String(nomeExibido).slice(0, 60)} - ${hoje.replace(/\//g, "-")}.pdf`,
+    mime: "application/pdf", buf: r.pdf, obs: "Prontuário completo (assinado digitalmente)",
+    consultaId: comTexto[comTexto.length - 1]?.id || null,
+  });
+  Object.assign(job, { feito: true, anexo, url: anexo.url, consultas: consultas.length, exames: r.nExames, paginas: r.paginas, fora: r.fora,
+    abertas: todas.length - fechadas.length, mb: Math.round(r.pdf.length / 104857.6) / 10 });
+}
+app.post("/api/prontuario/completo", requireMedico, (req, res) => {
+  const tel = String(req.body?.tel || ""), nome = String(req.body?.nome || "");
+  if (!ult8(tel) || !primNome(nome)) return res.status(400).json({ error: "Paciente inválido." });
+  const chave = chavePaciente(tel, nome);
+  for (const [token, j] of jobsProntuario) if (j.chave === chave && !j.feito && !j.erro) return res.json({ ok: true, token });
+  const token = crypto.randomBytes(12).toString("hex"), job = { chave, etapa: "Começando…", ts: Date.now() };
+  jobsProntuario.set(token, job);
+  setTimeout(() => jobsProntuario.delete(token), 3600 * 1000).unref();
+  montarProntuarioCompleto(job, tel, nome).catch((e) => {
+    console.error("[Prontuário completo] falhou:", e.message);
+    job.erro = e.publico ? e.message : "Não consegui gerar o prontuário completo.";
+  });
+  res.json({ ok: true, token });
+});
+app.get("/api/prontuario/completo/:token", requireMedico, (req, res) => {
+  const j = jobsProntuario.get(req.params.token);
+  if (!j) return res.status(404).json({ error: "Geração não encontrada. Tente de novo." });
+  res.json({ ok: true, ...j, chave: undefined, ts: undefined });
 });
 
 // ===== IMPORTAR DO iCLINIC (Dr. Bruno, 20/10/2026) ============================

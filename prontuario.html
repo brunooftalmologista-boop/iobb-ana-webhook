@@ -277,7 +277,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
             </div>
             <div class="row" id="nasc-box" hidden style="margin-top:6px"><label>Data de nascimento <input id="nasc-in" placeholder="dd/mm/aaaa" style="width:130px;font-family:var(--f-mono)"></label><button type="button" id="nasc-ok">Gravar</button><span class="hint" id="nasc-msg"></span></div>
           </div>
-          <div class="acoes"><button type="button" class="link" id="voltar-lista">← Voltar à lista</button><button type="button" class="link" id="btn-juntar">🔗 Juntar com outro cadastro</button><span class="hint" id="p-hoje"></span></div>
+          <div class="acoes"><button type="button" class="link" id="voltar-lista">← Voltar à lista</button><button type="button" class="link" id="btn-juntar">🔗 Juntar com outro cadastro</button><button type="button" class="link" id="btn-completo" title="Histórico inteiro e exames realizados, num PDF só, assinado digitalmente">📄 Prontuário completo (PDF assinado)</button><span class="hint" id="p-hoje"></span><span class="status" id="st-completo"></span></div>
         </div>
 
 
@@ -1196,6 +1196,32 @@ async function enviarAssinado(tipo,dados,stFn){
     stFn("PDF assinado pronto (abriu em outra aba e ficou anexado à consulta). Para mandar ao paciente: 📲 WhatsApp, ao lado do documento nos anexos.","ok");
   }catch(e){ if(w) w.close(); stFn(e.status===401?MSG_SESSAO:(e.msg||"Não consegui gerar o PDF assinado."),"erro"); }
 }
+/* ===== PRONTUÁRIO COMPLETO (Dr. Bruno, 30/10/2026) =====
+   Histórico inteiro + exames realizados, num PDF só e assinado, para entregar ao
+   paciente. O servidor monta em segundo plano; aqui só acompanha. */
+function stCompleto(t,cls){ $("#st-completo").textContent=t; $("#st-completo").className="status "+(cls||""); }
+function resumoCompleto(j){ const n=j.fora?.length||0;
+  return `Pronto: ${j.consultas} consulta(s), ${j.exames} exame(s), ${j.paginas} página(s), ${String(j.mb).replace(".",",")} MB. Abriu em outra aba e ficou anexado à consulta mais recente.`
+    +(j.abertas?` ${j.abertas} consulta(s) sem finalizar ficaram de fora.`:"")
+    +(n?` ${n} exame(s) não entraram: a lista está no próprio PDF, antes da assinatura.`:""); }
+$("#btn-completo").addEventListener("click",async()=>{
+  const p=ficha?.paciente; if(!p) return;
+  if(!certInfo?.cadastrado) await carregaCert();
+  if(!certInfo?.cadastrado){ stCompleto("Cadastre o certificado digital primeiro (🔏 Certificado digital, no topo).","erro"); return; }
+  if(!confirm(`Gerar e assinar com o seu certificado o prontuário completo de ${p.nome}?\n\nEntram todas as consultas finalizadas e os exames realizados. Leia antes de entregar ao paciente.`)) return;
+  const btn=$("#btn-completo"); btn.disabled=true;
+  const w=window.open("","_blank"); if(w) w.document.write("<p style='font:15px sans-serif;padding:20px'>Gerando o prontuário completo assinado…</p>");
+  stCompleto("Começando…","");
+  try{ const {token}=await api("/api/prontuario/completo",{method:"POST",body:JSON.stringify({tel:p.telefone,nome:p.nome})});
+    for(;;){ await new Promise(r=>setTimeout(r,1500));
+      const j=await api(`/api/prontuario/completo/${token}`);
+      if(j.erro) throw {msg:j.erro};
+      if(!j.feito){ stCompleto(j.etapa||"Gerando…",""); continue; }
+      if(w) w.location.href=j.url; else window.open(j.url,"_blank");
+      if(j.anexo&&ficha?.paciente?.chave===p.chave){ ficha.anexos=[j.anexo,...(ficha.anexos||[])]; desenhaAnexosAt(); }
+      stCompleto(resumoCompleto(j),"ok"); break; }
+  }catch(e){ if(w) w.close(); stCompleto(e.status===401?MSG_SESSAO:(e.msg||"Não consegui gerar o prontuário completo."),"erro"); }
+  btn.disabled=false; });
 function mcStatus(t,cls){ $("#mc-st").textContent=t; $("#mc-st").className="status "+(cls||""); }
 function desenhaCert(){ const c=certInfo;
   $("#mc-info").innerHTML=c?.cadastrado?`Cadastrado: <b>${esc(c.titular)}</b>${c.emissor?" · "+esc(c.emissor):""} · válido até <b>${ddmmaa(c.validade)}</b>.${new Date(c.validade)-Date.now()<30*864e5?' <span style="color:var(--danger)">Vence em menos de 30 dias.</span>':""}`:"Nenhum certificado cadastrado.";

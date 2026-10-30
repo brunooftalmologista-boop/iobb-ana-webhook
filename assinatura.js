@@ -341,12 +341,71 @@ function corpoPedido(doc, d, exames) {
   if (d.indicacao) { doc.moveDown(0.5); doc.font("G8").fontSize(11.5).text("Indicação clínica: ", L, doc.y, { continued: true }).font("G6").text(d.indicacao, { width: W }); }
 }
 
-async function documentoAssinado(tipo, d, cert) {
-  const agora = new Date();
-  const quando = agora.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", laudo_oft: "Laudo oftalmológico", lentes: "Receita de lentes de contato", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : /ÓTICA/.test(String(d.titulo)) ? "Relatório para a ótica" : /ENCAMINHA/.test(String(d.titulo)) ? "Encaminhamento" : "Atestado" };
-  const doc = new PDFDocument({ size: "A4", autoFirstPage: false, pdfVersion: "1.7",
-    info: { Title: `${titulos[tipo] || "Documento"} - ${d.nome}`, Author: "Dr. Bruno O. Borges - CRM 17877", Creator: "IOBB - prontuário" } });
+// ===== PRONTUÁRIO COMPLETO (Dr. Bruno, 30/10/2026) ==============================
+// Parte escrita da cópia para o paciente: consultas da mais antiga para a mais nova,
+// lista dos exames e a assinatura. Sem PDF de saída assinado aqui: os exames entram
+// depois (prontuario-completo.js) e a assinatura precisa cobrir o arquivo inteiro.
+// Texto do iClinic traz caracteres que a Helvetica não desenha ("≤", hífen invisível,
+// aspas de controle): troca o que tem equivalente e descarta o resto.
+function limpaTexto(t) {
+  return String(t ?? "").replace(/\r\n?/g, "\n").replace(/\t/g, "  ").replace(/\u00ad/g, "").replace(/\u00a0/g, " ")
+    .replace(/\u2264/g, "<=").replace(/\u2265/g, ">=").replace(/\u2212/g, "-").replace(/\u03bc/g, "\u00b5")
+    .replace(/[\u0091\u0092]/g, "'").replace(/[\u0093\u0094]/g, '"')
+    .replace(/[^\n\x20-\x7e\u00a0-\u00ff\u2013\u2014\u2018-\u201d\u2022\u2026\u2122\u20ac]/g, "");
+}
+function corpoProntuario(doc, d) {
+  const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
+  const limite = () => doc.page.height - doc.page.margins.bottom;
+  const faixa = (t) => {
+    if (doc.y + 56 > limite()) { novaPagina(doc); doc.y = doc.page.margins.top; }
+    const y = doc.y + 6;
+    doc.roundedRect(L, y, W, 20, 4).fill(FUNDO);
+    doc.font("G8").fontSize(10.5).fillColor(AZUL).text(limpaTexto(t), L + 8, y + 6, { width: W - 16, lineBreak: false });
+    doc.fillColor("#000"); doc.x = L; doc.y = y + 26;
+  };
+  tituloDoc(doc, "Prontuário médico");
+  blocoPaciente(doc, limpaTexto(d.nome), [d.cpf ? `CPF: ${d.cpf}` : "", d.nascimento ? `Nascimento: ${d.nascimento}` : "", d.sexo ? `Sexo: ${d.sexo}` : ""]);
+  const n = d.consultas.length;
+  doc.font("G6").fontSize(10.5).fillColor(CINZA).text(n
+    ? `Cópia do prontuário eletrônico do paciente: ${n} ${n === 1 ? "consulta" : "consultas"}, de ${d.consultas[0].data} a ${d.consultas[n - 1].data}.`
+    : "Cópia do prontuário eletrônico do paciente.", L, doc.y, { width: W });
+  doc.fillColor("#000").moveDown(0.4);
+  for (const c of d.consultas) {
+    faixa(`Consulta de ${c.data}`);
+    doc.font("G6").fontSize(10.5).fillColor("#000").text(limpaTexto(c.texto).trim(), L, doc.y, { width: W, lineGap: 2 });
+    for (const a of c.adendos || []) {
+      doc.moveDown(0.4);
+      doc.font("G8").fontSize(10).text(`Informação acrescentada em ${a.data}: `, L, doc.y, { width: W, continued: true })
+        .font("G6").text(limpaTexto(a.texto).trim());
+    }
+    doc.moveDown(0.6);
+  }
+  const lista = (titulo, itens) => {
+    if (!itens.length) return;
+    faixa(titulo);
+    for (const x of itens) doc.font("G6").fontSize(10).fillColor("#000").text(limpaTexto(`${x.data ? `${x.data} · ` : ""}${x.rotulo}${x.motivo ? ` (${x.motivo})` : ""}`), L + 8, doc.y, { width: W - 8 });
+    doc.moveDown(0.6);
+  };
+  lista(`Exames anexados a seguir (${d.exames.length})`, d.exames);
+  lista(`Exames que não puderam entrar neste arquivo (${d.fora.length})`, d.fora);
+}
+// PDF sem assinatura, sem rodapé: o rodapé com a numeração sai no fim, já com o total
+// de páginas e os exames juntos. (Desenhado aqui, no "pageAdded", ele trocaria a fonte
+// no meio de um texto longo.)
+async function textoDoProntuario(d) {
+  const quando = new Date().toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const { doc, partes, fim } = abrirDoc({ Title: `Prontuário - ${limpaTexto(d.nome)}`, Author: "Dr. Bruno O. Borges - CRM 17877", Creator: "IOBB - prontuário" },
+    { margins: { top: mm(16), bottom: mm(22), left: mm(20), right: mm(20) } });
+  novaPagina(doc); cabecalho(doc, d.data, "");
+  corpoProntuario(doc, d);
+  assinatura(doc, quando, true, "Assinado digitalmente");
+  doc.end();
+  await fim;
+  return Buffer.concat(partes);
+}
+
+function abrirDoc(info, opcoes = {}) {
+  const doc = new PDFDocument({ size: "A4", autoFirstPage: false, pdfVersion: "1.7", info, ...opcoes });
   // Texto em Helvetica (23/10/2026: Garamond ficava pequena e clara no papel); Garamond só no
   // título e no nome do médico (GT). Helvetica padrão é WinAnsi: o "−" (U+2212) vira "-".
   doc.registerFont("G6", "Helvetica"); doc.registerFont("G8", "Helvetica-Bold"); doc.registerFont("GT", FONTE_NEGRITO);
@@ -354,6 +413,14 @@ async function documentoAssinado(tipo, d, cert) {
   doc.text = (t, ...r) => _text(winAnsi(t), ...r); doc.heightOfString = (t, ...r) => _h(winAnsi(t), ...r);
   const partes = []; doc.on("data", (c) => partes.push(c));
   const fim = new Promise((ok, falha) => { doc.on("end", ok); doc.on("error", falha); });
+  return { doc, partes, fim };
+}
+
+async function documentoAssinado(tipo, d, cert) {
+  const agora = new Date();
+  const quando = agora.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const titulos = { oculos: "Receita de óculos", colirios: "Receita", pedido: "Pedido de exames", laudo: "Laudo", laudo_oft: "Laudo oftalmológico", lentes: "Receita de lentes de contato", atestado: /DECLARA/.test(String(d.titulo)) ? "Declaração" : /ÓTICA/.test(String(d.titulo)) ? "Relatório para a ótica" : /ENCAMINHA/.test(String(d.titulo)) ? "Encaminhamento" : "Atestado" };
+  const { doc, partes, fim } = abrirDoc({ Title: `${titulos[tipo] || "Documento"} - ${d.nome}`, Author: "Dr. Bruno O. Borges - CRM 17877", Creator: "IOBB - prontuário" });
   doc.on("pageAdded", () => rodape(doc));
   const paginas = [];   // [via, desenha]
   if (tipo === "colirios") (d.duas_vias ? ["1ª via · farmácia", "2ª via · paciente"] : [""]).forEach(via => paginas.push([via, () => { corpoColirios(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]));
@@ -378,4 +445,4 @@ async function documentoAssinado(tipo, d, cert) {
   return await new SignPdf().sign(pdf, signer);
 }
 
-module.exports = { cifrar, decifrar, lerCertificado, documentoAssinado };
+module.exports = { cifrar, decifrar, lerCertificado, documentoAssinado, textoDoProntuario, limpaTexto };
