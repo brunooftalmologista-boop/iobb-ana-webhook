@@ -6227,7 +6227,7 @@ app.post("/webhook", async (req, res) => {
         // "#REENGAJAR 50" → dispara o lote.
         // "#REENGAJAR 50" → campanha geral. "#REENGAJAR 15 LENTES" (ou LENTES_B)
         // → campanha paralela, com o template dela (ver CAMPANHAS_PARALELAS).
-        const quantos = arg.match(/^(\d{1,3})(?:\s+(LENTES_B|LENTES|REVISAO|REVISÃO))?$/);
+        const quantos = arg.match(/^(\d{1,3})(?:\s+(LENTES_B|LENTES|REVISAO|REVISÃO|RETORNO))?$/);
         if (quantos) {
           const paralela = quantos[2] ? CAMPANHAS_PARALELAS[quantos[2].replace("Ã", "A")] : null;
           const campanhaAlvo = paralela ? paralela.campanha : REENGAJAR_CAMPANHA;
@@ -6241,7 +6241,14 @@ app.post("/webhook", async (req, res) => {
 
           await sendWhatsApp(from, `📤 Disparando ${Math.min(Number(quantos[1]), REENGAJAR_LOTE_MAX)} de *${paralela ? paralela.rotulo : campanhaAlvo}*… te aviso ao terminar.`);
           try {
-            const r = await dispararLoteReengajamento(quantos[1], campanhaAlvo, templateAlvo);
+            // Junto da revisão anual vão, primeiro, os retornos de 3 e 6 meses do
+            // momento: o lote continua sendo o número que ele pediu, somando os dois.
+            const pedidos = Math.min(Number(quantos[1]), REENGAJAR_LOTE_MAX);
+            const rRetorno = campanhaAlvo === "revisao_anual" ? await lembretesDeRetornoDoLote(pedidos) : null;
+            const sobra = pedidos - (rRetorno?.enviados || 0);
+            const r = sobra > 0 ? await dispararLoteReengajamento(sobra, campanhaAlvo, templateAlvo)
+              : { enviados: 0, descadastrados: 0, jaAgendados: 0, falhas: 0, erros: [] };
+            if (rRetorno?.enviados) await sendWhatsApp(from, `🔔 Lembretes de retorno (3 e 6 meses) enviados junto: *${rRetorno.enviados}*.`);
             const { count: restam } = await supabase.from("reengajamento").select("id", { count: "exact", head: true })
               .eq("campanha", campanhaAlvo).eq("status", "pendente");
             await sendWhatsApp(from, `✅ Lote concluído (${paralela ? paralela.rotulo : campanhaAlvo}).\n\n📨 Enviados: *${r.enviados}*\n🔕 Descadastrados (pulados): ${r.descadastrados}\n📅 Já tinham consulta marcada (pulados): ${r.jaAgendados}\n❌ Falhas: ${r.falhas}${r.erros.length ? `\n\nPrimeiro erro:\n${r.erros[0].slice(0, 300)}` : ""}${restam != null ? `\n\nAinda na fila: *${restam}*` : ""}\n\nOlhe a qualidade do número no WhatsApp Manager antes do próximo lote.${r.falhas && !paralela ? "\nPara tentar as falhas de novo: *#REENGAJAR REPETIR*." : ""}`);
@@ -6630,7 +6637,7 @@ app.post("/webhook", async (req, res) => {
       const alvo = await recebeuCampanhaRecente(from);
       if (alvo) {
         const primeiro = (alvo.primeiro_nome || String(patient?.name || "").split(/\s+/)[0] || "").trim();
-        const resposta = `Sem problema${primeiro ? `, ${primeiro}` : ""}! 😊 Fico à disposição: quando quiser marcar a sua revisão, é só me mandar uma mensagem aqui que eu vejo os horários na hora.\n\nSe preferir falar com a equipe, o telefone é (61) 3033-6605.`;
+        const resposta = `Sem problema${primeiro ? `, ${primeiro}` : ""}! 😊 Fico à disposição: quando quiser marcar ${alvo.campanha === CAMPANHA_RETORNO ? "o seu retorno" : "a sua revisão"}, é só me mandar uma mensagem aqui que eu vejo os horários na hora.\n\nSe preferir falar com a equipe, o telefone é (61) 3033-6605.`;
         await marcarAgoraNao(alvo.fone_chave);
         await sendWhatsApp(from, resposta).catch(e => console.error("[Reengajar] Falha ao responder 'agora não':", e.message));
         await saveMessage(conversation.id, "assistant", resposta).catch(e => console.error("[Reengajar] Falha ao salvar resposta:", e.message));
@@ -7073,7 +7080,7 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
           const quando = camp.ultima_consulta
             ? new Date(`${camp.ultima_consulta}T12:00:00-03:00`).toLocaleDateString("pt-BR", { timeZone: TZ_BR, month: "long", year: "numeric" })
             : null;
-          dynEstavel += `\n\n### Este paciente respondeu à campanha de revisão anual — VOCÊ JÁ TEM OS DADOS DELE`
+          dynEstavel += `\n\n### Este paciente respondeu ${camp.campanha === CAMPANHA_RETORNO ? `ao lembrete do retorno de ${camp.mes_referencia} orientado pelo Dr. Bruno na última consulta` : "à campanha de revisão anual"} — VOCÊ JÁ TEM OS DADOS DELE`
             + `\n- Nome completo (do cadastro): **${camp.nome || "—"}**`
             + (quando ? `\n- Última consulta aqui: ${quando}, no ${camp.unidade || "—"}.` : "")
             + (conv ? `\n- Como foi atendido daquela vez: **${ehParticular ? "Particular" : conv}**.` : "")
@@ -10834,6 +10841,7 @@ async function salvarAtendimento(req, res, finalizar) {
       await supabase.from("appointments").update({ compareceu: true, atendido_em: agora, atendido_por: "Dr. Bruno (prontuário)" })
         .eq("id", c.appointment_id).is("atendido_em", null);
     }
+    if (finalizar) await agendarLembreteRetorno(salvo).catch(e => console.error("[Retorno] Não consegui pôr na fila (a consulta foi salva):", e.message));
     res.json({ ok: true, consulta: salvo });
   } catch (e) {
     console.error("[Prontuário] salvar atendimento falhou:", e.message);
@@ -12241,6 +12249,8 @@ async function enviarTemplateMarketing(to, templateName, lang = "pt_BR", bodyPar
 //   #REENGAJAR CRIAR      → cria o template na Meta (aprovação: min a horas)
 //   #REENGAJAR TESTE      → manda UMA no seu próprio número, para você ver
 //   #REENGAJAR 50         → dispara o próximo lote de 50
+//   #REENGAJAR 50 REVISAO → retornos de 3/6 meses do momento + revisão anual, 50 no total
+//   #REENGAJAR 10 RETORNO → só os retornos de 3/6 meses do momento
 //   #REENGAJAR REPETIR    → devolve as falhas para a fila
 //   #REENGAJAR ATUALIZAR  → reenvia os componentes (ex.: mudou botão) p/ revisão
 //   #REENGAJAR APAGAR     → apaga o template na Meta (para recriar do zero)
@@ -12279,7 +12289,12 @@ const CAMPANHAS_PARALELAS = {
   // Fila CONTÍNUA: todo dia 1º o abastecimento automático põe nela quem teve a
   // última consulta naquele mês do ano anterior (ver startAbastecimentoRevisaoAnual).
   REVISAO:  { campanha: "revisao_anual", template: "reengajamento_revisao_anual", rotulo: "revisão anual" },
+  // RETORNO PROGRAMADO (Dr. Bruno, 30/10/2026): 3 ou 6 meses na caixa "Retorno" do
+  // prontuário. Quem entra é o Finalizar (agendarLembreteRetorno); quem envia é o
+  // comando: "#REENGAJAR 50 REVISAO" manda primeiro os retornos do momento.
+  RETORNO:  { campanha: "retorno_programado", template: "lembrete_retorno", rotulo: "lembrete de retorno" },
 };
+const CAMPANHA_RETORNO = CAMPANHAS_PARALELAS.RETORNO.campanha;
 const CAMPANHAS_DE_LENTE = new Set(["lentes_rigidas_2026", "lentes_rigidas_2026_b"]);
 function campanhasAtivas() {
   return [REENGAJAR_CAMPANHA, ...Object.values(CAMPANHAS_PARALELAS).map(c => c.campanha)];
@@ -12430,8 +12445,15 @@ async function temConsultaFutura(telefone) {
   return !!(data && data.length);
 }
 
-async function naoDeveReceberCampanha(telefone, nome) {
+// `ultimaConsulta` (AAAA-MM-DD, da fila): agendamento só impede se for DEPOIS dela. Sem
+// isso, a própria consulta que originou o contato contava como "já agendado": a fila
+// de retorno ficaria inteira de fora e, a partir de agosto/2027, a revisão anual
+// também, porque aí a consulta de um ano atrás já estará nesta agenda (nova desde
+// 23/07/2026). `diasConversa`: o lembrete de retorno é esperado, então só cede a uma
+// conversa dos últimos dias; a campanha fria mantém os 30.
+async function naoDeveReceberCampanha(telefone, nome, { ultimaConsulta = null, diasConversa = 30 } = {}) {
   const fones = fonesBR(telefone);
+  const depoisDe = (q) => ultimaConsulta ? q.gt("inicio", `${ultimaConsulta}T23:59:59-03:00`) : q;
   try {
     // 1) Tem agendamento — futuro OU passado, e QUALQUER status.
     //    Passado importa porque a base histórica vai até 2025 e a pessoa pode ter
@@ -12443,8 +12465,8 @@ async function naoDeveReceberCampanha(telefone, nome) {
     //    é paciente sumido, mesmo que aquela marcação não tenha ido adiante. A
     //    agenda nova só começa em 23/07/2026, então "qualquer agendamento" aqui já
     //    quer dizer "teve contato de agenda nos últimos meses".
-    const { data: ag } = await supabase.from("appointments").select("id, inicio")
-      .in("paciente_telefone", fones).limit(1);
+    const { data: ag } = await depoisDe(supabase.from("appointments").select("id, inicio")
+      .in("paciente_telefone", fones)).limit(1);
     if (ag && ag.length) return "ja_agendado";
 
     // 1b) Mesmo agendamento, OUTRO telefone — casado pelo NOME COMPLETO.
@@ -12464,8 +12486,8 @@ async function naoDeveReceberCampanha(telefone, nome) {
     // distingue ninguém — na prática é um nome comum de duas.
     const palavrasFortes = nomeLimpo.split(" ").filter(w => !/^(d[aeo]s?|e)$/i.test(w)).length;
     if (palavrasFortes >= 3) {
-      const { data: porNome } = await supabase.from("appointments").select("id")
-        .ilike("paciente_nome", nomeLimpo.replace(/[%_\\]/g, "\\$&")).limit(1);
+      const { data: porNome } = await depoisDe(supabase.from("appointments").select("id")
+        .ilike("paciente_nome", nomeLimpo.replace(/[%_\\]/g, "\\$&"))).limit(1);
       if (porNome && porNome.length) return "ja_agendado";
     }
 
@@ -12475,7 +12497,7 @@ async function naoDeveReceberCampanha(telefone, nome) {
       const ids = pac.map(p => p.id);
       const { data: conv } = await supabase.from("conversations").select("id").in("patient_id", ids);
       if (conv && conv.length) {
-        const desde = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+        const desde = new Date(Date.now() - diasConversa * 24 * 3600 * 1000).toISOString();
         const { data: msg } = await supabase.from("messages").select("id")
           .in("conversation_id", conv.map(c => c.id)).gt("timestamp", desde).limit(1);
         if (msg && msg.length) return "conversa_recente";
@@ -12544,26 +12566,99 @@ function startAbastecimentoRevisaoAnual() {
   setInterval(check, 30 * 60 * 1000);
   check();
 }
+// ===== LEMBRETE DE RETORNO (Dr. Bruno, 30/10/2026) ==========================
+// A linha entra na mesma fila `reengajamento`: `ultima_consulta` é a consulta que
+// marcou o retorno e `mes_referencia` guarda o prazo ("3 meses"), que é o {{2}} do
+// template. 7 e 30 dias ficam de fora de propósito: o paciente sai da consulta com
+// a hora marcada. 1 ano é a revisão anual. Sem cron: nada sai sem o comando dele.
+const RETORNO_AVISO_DIAS = 15, RETORNO_TOLERANCIA_DIAS = 45;
+function mesesDoRetorno(retorno) {
+  const m = String(retorno || "").trim().match(/^(3|6) meses$/);
+  return m ? Number(m[1]) : 0;
+}
+// 30/11 + 3 meses = 28/02, não 02/03.
+function janelaDoRetorno(ymd, meses) {
+  const d = new Date(`${ymd}T12:00:00Z`), dia = d.getUTCDate();
+  d.setUTCMonth(d.getUTCMonth() + meses);
+  if (d.getUTCDate() !== dia) d.setUTCDate(0);
+  const emDias = (n) => new Date(d.getTime() + n * 864e5).toISOString().slice(0, 10);
+  return { retorno: emDias(0), aviso: emDias(-RETORNO_AVISO_DIAS), limite: emDias(RETORNO_TOLERANCIA_DIAS) };
+}
+// Finalizar o atendimento decide: 3/6 meses põe (ou atualiza) a linha; reabrir e
+// trocar para outra opção tira a que ainda não saiu. Nunca devolve à fila quem foi
+// retirado ou se descadastrou.
+async function agendarLembreteRetorno(c) {
+  const telefone = normalizePhoneBR(c.paciente_telefone), chave = foneChave(telefone);
+  if (!chave) return;
+  const meses = mesesDoRetorno(c.dados?.campos?.retorno);
+  if (!meses) {
+    await supabase.from("reengajamento").delete().eq("campanha", CAMPANHA_RETORNO).eq("fone_chave", chave).eq("status", "pendente");
+    return;
+  }
+  const { data: atual } = await supabase.from("reengajamento").select("status").eq("campanha", CAMPANHA_RETORNO).eq("fone_chave", chave).maybeSingle();
+  if (["removido", "descadastrado"].includes(atual?.status)) return;
+  let ag = null;
+  if (c.appointment_id) ({ data: ag } = await supabase.from("appointments").select("convenio, unidade").eq("id", c.appointment_id).maybeSingle());
+  const nome = String(c.paciente_nome || "").trim(), primeiro = nome.split(/\s+/)[0] || "";
+  const { error } = await supabase.from("reengajamento").upsert({
+    campanha: CAMPANHA_RETORNO, fone_chave: chave, telefone, nome,
+    primeiro_nome: primeiro ? primeiro[0].toUpperCase() + primeiro.slice(1).toLowerCase() : null,
+    convenio: ag?.convenio || null, unidade: ag?.unidade || null,
+    ultima_consulta: new Date(c.data_consulta).toLocaleDateString("sv-SE", { timeZone: TZ_BR }),
+    mes_referencia: `${meses} meses`, status: "pendente", enviado_em: null, erro: null,
+  }, { onConflict: "campanha,fone_chave" });
+  if (error) throw error;
+  console.log(`[Retorno] ${maskFone(telefone)} na fila: retorno em ${meses} meses.`);
+}
+// Quem pode sair hoje, do mais antigo para o mais novo. Passou 45 dias da data do
+// retorno sem nenhum lote: vira `expirado`, e a revisão anual cuida do paciente.
+async function filaDeRetorno(n) {
+  const { data, error } = await supabase.from("reengajamento")
+    .select("fone_chave, telefone, nome, primeiro_nome, mes_referencia, ultima_consulta")
+    .eq("campanha", CAMPANHA_RETORNO).eq("status", "pendente").order("ultima_consulta", { ascending: true }).limit(500);
+  if (error) throw new Error(`fila: ${error.message}`);
+  const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: TZ_BR }), fila = [];
+  for (const p of data || []) {
+    const j = janelaDoRetorno(p.ultima_consulta, mesesDoRetorno(p.mes_referencia));
+    if (hoje > j.limite) await supabase.from("reengajamento").update({ status: "expirado" }).eq("campanha", CAMPANHA_RETORNO).eq("fone_chave", p.fone_chave);
+    else if (hoje >= j.aviso && fila.length < n) fila.push(p);
+  }
+  return fila;
+}
+// Sem template aprovado, o lote da revisão anual segue normalmente.
+async function lembretesDeRetornoDoLote(n) {
+  try {
+    const st = await statusTemplateReengajamento(CAMPANHAS_PARALELAS.RETORNO.template);
+    if (st?.status !== "APPROVED") return null;
+    return await dispararLoteReengajamento(n, CAMPANHA_RETORNO, CAMPANHAS_PARALELAS.RETORNO.template);
+  } catch (e) { console.error("[Retorno] Lembretes do lote falharam (segue a revisão anual):", e.message); return null; }
+}
+
 async function dispararLoteReengajamento(quantos, campanha = REENGAJAR_CAMPANHA, template = TEMPLATE_REENGAJAR_NOME) {
   const n = Math.max(1, Math.min(Number(quantos) || 0, REENGAJAR_LOTE_MAX));
+  const retorno = campanha === CAMPANHA_RETORNO;
   // Revisão anual ("Faz um ano…"): só quem JÁ completou o ano e na ordem dos
   // aniversários (mais antigo primeiro). As demais: mais recente primeiro.
   const anual = /^revisao_anual/.test(campanha);
   let q = supabase.from("reengajamento")
-    .select("fone_chave, telefone, nome, primeiro_nome, mes_referencia")
+    .select("fone_chave, telefone, nome, primeiro_nome, mes_referencia, ultima_consulta")
     .eq("campanha", campanha).eq("status", "pendente");
   if (anual) {
     const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
     q = q.lte("ultima_consulta", `${Number(hoje.slice(0, 4)) - 1}${hoje.slice(4).replace("-02-29", "-02-28")}`);
   }
-  const { data: fila, error } = await q.order("ultima_consulta", { ascending: anual }).limit(n);
+  const { data: fila, error } = retorno ? { data: await filaDeRetorno(n), error: null }
+    : await q.order("ultima_consulta", { ascending: anual }).limit(n);
   if (error) throw new Error(`fila: ${error.message}`);
 
   const r = { pedidos: n, tentados: (fila || []).length, enviados: 0, descadastrados: 0, jaAgendados: 0, falhas: 0, erros: [] };
   for (const p of (fila || [])) {
     let status = "enviado", erro = null;
     try {
-      const impedimento = await naoDeveReceberCampanha(p.telefone, p.nome);
+      const impedimento = await naoDeveReceberCampanha(p.telefone, p.nome,
+        { ultimaConsulta: p.ultima_consulta, diasConversa: retorno ? 3 : 30 });
+      // Conversa em andamento só adia o lembrete: ele continua na fila para o próximo lote.
+      if (retorno && ["conversa_recente", "checagem_falhou"].includes(impedimento)) continue;
       if (impedimento) { status = impedimento; r.jaAgendados++; }
       else {
         const env = await enviarTemplateMarketing(p.telefone, template, TEMPLATE_REENGAJAR_LANG,
