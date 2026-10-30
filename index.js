@@ -4031,9 +4031,6 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
           // avisado, e ele viria amanhã achando que faria os dois.
           // Só é remarcação quando o MOTIVO é o mesmo serviço (igual, ou um
           // contido no outro: "Consulta" ⊂ "Consulta de avaliação").
-          const normMotivo = (x) => String(x || "Consulta").trim().toLowerCase()
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
-          const mA = normMotivo(doMesmoPaciente[0].motivo), mB = normMotivo(motivo);
           // 08/09/2026 — caso Laís: "Consulta" às 14h00 e "Avaliação de ceratocone"
           // às 14h20, criados com 2 minutos de diferença, os DOIS mantidos. A
           // comparação por texto viu dois serviços diferentes; são a MESMA visita
@@ -4043,11 +4040,9 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
           // EXAME e uma CONSULTA, de propósito, em sequência. É essa distinção
           // que importa — exame × consulta —, não a igualdade das palavras.
           // Dois EXAMES diferentes continuam sendo agendamentos adicionais.
-          const ehExame = (m) => /paquimetria|topografia|ceratoscopia|mapeamento|microscopia|tonometria|cdpo|curva diaria|retinografia|gonioscopia|pentacam|sobrecarga|campimetr|teste de lente|exame/i.test(m);
-          const mesmoServico = mA === mB || mA.includes(mB) || mB.includes(mA)
-            || (!ehExame(mA) && !ehExame(mB));   // duas consultas/avaliações = uma visita só
+          const mesmoServico = mesmoServicoDaAgenda(doMesmoPaciente[0].motivo, motivo);
           if (!mesmoServico) {
-            console.log(`[Agendar] Serviço DIFERENTE na mesma conversa ("${mA}" x "${mB}") — agendamento adicional, NÃO cancelo o anterior.`);
+            console.log(`[Agendar] Serviço DIFERENTE na mesma conversa ("${doMesmoPaciente[0].motivo}" x "${motivo}") — agendamento adicional, NÃO cancelo o anterior.`);
           } else {
           idParaCancelar = doMesmoPaciente[0].id;   // remarcação DESTE paciente: cancela o antigo SÓ se o novo gravar
           console.log(`[Agendar] Reagendamento (${nome || "sem nome"}): novo ${ini.toISOString()}, antigo ${new Date(doMesmoPaciente[0].inicio).toISOString()} (id ${idParaCancelar}).`);
@@ -4255,6 +4250,41 @@ async function processarCarteirinhaDaAna({ registro, from, conversationId }) {
   } catch (e) {
     console.error("[Carteirinha] Falha (não fatal):", e.message);
   }
+}
+
+// ===== REMARCOU E A ANTIGA FICOU ===========================================
+// Caso Adão Inacio (29/10/2026): tocou em "Remarcar" no lembrete, aceitou 06/11 às
+// 14h40 e ouviu "Remarcado". A consulta nova entrou, mas a de 30/10 às 14h00 ficou
+// ativa — marcada pela secretária, não pela Ana. O cancelamento automático dentro
+// de processarAgendarDaAna só enxerga consulta de origem "ana"; a da secretária
+// depende do [CANCELAR], que ou não veio ou trouxe um horário que não casou (e
+// "nada ativo nesse horário" é silêncio de propósito). Paciente segura de que
+// mudou, vaga presa e falta registrada no dia. A prova é o ESTADO FINAL: depois de
+// gravar o novo, relê a agenda e vê se a antiga saiu.
+const RE_ANUNCIOU_REMARCACAO = /\bremarcad[ao]\b|\bremarquei\b|\bremarcamos\b/i;
+const RE_PEDIU_MEXER_NA_CONSULTA = /(desmar[cq]|cancel|remar[cq]|adiar|antecip|imprevisto|outro dia|outra data|outro hor[aá]rio|mais cedo|mais tarde|pr[oó]xima semana|semana que vem|mudar|trocar|desist|esquec|deixa\s+(pra|para)\s+l|n[aã]o\s+(vou|posso|poderei|consigo|conseguirei|irei|quero|vai\s+dar|d[aá]))/i;
+// Exame × consulta são dois serviços; duas consultas/avaliações são uma visita só.
+function mesmoServicoDaAgenda(a, b) {
+  const norm = (x) => String(x || "Consulta").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+  const ehExame = (m) => /paquimetria|topografia|ceratoscopia|mapeamento|microscopia|tonometria|cdpo|curva diaria|retinografia|gonioscopia|pentacam|sobrecarga|campimetr|teste de lente|exame/i.test(m);
+  const mA = norm(a), mB = norm(b);
+  return mA === mB || mA.includes(mB) || mB.includes(mA) || (!ehExame(mA) && !ehExame(mB));
+}
+// Das consultas que o paciente tinha no início do turno (`antes`), quais continuam
+// ativas (`ativas`, lidas agora) e deveriam ter saído com este bloco. Vazio quando
+// alguma já saiu: a remarcação funcionou, e o que sobrou é outra consulta dele.
+function sobrouDaRemarcacao(registro, antes, ativas, agoraMs = Date.now()) {
+  const novo = inicioDoBloco(registro.inicio).getTime();
+  const pn = primNome(registro.nome);
+  const tinha = (antes || []).filter(a => {
+    const t = new Date(a.inicio).getTime();
+    return t !== novo && t > agoraMs
+      && (!pn || !primNome(a.paciente_nome) || primNome(a.paciente_nome) === pn)
+      && mesmoServicoDaAgenda(a.motivo, registro.motivo);
+  });
+  const sobrou = (ativas || []).filter(a => tinha.some(t => t.id === a.id));
+  return sobrou.length === tinha.length ? sobrou : [];
 }
 
 async function processarCancelarDaAna({ registro, from, conversationId }) {
@@ -8241,6 +8271,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     // Prioridade: [AGENDAR] (marca de verdade) > [PREAGENDAMENTO] (fallback) > [RECADO].
     // A Ana nunca deve emitir mais de um, mas se emitir, o agendamento real vence.
     let agendouOk = false;
+    const gravadosAgora = [];   // blocos que criaram consulta nova neste turno
     if (ag.registros.length) {
       // Grava os horários confirmados — UM registro POR PACIENTE (agendamento
       // múltiplo emite vários blocos na mesma mensagem). Cada gravação já fecha
@@ -8303,7 +8334,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
             if (!existe || !existe.length) {
               agendouOk = false;
               console.warn(`[Agendar] Nada ativo em ${registro.inicio} (${registro.unidade}) para ${maskFone(from)} — o cancelamento do antigo NÃO será autorizado.`);
-            }
+            } else if (!rAg.already) gravadosAgora.push(registro);
           } catch (e) {
             agendouOk = false;   // na dúvida, não cancela: consulta a mais é melhor que nenhuma
             console.error("[Agendar] Falha ao conferir o estado final (não autorizo cancelar):", e.message);
@@ -8382,9 +8413,8 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       // Rita, André), onde barrar é inofensivo: o [AGENDAR] seguinte cai no
       // re-emit idêntico e a consulta nunca fica fora da agenda.
       // Nenhum dos 45 cancelamentos pedidos de verdade seria barrado.
-      const RE_PEDIU_CANCELAR = /(desmar[cq]|cancel|remar[cq]|adiar|antecip|imprevisto|outro dia|outra data|outro hor[aá]rio|mais cedo|mais tarde|pr[oó]xima semana|semana que vem|mudar|trocar|desist|esquec|deixa\s+(pra|para)\s+l|n[aã]o\s+(vou|posso|poderei|consigo|conseguirei|irei|quero|vai\s+dar|d[aá]))/i;
       let falasDoPaciente = (history || []).filter(m => m.role === "user").slice(-6).map(m => String(m.content || ""));
-      let houvePedido = RE_PEDIU_CANCELAR.test(String(text || ""));
+      let houvePedido = RE_PEDIU_MEXER_NA_CONSULTA.test(String(text || ""));
       // O discriminador que o texto não dá, a agenda dá: se depois do cancelamento
       // ainda sobra OUTRA consulta ativa do mesmo telefone, é limpeza de duplicata
       // ou de remarcação — deixa passar. Só barra quando ficaria sem nenhuma.
@@ -8402,7 +8432,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           const { data: falas } = await supabase.from("messages").select("content, timestamp")
             .eq("conversation_id", conversation.id).eq("role", "user")
             .order("timestamp", { ascending: false }).limit(15);
-          const pedidos = (falas || []).filter(m => RE_PEDIU_CANCELAR.test(String(m.content || "")))
+          const pedidos = (falas || []).filter(m => RE_PEDIU_MEXER_NA_CONSULTA.test(String(m.content || "")))
             .map(m => instanteDaMensagem(m.timestamp)).filter(t => !isNaN(t));
           falasDoPaciente = (falas || []).slice(0, 6).reverse().map(m => String(m.content || ""));
           // Alvo não encontrado entre as ativas = nada a cancelar; cai no fluxo
@@ -8410,7 +8440,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           houvePedido = !consultasAlvo.length
             || consultasAlvo.some(a => pedidos.some(t => t > new Date(a.created_at).getTime()));
         } catch (e) {
-          houvePedido = falasDoPaciente.some(t => RE_PEDIU_CANCELAR.test(t));   // sem banco: regra de 29/09
+          houvePedido = falasDoPaciente.some(t => RE_PEDIU_MEXER_NA_CONSULTA.test(t));   // sem banco: regra de 29/09
           console.error("[Cancelar] Não consegui conferir pedido × consulta (uso as últimas falas):", e.message);
         }
       }
@@ -8447,6 +8477,42 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           await processarCancelarDaAna({ registro, from, conversationId: conversation.id });
         }
       }
+    }
+
+    // Remarcou e a antiga ficou? (ver sobrouDaRemarcacao) Só age com UMA consulta
+    // sobrando e pedido do paciente mais novo que ela. Fora disso a consulta fica e
+    // a equipe é avisada: mesma regra do [CANCELAR] — na dúvida, manter.
+    if (gravadosAgora.length && (canc.registros.length || RE_ANUNCIOU_REMARCACAO.test(replySemCartao))) {
+      try {
+        const { data: ativas } = await supabase.from("appointments").select("id, inicio, unidade, created_at")
+          .in("paciente_telefone", fonesBR(from)).in("status", ["reservado", "confirmado"])
+          .gte("inicio", new Date().toISOString());
+        const { data: falas } = await supabase.from("messages").select("content, timestamp")
+          .eq("conversation_id", conversation.id).eq("role", "user")
+          .order("timestamp", { ascending: false }).limit(15);
+        const pedidos = (falas || []).filter(m => RE_PEDIU_MEXER_NA_CONSULTA.test(String(m.content || "")))
+          .map(m => instanteDaMensagem(m.timestamp)).filter(t => !isNaN(t));
+        for (const registro of gravadosAgora) {
+          const sobra = sobrouDaRemarcacao(registro, meusAgendamentos, ativas);
+          if (!sobra.length) continue;
+          const oQue = sobra.map(a => `${a.unidade} ${fmtDataHoraBR(a.inicio)}`).join("; ");
+          const pediu = sobra.length === 1
+            && pedidos.some(t => t > new Date(sobra[0].created_at).getTime());
+          const r = pediu ? await cancelarAgendamento(sobra[0].id) : { ok: false };
+          if (r.ok) {
+            console.warn(`[Agendar] Remarcação sem [CANCELAR] efetivo: antiga ${sobra[0].id} cancelada pela conferência.`);
+            await registrarErro("remarcacao_antiga_cancelada", `antiga=${oQue} nova=${registro.unidade} ${registro.inicio}`,
+              { conversationId: conversation.id, telefone: from }).catch(() => {});
+            await espelharParaSecretaria("[Cancelado pela Ana]",
+              `❌ *CANCELAMENTO (via Ana — remarcação)*\n👤 ${registro.nome || from}\n📱 ${from}\n🕐 ${oQue}`);
+            continue;
+          }
+          await registrarErro("remarcacao_antiga_ficou", `antiga=${oQue} nova=${registro.unidade} ${registro.inicio}`,
+            { conversationId: conversation.id, telefone: from }).catch(() => {});
+          await marcarPendenciaEquipe(conversation.id, "urgent").catch(() => {});
+          await notificarClinica(`⚠️ *A Ana remarcou, mas a consulta antiga continua na agenda*\n👤 ${registro.nome || from}\n📱 ${from}\n🕐 Antiga: ${oQue}\n\nConfirmem com o paciente qual vale e cancelem a outra.`).catch(() => {});
+        }
+      } catch (e) { console.error("[Agendar] Conferência da remarcação falhou:", e.message); }
     }
 
     // A Ana recusou o convênio nesta mensagem? Então a consulta que ELA marcou nesta
