@@ -824,7 +824,6 @@ function textoIclinic(){ const L=[];
   const fo=grade("fo",FO,"Fundoscopia"); if(fo) L.push(fo);
   const ec=exComp(); if(ec) L.push(ec);
   const hd=bloco("Hipótese diagnóstica",hdComCid()); if(hd) L.push(hd);
-  const cd=bloco("Conduta",[...marcados("cd").map(nomeChip),...linhas("cd-txt")]); if(cd) L.push(cd);
   if(v("rx-emitida")==="1"){ const rp=receita(), g=o=>[o[0],o[1]!=="—"?o[1]+(o[2]!=="—"?"x"+o[2]:""):""].filter(Boolean).join(" ");
     L.push(`Receita de óculos: lentes ${TIPO_TEXTO[v("rx-uso")]||v("rx-uso")}${rp.perto?` (OD ${g(rp.od)}; OE ${g(rp.oe)})`:""}.${v("rx-obs").trim()?` Observação: ${v("rx-obs").trim().replace(/\.$/,"")}.`:""}`); }
   if(emitido("ro")&&v("ro-on")==="1"&&v("ro-txt").trim()){   // sem a saudação e o fecho da carta
@@ -832,11 +831,13 @@ function textoIclinic(){ const L=[];
     if(ro) L.push(`Relatório para a ótica (não adaptação aos óculos):\n${ro}`); }
   if(emitido("at")&&v("at-txt").trim()) L.push(`${$("#at-tipo").value==="comparecimento"?"Declaração de comparecimento emitida":"Atestado médico emitido"}:\n${v("at-txt").trim()}`);
   if(emitido("lo")&&v("lo-on")==="1"&&(v("lo-txt").trim()||v("lo-concl").trim())) L.push(`Laudo oftalmológico emitido:\n${[v("lo-txt").trim(),v("lo-concl").trim()?`Conclusão: ${v("lo-concl").trim()}`:""].filter(Boolean).join("\n")}`);
-  if(emitido("en")&&v("en-on")==="1"&&v("en-txt").trim()) L.push(`Encaminhamento emitido:\n${v("en-txt").trim()}`);   // logo após a conduta (Dr. Bruno, 28/10/2026)
+  if(emitido("en")&&v("en-on")==="1"&&v("en-txt").trim()) L.push(`Encaminhamento emitido:\n${v("en-txt").trim()}`);
   const lc=textoLC(); if(lc) L.push(lc);
   const meds=medicamentos(); if(meds.length) L.push(bloco("Prescrição de medicamentos",meds.map(m=>`${m.med}${m.qtd?" ("+m.qtd+")":""}: ${m.pos||"posologia não informada"}`)));
   const ex=bloco("Exames solicitados",examesPedidos()); if(ex) L.push(ex);
   if(v("retorno")) L.push(`Retorno em ${v("retorno")}.`);
+  // a conduta fecha o texto do atendimento (Dr. Bruno, 30/10/2026)
+  const cd=bloco("Conduta",[...marcados("cd").map(nomeChip),...linhas("cd-txt")]); if(cd) L.push(cd);
   return L.join("\n\n"); }
 // Óculos para PERTO: o esférico já sai somado à adição AQUI, num lugar só — o quadro
 // da tela, o "copiar" e a receita mostram o mesmo grau (antes só a impressão somava
