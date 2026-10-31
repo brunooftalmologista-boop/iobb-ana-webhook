@@ -12985,7 +12985,7 @@ function startAbastecimentoRevisaoAnual() {
       await supabase.from("settings").upsert({ key: "revisao_anual_abastecido", value: mes });
       const { count: fila } = await supabase.from("reengajamento").select("fone_chave", { count: "exact", head: true }).eq("campanha", "revisao_anual").eq("status", "pendente");
       const nomeMes = new Date(`${inicio}T12:00:00-03:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: TZ_BR });
-      const texto = `🗓️ *Revisão anual — lista abastecida*\n\nEntraram *${r.inseridos}* paciente(s) que consultaram em *${nomeMes}* e não voltaram (${r.conjunto} Conjunto Nacional · ${r.taguatinga} Taguatinga).\n📋 Na fila da revisão anual: *${fila ?? "?"}*\n\nNada foi enviado. Eles ficam liberados conforme completam 1 ano; para enviar: *#REENGAJAR 50 REVISAO*.`;
+      const texto = `🗓️ *Revisão anual — lista abastecida*\n\nEntraram *${r.inseridos}* paciente(s) que consultaram em *${nomeMes}* e não voltaram (${r.conjunto} Conjunto Nacional · ${r.taguatinga} Taguatinga).\n📋 Na fila da revisão anual: *${fila ?? "?"}*\n\nNada foi enviado. Todos ficam liberados neste mês; para enviar: *#REENGAJAR 50 REVISAO*.`;
       console.log(`[RevisãoAnual] Abastecido ${mes}: ${r.inseridos} (fila ${fila}).`);
       const env = await trySendWhatsApp(AUDITORIA_DESTINO, texto);
       if (!env?.ok) registrarErro("revisao_anual_aviso", `Abastecido ${mes}: ${r.inseridos} paciente(s), mas o aviso por WhatsApp não saiu (janela de 24h?).`).catch(() => {});
@@ -13062,18 +13062,23 @@ async function lembretesDeRetornoDoLote(n) {
   } catch (e) { console.error("[Retorno] Lembretes do lote falharam (segue a revisão anual):", e.message); return null; }
 }
 
+// "2026-11-03" → "2025-11-30". O dia 0 do mês seguinte é o último dia do mês.
+function fimDoMesHaUmAno(ymd) {
+  const [a, m] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(a - 1, m, 0)).toISOString().slice(0, 10);
+}
 async function dispararLoteReengajamento(quantos, campanha = REENGAJAR_CAMPANHA, template = TEMPLATE_REENGAJAR_NOME) {
   const n = Math.max(1, Math.min(Number(quantos) || 0, REENGAJAR_LOTE_MAX));
   const retorno = campanha === CAMPANHA_RETORNO;
-  // Revisão anual ("Faz um ano…"): só quem JÁ completou o ano e na ordem dos
-  // aniversários (mais antigo primeiro). As demais: mais recente primeiro.
+  // Revisão anual ("Faz um ano…"): quem completa o ano ATÉ O FIM DESTE MÊS (Dr. Bruno,
+  // 30/10/2026: não precisa ser o dia exato), na ordem dos aniversários (mais antigo
+  // primeiro). As demais: mais recente primeiro.
   const anual = /^revisao_anual/.test(campanha);
   let q = supabase.from("reengajamento")
     .select("fone_chave, telefone, nome, primeiro_nome, mes_referencia, ultima_consulta")
     .eq("campanha", campanha).eq("status", "pendente");
   if (anual) {
-    const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
-    q = q.lte("ultima_consulta", `${Number(hoje.slice(0, 4)) - 1}${hoje.slice(4).replace("-02-29", "-02-28")}`);
+    q = q.lte("ultima_consulta", fimDoMesHaUmAno(new Date().toLocaleDateString("sv-SE", { timeZone: TZ_BR })));
   }
   const { data: fila, error } = retorno ? { data: await filaDeRetorno(n), error: null }
     : await q.order("ultima_consulta", { ascending: anual }).limit(n);
