@@ -991,11 +991,12 @@ function openAnaModal(){
   $('#ana-modal-desc').textContent = anaPendingTarget
     ? 'A Ana voltará a responder automaticamente TODOS os pacientes. Digite a senha de administrador para confirmar.'
     : 'A Ana vai PARAR de responder automaticamente. As mensagens continuam chegando no painel para a equipe atender. Digite a senha de administrador para confirmar.';
+  voltarSenha('ana-pass');
   $('#ana-pass').value='';
   $('#ana-modal').classList.add('show');
   setTimeout(()=>$('#ana-pass').focus(), 50);
 }
-function closeAnaModal(){ $('#ana-modal').classList.remove('show'); }
+function closeAnaModal(){ $('#ana-modal').classList.remove('show'); tirarSenha('ana-pass'); }
 async function confirmAnaToggle(){
   const pass = $('#ana-pass').value;
   if(!pass){ toast('Digite a senha de administrador'); return; }
@@ -1619,8 +1620,8 @@ async function markBooked(){
 }
 
 // ---------- Login / Logout ----------
-function showLogin(){ $('#login-modal').classList.add('show'); const a=$('#login-agent'); if(a && !a.value) a.value=AGENT; $('#login-user').value=a?a.value:''; setTimeout(()=>$('#login-pass').focus(),50); }
-function hideLogin(){ $('#login-modal').classList.remove('show'); }
+function showLogin(){ voltarSenha('login-pass'); $('#login-modal').classList.add('show'); const a=$('#login-agent'); if(a && !a.value) a.value=AGENT; $('#login-user').value=a?a.value:''; setTimeout(()=>$('#login-pass').focus(),50); }
+function hideLogin(){ $('#login-modal').classList.remove('show'); tirarSenha('login-pass'); }
 function showLoginError(msg){ const e=$('#login-error'); e.textContent=msg; e.style.display='block'; }
 async function doLogin(){
   const nome=$('#login-agent').value, pass=$('#login-pass').value;
@@ -1652,14 +1653,24 @@ function logout(){
 function startApp(){ el.conn.textContent='conectando…'; loadConversations(); }
 
 // ---------- Eventos ----------
-// O Chrome insiste em pôr o login guardado na busca, mesmo com autocomplete=off.
-// Só vale o que a pessoa digitou, ditou, colou ou arrastou (o autofill não
-// dispara beforeinput); o resto é apagado na hora.
-let buscaHumanaEm=0;
-['beforeinput','keydown','paste','drop','compositionstart'].forEach(ev=>el.search.addEventListener(ev,()=>{ buscaHumanaEm=Date.now(); }));
-function apagarAutofillDaBusca(){ if(el.search.value){ el.search.value=''; onBusca(); } }
-el.search.addEventListener('animationstart',e=>{ if(e.animationName==='buscaAutofill') apagarAutofillDaBusca(); });
-el.search.oninput=()=>{ if(Date.now()-buscaHumanaEm>1500) return apagarAutofillDaBusca(); onBusca(); };
+// Campo de senha só fica na página com o seu modal aberto. Com ele lá, mesmo
+// escondido, o Chrome punha o login guardado na busca de conversas e repunha a
+// cada segundo (autocomplete=off não segura). Medido no Chrome da clínica, 03/11.
+const senhasFora = new Map();
+function tirarSenha(id){
+  const i=document.getElementById(id); if(!i) return;
+  const marca=document.createComment(id); senhasFora.set(id,{ i, marca }); i.replaceWith(marca);
+  desfazerAutofillDaBusca();
+}
+function voltarSenha(id){ const s=senhasFora.get(id); if(!s) return; s.marca.replaceWith(s.i); senhasFora.delete(id); }
+// O texto do autofill aparece na tela mas o value fica vazio até alguém clicar;
+// só trocar o value tira a marca.
+function desfazerAutofillDaBusca(){
+  let marcado=false; try{ marcado=el.search.matches(':-webkit-autofill'); }catch(_){}
+  if(marcado){ el.search.value='x'; el.search.value=''; onBusca(); }
+}
+el.search.addEventListener('animationstart',e=>{ if(e.animationName==='buscaAutofill' && !document.querySelector('#login-modal.show')) desfazerAutofillDaBusca(); });
+el.search.oninput=onBusca;
 $('#btn-refresh').onclick=()=>{ loadConversations(); if(activeId) loadMessages(true); };
 // Clicar num anexo SEMPRE abre — mesmo se a hidratação em segundo plano
 // (href/src) ainda não terminou ou falhou: busca a URL assinada sob demanda.
@@ -2137,6 +2148,7 @@ updateSoundUI();
 
 // ---------- Init ----------
 buildEmoji();
+tirarSenha('ana-pass');
 if('Notification' in window && Notification.permission==='default'){
   Notification.requestPermission();
 }
