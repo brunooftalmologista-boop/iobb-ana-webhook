@@ -994,7 +994,7 @@ function openAnaModal(){
   voltarSenha('ana-pass');
   $('#ana-pass').value='';
   $('#ana-modal').classList.add('show');
-  setTimeout(()=>$('#ana-pass').focus(), 50);
+  setTimeout(()=>$('#ana-pass')?.focus(), 50);
 }
 function closeAnaModal(){ $('#ana-modal').classList.remove('show'); tirarSenha('ana-pass'); }
 async function confirmAnaToggle(){
@@ -1620,7 +1620,7 @@ async function markBooked(){
 }
 
 // ---------- Login / Logout ----------
-function showLogin(){ voltarSenha('login-pass'); $('#login-modal').classList.add('show'); const a=$('#login-agent'); if(a && !a.value) a.value=AGENT; $('#login-user').value=a?a.value:''; setTimeout(()=>$('#login-pass').focus(),50); }
+function showLogin(){ voltarSenha('login-pass'); $('#login-modal').classList.add('show'); const a=$('#login-agent'); if(a && !a.value) a.value=AGENT; $('#login-user').value=a?a.value:''; setTimeout(()=>$('#login-pass')?.focus(),50); }
 function hideLogin(){ $('#login-modal').classList.remove('show'); tirarSenha('login-pass'); }
 function showLoginError(msg){ const e=$('#login-error'); e.textContent=msg; e.style.display='block'; }
 async function doLogin(){

@@ -706,7 +706,7 @@ const durTexto=s=>{ s=Math.round(s||0); if(s<60) return `${s} segundos`; const m
 
 /* ===== formulário (mesma lógica aprovada) ===== */
 const BIO=[["pal","Pálpebras e cílios","sem alterações"],["conj","Conjuntiva","calma"],["cor","Córnea","transparente"],["ca","Câmara anterior","formada, sem reação"],["iris","Íris e pupila","isocórica, fotorreagente"],["crist","Cristalino","transparente"]];
-const FO=[["disco","Disco óptico","corado, bordos nítidos, relação escavação/disco 0,3"],["mac","Mácula","brilho foveal presente"],["vasos","Vasos","sem alterações"],["perif","Periferia","retina aplicada"]];
+const FO=[["disco","Disco óptico","corado, bordos nítidos, relação escavação/disco 0,3"],["mac","Mácula","brilho foveal presente"],["vasos","Vasos","sem alterações"],["vit","Vítreo","transparente"]];
 function montaGrade(id,itens){ const g=$("#"+id); g.innerHTML='<span class="blank"></span><span class="h od">Olho direito</span><span class="h oe">Olho esquerdo</span>';
   for(const [k,nome] of itens) g.insertAdjacentHTML("beforeend",`<span class="lbl rowlbl">${nome}</span><input id="${id}-${k}-od"><input id="${id}-${k}-oe">`); }
 montaGrade("bio",BIO); montaGrade("fo",FO);
