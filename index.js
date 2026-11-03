@@ -3414,6 +3414,28 @@ async function indicacoesDoPaciente(telefone) {
 // justamente quem tem ficha e não tem agendamento futuro.
 // Aqui olhamos para TRÁS: os últimos agendamentos dele, cancelados inclusive —
 // um cancelamento não apaga o nome nem o nascimento da pessoa.
+// ===== CONSULTA CITADA PELO NOME (03/11/2026) ==============================
+// Sobrenomes de quem já se consultou por este telefone que aparecem no que a
+// pessoa escreveu. Só sobrenome: o primeiro nome não identifica família.
+const _palavrasNome = (t, min = 2) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .replace(/[^a-z\s]/g, " ").split(/\s+/).filter(w => w.length >= min && !/^(d[aeo]s?|e)$/.test(w));
+function sobrenomesDaFamiliaCitados(textos, nomesDoTelefone) {
+  const citadas = new Set(textos.flatMap(_palavrasNome));
+  const familia = new Set((nomesDoTelefone || []).flatMap(n => _palavrasNome(n).slice(1).filter(w => w.length >= 4)));
+  return [...familia].filter(w => citadas.has(w));
+}
+// Dos agendamentos achados pelo sobrenome, só os cujo nome a pessoa escreveu:
+// primeiro nome citado e todo sobrenome do cadastro citado também ("HELOISA
+// ARNAUT" casa com "Heloisa Arnaut Cordova"; a irmã "Ruth Arnaut" não).
+function citadosPorNome(textos, agendamentos) {
+  const citadas = new Set(textos.flatMap(_palavrasNome));
+  return (agendamentos || []).filter(a => {
+    const p = _palavrasNome(a.paciente_nome);
+    return p.length >= 2 && p.every(w => citadas.has(w));
+  });
+}
+const avisadosPorNome = new Set();   // agendamento já avisado à equipe (não repetir a cada turno)
+
 async function fichaHistoricaDoPaciente(telefone) {
   if (!telefone) return [];
   try {
@@ -7185,6 +7207,46 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
         }
         if (meusAg.length) dynEstavel += `\n\n### Agendamentos que ESTE paciente já tem (no nosso sistema)\n${linhas}\nVocê PODE informar esses dados se o paciente perguntar. Se o paciente só quer confirmar/saber, NÃO ofereça novo horário.\nPara os marcados "você PODE cancelar/remarcar este": se o paciente pedir para DESMARCAR, confirme com ele e emita o bloco [CANCELAR] copiando o token [inicio:...] exato. Para REMARCAR, ofereça um novo horário (da lista de disponíveis), e ao confirmar emita [CANCELAR] do antigo + [AGENDAR] do novo (o sistema marca o novo e cancela o antigo). Para os agendamentos "alteração só pela equipe", oriente o (61) 3033-6605 ou o WhatsApp da equipe (61) 99299-7639 — NÃO tente cancelar você mesma.`;
         }
+      // 👪 CONSULTA DO FILHO CADASTRADA COM OUTRO TELEFONE (03/11/2026 — caso
+      // Heloisa Arnaut Cordova). A mãe perguntou o horário da filha; a secretária
+      // tinha digitado o telefone com dois dígitos trocados, a Ana procurou pelo
+      // número e respondeu "não tenho o agendamento", e o lembrete foi para um
+      // estranho. Quando a pessoa cita um nome com o SOBRENOME de alguém que já
+      // consultou por este número, a agenda é lida pelo nome. O sobrenome da
+      // família é a trava: sem ele, qualquer um descobriria o horário de qualquer
+      // paciente. Uma leitura extra só nesse caso.
+      try {
+        const textos = [...history.filter(m => m.role === "user").slice(-3).map(m => String(m.content || "")), String(text || "")];
+        const sobrenomes = sobrenomesDaFamiliaCitados(textos, paraFicha.map(a => a.paciente_nome));
+        if (sobrenomes.length) {
+          const meus8 = new Set(fonesBR(from).map(f => String(f).slice(-8)));
+          const achados = [];
+          for (const sob of sobrenomes.slice(0, 2)) {
+            const { data } = await supabase.from("appointments")
+              .select("id, unidade, inicio, status, motivo, origem, paciente_nome, paciente_telefone, convenio, observacoes")
+              .ilike("paciente_nome", `%${sob}%`).in("status", ["reservado", "confirmado"])
+              .gte("inicio", new Date(Date.now() - 2 * 3600 * 1000).toISOString())
+              .lte("inicio", new Date(Date.now() + 90 * 864e5).toISOString()).limit(20);
+            for (const a of data || []) if (!meus8.has(String(a.paciente_telefone || "").replace(/\D/g, "").slice(-8)) && !achados.some(x => x.id === a.id)) achados.push(a);
+          }
+          const porNome = citadosPorNome(textos, achados).slice(0, 3);
+          if (porNome.length) {
+            // Entram nas travas como consulta dele (a hora citada não é "oferta
+            // inexistente"), mas NÃO na lista que ela pode cancelar: o [CANCELAR]
+            // procura pelo telefone e não acharia.
+            meusAgendamentos = [...meusAgendamentos, ...porNome];
+            dynEstavel += `\n\n### Consulta encontrada pelo NOME (está cadastrada com OUTRO telefone)\n${porNome.map(a => `- ${a.paciente_nome}: ${fmtDataHoraBR(a.inicio)} em ${a.unidade}${a.motivo ? ` (${a.motivo})` : ""}`).join("\n")}\nO sobrenome confere com quem já se consultou por este número: é da família. Você PODE informar dia, hora e unidade (com o endereço). NÃO cancele nem remarque esta consulta por aqui — se pedirem mudança, registre [RECADO] para a equipe. Não comente que o telefone do cadastro é outro.`;
+            for (const a of porNome) {
+              if (avisadosPorNome.has(a.id)) continue;
+              avisadosPorNome.add(a.id);
+              await registrarErro("agendamento_outro_telefone", `${a.paciente_nome} ${a.inicio} cadastrado com ${a.paciente_telefone}; perguntado por ${from}`,
+                { conversationId: conversation.id, telefone: from }).catch(() => {});
+              notificarClinica(`📱 *Conferir telefone do agendamento*\n👤 ${a.paciente_nome}\n🕐 ${fmtDataHoraBR(a.inicio)} — ${a.unidade}\nCadastrado com ${a.paciente_telefone}, mas quem perguntou foi ${from} (mesma família). O lembrete vai para o número do cadastro: confiram qual está certo.`)
+                .catch(e => console.error("[PorNome] Falha ao avisar a clínica:", e.message));
+            }
+          }
+        }
+      } catch (e) { console.error("[PorNome] Busca pelo nome falhou (segue sem):", e.message); }
       // ── ELE JÁ É PACIENTE DA CASA ────────────────────────────────────────
       // Dr. Bruno, 16/09/2026: "no reengajamento vai precisar saber quem já
       // consultou". Até aqui o histórico entrava SÓ como ficha — nome,
