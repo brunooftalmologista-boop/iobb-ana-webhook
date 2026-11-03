@@ -38,7 +38,8 @@
   .tab-btn.active{background:var(--green);color:#fff;}
   .tab-btn .cnt{font-weight:700;opacity:.85;}
   .search-box{display:flex;align-items:center;background:var(--header);border-radius:8px;padding:6px 12px;gap:10px;}
-  .search-box input{border:none;background:none;outline:none;width:100%;font-size:15px;}
+  .search-box input{border:none;background:none;outline:none;width:100%;font-size:15px;-webkit-appearance:none;appearance:none;}
+  .search-box input::-webkit-search-cancel-button,.search-box input::-webkit-search-decoration{-webkit-appearance:none;display:none;}
   .search-box .s-ico{color:var(--muted);}
   .conv-list{flex:1;overflow-y:auto;}
   .conv{display:flex;align-items:center;gap:13px;padding:10px 15px;cursor:pointer;border-bottom:1px solid #f2f2f2;position:relative;}
@@ -287,7 +288,7 @@
     <div class="search-wrap">
       <div class="search-box">
         <span class="s-ico">🔍</span>
-        <input id="search" placeholder="Pesquisar ou começar nova conversa">
+        <input id="search" type="search" name="busca-conversa" placeholder="Pesquisar ou começar nova conversa" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
       </div>
     </div>
     <div class="tabs">
@@ -363,8 +364,10 @@
       <option>Secretaria</option>
       <option>Dr. Bruno</option>
     </select>
+    <!-- o usuário é um <select>; sem este campo o navegador guardava o nome na busca de conversas -->
+    <input id="login-user" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
     <label>Senha</label>
-    <input id="login-pass" type="password" placeholder="Sua senha" autocomplete="current-password">
+    <input id="login-pass" type="password" name="password" placeholder="Sua senha" autocomplete="current-password">
     <div id="login-error" style="color:#d33;font-size:13px;margin-top:10px;display:none">Usuário ou senha inválidos.</div>
     <div class="modal-actions">
       <button class="btn primary" id="login-btn" style="width:100%">Entrar</button>
@@ -1614,7 +1617,7 @@ async function markBooked(){
 }
 
 // ---------- Login / Logout ----------
-function showLogin(){ $('#login-modal').classList.add('show'); const a=$('#login-agent'); if(a && !a.value) a.value=AGENT; setTimeout(()=>$('#login-pass').focus(),50); }
+function showLogin(){ $('#login-modal').classList.add('show'); const a=$('#login-agent'); if(a && !a.value) a.value=AGENT; $('#login-user').value=a?a.value:''; setTimeout(()=>$('#login-pass').focus(),50); }
 function hideLogin(){ $('#login-modal').classList.remove('show'); }
 function showLoginError(msg){ const e=$('#login-error'); e.textContent=msg; e.style.display='block'; }
 async function doLogin(){
@@ -2107,6 +2110,9 @@ $('#cfg-save').onclick=()=>{
 $('#login-btn').onclick=doLogin;
 $('#login-pass').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); doLogin(); } };
 $('#login-agent').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#login-pass').focus(); } };
+$('#login-agent').onchange=e=>{ $('#login-user').value=e.target.value; };
+// o navegador preenche o nome guardado no campo escondido; a lista acompanha
+$('#login-user').oninput=e=>{ const v=e.target.value, a=$('#login-agent'); if([...a.options].some(o=>(o.value||o.text)===v)) a.value=v; };
 $('#btn-logout').onclick=logout;
 
 // ---------- Status global da Ana (somente leitura) ----------
