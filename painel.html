@@ -39,6 +39,8 @@
   .tab-btn .cnt{font-weight:700;opacity:.85;}
   .search-box{display:flex;align-items:center;background:var(--header);border-radius:8px;padding:6px 12px;gap:10px;}
   .search-box input{border:none;background:none;outline:none;width:100%;font-size:15px;-webkit-appearance:none;appearance:none;}
+  .search-box input:-webkit-autofill{animation:buscaAutofill 1ms;}
+  @keyframes buscaAutofill{from{opacity:1}to{opacity:1}}
   .search-box input::-webkit-search-cancel-button,.search-box input::-webkit-search-decoration{-webkit-appearance:none;display:none;}
   .search-box .s-ico{color:var(--muted);}
   .conv-list{flex:1;overflow-y:auto;}
@@ -1650,7 +1652,14 @@ function logout(){
 function startApp(){ el.conn.textContent='conectando…'; loadConversations(); }
 
 // ---------- Eventos ----------
-el.search.oninput=onBusca;
+// O Chrome insiste em pôr o login guardado na busca, mesmo com autocomplete=off.
+// Só vale o que a pessoa digitou, ditou, colou ou arrastou (o autofill não
+// dispara beforeinput); o resto é apagado na hora.
+let buscaHumanaEm=0;
+['beforeinput','keydown','paste','drop','compositionstart'].forEach(ev=>el.search.addEventListener(ev,()=>{ buscaHumanaEm=Date.now(); }));
+function apagarAutofillDaBusca(){ if(el.search.value){ el.search.value=''; onBusca(); } }
+el.search.addEventListener('animationstart',e=>{ if(e.animationName==='buscaAutofill') apagarAutofillDaBusca(); });
+el.search.oninput=()=>{ if(Date.now()-buscaHumanaEm>1500) return apagarAutofillDaBusca(); onBusca(); };
 $('#btn-refresh').onclick=()=>{ loadConversations(); if(activeId) loadMessages(true); };
 // Clicar num anexo SEMPRE abre — mesmo se a hidratação em segundo plano
 // (href/src) ainda não terminou ou falhou: busca a URL assinada sob demanda.
