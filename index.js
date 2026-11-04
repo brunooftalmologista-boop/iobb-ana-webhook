@@ -440,7 +440,7 @@ COMO CONDUZIR (aplique nos 4 temas):
 4. USE PROVA REAL (fatos, nunca superlativo): Dr. Bruno é subespecialista em CERATOCONE, CIRURGIA REFRATIVA e CATARATA, com fellowship em córnea pela UFMG (CRM-DF 17877 · RQE 9314) — cite a subespecialidade que corresponde ao tema da conversa; estrutura própria de exames; ele mesmo acompanha do pré ao pós-operatório. Fatos convencem — adjetivo, não.
 5. TRATE PREÇO COM SEGURANÇA, não com desconforto: informe o valor com naturalidade, some o parcelamento e volte imediatamente ao valor da avaliação (que é o próximo passo real). Nunca peça desculpas pelo preço nem sugira que é caro.
 6. FECHE SEMPRE COM HORÁRIO CONCRETO, nunca com convite vago. "Consigo quinta às 14h20, quer que eu reserve?" converte; "qualquer coisa estou à disposição" não.
-6b. OFEREÇA O HORÁRIO CEDO — NÃO faça questionário antes. Erro comum e caro: responder a dúvida e emendar 3 ou 4 perguntas de uma vez (nome + unidade + período + convênio). Isso é atrito e faz o paciente sumir. Se você TEM a lista de horários e o paciente demonstrou interesse claro, JÁ OFEREÇA UM horário concreto na mesma mensagem em que explica — e peça os dados DEPOIS que ele disser "pode ser". Ex.: "...a avaliação é R$ 200,00 e já inclui os exames. Consigo *quarta, 29/07, às 14h20* no Conjunto Nacional — quer que eu reserve?". NÃO espere saber a unidade para oferecer: proponha um horário da PRIMEIRA unidade da sua lista e ofereça a alternativa na mesma frase — assim o paciente tem uma âncora concreta e continua livre para escolher. Ex.: "Consigo *quarta, 29/07, às 14h20* no Conjunto Nacional (Asa Norte) — ou prefere o Taguatinga Shopping, em Águas Claras?". Isso converte muito mais do que perguntar a unidade e esperar a resposta. Pergunte no máximo UMA coisa por mensagem — nunca uma lista de perguntas.
+6b. OFEREÇA O HORÁRIO CEDO — NÃO faça questionário antes. Erro comum e caro: responder a dúvida e emendar 3 ou 4 perguntas de uma vez (nome + unidade + período + convênio). Isso é atrito e faz o paciente sumir. Se você TEM a lista de horários e o paciente demonstrou interesse claro, JÁ OFEREÇA UM horário concreto na mesma mensagem em que explica — e peça os dados DEPOIS que ele disser "pode ser". Ex.: "...a avaliação é R$ 200,00. Consigo *quarta, 29/07, às 14h20* no Conjunto Nacional — quer que eu reserve?" (só na REFRATIVA acrescente "e já inclui os exames"; em ceratocone, lentes e catarata os exames são à parte). NÃO espere saber a unidade para oferecer: proponha um horário da PRIMEIRA unidade da sua lista e ofereça a alternativa na mesma frase — assim o paciente tem uma âncora concreta e continua livre para escolher. Ex.: "Consigo *quarta, 29/07, às 14h20* no Conjunto Nacional (Asa Norte) — ou prefere o Taguatinga Shopping, em Águas Claras?". Isso converte muito mais do que perguntar a unidade e esperar a resposta. Pergunte no máximo UMA coisa por mensagem — nunca uma lista de perguntas.
 7. OBJEÇÃO = mais uma tentativa, só uma. Se ele hesitar ("vou pensar", "depois eu vejo"), acolha, responda o que travou (medo, tempo, custo) em UMA frase e ofereça outra opção de horário. Se ele mantiver o "não", encerre com cordialidade e deixe a porta aberta — NUNCA insista uma terceira vez.
 LIMITES ABSOLUTOS (valem acima de qualquer objetivo de conversão — infringi-los é falta ética grave e destrói a confiança):
 - NUNCA prometa resultado ("vai ficar sem óculos", "sua visão vai voltar ao normal", "é garantido"). Fale sempre em possibilidade, definida na avaliação.
@@ -10810,12 +10810,17 @@ async function chavesDoGrupo(chave, pac) {
   const grupo = new Set([chave, principal, ...(Array.isArray(pp?.dados?.juntados) ? pp.dados.juntados : []), ...(Array.isArray(pac?.dados?.juntados) ? pac.dados.juntados : [])]);
   return { principal, principalDados: pp?.dados || {}, chaves: [...grupo] };
 }
+// Pela CHAVE (8 últimos dígitos + primeiro nome), que tem índice. O LIKE '%fone'
+// varria as 30 mil consultas; num momento de banco ocupado estourou o tempo
+// (04/11/2026, Jaqueline Farias de Azevedo), o erro era ignorado e a ficha abriu
+// SEM o histórico do iClinic, como se fosse primeira consulta. Erro agora sobe:
+// melhor "não consegui abrir a ficha" do que um prontuário vazio de mentira.
 async function consultasDoPaciente(tel, nome) {
-  const f8 = ult8(tel), pn = primNome(nome);
-  if (!f8) return [];
-  const { data } = await supabase.from("prontuario_consultas").select("*")
-    .like("paciente_telefone", `%${f8}`).order("data_consulta", { ascending: false }).limit(200);
-  return (data || []).filter(c => primNome(c.paciente_nome) === pn);
+  if (!ult8(tel) || !primNome(nome)) return [];
+  const { data, error } = await supabase.from("prontuario_consultas").select("*")
+    .eq("paciente_chave", chavePaciente(tel, nome)).order("data_consulta", { ascending: false }).limit(200);
+  if (error) throw new Error(`consultas do paciente: ${error.message}`);
+  return data || [];
 }
 
 // Consultas do paciente + as dos cadastros juntados com o dele, da mais nova para a mais antiga.
