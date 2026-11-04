@@ -3736,18 +3736,52 @@ async function avisarFalhaDeAgendamento(conversationId, from, texto) {
   await marcarPendenciaEquipe(conversationId, "urgent").catch(() => {});
 }
 
+// Normaliza a unidade para o enum canônico. A Ana às vezes escreve "Taguatinga
+// Shopping" / "Águas Claras"; gravar fora de "Conjunto Nacional"/"Taguatinga"
+// deixa o agendamento órfão do sync e do filtro do painel.
+function unidadeDoBloco(unidade) {
+  if (!unidade) return unidade;
+  const un = unidade.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (un.includes("taguatinga") || un.includes("aguas claras")) return "Taguatinga";
+  if (un.includes("conjunto") || un.includes("asa norte")) return "Conjunto Nacional";
+  return unidade;
+}
+
+// ── TRAVA ANTI-HORÁRIO-ERRADO ──────────────────────────────────────────
+// Bug recorrente: a Ana escreve um horário na mensagem (ex.: "14h40") mas
+// copia o token [inicio:] de OUTRA linha da lista (ex.: 15:40) → gravava o
+// horário ERRADO (o paciente aparece na hora que a Ana DISSE, não a salva).
+// Regra: se a PROSA enviada ao paciente cita UM único horário e ele diverge
+// do token, confiamos na PROSA (o que o paciente combinou), desde que seja
+// uma vaga válida no MESMO dia/unidade. Também neutraliza a "churn" de
+// re-emits (todos convergem pro mesmo horário → viram idempotentes).
+// ⚠️ USA horariosOferecidos, não uma regex local. A versão anterior exigia os
+// MINUTOS (/(\d{1,2})[h:](\d{2})/) e por isso não enxergava "às 11h" — a forma
+// mais natural de escrever hora cheia. Caso Ronaldo Pereira Cabral (26/08): a
+// prosa dizia "sexta-feira, 28/08, às 11h" três vezes, o token trazia 11:20, a
+// trava não comparou nada e a ficha saiu com 11h20. Ele confirmou sem notar.
+// horariosOferecidos já trata hora cheia, ignora faixas ("das 8h às 18h") e
+// "24h antes", e tira o markdown do negrito.
+// Devolve null sem divergência; { prosa, token, alvo } com ela (alvo null =
+// a hora da prosa não é vaga válida).
+async function horaPelaProsa({ unidade, ini, convenio, replyTexto }) {
+  const brtTime = (d) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+  const brtDate = (d) => new Date(d).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const distintos = [...new Set(horariosOferecidos(replyTexto || ""))];
+  const token = brtTime(ini);
+  if (distintos.length !== 1 || distintos[0] === token) return null;
+  const minTs = minTsAntecedencia(exigeAntecedencia(convenio));
+  const vagas = await fetchSlotsDB(unidade);
+  const alvo = Array.isArray(vagas)
+    ? vagas.find(s => brtTime(s.start) === distintos[0] && brtDate(s.start) === brtDate(ini) && s.start.getTime() >= minTs)
+    : null;
+  return { prosa: distintos[0], token, alvo: alvo ? alvo.start : null };
+}
+
 async function processarAgendarDaAna({ registro, patient, from, conversationId, replyTexto }) {
   try {
     const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
-    let unidade = limpo(registro.unidade);
-    // Normaliza a unidade para o enum canônico. A Ana às vezes escreve "Taguatinga
-    // Shopping" / "Águas Claras"; gravar fora de "Conjunto Nacional"/"Taguatinga"
-    // deixa o agendamento órfão do sync e do filtro do painel.
-    if (unidade) {
-      const un = unidade.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-      if (un.includes("taguatinga") || un.includes("aguas claras")) unidade = "Taguatinga";
-      else if (un.includes("conjunto") || un.includes("asa norte")) unidade = "Conjunto Nacional";
-    }
+    const unidade = unidadeDoBloco(limpo(registro.unidade));
     const inicioRaw = limpo(registro.inicio);
     if (!unidade || !inicioRaw) {
       // ⚠️ NUNCA falhe em silêncio aqui. Até 24/08/2026 este caminho só escrevia no
@@ -3821,43 +3855,20 @@ async function processarAgendarDaAna({ registro, patient, from, conversationId, 
     const nascimento = limpo(registro.nascimento);
     const observacoes = nascimento ? `Nascimento: ${nascimento}` : null;
 
-    // ── TRAVA ANTI-HORÁRIO-ERRADO ──────────────────────────────────────────
-    // Bug recorrente: a Ana escreve um horário na mensagem (ex.: "14h40") mas
-    // copia o token [inicio:] de OUTRA linha da lista (ex.: 15:40) → gravava o
-    // horário ERRADO (o paciente aparece na hora que a Ana DISSE, não a salva).
-    // Regra: se a PROSA enviada ao paciente cita UM único horário e ele diverge
-    // do token, confiamos na PROSA (o que o paciente combinou), desde que seja
-    // uma vaga válida no MESMO dia/unidade. Também neutraliza a "churn" de
-    // re-emits (todos convergem pro mesmo horário → viram idempotentes).
+    // ── TRAVA ANTI-HORÁRIO-ERRADO (ver horaPelaProsa) ──────────────────────
+    // O cartão "Confira seus dados" já passou por horaPelaProsa ANTES (e trocou o
+    // registro.inicio); aqui ela só age se algo escapou de lá.
     try {
-      const brtTime = (d) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
-      const brtDate = (d) => new Date(d).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-      // ⚠️ USA horariosOferecidos, não uma regex local. A versão anterior exigia os
-      // MINUTOS (/(\d{1,2})[h:](\d{2})/) e por isso não enxergava "às 11h" — a forma
-      // mais natural de escrever hora cheia. Caso Ronaldo Pereira Cabral (26/08): a
-      // prosa dizia "sexta-feira, 28/08, às 11h" três vezes, o token trazia 11:20, a
-      // trava não comparou nada e a ficha saiu com 11h20. Ele confirmou sem notar.
-      // horariosOferecidos já trata hora cheia, ignora faixas ("das 8h às 18h") e
-      // "24h antes", e tira o markdown do negrito.
-      const horas = horariosOferecidos(replyTexto || "");
-      const distintos = [...new Set(horas)];
-      const tokenTime = brtTime(ini);
-      if (distintos.length === 1 && distintos[0] !== tokenTime) {
-        const minTs = minTsAntecedencia(exigeAntecedencia(convenio));
-        const vagas = await fetchSlotsDB(unidade);
-        const alvo = Array.isArray(vagas)
-          ? vagas.find(s => brtTime(s.start) === distintos[0] && brtDate(s.start) === brtDate(ini) && s.start.getTime() >= minTs)
-          : null;
-        if (alvo) {
-          console.warn(`[Agendar] HORA DIVERGENTE: prosa=${distintos[0]} token=${tokenTime} → gravando a PROSA (${alvo.start.toISOString()}).`);
-          await registrarErro("agendar_hora_corrigida", `prosa=${distintos[0]} token=${tokenTime} unidade=${unidade} -> ${alvo.start.toISOString()}`, { conversationId, telefone });
-          ini = alvo.start;
-          fim = new Date(ini.getTime() + SLOT_MIN * 60000);
-        } else {
-          console.warn(`[Agendar] HORA DIVERGENTE sem vaga p/ a prosa: prosa=${distintos[0]} token=${tokenTime} — mantido o token, equipe sinalizada.`);
-          await registrarErro("agendar_hora_divergente", `prosa=${distintos[0]} token=${tokenTime} unidade=${unidade} — prosa sem vaga`, { conversationId, telefone });
-          await marcarPendenciaEquipe(conversationId, "action").catch(() => {});
-        }
+      const d = await horaPelaProsa({ unidade, ini, convenio, replyTexto });
+      if (d?.alvo) {
+        console.warn(`[Agendar] HORA DIVERGENTE: prosa=${d.prosa} token=${d.token} → gravando a PROSA (${d.alvo.toISOString()}).`);
+        await registrarErro("agendar_hora_corrigida", `prosa=${d.prosa} token=${d.token} unidade=${unidade} -> ${d.alvo.toISOString()}`, { conversationId, telefone });
+        ini = d.alvo;
+        fim = new Date(ini.getTime() + SLOT_MIN * 60000);
+      } else if (d) {
+        console.warn(`[Agendar] HORA DIVERGENTE sem vaga p/ a prosa: prosa=${d.prosa} token=${d.token} — mantido o token, equipe sinalizada.`);
+        await registrarErro("agendar_hora_divergente", `prosa=${d.prosa} token=${d.token} unidade=${unidade} — prosa sem vaga`, { conversationId, telefone });
+        await marcarPendenciaEquipe(conversationId, "action").catch(() => {});
       }
     } catch (e) { console.error("[Agendar] Falha na trava de hora divergente (segue com o token):", e.message); }
     // ───────────────────────────────────────────────────────────────────────
@@ -8304,6 +8315,25 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     // cartão saiu DO BLOCO e disse 14h20. 20 casos assim em um mês. Re-emissão
     // para quem já tem consulta ativa, sem [CANCELAR], não é agendamento novo e
     // não gera cartão. Remarcação (vem com [CANCELAR]) continua gerando.
+    // 🕐 A HORA DO CARTÃO É A QUE VAI PARA A AGENDA (04/11/2026, caso Walisson).
+    // Prosa "14h00", token 17:00: a trava gravava 14h00 na agenda, mas o cartão
+    // sai ANTES da gravação, direto do bloco, e disse "às 17h00". Corrigir o
+    // registro aqui faz cartão e agenda concordarem; na gravação a trava já não
+    // vê divergência.
+    for (const r of ag.registros) {
+      try {
+        const ini = inicioDoBloco(r.inicio);
+        if (isNaN(ini.getTime())) continue;
+        const limpo = (v) => (v && v !== "-") ? String(v).trim() : null;
+        const d = await horaPelaProsa({ unidade: unidadeDoBloco(limpo(r.unidade)), ini, convenio: limpo(r.convenio), replyTexto: reply });
+        if (d?.alvo) {
+          r.inicio = d.alvo.toISOString();
+          console.warn(`[Agendar] HORA DIVERGENTE (antes do cartão): prosa=${d.prosa} token=${d.token} → ${r.inicio}.`);
+          await registrarErro("agendar_hora_corrigida", `prosa=${d.prosa} token=${d.token} unidade=${r.unidade} -> ${r.inicio} (antes do cartão)`,
+            { conversationId: conversation.id, telefone: from }).catch(() => {});
+        }
+      } catch (e) { console.error("[Agendar] Hora pela prosa antes do cartão falhou (segue com o token):", e.message); }
+    }
     const registrosDoCartao = canc.registros.length ? ag.registros
       : ag.registros.filter(r => !(meusAgendamentos || []).some(a => a.status !== "cancelado" && primNome(a.paciente_nome) && primNome(a.paciente_nome) === primNome(r.nome)));
     // A trava de "falou uma hora, gravou outra" compara a PROSA com o bloco; com
