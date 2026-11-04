@@ -1767,6 +1767,24 @@ const RE_PEDIDO_DE_CARTEIRINHA = /(n[úu]mero|foto|imagem|c[óo]pia)\s+(d[ao]s?\
 const RE_IMAGEM_RECEBIDA = /\[(imagem|foto|documento|arquivo)[^\]]{0,20}recebid/i;
 const RE_CONTEXTO_CONVENIO = /conv[êe]nio|unimed|carteirinha|plano de sa[úu]de/i;
 const RE_RECEBEU_CARTEIRINHA = /identifiquei (sua|a) carteirinha|li (sua|a) carteirinha|recebi (sua|a) carteirinha/i;
+// 💲 TESTE DE LENTE SEMPRE COM PREÇO (04/11/2026, auditoria de alto valor). Nas 4
+// conversas de adaptação de lente em 60 dias a Ana embaralhou consulta × teste;
+// em 2 disse "a avaliação é R$ 200,00" e calou o teste (R$ 150,00), que só
+// existe no Conjunto Nacional. Nenhuma das 4 agendou. A regra já está no prompt
+// (seção de lentes); aqui o código só completa a frase quando ela some — sem API.
+// Lente de óculos, intraocular ou fácica não é teste de lente: fica de fora. E
+// precisa ser ADAPTAÇÃO: quem só USA lente ("dormi com lente e estou com dor",
+// "uso lente rígida") marcando consulta comum não recebe a frase — na medição de
+// 60 dias, metade dos disparos sem esse filtro eram assim.
+const RE_QUER_ADAPTAR_LENTE = /escleral|adapta|teste de lente|(quero|queria|gostaria de|fazer|usar|comprar|colocar|trabalham com|or[cç]amento d[ae]s?|valor d[ae]s?|pre[cç]o d[ae]s?)\s+(a\s+|as\s+|uma\s+)?lentes?\s+(de contato|r[ií]gidas?|gelatinosas?)/i;
+function faltaPrecoDoTesteDeLente(reply, messages) {
+  const t = String(reply || "");
+  if (!/R\$\s*200/.test(t) || /teste/i.test(t)) return false;
+  const doPaciente = (messages || []).filter(m => m.role === "user").slice(-6).map(m => String(m.content || "")).join(" ");
+  if (!RE_QUER_ADAPTAR_LENTE.test(doPaciente)) return false;
+  return !/intraocular|f[aá]cica|catarata|refrativa|lasik|\bprk\b/i.test(`${doPaciente} ${t}`);
+}
+
 function esqueceuPedirCarteirinha(reply, messages, registros, cartaoDoTurno = null) {
   const comConvenio = (registros || []).some(r => {
     const c = String(r.convenio || "").trim();
@@ -8304,6 +8322,13 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           { conversationId: conversation.id, telefone: from }).catch(() => {});
       }
     } catch (e) { console.error("[Carteirinha] Acréscimo falhou (mensagem segue):", e.message); }
+    try {
+      if (faltaPrecoDoTesteDeLente(reply, messages)) {
+        reply += "\n\nO teste de lente é cobrado à parte: R$ 150,00 (rígida ou escleral) ou R$ 120,00 (gelatinosa), e é feito no Conjunto Nacional.";
+        console.log("[Lente] Preço do teste acrescentado à resposta (sem reescrita).");
+        await registrarErro("lente_teste_acrescentado", reply.slice(0, 200), { conversationId: conversation.id, telefone: from }).catch(() => {});
+      }
+    } catch (e) { console.error("[Lente] Acréscimo falhou (mensagem segue):", e.message); }
 
     // CONFERÊNCIA DOS DADOS na própria mensagem de confirmação (11/08). Montada
     // pelo SISTEMA a partir do que vai ser gravado — não do que a Ana lembrou de
