@@ -303,6 +303,26 @@ function corpoLaudoOft(doc, d) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   tituloDoc(doc, "Laudo oftalmológico");
   blocoPaciente(doc, d.nome, []);
+  // IGUAL AO QUE FOI ESCRITO (05/11/2026): as seções jogavam fora as linhas em
+  // branco e os espaços do começo da linha — o Dr. Bruno alinha "sem correção /
+  // OE: 20/20" com espaços e o PDF saía tudo grudado. Com o texto bruto, cada
+  // linha em branco vira espaço e o recuo vira espaço que o PDF não come.
+  if (typeof d.texto === "string" && d.texto.trim()) {
+    let inicioDeBloco = true;
+    for (const bruta of d.texto.replace(/\r\n?/g, "\n").replace(/\t/g, "    ").replace(/\s+$/, "").split("\n")) {
+      const l = bruta.replace(/\s+$/, "");
+      if (!l.trim()) { doc.moveDown(0.7); inicioDeBloco = true; continue; }
+      if (doc.y > doc.page.height - doc.page.margins.bottom - mm(30)) { novaPagina(doc); doc.y = doc.page.margins.top + mm(6); }
+      if (inicioDeBloco && /:$/.test(l.trim())) {
+        doc.font("G8").fontSize(10.5).fillColor(AZUL).text(l.trim().replace(/:$/, "").toUpperCase(), L, doc.y, { characterSpacing: 1, width: W }); doc.fillColor("#000"); doc.moveDown(0.25);
+      } else {
+        doc.font("G6").fontSize(12).fillColor("#000").text(l.replace(/^ +/, (m) => " ".repeat(m.length)).replace(/ {2,}/g, (m) => " " + " ".repeat(m.length - 1)), L, doc.y, { width: W });
+      }
+      inicioDeBloco = false;
+    }
+    if (d.conclusao) { doc.moveDown(0.8); doc.font("G8").fontSize(12).text(String(d.conclusao), L, doc.y, { width: W }); }
+    return;
+  }
   for (const sc of d.secoes || []) {
     if (doc.y > doc.page.height - doc.page.margins.bottom - mm(30)) { novaPagina(doc); doc.y = doc.page.margins.top + mm(6); }
     if (sc.titulo) { doc.moveDown(0.4); doc.font("G8").fontSize(10.5).fillColor(AZUL).text(String(sc.titulo).toUpperCase(), L, doc.y, { characterSpacing: 1, width: W }); doc.fillColor("#000"); doc.moveDown(0.25); }

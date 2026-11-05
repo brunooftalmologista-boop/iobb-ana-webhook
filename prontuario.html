@@ -1675,6 +1675,12 @@ $("#lo-refazer").addEventListener("click",()=>{ $("#lo-txt").value=montaLaudo();
 $("#lo-txt").addEventListener("input",e=>{ if(e.isTrusted) $("#lo-editado").value="1"; });
 function statusLO(t,cls){ const x=$("#status-lo"); x.textContent=t; x.className="status "+(cls||""); }
 function loSecoes(){ return v("lo-txt").split(/\n\s*\n/).map(b=>b.split("\n").map(x=>x.trim()).filter(Boolean)).filter(b=>b.length).map(b=>/:$/.test(b[0])?{titulo:b[0].replace(/:$/,""),linhas:b.slice(1)}:{titulo:"",linhas:b}); }
+// Igual ao que foi escrito: linha em branco vira espaço e o recuo com espaços fica
+// (o PDF assinado faz o mesmo, em assinatura.js). Título = 1ª linha do bloco terminando em ":".
+function loLinhasHTML(t){ let ini=true; return String(t||"").replace(/\r\n?/g,"\n").replace(/\s+$/,"").split("\n").map(b=>{ const l=b.replace(/\s+$/,"");
+  if(!l.trim()){ ini=true; return '<div style="height:3.5mm"></div>'; }
+  const tit=ini&&/:$/.test(l.trim()); ini=false;
+  return tit?`<h3 class="uso" style="margin:1mm 0">${esc(l.trim().replace(/:$/,"").toUpperCase())}</h3>`:`<div style="white-space:pre-wrap">${esc(l)}</div>`; }).join(""); }
 function gerarLO(assinar){
   if(!consultaAtual){ statusLO("Inicie o atendimento (ou abra a segunda via da consulta) primeiro.","erro"); return; }
   const secoes=loSecoes(); if(!secoes.length){ statusLO("O laudo está vazio.","erro"); return; }
@@ -1682,11 +1688,11 @@ function gerarLO(assinar){
   const data=new Date(consultaAtual.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   const nome=String(consultaAtual.paciente_nome||"").toUpperCase();
   marcaEmitido("lo");
-  if(assinar) return enviarAssinado("laudo_oft",{nome,data,secoes,conclusao},statusLO);
+  if(assinar) return enviarAssinado("laudo_oft",{nome,data,secoes,conclusao,texto:v("lo-txt")},statusLO);
   const folha=`${cabFolha(timbrado,data,"")}
 <h1>LAUDO OFTALMOLÓGICO</h1>
 ${pacFolha(nome)}
-${secoes.map(sc=>`${sc.titulo?`<h3 class="uso" style="margin:3mm 0 1mm">${esc(sc.titulo.toUpperCase())}</h3>`:""}${sc.linhas.map(l=>`<div>${esc(l)}</div>`).join("")}`).join("")}
+${loLinhasHTML(v("lo-txt"))}
 ${conclusao?`<p style="margin:5mm 0 0;font-weight:700">${esc(conclusao)}</p>`:""}
 ${assFolha(true,timbrado,' style="margin-top:16mm"')}`;
   abrirReceita({titulo:`Laudo oftalmológico - ${nome}`,folhas:[folha],timbrado,status:statusLO}); }
