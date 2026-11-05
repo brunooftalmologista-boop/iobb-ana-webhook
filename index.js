@@ -6475,7 +6475,7 @@ app.post("/webhook", async (req, res) => {
         // "#REENGAJAR 50" → dispara o lote.
         // "#REENGAJAR 50" → campanha geral. "#REENGAJAR 15 LENTES" (ou LENTES_B)
         // → campanha paralela, com o template dela (ver CAMPANHAS_PARALELAS).
-        const quantos = arg.match(/^(\d{1,3})(?:\s+(LENTES_B|LENTES|REVISAO|REVISÃO|RETORNO))?$/);
+        const quantos = arg.match(/^(\d{1,3})(?:\s+(LENTES_B|LENTES|REVISAO|REVISÃO|RETORNO|ADIADOS))?$/);
         if (quantos) {
           const paralela = quantos[2] ? CAMPANHAS_PARALELAS[quantos[2].replace("Ã", "A")] : null;
           const campanhaAlvo = paralela ? paralela.campanha : REENGAJAR_CAMPANHA;
@@ -7368,7 +7368,7 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
           const quando = camp.ultima_consulta
             ? new Date(`${camp.ultima_consulta}T12:00:00-03:00`).toLocaleDateString("pt-BR", { timeZone: TZ_BR, month: "long", year: "numeric" })
             : null;
-          dynEstavel += `\n\n### Este paciente respondeu ${camp.campanha === CAMPANHA_RETORNO ? `ao lembrete da reavaliação em ${camp.mes_referencia} orientada pelo Dr. Bruno na última consulta (chame de reavaliação, não de retorno)` : "à campanha de revisão anual"} — VOCÊ JÁ TEM OS DADOS DELE`
+          dynEstavel += `\n\n### Este paciente respondeu ${camp.campanha === CAMPANHA_RETORNO ? `ao lembrete da reavaliação em ${camp.mes_referencia} orientada pelo Dr. Bruno na última consulta (chame de reavaliação, não de retorno)` : camp.campanha === CAMPANHAS_PARALELAS.ADIADOS.campanha ? `à mensagem de quem tinha deixado a revisão para depois (em ${camp.mes_referencia} ele respondeu "Agora não"; a mensagem disse que você ficou de voltar a falar com ele)` : "à campanha de revisão anual"} — VOCÊ JÁ TEM OS DADOS DELE`
             + `\n- Nome completo (do cadastro): **${camp.nome || "—"}**`
             + (quando ? `\n- Última consulta aqui: ${quando}, no ${camp.unidade || "—"}.` : "")
             + (conv ? `\n- Como foi atendido daquela vez: **${ehParticular ? "Particular" : conv}**.` : "")
@@ -12844,6 +12844,11 @@ const CAMPANHAS_PARALELAS = {
   // prontuário. Quem entra é o Finalizar (agendarLembreteRetorno); quem envia é o
   // comando: "#REENGAJAR 50 REVISAO" manda primeiro os retornos do momento.
   RETORNO:  { campanha: "retorno_programado", template: "lembrete_retorno", rotulo: "lembrete de retorno" },
+  // QUEM ADIOU (Dr. Bruno, 05/11/2026): tocou "Agora não" em qualquer campanha →
+  // volta 3 meses depois, com mensagem que reconhece o "não" ("Quando conversamos
+  // em {{2}}, você preferiu deixar para mais adiante…"). Abastecida todo dia 1º
+  // por abastecer_adiados(); envio só por "#REENGAJAR 20 ADIADOS".
+  ADIADOS:  { campanha: "adiados", template: "retorno_quem_adiou", rotulo: "quem adiou (agora não)" },
 };
 const CAMPANHA_RETORNO = CAMPANHAS_PARALELAS.RETORNO.campanha;
 const CAMPANHAS_DE_LENTE = new Set(["lentes_rigidas_2026", "lentes_rigidas_2026_b"]);
@@ -13114,8 +13119,31 @@ function startAbastecimentoRevisaoAnual() {
       if (!env?.ok) registrarErro("revisao_anual_aviso", `Abastecido ${mes}: ${r.inseridos} paciente(s), mas o aviso por WhatsApp não saiu (janela de 24h?).`).catch(() => {});
     } catch (e) { console.error("[RevisãoAnual] abastecimento falhou:", e.message); }
   };
+  // Fila "adiados" (05/11/2026): no mesmo dia 1º, volta quem disse "Agora não"
+  // há 3 meses. Chave própria em settings — não depende de a revisão ter rodado.
+  const adiados = async () => {
+    try {
+      const br = new Date(new Date().toLocaleString("en-US", { timeZone: TZ_BR }));
+      if (br.getDate() !== 1 || br.getHours() < 9) return;
+      const mes = `${br.getFullYear()}-${String(br.getMonth() + 1).padStart(2, "0")}`;
+      const { data: st } = await supabase.from("settings").select("value").eq("key", "adiados_abastecido").maybeSingle();
+      if (st?.value === mes) return;
+      const { data, error } = await supabase.rpc("abastecer_adiados");
+      if (error) throw error;
+      const n = ((Array.isArray(data) ? data[0] : data) || {}).inseridos || 0;
+      await supabase.from("settings").upsert({ key: "adiados_abastecido", value: mes });
+      const { count: fila } = await supabase.from("reengajamento").select("fone_chave", { count: "exact", head: true }).eq("campanha", "adiados").eq("status", "pendente");
+      console.log(`[Adiados] Abastecido ${mes}: ${n} (fila ${fila}).`);
+      if (n) {
+        const env = await trySendWhatsApp(AUDITORIA_DESTINO, `⏸️ *Quem disse "Agora não" — de volta à fila*\n\nEntraram *${n}* paciente(s) que recusaram há 3 meses. Na fila: *${fila}*.\n\nPara enviar: *#REENGAJAR 20 ADIADOS* (só quando você mandar).`);
+        if (!env?.ok) registrarErro("adiados_aviso", `Abastecido ${mes}: ${n} paciente(s), mas o aviso por WhatsApp não saiu (janela de 24h?).`).catch(() => {});
+      }
+    } catch (e) { console.error("[Adiados] abastecimento falhou:", e.message); }
+  };
   setInterval(check, 30 * 60 * 1000);
+  setInterval(adiados, 30 * 60 * 1000);
   check();
+  adiados();
 }
 // ===== LEMBRETE DE RETORNO (Dr. Bruno, 30/10/2026) ==========================
 // A linha entra na mesma fila `reengajamento`: `ultima_consulta` é a consulta que
