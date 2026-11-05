@@ -399,7 +399,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
                 <div id="ex-just-box" hidden><span class="rot" style="margin:6px 0 0">Justificativa de cada exame <span class="hint">— preenchida pelo CID do diagnóstico; dá para editar antes de imprimir</span></span><div id="ex-just"></div></div>
                 <input type="hidden" id="ex-justs">
                 <div class="campo"><label for="ex-ind">Indicação clínica geral <span class="hint">(opcional — só sai no pedido se escrita aqui)</span></label><input id="ex-ind"></div>
-                <div class="row"><label>Olhos <select id="ex-olho" style="width:auto"><option>Ambos os olhos</option><option>Olho direito</option><option>Olho esquerdo</option></select></label><label style="gap:6px"><input type="checkbox" id="ex-separado" style="width:auto"> Um exame por folha (convênio)</label></div>
+                <div class="row"><label>Olhos <select id="ex-olho" style="width:auto"><option>Ambos os olhos</option><option>Olho direito</option><option>Olho esquerdo</option><option value="-">Não se aplica (exame que não é de olho)</option></select></label><label style="gap:6px"><input type="checkbox" id="ex-separado" style="width:auto"> Um exame por folha (convênio)</label></div>
                 <div class="row"><button type="button" class="pri" id="gerar-ped">Imprimir pedido de exames</button><button type="button" id="assinar-ped">🔏 PDF assinado</button><span class="status" id="status-ped"></span></div>
               </div>
               <div class="campo"><label for="cd-txt">Observações da conduta (um item por linha)</label><textarea id="cd-txt" rows="3" placeholder="Orientações, colírios, encaminhamentos…"></textarea></div>
@@ -1314,7 +1314,7 @@ ${cabFolha(timbrado,data,"")}
 <h1>SOLICITAÇÃO DE EXAMES</h1>
 ${pacFolha(nome,[p.idade!=null?`${p.idade} anos`:"",temConv?`Convênio: ${conv}`:"",temConv&&doc.carteirinha?`Carteirinha: ${doc.carteirinha}`:""])}
 <p>Solicito:</p>
-<ol class="meds">${lista.map(e=>`<li><div class="med-n"><span>${esc(e)}</span><span>${esc(olho)}</span></div>${just[e]?`<div class="med-p">Justificativa: ${esc(just[e])}</div>`:""}</li>`).join("")}</ol>
+<ol class="meds">${lista.map(e=>`<li><div class="med-n"><span>${esc(e)}</span><span>${olho==="-"?"":esc(olho)}</span></div>${just[e]?`<div class="med-p">Justificativa: ${esc(just[e])}</div>`:""}</li>`).join("")}</ol>
 ${ind?`<p class="sug"><b>Indicação clínica:</b> ${esc(ind)}</p>`:""}
 ${assFolha(true,timbrado)}`;
   if(assinar) return enviarAssinado("pedido",{nome,data,idade:p.idade??null,convenio:temConv?conv:"",carteirinha:temConv?(doc.carteirinha||""):"",exames:exs,olho,indicacao:ind,justificativas:just,separado:$("#ex-separado").checked},statusPed);

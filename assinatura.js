@@ -350,9 +350,11 @@ function corpoPedido(doc, d, exames) {
   doc.moveDown(0.4);
   exames.forEach((e, i) => {
     const y = doc.y;
-    doc.font("G8").fontSize(12).text(`${i + 1}. ${e}`, L + mm(3), y, { width: W - mm(45) });
+    // "-" = não se aplica (exame que não é de olho, ex.: densitometria): sem a coluna do olho.
+    const olho = d.olho === "-" ? "" : (d.olho || "Ambos os olhos");
+    doc.font("G8").fontSize(12).text(`${i + 1}. ${e}`, L + mm(3), y, { width: W - mm(olho ? 45 : 3) });
     const yFim = doc.y;
-    doc.font("G6").text(d.olho || "Ambos os olhos", L + W - mm(42), y, { width: mm(42), align: "right" });
+    if (olho) doc.font("G6").text(olho, L + W - mm(42), y, { width: mm(42), align: "right" });
     doc.y = Math.max(yFim, doc.y);
     const j = d.justificativas && d.justificativas[e];
     if (j) doc.font("G6").fontSize(11).text(`Justificativa: ${j}`, L + mm(8), doc.y + 2, { width: W - mm(8) }).fontSize(12);
