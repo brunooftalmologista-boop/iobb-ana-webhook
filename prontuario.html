@@ -113,6 +113,13 @@ details.ex-dia>.anexos-t{padding:0 12px 12px}
 .secao-t{border-bottom:1px solid var(--line)}
 .secao-t h4{margin:0;padding:10px 16px;background:var(--bg);font:500 14px var(--f-body);color:var(--pri)}
 .secao-t pre{margin:0;padding:12px 16px;font:14px/1.55 var(--f-body);white-space:pre-wrap;word-break:break-word}
+.olhos-t{width:100%;border-collapse:collapse;table-layout:fixed;font:14px/1.45 var(--f-body);margin:4px 0 8px}
+.olhos-t th{font-weight:400;font-size:12px;color:var(--muted);text-align:left;padding:4px 16px 2px}
+.olhos-t td{padding:6px 16px;border-top:1px solid var(--line);vertical-align:top;overflow-wrap:break-word;hyphens:auto}
+@media (max-width:600px){ .olhos-t th,.olhos-t td{padding-left:10px;padding-right:6px} .olhos-t td.est{width:28%} .olhos-t .ao{display:block;margin-left:0} }
+.olhos-t td.est{color:var(--muted);width:30%}
+.olhos-t td.na{color:var(--muted)}
+.olhos-t .ao{font-size:12px;color:var(--muted);margin-left:8px;white-space:nowrap}
 .anexos-t{display:flex;flex-wrap:wrap;gap:10px;padding:12px 16px}
 .arq{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:8px 10px;text-decoration:none;color:var(--ink);max-width:280px;font-size:13px}
 .arq .ic{width:34px;height:40px;border-radius:3px;background:var(--pri-soft);color:var(--pri);display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto}
@@ -733,6 +740,28 @@ function destacaAchados(rot,corpo){ const html=esc(corpo); if(!/biomicro|fundosc
     const normal=!sem||RE_NORMAL.test(sem)||/sem altera[çc][õo]es|dentro da normalidade|normais?$/.test(sem)||NORMAIS_TXT.some(n=>sem.endsWith(n));
     if(normal) return seg; const pre=(seg.match(/^((olho (direito|esquerdo)|OD|OE|AO)\s*:\s*)/i)||[""])[0];
     return `${pre}<mark class="alt">${seg.slice(pre.length)}</mark>`; }).join(""); }
+// Biomicroscopia/fundoscopia do prontuário novo como tabela estrutura × olho (10/11/2026).
+// Lê o texto que grade() gravou ("Olho direito: cristalino X; mácula Y."); qualquer
+// coisa fora desse molde (importada do iClinic, texto editado à mão) devolve null e
+// a seção sai como texto, igual antes. Só exibição: o texto salvo não muda.
+function olhosTabela(rot,corpo){
+  // "Periferia" saiu do formulário, mas está gravada em consultas de out/nov 2026
+  const itens=/^biomicro/i.test(rot)?BIO:/^fundosc/i.test(rot)?[...FO,["peri","Periferia","retina aplicada"]]:null; if(!itens) return null;
+  const ls=String(corpo||"").split("\n").map(x=>x.trim()).filter(Boolean); if(ls.length!==2) return null;
+  const m1=ls[0].match(/^olho direito:\s*(.+?)\.?$/i), m2=ls[1].match(/^olho esquerdo:\s*(.+?)\.?$/i); if(!m1||!m2) return null;
+  const nomes=itens.map(x=>x[1].toLowerCase()).sort((a,b)=>b.length-a.length);
+  const partes=s=>{ const r=new Map(); for(const seg of s.split(/;\s+/)){ const low=seg.toLowerCase(), n=nomes.find(n=>low.startsWith(n+" "));
+      if(!n||r.has(n)) return null; r.set(n,seg.slice(n.length).trim()); } return r; };
+  const od=partes(m1[1]), oe=partes(m2[1]); if(!od||!oe) return null;
+  const naoAval=t=>!t||/^n[ãa]o avaliad[oa]$/i.test(t);
+  const cel=(t,padrao,ambos)=>{ t=String(t||"").trim(); if(naoAval(t)) return '<td class="na">não avaliado</td>';
+    const tx=esc(t.charAt(0).toUpperCase()+t.slice(1));
+    return `<td${ambos?' colspan="2"':""}>${ehNormal(t,padrao)?tx:`<mark class="alt">${tx}</mark>`}${ambos?'<span class="ao">ambos os olhos</span>':""}</td>`; };
+  const linhas=itens.filter(([,n])=>od.has(n.toLowerCase())||oe.has(n.toLowerCase())).map(([,n,padrao])=>{
+    const a=od.get(n.toLowerCase())||"", b=oe.get(n.toLowerCase())||"";
+    const igual=!naoAval(a)&&semAcento(a.toLowerCase())===semAcento(b.toLowerCase());
+    return `<tr><td class="est">${esc(n)}</td>${igual?cel(a,padrao,true):cel(a,padrao)+cel(b,padrao)}</tr>`; });
+  return linhas.length?`<table class="olhos-t"><tr><th></th><th>OD</th><th>OE</th></tr>${linhas.join("")}</table>`:null; }
 function dioptria(v,ehEsf){
   let t=String(v||"").trim().replace(",",".").replace(/\s/g,""); if(!t) return "";
   if(/^(pl|plano|0+(\.0*)?)$/i.test(t)) return ehEsf?"Plano":"";
@@ -2165,7 +2194,7 @@ function desenhaTimeline(){
     const fim=!!c.finalizado_em;
     return `<div class="item-t"><div class="data-t ${fim?"":"cinza"}"><b>${dd}</b><i>${MES3[mm]}</i><em>${aa}</em></div>
       <div class="bloco-t"><div class="cab"><span>Por: <b>Dr. Bruno Borges</b>${c.dados?.importado?` <span class="tag">importado do iClinic${c.dados.iclinic_origem?" · "+esc(c.dados.iclinic_origem):""}</span>`:""}${fim?"":' <span class="tag and">em andamento</span>'}</span><span class="h">⏱ ${hhmm(c.data_consulta)}${c.duracao_seg?` (${durTexto(c.duracao_seg)})`:""}</span></div>
-      ${secs.map(s=>`<div class="secao-t">${s.rot?`<h4>${esc(s.rot)}</h4>`:""}<pre>${destacaAchados(s.rot,s.corpo)}</pre></div>`).join("")||(fim?"":'<div class="secao-t"><pre class="hint">Atendimento ainda sem conteúdo.</pre></div>')}
+      ${secs.map(s=>`<div class="secao-t">${s.rot?`<h4>${esc(s.rot)}</h4>`:""}${(!c.dados?.importado&&olhosTabela(s.rot,s.corpo))||`<pre>${destacaAchados(s.rot,s.corpo)}</pre>`}</div>`).join("")||(fim?"":'<div class="secao-t"><pre class="hint">Atendimento ainda sem conteúdo.</pre></div>')}
       ${mostraAnexos&&anexos.length?`<div class="secao-t"><h4>Imagens e anexos</h4><div class="anexos-t">${anexos.map(arq).join("")}</div></div>`:""}
       ${(c.adendos||[]).map(a=>a.tipo==="reabertura"?`<div class="adendo"><small>${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`:`<div class="adendo"><small>Informações adicionadas em ${ddmmaa(a.em)} às ${hhmm(a.em)}</small>${esc(a.texto)}</div>`).join("")}
       <div class="rodape-t">${fim?`<button type="button" data-copiar="${c.id}">Copiar texto</button><button type="button" data-adendo="${c.id}">+ Inserir informações</button><button type="button" data-anexar-ex="${c.id}">+ Anexar exame</button>${c.dados?.campos&&Object.keys(c.dados.campos).length?`<button type="button" data-2via="${c.id}" title="Receita, pedido ou atestado desta consulta, com a data dela">🖨 Segunda via</button><button type="button" class="pri" data-laudo-oft="${c.id}" title="Laudo oftalmológico desta consulta, com a data dela">📝 Laudo</button>`:""}${!c.dados?.importado&&diaBR(c.finalizado_em)===diaBR(Date.now())?`<button type="button" data-reabrir="${c.id}" title="Só no dia em que foi finalizado; a reabertura fica registrada">↺ Reabrir para editar</button>`:""}`:`<button type="button" class="pri" data-continuar="${c.id}">Continuar atendimento</button>`}</div>
