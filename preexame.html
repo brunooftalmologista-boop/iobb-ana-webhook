@@ -9,7 +9,8 @@
 <style>
 /* Pré-exame (17/10/2026): feito pelas secretárias, com o MESMO login do painel.
    Marca o motivo da consulta e anexa os exames feitos; tudo aparece no
-   prontuário do Dr. Bruno. Não lê o prontuário. */
+   prontuário do Dr. Bruno. Não lê o prontuário — só mostra os ARQUIVOS de
+   exames anteriores (iClinic e visitas passadas), pedido dele em 10/11/2026. */
 :root{
   --bg:#f2f4f7; --surface:#fff; --ink:#263238; --muted:#6b7a85; --line:#dfe4ea;
   --pri:#00796b; --pri-soft:#e0f2ef; --danger:#d32f2f; --ok:#2e7d32; --chip:#eef2f6;
@@ -80,6 +81,21 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
 .wa .pdf{height:90px;display:flex;align-items:center;justify-content:center;background:var(--chip);font-weight:700}
 .wa span{padding:3px 6px;display:flex;gap:4px;align-items:center}
 .wa input{width:auto}
+/* exames anteriores (10/11/2026): um bloco por data, miniaturas só ao abrir */
+.ant{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.ant details{border:1px solid var(--line);border-radius:8px;padding:0 10px}
+.ant summary{cursor:pointer;padding:8px 0;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;list-style-position:outside}
+.ant summary::-webkit-details-marker{display:none}
+.ant summary::before{content:"▸";color:var(--pri);width:12px}
+.ant details[open] summary::before{content:"▾"}
+.ant summary b{font-variant-numeric:tabular-nums}
+.ant summary small{color:var(--muted)}
+.ant-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;padding:0 0 10px}
+.ant-grade a{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:6px;overflow:hidden;text-decoration:none;color:var(--ink);font-size:12.5px;min-width:0}
+.ant-grade a:hover{border-color:var(--pri)}
+.ant-grade img,.ant-grade .ic{width:100%;height:96px;object-fit:cover;background:var(--chip)}
+.ant-grade .ic{display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--muted)}
+.ant-grade span{padding:3px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .portao{max-width:380px;margin:12vh auto;padding:0 16px}
 .portao .caixa{display:flex;flex-direction:column;gap:12px}
 </style>
@@ -184,6 +200,9 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
         <div class="zona" id="zona">Ou arraste o PDF ou a imagem do exame para cá</div>
         <div class="status" id="st-arq"></div>
         <div class="arqs" id="arqs"></div>
+
+        <h3>Exames anteriores</h3>
+        <div id="ant-box"></div>
       </div>
     </section>
   </main>
@@ -303,7 +322,7 @@ function desenha(){
   $("#m-outro").value=[...fora,p.motivo_outro].filter(Boolean).join("; ");
   $("#m-obs").value=p.observacao||"";
   st("#st-motivo",detalhe.preexame?`Salvo às ${hhmm(detalhe.preexame.updated_at)}${detalhe.preexame.feito_por?" ("+detalhe.preexame.feito_por+")":""}.`:"Ainda não preenchido.","");
-  sujo=false; desenhaArqs();
+  sujo=false; desenhaArqs(); desenhaAnteriores();
   docs=[]; desenhaDocs(); $("#wa-box").hidden=true; st("#st-doc","",""); carregaDocs();
 }
 function st(sel,t,cls){ $(sel).textContent=t; $(sel).className="status "+(cls||""); }
@@ -350,6 +369,33 @@ $("#arqs").addEventListener("click",async e=>{
     }catch(err){ if(err.status!==401) st("#st-arq",err.msg||"Não consegui tirar.","erro"); }
   }
 });
+/* ===== exames anteriores (iClinic + visitas anteriores) — só os arquivos de exame ===== */
+function desenhaAnteriores(){
+  const n=detalhe.anteriores_total;
+  if(n===null){ $("#ant-box").innerHTML='<div class="vazio">Não consegui conferir os exames anteriores agora. <button type="button" class="link" id="ant-ver">Tentar de novo</button></div>'; }
+  else if(!n){ $("#ant-box").innerHTML='<div class="vazio">Nenhum exame anterior guardado.</div>'; return; }
+  else $("#ant-box").innerHTML=`<button type="button" id="ant-ver">Mostrar ${n} arquivo${n>1?"s":""} de exames anteriores</button>`;
+  $("#ant-ver").addEventListener("click",carregaAnteriores);
+}
+async function carregaAnteriores(){
+  const id=atual; $("#ant-box").innerHTML='<div class="vazio">Carregando…</div>';
+  try{ const r=await api(`/api/preexame/consulta/${id}/anteriores`); if(id!==atual) return;
+    const ds=r.datas||[], dt=iso=>new Date(iso).toLocaleDateString("pt-BR",{timeZone:TZ});
+    if(!ds.length){ $("#ant-box").innerHTML='<div class="vazio">Nenhum exame anterior guardado.</div>'; return; }
+    $("#ant-box").innerHTML=`<div class="ant">${ds.map((d,i)=>`<details data-i="${i}"><summary><b>${dt(d.data)}</b><small>${[d.onde,d.iclinic?"iClinic":"",d.arquivos.length+" arquivo"+(d.arquivos.length>1?"s":"")].filter(Boolean).map(esc).join(" · ")}</small></summary><div class="ant-grade"></div></details>`).join("")}</div>`
+      +(r.cortado?'<div class="vazio">Mostrando os 400 mais recentes.</div>':"")
+      +'<div class="vazio" style="font-size:13px">Os links valem por 1 hora. Se um não abrir, <button type="button" class="link" id="ant-ver">recarregue a lista</button>.</div>';
+    $("#ant-ver").addEventListener("click",carregaAnteriores);
+    $$("#ant-box details").forEach(el=>el.addEventListener("toggle",()=>{
+      const g=el.querySelector(".ant-grade"); if(!el.open||g.childElementCount) return;
+      g.innerHTML=ds[el.dataset.i].arquivos.map((a,k)=>`<a href="${esc(a.url||"#")}" target="_blank" rel="noopener" title="${esc(a.nome)}">${a.tipo==="Imagem"&&a.url?`<img src="${esc(a.url)}" alt="" loading="lazy">`:`<div class="ic">${esc(a.tipo)}</div>`}<span>${esc(a.exame||a.tipo+" "+(k+1))}</span></a>`).join("");
+    }));
+  }catch(e){
+    if(e.status===401||id!==atual) return;
+    $("#ant-box").innerHTML=`<div class="vazio">${esc(e.msg||"Não consegui ler os exames anteriores.")} <button type="button" class="link" id="ant-ver">Tentar de novo</button></div>`;
+    $("#ant-ver").addEventListener("click",carregaAnteriores);
+  }
+}
 $("#b-arq").addEventListener("click",()=>$("#arquivo").click());
 $("#arquivo").addEventListener("change",()=>{ const fs=[...$("#arquivo").files]; $("#arquivo").value=""; enviar(fs); });
 const zona=$("#zona");

@@ -12013,14 +12013,80 @@ app.get("/api/preexame/consulta/:id", requirePreExame, async (req, res) => {
     }
     const d0 = new Date(`${new Date(ag.inicio).toLocaleDateString("en-CA", { timeZone: TZ_BR })}T00:00:00-03:00`);
     const historico = (await historicoPacientes([ag], d0)).get(ag.id) || { total: 0, ultimas: [] };
+    let anteriores_total = 0;
+    try {
+      const chaves = await chavesExamesAnteriores(ag);
+      if (chaves.length) {
+        const { count, error } = await qExamesAnteriores("id", chaves, ag.id, { count: "exact", head: true });
+        if (error) throw error;
+        anteriores_total = count || 0;
+      }
+    } catch (e) { anteriores_total = null; console.error("[Pré-exame] contar exames anteriores falhou:", e.message); }
     res.json({
       consulta: { id: ag.id, inicio: ag.inicio, unidade: ag.unidade, paciente_nome: ag.paciente_nome, convenio: ag.convenio, motivo: ag.motivo, encaixe: ag.encaixe, idade: idadeDe(ag.observacoes)?.idade ?? null, historico },
       preexame: pre ? { motivos: pre.motivos || [], colirio: pre.colirio || [], motivo_outro: pre.motivo_outro || "", observacao: pre.observacao || "", feito_por: pre.feito_por, updated_at: pre.updated_at } : null,
-      anexos,
+      anexos, anteriores_total,
     });
   } catch (e) {
     console.error("[Pré-exame] consulta falhou:", e.message);
     res.status(500).json({ error: "Não consegui abrir a consulta." });
+  }
+});
+// EXAMES ANTERIORES no pré-exame (Dr. Bruno, 10/11/2026): a equipe vê os
+// arquivos de exame já guardados do paciente — os importados do iClinic e os
+// anexados em visitas anteriores — para comparar com o de hoje. SÓ arquivos de
+// exame (tipo 'exame'): texto das consultas, receitas, laudos assinados e o PDF
+// do prontuário do iClinic continuam só no prontuário do médico.
+async function chavesExamesAnteriores(ag) {
+  if (!ult8(ag.paciente_telefone) || !primNome(ag.paciente_nome)) return [];
+  const chave = chavePaciente(ag.paciente_telefone, ag.paciente_nome);
+  const { data: pac } = await supabase.from("prontuario_pacientes").select("chave, dados").eq("chave", chave).maybeSingle();
+  return (await chavesDoGrupo(chave, pac)).chaves;   // cadastros juntados (🔗) entram juntos
+}
+function qExamesAnteriores(sel, chaves, agId, opts) {
+  return supabase.from("prontuario_anexos").select(sel, opts).in("paciente_chave", chaves).eq("tipo", "exame")
+    .or(`appointment_id.is.null,appointment_id.neq.${agId}`);
+}
+app.get("/api/preexame/consulta/:id/anteriores", requirePreExame, async (req, res) => {
+  try {
+    const ag = await agendamentoPreExame(req.params.id);
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
+    const chaves = await chavesExamesAnteriores(ag);
+    if (!chaves.length) return res.json({ datas: [] });
+    const { data: axs, error } = await qExamesAnteriores("id, nome, mime, observacao, path, created_at, consulta_id, appointment_id", chaves, ag.id)
+      .order("created_at", { ascending: false }).limit(400);
+    if (error) throw error;
+    const cIds = [...new Set((axs || []).map(a => a.consulta_id).filter(Boolean))];
+    const aIds = [...new Set((axs || []).map(a => a.appointment_id).filter(Boolean))];
+    const [{ data: cs }, { data: aps }] = await Promise.all([
+      cIds.length ? supabase.from("prontuario_consultas").select("id, data_consulta, dados->>iclinic_origem").in("id", cIds) : { data: [] },
+      aIds.length ? supabase.from("appointments").select("id, inicio, unidade").in("id", aIds) : { data: [] },
+    ]);
+    const mc = new Map((cs || []).map(c => [c.id, c])), ma = new Map((aps || []).map(a => [a.id, a]));
+    const urls = new Map();
+    if ((axs || []).length) {
+      const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrls(axs.map(a => a.path), 3600);
+      axs.forEach((a, i) => { if (s?.[i]?.signedUrl) urls.set(a.id, s[i].signedUrl); });
+    }
+    const tipoArq = (m) => /^image\//.test(m || "") ? "Imagem" : /pdf/.test(m || "") ? "PDF" : /word|msword/.test(m || "") ? "Word" : "Arquivo";
+    const porDia = new Map();
+    for (const a of axs || []) {
+      const c = a.consulta_id ? mc.get(a.consulta_id) : null, p = a.appointment_id ? ma.get(a.appointment_id) : null;
+      const quando = c?.data_consulta || p?.inicio || a.created_at;
+      const dia = new Date(quando).toLocaleDateString("en-CA", { timeZone: TZ_BR });
+      if (!porDia.has(dia)) porDia.set(dia, { data: quando, onde: c?.iclinic_origem || p?.unidade || "", iclinic: false, arquivos: [] });
+      const g = porDia.get(dia);
+      if (/iclinic/i.test(a.observacao || "")) g.iclinic = true;
+      g.arquivos.push({ id: a.id, nome: a.nome, mime: a.mime, tipo: tipoArq(a.mime), exame: /iclinic/i.test(a.observacao || "") ? "" : (a.observacao || ""), url: urls.get(a.id) || null });
+    }
+    const datas = [...porDia.entries()].sort((x, y) => y[0].localeCompare(x[0])).map(([, g]) => {
+      g.arquivos.sort((x, y) => String(x.nome).localeCompare(String(y.nome), "pt-BR", { numeric: true }));
+      return g;
+    });
+    res.json({ datas, cortado: (axs || []).length >= 400 });
+  } catch (e) {
+    console.error("[Pré-exame] exames anteriores falhou:", e.message);
+    res.status(500).json({ error: "Não consegui ler os exames anteriores." });
   }
 });
 app.post("/api/preexame/consulta/:id", requirePreExame, async (req, res) => {
