@@ -11118,11 +11118,17 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
       preexames = (ps || []).map(p => ({ ...p, inicio: meus.find(a => a.id === p.appointment_id)?.inicio || null }));
     }
     const { data: anexosRaw } = await supabase.from("prontuario_anexos").select("*").in("paciente_chave", grupo.chaves).order("created_at", { ascending: false }).limit(200);
+    // Data e unidade do AGENDAMENTO de cada exame do pré-exame: exame feito sem
+    // consulta no prontuário (ex.: só o Pentacam) não tem consulta para "morar"
+    // e sumia da ficha (Lucas Estevão, Pentacam 04/11/2026). A seção Exames da
+    // ficha agrupa por esta data.
+    const agPorId = new Map(meus.map(a => [a.id, a]));
     const anexos = [];
-    for (const a of anexosRaw || []) {
-      const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(a.path, 3600);
-      anexos.push({ ...a, url: s?.signedUrl || null });
-    }
+    const assin = (anexosRaw || []).length ? (await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrls(anexosRaw.map(a => a.path), 3600)).data : [];
+    (anexosRaw || []).forEach((a, i) => {
+      const ag = a.appointment_id ? agPorId.get(a.appointment_id) : null;
+      anexos.push({ ...a, url: assin?.[i]?.signedUrl || null, ag_inicio: ag?.inicio || null, ag_unidade: ag?.unidade || null });
+    });
     let conversa = [];
     try {
       let convId = (hoje || ultimoAg)?.conversation_id || null;

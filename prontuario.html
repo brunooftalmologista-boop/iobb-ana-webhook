@@ -89,6 +89,12 @@ table.lista td.nome{color:var(--pri);font-weight:500}
 details.sec{background:var(--surface);border:1px solid var(--line);border-radius:8px}
 details.sec>summary{cursor:pointer;padding:12px 16px;font-size:13px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 details.sec>div{padding:0 16px 14px}
+/* seção Exames (10/11/2026): todos os exames do paciente por data, inclusive os sem consulta */
+details.ex-dia{border:1px solid var(--line);border-radius:6px}
+details.ex-dia>summary{cursor:pointer;padding:8px 12px;font-size:14px}
+details.ex-dia>summary small{color:var(--muted)}
+details.ex-dia>summary .tag{margin-left:6px}
+details.ex-dia>.anexos-t{padding:0 12px 12px}
 .diag{display:flex;flex-wrap:wrap;gap:6px}
 .filtro{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .filtro select{width:auto;min-width:240px}
@@ -285,6 +291,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
         <details class="sec" id="sec-lentes" hidden><summary>Pedidos de lentes de contato</summary><div id="ped-lc"></div></details>
         <details class="sec" id="sec-graf" hidden><summary>Evolução da PIO</summary><div id="graf"></div></details>
         <details class="sec" id="sec-diag"><summary>Últimos diagnósticos</summary><div class="diag" id="diag"></div></details>
+        <details class="sec" id="sec-exames" hidden><summary id="exames-resumo">Exames</summary><div id="exames-corpo" style="display:grid;gap:6px"></div></details>
         <details class="sec" id="sec-iclinic"><summary>Prontuário anterior (iClinic)</summary><div style="display:grid;gap:10px"><div class="anexos-t" id="iclinic-arqs" style="padding:0"></div><div class="row"><button type="button" id="anexar-iclinic">Anexar prontuário anterior (PDF)</button><span class="status" id="st-iclinic"></span></div></div></details>
         <details class="sec" id="sec-ana" hidden><summary id="ana-resumo">Conversa com a Ana</summary><div class="conversa" id="ana-msgs"></div></details>
 
@@ -2074,6 +2081,7 @@ function desenhaFicha(){
   const ds=[]; for(const c of ficha.consultas||[]){ for(const k of (c.dados?.chips||[])) if(k.startsWith("hd|")){ const n=k.slice(3); if(!ds.includes(n)) ds.push(n); }
     try{ for(const [cid,d] of JSON.parse(c.dados?.campos?.["hd-cids"]||"[]")){ const n=`${d} (CID ${cid})`; if(!ds.includes(n)) ds.push(n); } }catch(_){} }
   $("#diag").innerHTML=ds.length?ds.map(d=>`<span class="tag">${esc(d)}</span>`).join(""):'<span class="vazio">Nenhum diagnóstico registrado aqui ainda.</span>';
+  desenhaExamesFicha();
   // prontuário anterior iClinic
   const icl=(ficha.anexos||[]).filter(x=>x.tipo==="iclinic");
   $("#iclinic-arqs").innerHTML=icl.length?icl.map(x=>`<span class="arq-w">${arq(x)}<button type="button" data-pdfic="${esc(x.id)}">Colocar na linha do tempo</button><span class="status" data-pdfic-st="${esc(x.id)}"></span></span>`).join(""):'<span class="vazio">Nenhum PDF do iClinic anexado.</span>';
@@ -2084,6 +2092,30 @@ function desenhaFicha(){
     $("#ana-msgs").innerHTML=conv.map(m=>`<div class="msg ${m.role==="user"?"pac":"ana"}"><small>${quem[m.role]||""} · ${tsMsg(m.quando).toLocaleString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</small>${esc(m.texto)}</div>`).join(""); }
   desenhaTimeline();
   $("#repetir-ref").hidden=!(ficha.consultas||[]).some(c=>c.finalizado_em&&(c.dados?.campos?.["re-od-esf"]||c.dados?.campos?.["re-oe-esf"]));
+}
+// EXAMES (10/11/2026): todos os arquivos de exame do paciente, por data — os do
+// iClinic, os de consultas do prontuário novo e os SEM consulta (ex.: veio só
+// fazer o Pentacam). Antes, exame sem consulta não aparecia em lugar nenhum.
+// Os de hoje ficam no quadro do pré-exame e no atendimento.
+function desenhaExamesFicha(){
+  const cs=ficha.consultas||[], porId=new Map(cs.map(c=>[c.id,c]));
+  const consDoAg=new Map(cs.filter(c=>c.appointment_id).map(c=>[c.appointment_id,c]));
+  const exs=(ficha.anexos||[]).filter(x=>x.tipo==="exame"&&!(ficha.hoje&&x.appointment_id===ficha.hoje.id));
+  $("#sec-exames").hidden=!exs.length; if(!exs.length){ $("#exames-corpo").innerHTML=""; return; }
+  const dias=new Map();
+  for(const x of exs){
+    const c=(x.consulta_id&&porId.get(x.consulta_id))||(x.appointment_id&&consDoAg.get(x.appointment_id))||null;
+    const q=c?.data_consulta||x.ag_inicio||x.created_at, k=diaBR(q);
+    if(!dias.has(k)) dias.set(k,{q,onde:"",semConsulta:false,xs:[]});
+    const g=dias.get(k); g.xs.push(x);
+    g.onde=g.onde||c?.dados?.iclinic_origem||x.ag_unidade||"";
+    if(!c) g.semConsulta=true;
+  }
+  const lista=[...dias.entries()].sort((a,b)=>b[0].localeCompare(a[0])).map(([,g])=>g);
+  const semC=lista.filter(g=>g.semConsulta).length;
+  $("#exames-resumo").textContent=`Exames (${exs.length} arquivo${exs.length>1?"s":""} em ${lista.length} data${lista.length>1?"s":""}${semC?` · ${semC} sem consulta`:""})`;
+  $("#exames-corpo").innerHTML=lista.map((g,i)=>`<details class="ex-dia"${i===0||g.semConsulta?" open":""}><summary><b>${ddmmaa(g.q)}</b> <small>${[g.onde,g.xs.length+" arquivo"+(g.xs.length>1?"s":"")].filter(Boolean).map(esc).join(" · ")}</small>${g.semConsulta?'<span class="tag">sem consulta registrada</span>':""}</summary><div class="anexos-t">${g.xs.map(arq).join("")}</div></details>`).join("");
+  $("#sec-exames").open=semC>0;
 }
 function preDoAgendamento(id){ return id?(ficha.preexames||[]).find(p=>p.appointment_id===id)||null:null; }
 // Motivo do pré-exame → queixa principal: o que tem botão igual já vem marcado;
