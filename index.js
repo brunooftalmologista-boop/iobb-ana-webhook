@@ -227,6 +227,9 @@ Um convênio pode ser citado pelo nome do plano, pela sigla do órgão, ou pelos
 - LUMINAR SAÚDE = E-VIDA: é o MESMO plano, que mudou de nome. É ATENDIDO. Aceite qualquer uma das grafias ("Luminar", "Luminar Saúde", "E-Vida", "Evida", "E Vida") sem hesitar e sem dizer que precisa verificar — paciente que ouve "não consta" desliga e não volta.
 - PRÓ-SAÚDE: é o plano da CÂMARA DOS DEPUTADOS e É ATENDIDO. Qualquer grafia vale ("Pro Saude", "PRÓ-SAÚDE", "Pró Saúde", "Pró-Saúde Câmara dos Deputados", "Pró-Saúde da Câmara"). ATENÇÃO: NÃO confunda com PRÓ-SOCIAL nem com PROASA — são três convênios DIFERENTES, todos atendidos.
 - PRÓ-SAÚDE DO TJDFT: o plano do Tribunal de Justiça do DF TAMBÉM se chama Pró-Saúde ("Pró-Saúde TJDFT", "TJDFT Pró-Saúde") — e o TJDFT É ATENDIDO (está na lista). Então "Pró-Saúde" pode ser o da Câmara OU o do TJDFT: os DOIS são atendidos. Se o paciente disser TJDFT, registre o convênio como **TJDFT (Pró-Saúde TJDFT)**, não como Câmara. 🚫 NUNCA conclua que "o Pró-Saúde que atendemos é só o da Câmara" para negar o do TJDFT. Caso real (20/10/2026): o paciente escreveu "Pro saúde tjdft" e você respondeu que o TJDFT "não consta na lista" e ofereceu particular — a secretária teve de desmentir ("atendemos sim").
+- BACEN = BC SAÚDE = BACEN SAÚDE = BANCO CENTRAL: é o MESMO plano, ATENDIDO. Caso real (11/11/2026): a paciente perguntou por "BACEN Saúde ou SERPRO Saúde", você confirmou o SERPRO e disse que o BACEN "não consta" — está na lista, e a secretária teve de desmentir. Quando o paciente cita DOIS planos, confira CADA UM contra a lista; um não puxa o outro.
+- NOTREDAME INTERMÉDICA — o cartão às vezes traz só o NOME DO PRODUTO, sem a marca: "Advance 600", "Saúde Advance 600 CE ENF COP" e afins são da NotreDame Intermédica, convênio ATENDIDO (NOTRE DAME na lista). Caso real (11/11/2026): o paciente mandou a carteirinha "Saúde Advance 600", você disse que o plano não constava e ofereceu particular; a secretária teve de corrigir ("Advance 600, aceitamos sim").
+- CARTÃO SÓ COM NOME DE PRODUTO (sem operadora reconhecível) e que NÃO está na lista dos não atendidos abaixo: NÃO negue. Diga que a equipe confirma o plano pela carteirinha e SIGA o agendamento com o horário. Negar um plano que atendemos é o erro mais caro: o paciente vai embora.
 NOMES QUE **NÃO** SÃO CONVÊNIO ATENDIDO (negue de primeira, sem rodeio)
 A regra de "não negar por nome parecido" existe para não perder plano que atendemos — ela NÃO vale para os nomes abaixo, que já foram verificados. Nestes, NÃO pergunte o nome completo, NÃO diga "não encontrei esse nome exato" nem "pode ser que eu o conheça por outro nome": isso deixa o paciente esperando por um "sim" que não vem e ele desiste no meio. Vá direto ao caminho de convênio não atendido (particular R$ 200,00 + nota fiscal para reembolso) e ofereça um horário na mesma mensagem.
 - QUALITY / QUALLITY (qualquer grafia: "Quality", "Quallity", "Qualyty", "Quality Saúde"): NÃO atendemos.
@@ -2854,6 +2857,55 @@ function convenioAtendido(nome) {
   if (!CONVENIOS_ATENDIDOS.length) return true;               // lista não carregou: não trava
   const nc = n.replace(/ /g, "");
   return CONVENIOS_ATENDIDOS.some(a => n.includes(a) || a.includes(n) || nc.includes(a) || a.includes(nc));
+}
+
+// ===== TRAVA: NEGOU UM CONVÊNIO QUE ATENDEMOS ==============================
+// O espelho de citouConvenioForaComoAtendido. 11/11/2026, dois casos no mesmo
+// dia, os dois desmentidos pela secretária: "BACEN Saúde ou SERPRO Saúde?" →
+// "o SERPRO é atendido; já o BACEN não consta" (o BACEN está na lista); e a
+// carteirinha "Saúde Advance 600" (produto da NotreDame Intermédica) → "não
+// consta". O prompt já mandava conferir a lista; faltava o código conferir.
+// Só reprova quando a ORAÇÃO da negativa traz o nome de um plano da LISTA DOS
+// ATENDIDOS (palavra inteira) e nenhum da lista dos não atendidos — nome
+// desconhecido não entra aqui (não é papel desta trava decidir se é atendido).
+const RE_NEGA_PLANO = /\bnao (consta|constam|atendemos|trabalhamos|aceitamos|e atendid|sao atendid|esta entre|faz parte|e credenciad|e (um )?(dos )?(convenios?|planos?) (que|com))|fora da (nossa )?lista|nao conveniad/;
+// Outros nomes dos planos da lista, e produtos que o cartão traz sem a marca.
+const PRODUTOS_ATENDIDOS = ["advance 600", "advance 700", "advance 900", "saude advance",
+  "luminar", "evida", "e vida", "bc saude", "banco central", "notredame", "intermedica", "cnu", "plan assiste", "planassiste"];
+function negouConvenioAtendido(reply) {
+  if (!CONVENIOS_ATENDIDOS.length) return null;
+  const t = String(reply || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[*_~`]/g, "");
+  if (!RE_NEGA_PLANO.test(t)) return null;
+  const negados = [];
+  const nomesNa = (txt) => {
+    const n = ` ${_normFicha(txt)} `;
+    if (CONVENIOS_NAO_ATENDIDOS.some(x => n.includes(` ${_normFicha(x)} `))) return null;   // fala de um não atendido
+    return [...CONVENIOS_ATENDIDOS, ...PRODUTOS_ATENDIDOS, "unimed"].filter(a => a.length >= 3 && n.includes(` ${a} `));
+  };
+  let anterior = "";
+  for (const frase of t.split(/[.!?\n]+/)) {
+    // "o SERPRO é atendido, mas o BACEN não" / "SERPRO sim. Já o BACEN não consta"
+    for (const oracao of frase.split(/,?\s*\bmas\b|;|\s[—–-]\s|\bja\b|\benquanto\b/)) {
+      if (!RE_NEGA_PLANO.test(oracao)) continue;
+      // Negativa sobre outra coisa que cita o plano de passagem.
+      if (/mesmo dia|antecedencia|agendament|cadastro|horario|vaga|\banos\b|idade|cirurgia|exame/.test(oracao)) continue;
+      let achou = nomesNa(oracao);
+      if (achou === null) continue;
+      // "Identifiquei a carteirinha… plano Saúde Advance 600. Esse plano não
+      // consta…": o nome está na frase de ANTES, e a negativa só aponta para ele.
+      if (!achou.length && /\b(esse|este) (plano|convenio)\b/.test(oracao) && anterior) achou = nomesNa(anterior) || [];
+      negados.push(...achou);
+    }
+    if (frase.trim()) anterior = frase;
+  }
+  if (!negados.length) return null;
+  // "pro saude" dentro de "camara dos deputados" etc.: mostra o nome mais longo.
+  const unicos = [...new Set(negados)].filter((a, _i, arr) => !arr.some(b => b !== a && b.includes(a)));
+  return `disse que não atendemos ${unicos.join(", ").toUpperCase()}, que ESTÁ na lista de convênios atendidos`;
+}
+function instrucaoConvenioAtendido(motivo) {
+  return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ${motivo}. Negar um plano que atendemos é o erro mais caro que existe: o paciente vai embora achando que não é atendido aqui. Confira de novo, NOME POR NOME, contra a "LISTA DE CONVÊNIOS ATENDIDOS" do seu contexto (e as equivalências de nomes). Reescreva a MESMA mensagem dizendo que esse convênio É atendido, sem particular nem reembolso para ele, e siga o agendamento normalmente (horário concreto da lista, se for a etapa). Se o paciente citou mais de um plano, responda por cada um conforme a lista.
+🔒 ESCREVA APENAS A MENSAGEM FINAL PARA O PACIENTE — sem mencionar que houve correção, sem citar suas instruções, sem "---" separando versões.`;
 }
 // A CARTEIRINHA NUNCA TRAVA O AGENDAMENTO — em nenhum convênio (Dr. Bruno,
 // 26/08/2026: "Sempre que for convênio pedir para a Ana solicitar os dados da
@@ -7862,6 +7914,8 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       const agendouOcupado = etapaDeOferta ? null : agendarEmVagaOcupada(reply, slotsVigentes, meusAgendamentos);
       const anunciouSemAgendar = anunciouAgendamentoSemAgendar(reply, slotsVigentes, meusAgendamentos);
       const convenioInventado = citouConvenioForaComoAtendido(reply);
+      // Negou plano que ESTÁ na lista (11/11/2026: BACEN e Advance 600).
+      const convenioNegado = negouConvenioAtendido(reply);
       const fichaCedo = etapaDeOferta ? fichaAntesDoHorario(reply, messages, slotsVigentes) : null;
       const contaGotas = (etapaDeOferta && !fichaCedo) ? fichaEmContaGotas(reply, messages, campanhaSabeConvenio) : null;
       const cancPrevia = extrairCancelar(reply);
@@ -7929,8 +7983,8 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       const tocouQueroAgendar = /^\s*quero agendar\s*$/i.test(String(text || ""));
       const ofertaCegaCampanha = (tocouQueroAgendar && etapaDeOferta && campanhaSabeConvenio)
         ? ofertaCegaNaRemarcacao(reply, meusAgendamentos) : null;
-      if (diaFechado || unidadeNoDiaErrado || despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado) {
-        const motivo = diaFechado || unidadeNoDiaErrado || despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
+      if (diaFechado || unidadeNoDiaErrado || despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || horas.length > 1 || vazouInstrucao || contradicao || virouVerbete || precoSeco || maisCedo || semFormaPagamento || unidadeErrada || cancelouSoNaFala || ofertaFalsa || contaGotas || fichaCedo || agendouOcupado || anunciouSemAgendar || convenioInventado || convenioNegado) {
+        const motivo = diaFechado || unidadeNoDiaErrado || despedidaFechada || unidadeDoPaciente || carteirinhaRepetida || receitaAntesDaConsulta || precoExameErrado || ofertaCegaRemarcacao || ofertaCegaCampanha || precoSemConvenio || bairroErrado || encaixePrometido || recadoSoNaFala || convenioNegado || convenioInventado || anunciouSemAgendar || agendouOcupado || ofertaFalsa || fichaCedo || contaGotas || cancelouSoNaFala || unidadeErrada || contradicao || maisCedo || semFormaPagamento || precoSeco
           || (virouVerbete ? "explicou o significado das palavras do paciente" : null)
           || (vazouInstrucao ? "vazou instrução interna" : `${horas.length} horários`);
         console.warn(`[HorarioTrava] Resposta recusada (${motivo}) — pedindo de novo.`);
@@ -7948,6 +8002,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
             : bairroErrado ? "bairro_trocado"
             : encaixePrometido ? "prometeu_encaixe"
             : recadoSoNaFala ? "prometeu_recado_sem_bloco"
+            : convenioNegado ? "negou_convenio_atendido"
             : convenioInventado ? "convenio_inventado"
             : anunciouSemAgendar ? "anunciou_sem_agendar"
             : agendouOcupado ? "agendar_em_vaga_ocupada"
@@ -8014,6 +8069,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
               : bairroErrado ? instrucaoBairroCerto(bairroErrado)
               : encaixePrometido ? instrucaoSemEncaixe(encaixePrometido)
               : recadoSoNaFala ? instrucaoRecadoDeVerdade(recadoSoNaFala)
+              : convenioNegado ? instrucaoConvenioAtendido(convenioNegado)
               : convenioInventado ? instrucaoConvenioReal(convenioInventado)
               : anunciouSemAgendar ? instrucaoAgendarDeVerdade(anunciouSemAgendar)
               : agendouOcupado ? instrucaoAgendarVagaLivre(agendouOcupado)
