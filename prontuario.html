@@ -347,7 +347,10 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
               <div><span class="rot">Pressão intraocular</span>
                 <div class="row"><label><b style="color:var(--od)">OD</b> <input id="pio-od" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label><label><b style="color:var(--oe)">OE</b> <input id="pio-oe" inputmode="numeric" style="width:70px;text-align:right;font-family:var(--f-mono)"></label><span class="lbl">mmHg</span>
                   <select id="pio-met" aria-label="Método"><option>aplanação</option><option>tonômetro de rebote</option><option>sopro</option></select><label>às <input id="pio-hora" style="width:80px;font-family:var(--f-mono)"></label></div></div>
-              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Fundoscopia</span><button type="button" class="link" data-normal="fo">Sem alterações em ambos os olhos</button></div><div class="grid-olho" id="fo"></div></div>
+              <div><div class="row" style="justify-content:space-between"><span class="rot" style="margin:0">Fundoscopia</span><button type="button" class="link" data-normal="fo">Sem alterações em ambos os olhos</button></div><div class="grid-olho" id="fo"></div>
+                <div class="micro-alt"><span class="hint">Alterações (marcar escreve no campo da estrutura, no olho certo; desmarcar tira)</span>
+                  <div class="micro-alt-l"><small>Olho direito</small><div class="chips" data-grupo="fo-alt-od"></div></div>
+                  <div class="micro-alt-l"><small>Olho esquerdo</small><div class="chips" data-grupo="fo-alt-oe"></div></div></div></div>
             </div>
           </article>
 
@@ -832,6 +835,21 @@ const ALTERACOES={
     ["Rotura retiniana",[4]],["Descolamento de retina",[4]],["Nevo de coroide",[]]]};
 for(const [ex,lista] of Object.entries(ALTERACOES)) for(const o of ["od","oe"])
   $(`[data-grupo="${ex}-alt-${o}"]`).innerHTML=lista.map(([n])=>`<span class="chip" tabindex="0">${esc(n)}</span>`).join("");
+/* Fundoscopia (11/11/2026): a alteração marcada vai PARA O CAMPO da estrutura naquele olho
+   (o texto continua o de sempre e a tabela da linha do tempo a mostra em negrito).
+   [nome do botão, estrutura em FO, texto que entra no campo] */
+const FO_ALT=[["Escavação aumentada","disco","escavação aumentada"],["Palidez de papila","disco","palidez"],["Edema de papila","disco","edema de papila"],
+  ["Atrofia peripapilar","disco","atrofia peripapilar"],["Drusas maculares","mac","drusas"],["Alterações pigmentares maculares","mac","alterações pigmentares"],
+  ["Membrana epirretiniana","mac","membrana epirretiniana"],["Edema macular","mac","edema macular"],["Alterações vasculares hipertensivas","vasos","alterações hipertensivas"],
+  ["Microaneurismas e hemorragias","vasos","microaneurismas e hemorragias"],["Descolamento do vítreo posterior","vit","descolamento do vítreo posterior"],
+  ["Opacidades vítreas","vit","opacidades"],["Hemorragia vítrea","vit","hemorragia"]];
+for(const o of ["od","oe"]) $(`[data-grupo="fo-alt-${o}"]`).innerHTML=FO_ALT.map(([n])=>`<span class="chip" tabindex="0">${esc(n)}</span>`).join("");
+function aplicaAltFo(c){ const a=FO_ALT.find(x=>x[0]===nomeChip(c)); if(!a) return;
+  const o=c.closest("[data-grupo]").dataset.grupo.slice(-2), [,k,txt]=a, el=$(`#fo-${k}-${o}`), padrao=(FO.find(x=>x[0]===k)||[])[2]||""; if(!el) return;
+  const reTxt=new RegExp(`(^|,\\s*)${txt.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}(?=\\s*,|\\s*$)`,"i"), atual=String(el.value||"").trim();
+  if(c.getAttribute("aria-pressed")==="true"){ if(ehNormal(atual,padrao)) el.value=txt; else if(!reTxt.test(atual)) el.value=`${atual}, ${txt}`; }
+  else { const sem=atual.replace(reTxt,"").replace(/^\s*,\s*/,"").trim(); el.value=sem||padrao; }
+  el.dispatchEvent(new Event("input",{bubbles:true})); }
 // texto das alterações marcadas: iguais nos dois olhos saem uma vez só
 function alteracoesTxt(ex){ const od=marcados(`${ex}-alt-od`).map(nomeChip), oe=marcados(`${ex}-alt-oe`).map(nomeChip);
   return ALTERACOES[ex].filter(([n])=>od.includes(n)||oe.includes(n)).map(([n])=>`${n} ${od.includes(n)&&oe.includes(n)?"em ambos os olhos":od.includes(n)?"no olho direito":"no olho esquerdo"}`); }
@@ -840,6 +858,7 @@ function liga(c){ c.setAttribute("aria-pressed",c.getAttribute("aria-pressed")==
   const ex=((c.closest("[data-grupo]")?.dataset.grupo||"").match(/^(\w+)-alt-o[de]$/)||[])[1];
   if(ex&&ALTERACOES[ex]&&c.getAttribute("aria-pressed")==="true"){ const normais=$$(`[data-grupo="${ex}"] .chip`);
     for(const i of (ALTERACOES[ex].find(([n])=>n===nomeChip(c))||[,[]])[1]) normais[i]?.setAttribute("aria-pressed","false"); }
+  if(ex==="fo") aplicaAltFo(c);
   atualiza(); }
 $$(".chip").forEach(c=>{ c.setAttribute("role","checkbox"); c.setAttribute("aria-pressed","false");
   if(c.dataset.cid) c.insertAdjacentHTML("beforeend",`<span class="cid">(${c.dataset.cid})</span>`);
