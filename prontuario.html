@@ -744,7 +744,13 @@ function marcaAlterados(){ for(const [id,itens] of [["bio",BIO],["fo",FO]]) for(
 document.addEventListener("input",e=>{ if(/^(bio|fo)-/.test(e.target.id||"")) marcaAlterados(); });
 // linha do tempo: trechos da biomicroscopia/fundoscopia fora do normal ganham <mark>
 let NORMAIS_TXT=null;   // calculado no 1º uso: semAcento é declarado mais abaixo (TDZ)
-function destacaAchados(rot,corpo){ const html=esc(corpo); if(!/biomicro|fundosc|\bfo\b|mapeamento/i.test(rot)) return html;
+// exames complementares: só as alterações assinaladas (topografia, microscopia) ficam em negrito
+let RE_ALT_EXAMES=null;
+function destacaAltExames(html){
+  RE_ALT_EXAMES=RE_ALT_EXAMES||new RegExp(`(?:${Object.values(ALTERACOES).flat().map(([n])=>esc(n).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")}) (?:em ambos os olhos|no olho direito|no olho esquerdo)`,"g");
+  return html.replace(RE_ALT_EXAMES,'<mark class="alt">$&</mark>'); }
+function destacaAchados(rot,corpo){ const html=esc(corpo); if(/^exames complementares/i.test(rot)) return destacaAltExames(html);
+  if(!/biomicro|fundosc|\bfo\b|mapeamento/i.test(rot)) return html;
   return html.split(/(\n|;\s*)/).map(seg=>{ if(/^(\n|;\s*)$/.test(seg)||!seg.trim()) return seg;
     const sem=semAcento(seg).replace(/^(olho (direito|esquerdo)|od|oe|ao)\s*:\s*/,"").replace(/\.$/,"").trim();
     NORMAIS_TXT=NORMAIS_TXT||[...BIO,...FO].map(x=>semAcento(x[2]));
