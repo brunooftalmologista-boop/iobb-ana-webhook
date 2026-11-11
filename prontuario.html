@@ -359,6 +359,9 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
                 <div class="status" id="st-exames"></div></div>
               <div><span class="rot">Topografia de córnea</span>
                 <div class="chips" data-grupo="topo"><span class="chip" tabindex="0">Córnea regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular e simétrico em ambos os olhos</span></div>
+                <div class="micro-alt"><span class="hint">Alterações (marque no olho em que aparecem; iguais nos dois saem "em ambos os olhos")</span>
+                  <div class="micro-alt-l"><small>Olho direito</small><div class="chips" data-grupo="topo-alt-od"></div></div>
+                  <div class="micro-alt-l"><small>Olho esquerdo</small><div class="chips" data-grupo="topo-alt-oe"></div></div></div>
                 <textarea id="topo-txt" rows="2" style="margin-top:6px" placeholder="Descrição da topografia…"></textarea></div>
               <div><span class="rot">Microscopia especular de córnea</span>
                 <div class="chips" data-grupo="micro"><span class="chip" tabindex="0">Densidade endotelial estimada normal para a idade em ambos os olhos</span><span class="chip" tabindex="0">Predominância de células de arquitetura e disposição regulares em ambos os olhos</span></div>
@@ -803,16 +806,25 @@ function cilindroNegativo(el){
 }
 $("#transpor").addEventListener("click",()=>{ for(const o of ["od","oe"]){ const e=$(`#re-${o}-esf`),c=$(`#re-${o}-cil`),x=$(`#re-${o}-eixo`); const cil=num(c.value); if(!cil) continue;
   e.value=dioptria(String(num(e.value)+cil),true); c.value=dioptria(String(-cil),false); let ax=parseInt(x.value||"0",10); x.value=String(ax>90?ax-90:ax+90); } atualiza(); });
-/* Alterações da microscopia especular (11/11/2026): um botão por olho; o nome vira a frase
-   ("Polimegatismo no olho direito"). [nome, índice do botão "normal" que ela contradiz] */
-const MICRO_ALT=[["Densidade endotelial reduzida para a idade",0],["Polimegatismo",1],["Pleomorfismo",1],["Gutatas endoteliais",null],
-  ["Áreas escuras sem células visíveis",null],["Precipitados ceráticos",null],["Contagem prejudicada pela qualidade da imagem",null]];
-for(const o of ["od","oe"]) $(`[data-grupo="micro-alt-${o}"]`).innerHTML=MICRO_ALT.map(([n])=>`<span class="chip" tabindex="0">${esc(n)}</span>`).join("");
+/* Alterações por olho dos exames complementares (microscopia 11/11/2026, topografia idem):
+   um botão por olho; o nome vira a frase ("Polimegatismo no olho direito").
+   [nome, índices dos botões "normal" do exame que ela contradiz] */
+const ALTERACOES={
+  micro:[["Densidade endotelial reduzida para a idade",[0]],["Polimegatismo",[1]],["Pleomorfismo",[1]],["Gutatas endoteliais",[]],
+    ["Áreas escuras sem células visíveis",[]],["Precipitados ceráticos",[]],["Contagem prejudicada pela qualidade da imagem",[]]],
+  topo:[["Astigmatismo irregular",[0,1,2]],["Astigmatismo assimétrico",[2]],["Encurvamento inferior",[0,2]],["Padrão sugestivo de ceratocone",[0,1,2]],
+    ["Padrão em garra de caranguejo",[0,1,2]],["Ceratometria elevada",[0]],["Aplanamento central pós-cirurgia refrativa",[0]],
+    ["Irregularidade por filme lacrimal",[0]],["Captura de baixa qualidade",[]]]};
+for(const [ex,lista] of Object.entries(ALTERACOES)) for(const o of ["od","oe"])
+  $(`[data-grupo="${ex}-alt-${o}"]`).innerHTML=lista.map(([n])=>`<span class="chip" tabindex="0">${esc(n)}</span>`).join("");
+// texto das alterações marcadas: iguais nos dois olhos saem uma vez só
+function alteracoesTxt(ex){ const od=marcados(`${ex}-alt-od`).map(nomeChip), oe=marcados(`${ex}-alt-oe`).map(nomeChip);
+  return ALTERACOES[ex].filter(([n])=>od.includes(n)||oe.includes(n)).map(([n])=>`${n} ${od.includes(n)&&oe.includes(n)?"em ambos os olhos":od.includes(n)?"no olho direito":"no olho esquerdo"}`); }
 function liga(c){ c.setAttribute("aria-pressed",c.getAttribute("aria-pressed")==="true"?"false":"true");
-  // marcar uma alteração desmarca o botão "normal" da microscopia que diz o contrário
-  const g=c.closest("[data-grupo]")?.dataset.grupo||"";
-  if(/^micro-alt-/.test(g)&&c.getAttribute("aria-pressed")==="true"){ const i=(MICRO_ALT.find(([n])=>n===nomeChip(c))||[])[1];
-    const nm=i==null?null:$$('[data-grupo="micro"] .chip')[i]; if(nm) nm.setAttribute("aria-pressed","false"); }
+  // marcar uma alteração desmarca os botões "normal" do mesmo exame que dizem o contrário
+  const ex=((c.closest("[data-grupo]")?.dataset.grupo||"").match(/^(\w+)-alt-o[de]$/)||[])[1];
+  if(ex&&ALTERACOES[ex]&&c.getAttribute("aria-pressed")==="true"){ const normais=$$(`[data-grupo="${ex}"] .chip`);
+    for(const i of (ALTERACOES[ex].find(([n])=>n===nomeChip(c))||[,[]])[1]) normais[i]?.setAttribute("aria-pressed","false"); }
   atualiza(); }
 $$(".chip").forEach(c=>{ c.setAttribute("role","checkbox"); c.setAttribute("aria-pressed","false");
   if(c.dataset.cid) c.insertAdjacentHTML("beforeend",`<span class="cid">(${c.dataset.cid})</span>`);
@@ -844,11 +856,9 @@ const linhas=id=>v(id).split(/\n+/).map(t=>t.trim()).filter(Boolean);
 const ponto=t=>{ t=t.charAt(0).toUpperCase()+t.slice(1); return /[.!?:]$/.test(t)?t:t+"."; };
 function bloco(rot,itens){ if(!itens.length) return ""; if(itens.length===1) return `${rot}: ${ponto(itens[0])}`; return `${rot}:\n`+itens.map(ponto).join("\n"); }
 function exComp(){ const L=[];
-  const topo=[...marcados("topo").map(nomeChip),...linhas("topo-txt")]; if(topo.length) L.push(`Topografia de córnea: ${topo.map(ponto).join(" ")}`);
+  const topo=[...marcados("topo").map(nomeChip),...alteracoesTxt("topo"),...linhas("topo-txt")]; if(topo.length) L.push(`Topografia de córnea: ${topo.map(ponto).join(" ")}`);
   const mic=[...marcados("micro").map(nomeChip)]; if(v("micro-od")||v("micro-oe")) mic.push(`densidade endotelial: olho direito ${v("micro-od")||"não aferida"}${v("micro-od")?" células/mm²":""}; olho esquerdo ${v("micro-oe")||"não aferida"}${v("micro-oe")?" células/mm²":""}`);
-  const mOd=marcados("micro-alt-od").map(nomeChip), mOe=marcados("micro-alt-oe").map(nomeChip);
-  for(const [n] of MICRO_ALT){ const a=mOd.includes(n), b=mOe.includes(n); if(a||b) mic.push(`${n} ${a&&b?"em ambos os olhos":a?"no olho direito":"no olho esquerdo"}`); }
-  mic.push(...linhas("micro-txt"));
+  mic.push(...alteracoesTxt("micro"),...linhas("micro-txt"));
   if(mic.length) L.push(`Microscopia especular de córnea: ${mic.map(ponto).join(" ")}`);
   if(v("paqui-od")||v("paqui-oe")) L.push(`Paquimetria central média: olho direito ${v("paqui-od")||"não aferida"}${v("paqui-od")?" µm":""}; olho esquerdo ${v("paqui-oe")||"não aferida"}${v("paqui-oe")?" µm":""}.`);
   const mapa=[...marcados("mapa").map(nomeChip),...linhas("mapa-txt")]; if(mapa.length) L.push(`Mapeamento de retina: ${mapa.map(ponto).join(" ")}`);
