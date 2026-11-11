@@ -373,6 +373,9 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
               <div class="row"><label>Paquimetria central média olho direito <input id="paqui-od" inputmode="numeric" style="width:90px"> µm</label><label>olho esquerdo <input id="paqui-oe" inputmode="numeric" style="width:90px"> µm</label></div>
               <div><span class="rot">Mapeamento de retina</span>
                 <div class="chips" data-grupo="mapa"><span class="chip" tabindex="0">Vítreo posterior transparente em ambos os olhos</span><span class="chip" tabindex="0">Papila rósea, de limites bem definidos, escavação fisiológica em ambos os olhos</span><span class="chip" tabindex="0">Mácula com reflexo fisiológico em ambos os olhos</span><span class="chip" tabindex="0">Vasos com contorno e calibre dentro da normalidade em ambos os olhos</span><span class="chip" tabindex="0">Periferia retiniana sem lesões ou anormalidades em ambos os olhos</span></div>
+                <div class="micro-alt"><span class="hint">Alterações (marque no olho em que aparecem; iguais nos dois saem "em ambos os olhos")</span>
+                  <div class="micro-alt-l"><small>Olho direito</small><div class="chips" data-grupo="mapa-alt-od"></div></div>
+                  <div class="micro-alt-l"><small>Olho esquerdo</small><div class="chips" data-grupo="mapa-alt-oe"></div></div></div>
                 <textarea id="mapa-txt" rows="2" style="margin-top:6px" placeholder="Descrição do mapeamento…"></textarea></div>
               <div class="campo"><label for="exc-txt">Outros exames (um por linha)</label><textarea id="exc-txt" rows="2"></textarea></div>
             </div>
@@ -440,7 +443,8 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
                 <span class="rot" style="margin:0">Prescrição de óculos <span class="hint">— preenchida a partir da refração</span></span>
                 <div style="overflow-x:auto"><table aria-label="Receita"><thead><tr><th></th><th>Esférico</th><th>Cilíndrico</th><th>Eixo</th></tr></thead><tbody id="rx-body"></tbody></table></div>
                 <div class="hint" id="rx-add"></div>
-                <div class="row"><input type="hidden" id="rx-emitida"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="monofocais-antifadiga">Antifadiga (Hoya Sync / Essilor Eyezen)</option><option value="perto">Óculos para perto</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option><option value="bifocais">Bifocal (flat-top 28)</option></select></label>
+                <div class="row"><input type="hidden" id="rx-emitida"><label>Lente <select id="rx-uso"><option value="monofocais">Monofocal</option><option value="monofocais-alto">Monofocal alto índice</option><option value="monofocais-antifadiga">Antifadiga (Hoya Sync / Essilor Eyezen)</option><option value="perto">Óculos para perto</option><option value="longe-perto">Óculos separados: longe e perto</option><option value="multifocais">Multifocal</option><option value="ocupacionais">Ocupacional</option><option value="bifocais">Bifocal (flat-top 28)</option></select></label>
+                  <label>Proteção solar <select id="rx-solar"><option value="">Não</option><option value="1">Lentes solares (óculos de sol)</option></select></label>
                   <label style="gap:6px"><input type="checkbox" id="rx-timbrado" style="width:auto"> Papel timbrado (sem logotipo)</label></div>
                 <div class="campo"><label for="rx-sug">Lentes sugeridas (pode editar)</label><textarea id="rx-sug" rows="2" style="min-height:48px;font-size:14px"></textarea></div>
                 <div class="campo"><label for="rx-obs">Observação na receita (opcional) <span class="hint">— sai impressa, para o paciente e a ótica</span></label><textarea id="rx-obs" rows="3" style="min-height:56px;font-size:14px" placeholder="Ex.: Óculos para longe. Aumentar o grau de longe para melhorar a visão de perto embaça a visão de longe…"></textarea></div>
@@ -820,7 +824,12 @@ const ALTERACOES={
     ["Áreas escuras sem células visíveis",[]],["Precipitados ceráticos",[]],["Contagem prejudicada pela qualidade da imagem",[]]],
   topo:[["Astigmatismo irregular",[0,1,2]],["Astigmatismo assimétrico",[2]],["Encurvamento inferior",[0,2]],["Padrão sugestivo de ceratocone",[0,1,2]],
     ["Padrão em garra de caranguejo",[0,1,2]],["Ceratometria elevada",[0]],["Aplanamento central pós-cirurgia refrativa",[0]],
-    ["Irregularidade por filme lacrimal",[0]],["Captura de baixa qualidade",[]]]};
+    ["Irregularidade por filme lacrimal",[0]],["Captura de baixa qualidade",[]]],
+  // mapeamento de retina — botões normais: 0 vítreo, 1 papila, 2 mácula, 3 vasos, 4 periferia
+  mapa:[["Descolamento do vítreo posterior",[0]],["Opacidades vítreas",[0]],["Escavação papilar aumentada",[1]],["Palidez de papila",[1]],
+    ["Atrofia peripapilar",[1]],["Drusas maculares",[2]],["Alterações pigmentares maculares",[2]],["Membrana epirretiniana",[2]],["Edema macular",[2]],
+    ["Alterações vasculares hipertensivas",[3]],["Microaneurismas e hemorragias retinianas",[3]],["Degeneração em treliça (lattice)",[4]],
+    ["Rotura retiniana",[4]],["Descolamento de retina",[4]],["Nevo de coroide",[]]]};
 for(const [ex,lista] of Object.entries(ALTERACOES)) for(const o of ["od","oe"])
   $(`[data-grupo="${ex}-alt-${o}"]`).innerHTML=lista.map(([n])=>`<span class="chip" tabindex="0">${esc(n)}</span>`).join("");
 // texto das alterações marcadas: iguais nos dois olhos saem uma vez só
@@ -867,7 +876,7 @@ function exComp(){ const L=[];
   mic.push(...alteracoesTxt("micro"),...linhas("micro-txt"));
   if(mic.length) L.push(`Microscopia especular de córnea: ${mic.map(ponto).join(" ")}`);
   if(v("paqui-od")||v("paqui-oe")) L.push(`Paquimetria central média: olho direito ${v("paqui-od")||"não aferida"}${v("paqui-od")?" µm":""}; olho esquerdo ${v("paqui-oe")||"não aferida"}${v("paqui-oe")?" µm":""}.`);
-  const mapa=[...marcados("mapa").map(nomeChip),...linhas("mapa-txt")]; if(mapa.length) L.push(`Mapeamento de retina: ${mapa.map(ponto).join(" ")}`);
+  const mapa=[...marcados("mapa").map(nomeChip),...alteracoesTxt("mapa"),...linhas("mapa-txt")]; if(mapa.length) L.push(`Mapeamento de retina: ${mapa.map(ponto).join(" ")}`);
   for(const t of linhas("exc-txt")) L.push(ponto(t));
   return L.length?`Exames complementares:\n${L.join("\n")}`:""; }
 // Texto do atendimento editável (26/10/2026): editado à mão, vale o que ele escreveu
@@ -898,7 +907,7 @@ function textoIclinic(){ const L=[];
   const ec=exComp(); if(ec) L.push(ec);
   const hd=bloco("Hipótese diagnóstica",hdComCid()); if(hd) L.push(hd);
   if(v("rx-emitida")==="1"){ const rp=receita(), g=o=>[o[0],o[1]!=="—"?o[1]+(o[2]!=="—"?"x"+o[2]:""):""].filter(Boolean).join(" ");
-    L.push(`Receita de óculos: lentes ${TIPO_TEXTO[v("rx-uso")]||v("rx-uso")}${rp.perto?` (OD ${g(rp.od)}; OE ${g(rp.oe)})`:""}.${v("rx-obs").trim()?` Observação: ${v("rx-obs").trim().replace(/\.$/,"")}.`:""}`); }
+    L.push(`Receita de óculos: lentes ${tipoRx()}${rp.perto?` (OD ${g(rp.od)}; OE ${g(rp.oe)})`:rp.duplo?` (perto: OD ${g(rp.pertoOd)}; OE ${g(rp.pertoOe)})`:""}.${v("rx-obs").trim()?` Observação: ${v("rx-obs").trim().replace(/\.$/,"")}.`:""}`); }
   if(emitido("ro")&&v("ro-on")==="1"&&v("ro-txt").trim()){   // sem a saudação e o fecho da carta
     const ro=v("ro-txt").trim().split(/\n{2,}/).filter(p=>!/^prezad|^coloco-me/i.test(p.trim())).join("\n");
     if(ro) L.push(`Relatório para a ótica (não adaptação aos óculos):\n${ro}`); }
@@ -916,10 +925,17 @@ function textoIclinic(){ const L=[];
 // da tela, o "copiar" e a receita mostram o mesmo grau (antes só a impressão somava
 // e a tela mostrava o de longe; Dr. Bruno, 28/10/2026).
 function receita(){ const l=o=>{ const e=v(`re-${o}-esf`)||(v(`re-${o}-cil`)?"Plano":""),c=v(`re-${o}-cil`),x=v(`re-${o}-eixo`); return [e||"—",c||"—",c?(x?x+"°":"?"):"—"]; };
-  const r={od:l("od"),oe:l("oe"),add:v("re-add"),uso:$("#rx-uso").value};
-  if(r.uso==="perto"&&r.add){ const soma=(e)=>dioptria(String(num(e==="—"?"":e)+num(r.add)),true);
-    r.od=[soma(r.od[0]),r.od[1],r.od[2]]; r.oe=[soma(r.oe[0]),r.oe[1],r.oe[2]]; r.perto=true; }
+  const r={od:l("od"),oe:l("oe"),add:v("re-add"),uso:$("#rx-uso").value,solar:v("rx-solar")==="1"};
+  const soma=(e)=>dioptria(String(num(e==="—"?"":e)+num(r.add)),true);
+  if(r.uso==="perto"&&r.add){ r.od=[soma(r.od[0]),r.od[1],r.od[2]]; r.oe=[soma(r.oe[0]),r.oe[1],r.oe[2]]; r.perto=true; }
+  // dois óculos (11/11/2026): r.od/r.oe = longe; o de perto sai com a adição somada
+  if(r.uso==="longe-perto"&&r.add){ r.duplo=true; r.pertoOd=[soma(r.od[0]),r.od[1],r.od[2]]; r.pertoOe=[soma(r.oe[0]),r.oe[1],r.oe[2]]; }
   return r; }
+// Linhas do quadro da receita [rótulo, esférico, cilíndrico, eixo] — tela, impressão, PDF assinado e "copiar".
+function linhasRx(r){ if(!r.duplo) return [["OLHO DIREITO",...r.od],["OLHO ESQUERDO",...r.oe]];
+  return [["LONGE · OLHO DIREITO",...r.od],["LONGE · OLHO ESQUERDO",...r.oe],["PERTO · OLHO DIREITO",...r.pertoOd],["PERTO · OLHO ESQUERDO",...r.pertoOe]]; }
+const tipoRx=()=>`${v("rx-solar")==="1"?"solares ":""}${TIPO_TEXTO[v("rx-uso")]||v("rx-uso")}`;
+const tituloRx=r=>`RECEITA DE ÓCULOS${r.solar?" DE SOL":""}${r.perto?" PARA PERTO":r.duplo?" PARA LONGE E PARA PERTO":""}`;
 function avisos(){ const m=[]; for(const o of ["od","oe"]) if(v(`re-${o}-cil`)&&!v(`re-${o}-eixo`)) m.push(`${o.toUpperCase()}: cilindro sem eixo`);
   if(v("re-add")&&num(v("re-add"))>3.5) m.push("adição acima de +3,50, confira"); $("#ref-aviso").textContent=m.join(" · "); $("#ref-aviso").style.color=m.length?"var(--warn)":""; }
 
@@ -938,27 +954,38 @@ const SUGESTOES={
 };
 const altoIndice=()=>["re-od-esf","re-od-cil","re-oe-esf","re-oe-cil"].some(id=>Math.abs(num(v(id)))>4);
 let sugEditada=false;
-function sugerir(){ if(sugEditada) return; const t=SUGESTOES[$("#rx-uso").value]||SUGESTOES.monofocais; $("#rx-sug").value=altoIndice()?t.alto:t.padrao; }
+SUGESTOES["longe-perto"]=SUGESTOES.monofocais;
+const SUG_SOLAR="em versão solar: lente polarizada (Essilor Xperio, ZEISS Polarized ou Hoya Polarizada) ou fotossensível (Transitions GEN S ou XTRActive)";
+function sugerir(){ if(sugEditada) return; const t=SUGESTOES[$("#rx-uso").value]||SUGESTOES.monofocais;
+  $("#rx-sug").value=(altoIndice()?t.alto:t.padrao)+(v("rx-solar")==="1"?`; ${SUG_SOLAR}`:""); }
 $("#rx-sug").addEventListener("input",()=>{ sugEditada=true; });
 // Antifadiga (Dr. Bruno, 05/11/2026): a justificativa entra sozinha na Observação da
 // receita, que sai impressa para o paciente e a ótica. Só preenche se a Observação
 // estiver vazia, e sai de novo se trocar o tipo de lente sem ter mexido no texto.
 const JUSTIFICA_ANTIFADIGA="Lentes monofocais com zona de suporte acomodativo (antifadiga), indicadas para reduzir o esforço visual e os sintomas de fadiga ocular (astenopia) no uso prolongado de computador, celular e outras atividades de perto, mantendo a visão nítida para longe.";
-function justificaLente(){ const o=$("#rx-obs"), anti=$("#rx-uso").value==="monofocais-antifadiga";
-  const antes=o.value; if(anti&&!o.value.trim()) o.value=JUSTIFICA_ANTIFADIGA; else if(!anti&&o.value.trim()===JUSTIFICA_ANTIFADIGA) o.value="";
+// Óculos separados e lentes solares (11/11/2026): mesma regra — o texto pronto entra na
+// Observação vazia e sai (ou troca) se a escolha mudar sem ninguém ter mexido nele.
+const OBS_DUPLO="Dois óculos: um para longe (dirigir, andar, televisão) e outro para perto (leitura, celular). Não use os óculos de perto para andar ou dirigir: com eles a visão de longe fica embaçada.";
+const OBS_SOLAR="Lentes solares com proteção UV400 (bloqueio de 100% dos raios UVA e UVB). A cor escura, sozinha, não garante proteção: exija a certificação de proteção UV. Recomenda-se lente polarizada, que elimina o reflexo da água, do asfalto e da neve (pode dificultar a leitura de telas de celular e do painel do carro). Tonalidade cinza (preserva as cores) ou marrom (aumenta o contraste), com filtro de categoria 3 para uso geral ao ar livre. Não use filtro de categoria 4 para dirigir, nem óculos escuros em ambientes fechados ou à noite.";
+const obsAuto=(uso,solar)=>[uso==="monofocais-antifadiga"?JUSTIFICA_ANTIFADIGA:"",uso==="longe-perto"?OBS_DUPLO:"",solar?OBS_SOLAR:""].filter(Boolean).join("\n");
+const OBS_AUTOS=new Set(["monofocais-antifadiga","longe-perto",""].flatMap(u=>[obsAuto(u,true),obsAuto(u,false)]).filter(Boolean));
+function justificaLente(){ const o=$("#rx-obs"), antes=o.value;
+  if(!o.value.trim()||OBS_AUTOS.has(o.value.trim())) o.value=obsAuto($("#rx-uso").value,v("rx-solar")==="1");
   if(o.value!==antes) o.dispatchEvent(new Event("input",{bubbles:true})); }
-$("#rx-uso").addEventListener("change",()=>{ sugEditada=false; sugerir(); justificaLente(); atualiza(); });
+for(const id of ["rx-uso","rx-solar"]) $("#"+id).addEventListener("change",()=>{ sugEditada=false; sugerir(); justificaLente(); atualiza(); });
 const MARGENS_TIMBRADO={topo:50, base:47, lado:20};
-const TIPO_TEXTO={"monofocais":"monofocais","monofocais-alto":"monofocais de alto índice","monofocais-antifadiga":"monofocais antifadiga","perto":"monofocais para perto","multifocais":"multifocais","ocupacionais":"ocupacionais","bifocais":"bifocais flat-top 28"};
+const TIPO_TEXTO={"monofocais":"monofocais","monofocais-alto":"monofocais de alto índice","monofocais-antifadiga":"monofocais antifadiga","perto":"monofocais para perto","longe-perto":"monofocais (um par para longe e outro para perto)","multifocais":"multifocais","ocupacionais":"ocupacionais","bifocais":"bifocais flat-top 28"};
 function statusRx(t,cls){ const s=$("#status-rx"); s.textContent=t; s.className="status "+(cls||""); }
 let consultaAtual=null, segundaVia=null;   // {inicio, paciente_nome} — usado pela receita; segundaVia: consulta antiga aberta só para emitir 2ª via
 function gerarPrescricao(assinar){
   const status=statusRx;
   if(!consultaAtual){ status("Inicie o atendimento primeiro.","erro"); return; }
-  let r=receita(); const tipo=$("#rx-uso").value; const perto=tipo==="perto";
-  const mono=perto||String(tipo).startsWith("monofocais");
+  let r=receita(); const tipo=$("#rx-uso").value; const perto=tipo==="perto", duplo=tipo==="longe-perto";
+  const mono=perto||duplo||String(tipo).startsWith("monofocais");
   if(!v("re-od-esf")&&!v("re-od-cil")&&!v("re-oe-esf")&&!v("re-oe-cil")){ status("Preencha a refração (em Anamnese e exame oftalmológico) antes de imprimir.","erro"); return; }
+  if(duplo&&!v("re-add")){ status("Óculos separados para longe e perto precisam da adição: preencha a adição na refração.","erro"); return; }
   if(!mono&&!v("re-add")){ status("Lente multifocal ou ocupacional precisa de adição: preencha a adição na refração (ou escolha Monofocal).","erro"); return; }
+  const LR=linhasRx(r), titulo=tituloRx(r), sugTxt=v("rx-sug")?`Lentes ${tipoRx()} sugeridas: ${v("rx-sug")}`:"";
   const dt=new Date(consultaAtual.inicio);
   const dataExame=dt.toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   const [dd,mm,aa]=dataExame.split("/").map(Number);
@@ -976,19 +1003,18 @@ function gerarPrescricao(assinar){
   // Só a do atendimento aberto: a 2ª via de consulta antiga não mexe no de hoje.
   if(!segundaVia&&$("#rx-emitida").value!=="1"){ $("#rx-emitida").value="1"; atualiza(); }
   if(assinar===true){ const ex=x=>x&&x!=="—"?x.replace("°","")+"º":"";
-    return enviarAssinado("oculos",{nome,data:dataExame,titulo:`RECEITA DE ÓCULOS${perto?" PARA PERTO":""}`,
-      linhas:[["OLHO DIREITO",r.od[0],r.od[1]==="—"?"":r.od[1],ex(r.od[2])],["OLHO ESQUERDO",r.oe[0],r.oe[1]==="—"?"":r.oe[1],ex(r.oe[2])]],
-      adicao:mono?null:(r.add||"-"),sugestao:v("rx-sug")?`Lentes ${TIPO_TEXTO[$("#rx-uso").value]||$("#rx-uso").value} sugeridas: ${v("rx-sug")}`:"",observacao:v("rx-obs"),proxima:prox},status); }
+    return enviarAssinado("oculos",{nome,data:dataExame,titulo,
+      linhas:LR.map(([rot,e,c,x])=>[rot,e,c==="—"?"":c,ex(x)]),
+      adicao:mono?null:(r.add||"-"),sugestao:sugTxt,observacao:v("rx-obs"),proxima:prox},status); }
   const corpo=`
 ${cabFolha(timbrado,dataExame,"",timbrado?nome:"")}
-<h1>RECEITA DE ÓCULOS${perto?" PARA PERTO":""}</h1>
+<h1>${titulo}</h1>
 ${timbrado?"":pacFolha(nome)}
 <table><thead><tr><th></th><th>ESFÉRICO</th><th>CILÍNDRO</th><th>EIXO</th></tr></thead><tbody>
-<tr><td>OLHO DIREITO</td>${cel(r.od[0],r.od[1]==="—"?"":r.od[1],r.od[2])}</tr>
-<tr><td>OLHO ESQUERDO</td>${cel(r.oe[0],r.oe[1]==="—"?"":r.oe[1],r.oe[2])}</tr>
+${LR.map(([rot,e,c,x])=>`<tr><td>${rot}</td>${cel(e,c==="—"?"":c,x)}</tr>`).join("\n")}
 ${mono?"":`<tr><td>ADIÇÃO</td><td colspan="3">${esc(r.add||"-")}</td></tr>`}
 </tbody></table>
-${v("rx-sug")?`<p class="sug">Lentes ${esc(TIPO_TEXTO[$("#rx-uso").value]||$("#rx-uso").value)} sugeridas: ${esc(v("rx-sug"))}</p>`:""}
+${sugTxt?`<p class="sug">${esc(sugTxt)}</p>`:""}
 ${v("rx-obs")?`<p class="sug" style="white-space:pre-wrap"><b>Observação:</b> ${esc(v("rx-obs"))}</p>`:""}
 <h2>IMPORTANTE — RECOMENDAÇÕES PARA O PACIENTE:</h2>
 <ul>${RECOMENDA_PACIENTE.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>
@@ -2031,7 +2057,7 @@ ${assFolha(false,timbrado)}`;
 try{ $("#rx-timbrado").checked=localStorage.getItem("rx-timbrado")!=="0"; }catch(_){ $("#rx-timbrado").checked=true; }
 $("#rx-timbrado").addEventListener("change",()=>{ try{ localStorage.setItem("rx-timbrado",$("#rx-timbrado").checked?"1":"0"); }catch(_){} });
 function copiarTxt(txt,onOk,onFalha){ try{ navigator.clipboard.writeText(txt).then(onOk,onFalha); }catch(_){ onFalha&&onFalha(); } }
-$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiarTxt(`Receita de óculos (lentes ${TIPO_TEXTO[r.uso]||r.uso})\nOlho direito: esférico ${r.od[0]}, cilíndrico ${r.od[1]}, eixo ${r.od[2]}\nOlho esquerdo: esférico ${r.oe[0]}, cilíndrico ${r.oe[1]}, eixo ${r.oe[2]}${r.add&&!r.perto?"\nAdição: "+r.add:""}`,()=>statusRx("Receita copiada.","ok"),()=>statusRx("Não consegui copiar.","erro")); });
+$("#copiar-rx").addEventListener("click",()=>{ const r=receita(); copiarTxt(`Receita de óculos (lentes ${tipoRx()})\n${linhasRx(r).map(([rot,e,c,x])=>`${rot.charAt(0)+rot.slice(1).toLowerCase()}: esférico ${e}, cilíndrico ${c}, eixo ${x}`).join("\n")}${r.add&&!r.perto&&!r.duplo?"\nAdição: "+r.add:""}`,()=>statusRx("Receita copiada.","ok"),()=>statusRx("Não consegui copiar.","erro")); });
 
 /* ===== modelos prontos ===== */
 const MODELOS={
@@ -2070,8 +2096,8 @@ function atualiza(){
   mostraLC(); calcLC(); marcaAlterados(); mostraLO(); mostraRO(); if(v("ro-on")==="1") atualizaRO(); mostraEN(); if(v("en-on")==="1"){ desenhaEnCids(); atualizaEN(); }   // lentes antes do texto, para o texto já sair com os graus novos
   $("#saida").textContent=textoIclinic()||"Preencha o atendimento: o texto aparece aqui, pronto para colar."; mostraTextoEditado();
   const r=receita();
-  $("#rx-body").innerHTML=`<tr><th>Olho direito</th><td>${r.od[0]}</td><td>${r.od[1]}</td><td>${r.od[2]}</td></tr><tr><th>Olho esquerdo</th><td>${r.oe[0]}</td><td>${r.oe[1]}</td><td>${r.oe[2]}</td></tr>`;
-  $("#rx-add").textContent=r.perto?`Para perto: grau de longe + adição ${r.add} (já somada acima).`:r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol(); seguranca(); desenhaCids(); desenhaJust(); $("#ex-ind").placeholder="Ex.: acompanhamento semestral";
+  $("#rx-body").innerHTML=linhasRx(r).map(([rot,e,c,x])=>`<tr><th>${esc(rot.charAt(0)+rot.slice(1).toLowerCase())}</th><td>${esc(e)}</td><td>${esc(c)}</td><td>${esc(x)}</td></tr>`).join("");
+  $("#rx-add").textContent=r.perto?`Para perto: grau de longe + adição ${r.add} (já somada acima).`:r.duplo?`Perto: grau de longe + adição ${r.add} (já somada acima).`:r.uso==="longe-perto"?"Preencha a adição na refração para montar os óculos de perto.":r.add?`Adição: ${r.add}`:""; avisos(); sugerir(); mostraLinhasCol(); seguranca(); desenhaCids(); desenhaJust(); $("#ex-ind").placeholder="Ex.: acompanhamento semestral";
   if(atend){ sujo=true; rascunhoLocal(); status("Alterações não salvas.",""); }
 }
 

@@ -167,7 +167,9 @@ function corpoOculos(doc, d) {
     } else {
       ln.forEach((t, j) => {
         doc.lineWidth(0.8).rect(x, y, cols[j], h).stroke();
-        doc.font(i === 0 || j === 0 ? "G8" : "G6").fontSize(11.5).text(String(t || ""), x + (j === 0 ? 6 : 0), y + 6, { width: cols[j] - (j === 0 ? 12 : 0), align: j === 0 ? "left" : "center" });
+        // rótulo longo ("PERTO · OLHO ESQUERDO", óculos separados): a letra diminui até caber numa linha
+        let fs = 11.5; if (j === 0) { doc.font("G8"); while (fs > 8 && doc.fontSize(fs).widthOfString(String(t || "")) > cols[0] - 12) fs -= 0.5; }
+        doc.font(i === 0 || j === 0 ? "G8" : "G6").fontSize(fs).text(String(t || ""), x + (j === 0 ? 6 : 0), y + 6, { width: cols[j] - (j === 0 ? 12 : 0), align: j === 0 ? "left" : "center" });
         x += cols[j];
       });
     }
