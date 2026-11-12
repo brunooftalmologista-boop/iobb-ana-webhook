@@ -3161,8 +3161,12 @@ function contradizHojeAmanha(texto, slots, meusAgendamentos) {
   // Fecha com (?![\wà-ú]) e NÃO com \b: "amanhã," tem ã (não é caractere de
   // palavra em regex JS) antes da vírgula, então \b nunca casa ali e a checagem
   // do "amanhã" passava batido. Mesmo erro que já matou a trava dos horários.
+  // 12/11/2026 (quinta), Sara: "Tenho hoje MESMO, segunda-feira, 16/11, às
+  // 10h20" — o "mesmo" no meio fazia o regex não casar, e a checagem (b) abaixo
+  // descarta a frase por trazer outra data. Passou pelas duas. Agora "mesmo",
+  // "ainda" e "já" entre a palavra e a data também contam.
   const colado = (palavra) => new RegExp(
-    `\\b${palavra}(?![\\wà-ú])[,\\s—-]*(?:dia\\s+)?(?:(?:${DOWS})(?:-feira)?[,\\s]*)?(\\d{2})\\/(\\d{2})(?!\\/?\\d)`, "i");
+    `\\b${palavra}(?![\\wà-ú])[,\\s—-]*(?:(?:mesmo|ainda|j[áa])(?![\\wà-ú])[,\\s—-]*)?(?:dia\\s+)?(?:(?:${DOWS})(?:-feira)?[,\\s]*)?(\\d{2})\\/(\\d{2})(?!\\/?\\d)`, "i");
   for (const [palavra, esperado] of [["hoje", hojeStr], ["amanh[ãa]", amanhaStr]]) {
     const m = texto.match(colado(palavra));
     if (m && `${m[1]}/${m[2]}` !== esperado) {
