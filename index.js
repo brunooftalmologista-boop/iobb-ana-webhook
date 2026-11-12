@@ -3420,16 +3420,46 @@ async function cancelarAgendamento(id) {
 // ⚠️ Só é chamada quando o paciente fala em retorno (ver RE_FALA_DE_RETORNO):
 // somar uma leitura ao banco em TODA conversa foi o que estourou a cota de egress
 // em 08/08. Quem não fala de retorno não paga por esta consulta.
+// 🩺 "JÁ REALIZADA" = TEM PRONTUÁRIO, não "a hora já passou" (12/11/2026 — caso
+// Helmer). Ele faltou à consulta das 9h, pediu às 11h para remarcar e perguntou
+// "é consulta de retorno, preciso pagar?". A linha das 9h ainda estava
+// `confirmado` (a falta não muda o status) e a Ana respondeu "como sua consulta
+// foi HOJE MESMO, você está dentro dos 30 dias". O prazo certo contava da
+// consulta de 21/10 — deu o mesmo veredito por sorte; com a consulta real há 35
+// dias, a falta de hoje teria dado retorno grátis a quem deve R$ 200,00.
+// A prova de atendimento é o prontuário: pelo appointment_id (o Dr. Bruno abre o
+// atendimento pela agenda) ou, na falta dele, um prontuário do mesmo telefone no
+// mesmo dia (importados do iClinic, atendimento aberto fora da agenda). Medido
+// em 12/11: 145 de 158 consultas passadas desde 21/10 têm prontuário; as 13
+// restantes são faltas ou exames — exatamente o que não pode contar.
 async function ultimaConsultaDoPaciente(telefone) {
   if (!telefone) return null;
   try {
+    const fones = fonesBR(telefone);
     const { data } = await supabase.from("appointments")
-      .select("inicio, unidade, convenio, motivo")
-      .in("paciente_telefone", fonesBR(telefone))
+      .select("id, inicio, unidade, convenio, motivo")
+      .in("paciente_telefone", fones)
       .neq("status", "cancelado")
       .lt("inicio", new Date().toISOString())
-      .order("inicio", { ascending: false }).limit(1);
-    return (data && data[0]) || null;
+      .order("inicio", { ascending: false }).limit(5);
+    const lista = data || [];
+    if (!lista.length) return null;
+    const diaBR = (d) => new Date(new Date(d).getTime() - 3 * 3600000).toISOString().slice(0, 10);
+    const maisAntiga = new Date(new Date(lista[lista.length - 1].inicio).getTime() - 86400000).toISOString();
+    const { data: pront } = await supabase.from("prontuario_consultas")
+      .select("appointment_id, data_consulta")
+      .in("paciente_telefone", fones)
+      .gte("data_consulta", maisAntiga);
+    const comId = new Set((pront || []).map(p => p.appointment_id).filter(Boolean));
+    const dias = new Set((pront || []).map(p => diaBR(p.data_consulta)));
+    const atendida = (a) => comId.has(a.id) || dias.has(diaBR(a.inicio));
+    const realizada = lista.find(atendida) || null;
+    // Marcadas DEPOIS da última realizada e sem prontuário: falta (ou ainda não
+    // atendida). Vão para o prompt só como aviso — nunca contam o prazo.
+    const semRegistro = lista.filter(a => !atendida(a)
+      && (!realizada || new Date(a.inicio) > new Date(realizada.inicio)));
+    if (realizada) return { ...realizada, semRegistro };
+    return { ...lista[0], semProntuario: true, semRegistro };
   } catch (e) { console.error("[Agenda DB] ultimaConsultaDoPaciente falhou:", e.message); return null; }
 }
 // "Retorno" é a palavra do paciente; "revisão" e "voltar" aparecem quase tanto.
@@ -7452,7 +7482,13 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
     if (RE_FALA_DE_RETORNO.test(text || "")) {
       try {
         const ult = await ultimaConsultaDoPaciente(from);
-        if (ult) {
+        if (ult && ult.semProntuario) {
+          // Nenhuma consulta passada com registro de atendimento: não há base
+          // para contar prazo. Melhor a equipe confirmar do que prometer grátis.
+          dynVolatil += `\n\n### Retorno deste paciente (dado do sistema)\n`
+            + `- A agenda tem consulta marcada em **${fmtDataHoraBR(ult.inicio)}**, mas o sistema NÃO tem registro de que ele foi atendido (pode ter sido falta).\n`
+            + `- 🚫 NÃO diga que o retorno é sem custo nem que está dentro do prazo, e NÃO trate essa data como consulta realizada. Se ele perguntar se paga, diga que a equipe confere a data da última consulta e confirma — e siga com o agendamento normalmente.`;
+        } else if (ult) {
           const dias = Math.floor((Date.now() - new Date(ult.inicio).getTime()) / 86400000);
           const conv = String(ult.convenio || "").trim();
           const ehParticular = /^particular$/i.test(conv);
@@ -7472,7 +7508,10 @@ Use isto para NÃO perguntar o que já se sabe e para ir direto ao ponto: ele j�
                 // quem pede "retorno" está justamente supondo que não vai pagar.
                 ? `\n- 🗣️ ESTE É O ÚNICO CASO EM QUE VOCÊ AVISA SEM SER PERGUNTADA: diga em UMA linha discreta, no meio da mensagem (nunca na abertura), que como já passaram mais de 30 dias da última consulta será uma consulta nova, de R$ 200,00 — e ofereça o horário na MESMA mensagem. Sem pedir desculpas, sem repetir o valor duas vezes, sem terminar a mensagem na cobrança. Ex.: "Consigo *quinta-feira, 03/09, às 10h20*, no Taguatinga Shopping. Só para você já saber: como a sua última consulta foi há ${dias} dias, passou do prazo de 30 dias do retorno, então será uma consulta nova (R$ 200,00). Reservo para você?"`
                 : `\n- 🤐 ISTO É PARA VOCÊ SABER RESPONDER, NÃO PARA ANUNCIAR (regra do Dr. Bruno, 28/08/2026): **só fale de prazo, custo ou "retorno gratuito" SE O PACIENTE PERGUNTAR**. Se ele só quer marcar, marque e pronto — nada de abrir a mensagem com prazo ou valor, nada de explicar a regra por conta própria. Perguntou ("o retorno é cobrado?", "ainda estou no prazo?", "vou pagar de novo?") → responda direto, com a conta acima, em UMA linha, e emende o horário.`)
-            + `\n- 🚫 Conferência de óculos NÃO é retorno: não consome esse prazo e não tem data limite.`;
+            + `\n- 🚫 Conferência de óculos NÃO é retorno: não consome esse prazo e não tem data limite.`
+            + ((ult.semRegistro || []).length
+                ? `\n- ⚠️ Depois dessa, a agenda tinha ${ult.semRegistro.map(a => `**${fmtDataHoraBR(a.inicio)}**`).join(", ")} — SEM registro de atendimento (falta ou não realizada). Essa data NÃO é consulta realizada e NÃO reinicia nem conta o prazo; nunca diga "sua consulta foi hoje/ontem" por causa dela.`
+                : "");
         }
       } catch (e) { console.error("[Retorno] Falha ao consultar última consulta (segue sem):", e.message); }
     }
