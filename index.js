@@ -2942,12 +2942,19 @@ function fichaIncompleta(registros, reply, messages) {
 //      sem nascimento/convênio, mas a consulta anterior do MESMO telefone e do
 //      MESMO primeiro nome já tem. Completa só o que falta, só dessa fonte.
 // Devolve CÓPIAS — o objeto original do bloco não muda.
-function completarFichaPelaOutraConsulta(registros, meusAgendamentos) {
+// 🗂️ CANCELADA TAMBÉM SERVE DE FICHA (12/11/2026 — caso Gustavo). A mãe pediu
+// para "remarcar para a tarde" a consulta das 11h que a secretária marcara com
+// SAÚDE CAIXA; essa linha já estava `cancelado` (e no futuro, então nem o
+// histórico a via). A Ana marcou 14h40 sem convênio e sem nascimento. O
+// cancelamento desfaz o horário, não o nome, o nascimento nem o plano da pessoa.
+// `fontes` = agendamentos ativos + histórico (cancelados inclusive), na ordem
+// de preferência: ativos primeiro, depois do mais recente para o mais antigo.
+function completarFichaPelaOutraConsulta(registros, fontes) {
   const vazio = (x) => { const s = String(x || "").trim(); return !s || s === "-"; };
   return (registros || []).map(r => {
     const pn = primNome(r.nome);
     if (!pn || (!vazio(r.nascimento) && !vazio(r.convenio))) return r;
-    const outra = (meusAgendamentos || []).filter(a => a.status !== "cancelado" && primNome(a.paciente_nome) === pn);
+    const outra = (fontes || []).filter(a => primNome(a.paciente_nome) === pn);
     if (!outra.length) return r;
     const novo = { ...r };
     if (vazio(novo.nascimento)) {
@@ -2961,10 +2968,36 @@ function completarFichaPelaOutraConsulta(registros, meusAgendamentos) {
     return novo;
   });
 }
-function registrosParaJulgarFicha(registros, meusAgendamentos) {
+function registrosParaJulgarFicha(registros, meusAgendamentos, fontesFicha) {
   const jaTem = new Set((meusAgendamentos || []).filter(a => a.status !== "cancelado").map(a => new Date(a.inicio).getTime()));
-  return completarFichaPelaOutraConsulta(registros, meusAgendamentos)
+  return completarFichaPelaOutraConsulta(registros, fontesFicha || meusAgendamentos)
     .filter(r => !jaTem.has(inicioDoBloco(r.inicio).getTime()));
+}
+// Texto FIXO para quando a Ana insistiu duas vezes e ainda quer marcar com a
+// ficha incompleta: oferece o mesmo horário e pede, de uma vez, o que falta.
+// Devolve null se não houver horário legível no bloco (aí segue a reescrita).
+function mensagemPedindoFicha(registros) {
+  const v = (x) => { const s = String(x || "").trim(); return (s && s !== "-") ? s : null; };
+  const regs = (registros || []).filter(r => !isNaN(inicioDoBloco(v(r.inicio)).getTime()));
+  if (!regs.length) return null;
+  const varios = regs.length > 1;
+  const ofertas = [], pedidos = [];
+  for (const r of regs) {
+    const ini = inicioDoBloco(v(r.inicio));
+    const quando = `${ini.toLocaleDateString("pt-BR", { timeZone: TZ_BR, weekday: "long", day: "2-digit", month: "2-digit" })}, às ${fmtHoraBR(ini.toISOString()).replace(":", "h")}`;
+    const prim = (v(r.nome) || "").split(/\s+/)[0];
+    const de = varios && prim ? ` de ${prim}` : "";
+    ofertas.push(`*${quando}*${v(r.unidade) ? `, no ${unidadeParaPaciente(v(r.unidade))}` : ""}${de ? ` (para ${prim})` : ""}`);
+    const nome = v(r.nome);
+    const falta = [];
+    if (!nome || nome.split(/\s+/).filter(p => p.length > 1).length < 2) falta.push(`o nome completo${de}`);
+    if (!v(r.nascimento)) falta.push(`a data de nascimento${de}`);
+    if (!v(r.convenio)) falta.push(`se o atendimento${de} será particular ou por convênio (se for convênio, qual)`);
+    pedidos.push(...falta);
+  }
+  if (!pedidos.length) return null;
+  const lista = pedidos.length === 1 ? pedidos[0] : `${pedidos.slice(0, -1).join(", ")} e ${pedidos[pedidos.length - 1]}`;
+  return `Consigo separar ${ofertas.join(" e ")}. Para eu confirmar, me informa ${lista}? Assim que você responder, eu confirmo.`;
 }
 function instrucaoFichaCompleta(faltas) {
   return `\n\n⛔ CORREÇÃO OBRIGATÓRIA — SUA RESPOSTA ANTERIOR FOI RECUSADA: você ia marcar a consulta com a ficha INCOMPLETA. Falta: ${faltas.join("; ")}.
@@ -3551,11 +3584,15 @@ async function fichaHistoricaDoPaciente(telefone) {
     // tanto para a ficha (convênio muda) quanto para saber que ele já veio.
     // O `.reverse()` devolve a lista em ordem crescente, que é o que o resto
     // do código espera (`ultimoNaoVazio` lê do fim para o começo).
+    // Passadas (qualquer status) OU canceladas (inclusive FUTURAS): a consulta
+    // de amanhã que foi desmarcada não aparece em agendamentosDoPaciente (só
+    // ativas) nem aqui (só passadas) — e era a única com a ficha (caso Gustavo,
+    // 12/11/2026).
     const { data } = await supabase.from("appointments")
       .select("inicio, paciente_nome, convenio, observacoes, status, unidade, motivo, origem")
       .in("paciente_telefone", fonesBR(telefone))
-      .lt("inicio", new Date(Date.now() - 2 * 3600 * 1000).toISOString())
-      .order("inicio", { ascending: false }).limit(5);
+      .or(`inicio.lt.${new Date(Date.now() - 2 * 3600 * 1000).toISOString()},status.eq.cancelado`)
+      .order("inicio", { ascending: false }).limit(6);
     return (data || []).reverse();
   } catch (e) { console.error("[Agenda DB] fichaHistoricaDoPaciente falhou:", e.message); return []; }
 }
@@ -7254,15 +7291,21 @@ REGRA DE LINGUAGEM (datas relativas): NUNCA chame de "semana que vem" uma data A
     // Fica em escopo externo porque a trava "prometeu e não executou" precisa
     // saber quantas consultas ele realmente tem para cancelar.
     let meusAgendamentos = [];
+    // De onde a trava da ficha HERDA nascimento/convênio (ver
+    // completarFichaPelaOutraConsulta): ativos primeiro, depois o histórico
+    // do mais recente para o mais antigo — cancelados inclusive.
+    let fontesFicha = [];
     try {
       const meusAg = await agendamentosDoPaciente(from);
       meusAgendamentos = meusAg;
+      fontesFicha = meusAg;
       // A ficha olha futuro E passado; a lista de "agendamentos que ele tem"
       // continua só com os futuros, que são os que ela pode cancelar/remarcar.
       const minhasIndicacoes = await indicacoesDoPaciente(from);
       // O nome do funil também serve de ficha — vem primeiro na ordem porque a
       // lista é lida do mais antigo para o mais novo (o último não-vazio vence).
       const historico = await fichaHistoricaDoPaciente(from);
+      fontesFicha = [...meusAg, ...historico.slice().reverse()];
       const paraFicha = [...minhasIndicacoes.slice().reverse(),
                          ...historico, ...meusAg];
       // ⚠️ A CONDIÇÃO É paraFicha, NÃO meusAg. Quem acabou de consultar não tem
@@ -7939,7 +7982,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
       try {
         // Re-emissão de consulta existente fica fora; remarcação herda a ficha
         // da consulta anterior (ver registrosParaJulgarFicha).
-        faltasFicha = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos), reply, messages);
+        faltasFicha = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos, fontesFicha), reply, messages);
         if (faltasFicha.length) semFormaPagamento = `ficha incompleta: falta ${faltasFicha.join("; ")}`;
       } catch (e) { console.error("[Ficha] Checagem falhou (segue sem travar):", e.message); }
       const maisCedo = etapaDeOferta ? existeVagaMaisCedo(reply, slotsVigentes, text, messages) : null;
@@ -8273,7 +8316,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
           // que falhou 5 vezes. Se nem assim, a mensagem segue (o paciente não
           // pode ficar sem resposta) — mas a ficha vai marcada e a equipe avisada.
           try {
-            const aindaFalta = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos), reply, messages);
+            const aindaFalta = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos, fontesFicha), reply, messages);
             if (aindaFalta.length) {
               console.warn(`[Ficha] Reescrita AINDA incompleta (${aindaFalta.join("; ")}) — insistindo.`);
               const r3 = await anthropicMessages({
@@ -8287,7 +8330,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
               }, { origem: "reescrita" });
               const novo3 = r3.data?.content?.[0]?.text;
               if (novo3 && novo3.trim()) reply = novo3;
-              const resta = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos), reply, messages);
+              const resta = fichaIncompleta(registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos, fontesFicha), reply, messages);
               // ⛔ CONVÊNIO NÃO ATENDIDO NÃO PASSA — NUNCA. As duas insistências e o
               // "deixa passar" existem para DADO QUE FALTA (nome, nascimento): ali o
               // paciente não pode ficar sem resposta, e a equipe completa depois.
@@ -8309,12 +8352,26 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
                 await notificarClinica(`⛔ *Agendamento BLOQUEADO — convênio não atendido*\nPaciente: ${patient?.name || from}\n${convenioBarrado}\nA Ana tentou marcar mesmo assim (o paciente insistiu). NÃO foi marcado. Verifiquem o intercâmbio e retornem.`).catch(() => {});
                 void semBloco;
               }
+              // ⛔ FICHA INCOMPLETA TAMBÉM NÃO PASSA (12/11/2026 — caso Gustavo).
+              // Até aqui, depois de duas insistências a mensagem seguia COM o
+              // [AGENDAR] e a consulta entrava sem nascimento nem convênio — a
+              // regra do Dr. Bruno é "NUNCA marca" (11/08), e o "deixa passar"
+              // tinha sido escolha minha para o paciente não ficar sem resposta.
+              // Agora ele recebe resposta igual, só que determinística: o mesmo
+              // horário oferecido e o pedido do que falta. Nada é gravado nem
+              // cancelado (o texto fixo não leva bloco algum — numa remarcação, o
+              // [CANCELAR] do antigo some junto, e a consulta antiga fica).
               if (resta.length && !convenioBarrado) {
-                console.error(`[Ficha] ⚠️ Passou incompleta mesmo após 2 tentativas: ${resta.join("; ")}`);
-                await registrarErro("ficha_incompleta_persistiu", resta.join("; ").slice(0, 400),
+                const pedido = mensagemPedindoFicha(
+                  registrosParaJulgarFicha(extrairAgendar(reply).registros, meusAgendamentos, fontesFicha));
+                if (pedido) reply = pedido;
+                console.error(`[Ficha] ⛔ Incompleta após 2 tentativas — ${pedido ? "agendamento NÃO gravado, pedido determinístico enviado" : "sem como montar o pedido, segue a reescrita"}: ${resta.join("; ")}`);
+                await registrarErro("ficha_incompleta_persistiu", `${pedido ? "[bloqueado] " : ""}${resta.join("; ")}`.slice(0, 400),
                   { conversationId: conversation.id, telefone: from }).catch(() => {});
-                await marcarPendenciaEquipe(conversation.id, "action").catch(() => {});
-                await notificarClinica(`⚠️ *Agendamento com ficha INCOMPLETA*\nPaciente: ${patient?.name || from}\nFalta: ${resta.join("; ")}\nA Ana insistiu duas vezes e não obteve. Confirmar com o paciente antes da consulta.`).catch(() => {});
+                if (!pedido) {
+                  await marcarPendenciaEquipe(conversation.id, "action").catch(() => {});
+                  await notificarClinica(`⚠️ *Agendamento com ficha INCOMPLETA*\nPaciente: ${patient?.name || from}\nFalta: ${resta.join("; ")}\nA Ana insistiu duas vezes e não obteve. Confirmar com o paciente antes da consulta.`).catch(() => {});
+                }
               }
             }
           } catch (e) { console.error("[Ficha] Segunda checagem falhou:", e.message); }
@@ -8329,7 +8386,7 @@ Não confirme esse horário e não o repita como se estivesse livre. Diga em UMA
     const ag = extrairAgendar(canc.limpo);         // [AGENDAR] (agendamento REAL)
     // O que a trava da ficha aceitou herdando da consulta anterior (remarcação
     // da Deise) tem de ser o que se GRAVA — senão passa no juízo e entra vazio.
-    try { ag.registros = completarFichaPelaOutraConsulta(ag.registros, meusAgendamentos); }
+    try { ag.registros = completarFichaPelaOutraConsulta(ag.registros, fontesFicha); }
     catch (e) { console.error("[Ficha] Herança da consulta anterior falhou (segue o bloco como veio):", e.message); }
     const pre = extrairPreAgendamento(ag.limpo);   // depois [PREAGENDAMENTO] (fallback)
     const rec = extrairRecado(pre.limpo);          // por fim [RECADO], no texto já limpo
