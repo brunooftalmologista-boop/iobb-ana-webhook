@@ -12533,6 +12533,7 @@ app.post("/api/equipe/mensagens", async (req, res) => {
 });
 app.get("/pedidos-lentes.js", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.type("application/javascript").sendFile(__dirname + "/pedidos-lentes.js"); });
 app.get("/equipe-chat.js", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.type("application/javascript").sendFile(__dirname + "/equipe-chat.js"); });
+app.get("/simulador-cartao.js", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.type("application/javascript").sendFile(__dirname + "/simulador-cartao.js"); });
 app.get("/pre-exame", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/preexame.html"); });
 app.get("/prontuario/timbrado.jpg", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/timbrado-a4.jpg"); });
 // CID-10 completo (DATASUS, 22/10/2026) para a busca de diagnóstico do prontuário.

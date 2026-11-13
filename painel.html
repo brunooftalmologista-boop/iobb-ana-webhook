@@ -277,6 +277,7 @@
         <button class="icon-btn" id="btn-agenda" title="Agenda">🗓️</button>
         <button class="icon-btn" id="btn-config" title="Configurações">⚙️</button>
         <button class="icon-btn" id="btn-chat" title="Chat da equipe">💬</button>
+        <button class="icon-btn" id="btn-simulador" title="Simulador de cartão: quanto cobrar no débito, crédito e parcelado">💳</button>
         <a class="icon-btn" id="btn-preexame" href="/pre-exame" target="_blank" title="Pré-exame: motivo da consulta e exames" style="text-decoration:none">🔬</a>
         <a class="icon-btn" id="btn-prontuario" href="/prontuario" target="_blank" title="Prontuário (só o Dr. Bruno)" style="text-decoration:none;display:none">🩺</a>
         <button class="icon-btn" id="btn-erros" title="O que a Ana errou">🩹<span id="erros-badge" class="erros-badge" hidden></span></button>
@@ -2174,5 +2175,7 @@ mostrarProntuario();
 <script src="/equipe-chat.js"></script>
 <script>EquipeChat.montar(document.getElementById("btn-chat"));</script>
 <script src="/paciente-autocompletar.js"></script>
+<script src="/simulador-cartao.js"></script>
+<script>SimuladorCartao.montar(document.getElementById("btn-simulador"));</script>
 </body>
 </html>
