@@ -484,6 +484,10 @@
     <h3 id="agbook-titulo">Marcar horário</h3>
     <p id="agbook-slot"></p>
     <div id="agbook-enc" hidden>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="flex:1;min-width:140px"><label>Dia do encaixe</label><input id="agbook-dia" type="date"></div>
+        <div style="flex:1;min-width:140px"><label>Unidade</label><select id="agbook-unid"><option value="Conjunto Nacional">Conjunto Nacional</option><option value="Taguatinga">Taguatinga</option></select></div>
+      </div>
       <label>Horário do encaixe</label>
       <input id="agbook-hora" type="time" step="300">
       <small style="display:block;color:var(--muted,#6b7b8c);margin-top:4px">Paciente extra: pode ser num horário já ocupado ou fora da grade (ex.: 12:10). Não tira vaga de ninguém e a Ana não oferece.</small>
@@ -2037,6 +2041,7 @@ function openAgBook(ini, unidade, encaixe, semHora){
   const hhmm=d.toLocaleTimeString('pt-BR',{timeZone:TZ_BR,hour:'2-digit',minute:'2-digit'});
   $('#agbook-titulo').textContent=agBookEnc?'Encaixe':'Marcar horário';
   $('#agbook-enc').hidden=!agBookEnc; $('#agbook-hora').value=agBookEnc&&!semHora?hhmm:'';
+  if(agBookEnc){ $('#agbook-dia').value=agDayStr(d); $('#agbook-unid').value=agUnidade; }
   $('#agbook-slot').textContent=agUnidade+' — '+d.toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'})+(agBookEnc?'':' às '+hhmm);
   if(!$('#agbook-conv').options.length){
     $('#agbook-conv').innerHTML='<option value="">Selecione o convênio…</option>'+CONVENIOS.map(c=>'<option>'+c+'</option>').join('');
@@ -2055,7 +2060,10 @@ async function agBookSave(){
   if(!body.nome){ agBookErr('Informe o nome do paciente.'); return; }
   if(agBookEnc){
     const h=$('#agbook-hora').value; if(!/^\d{2}:\d{2}$/.test(h)){ agBookErr('Informe o horário do encaixe.'); return; }
-    body.inicio=new Date(agDayStr(new Date(agBookIni))+'T'+h+':00-03:00').toISOString(); body.encaixe=true;
+    const dia=$('#agbook-dia').value; if(!/^\d{4}-\d{2}-\d{2}$/.test(dia)){ agBookErr('Escolha o dia do encaixe.'); return; }
+    const dwEnc=dowBR(new Date(dia+'T12:00:00-03:00'));
+    if((dwEnc<1||dwEnc>5) && !confirm('Esse dia é '+(dwEnc===6?'sábado':'domingo')+' — a clínica normalmente não atende. Marcar o encaixe assim mesmo?')) return;
+    body.inicio=new Date(dia+'T'+h+':00-03:00').toISOString(); body.unidade=$('#agbook-unid').value; body.encaixe=true;
   }
   try{
     const r=await fetch(API_BASE.replace(/\/$/,'')+'/api/agenda/book',{
@@ -2076,11 +2084,27 @@ $('#ag-prev').onclick=()=>{ agDate.setDate(agDate.getDate()-(agView==='semana'?7
 $('#ag-next').onclick=()=>{ agDate.setDate(agDate.getDate()+(agView==='semana'?7:1)); agRefresh(); };
 $('#ag-today').onclick=()=>{ agDate=new Date(); agRefresh(); };
 $('#ag-encaixe').onclick=()=>{
-  if(agView==='semana'){ toast('Na semana, use o “＋ encaixe” do dia (ou mude para Dia).'); return; }
-  openAgBook(agDayStr(agDate)+'T12:00:00-03:00', null, true, true);
+  // Abre no dia em foco; o dia e a unidade se escolhem no próprio formulário.
+  const ds=agDayStr(agDate), dw=dowBR(new Date(ds+'T12:00:00-03:00'));
+  openAgBook(ds+'T12:00:00-03:00', agView==='semana'&&dw>=1&&dw<=5?UNIDADE_DA_COLUNA[dw-1]:null, true, true);
 };
 $('#agbook-cancel').onclick=closeAgBook;
 $('#agbook-save').onclick=agBookSave;
+// ENCAIXE EM OUTRO DIA (13/11/2026, pedido do Dr. Bruno): o formulário abre no
+// dia clicado, mas a secretária pode escolher outro. A unidade acompanha o dia
+// da semana (seg/qua/sex Conjunto Nacional, ter/qui Taguatinga) e ainda pode
+// ser trocada à mão.
+function agEncSlotTxt(){
+  const v=$('#agbook-dia').value; if(!v) return;
+  $('#agbook-slot').textContent=$('#agbook-unid').value+' — '+new Date(v+'T12:00:00-03:00').toLocaleDateString('pt-BR',{timeZone:TZ_BR,weekday:'long',day:'2-digit',month:'2-digit'});
+}
+$('#agbook-dia').onchange=()=>{
+  const v=$('#agbook-dia').value; if(!v) return;
+  const dw=dowBR(new Date(v+'T12:00:00-03:00'));
+  if(dw>=1&&dw<=5) $('#agbook-unid').value=UNIDADE_DA_COLUNA[dw-1];
+  agEncSlotTxt();
+};
+$('#agbook-unid').onchange=agEncSlotTxt;
 $('#agdet-fechar').onclick=closeAgDetails;
 $('#agdet-cancelar').onclick=async()=>{
   if(!agDetId) return;
