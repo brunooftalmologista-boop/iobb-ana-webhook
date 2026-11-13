@@ -132,7 +132,9 @@
     <div><select id="sc-bandeira">${BANDEIRAS.map((b) => `<option value="${b.id}">${b.nome}</option>`).join("")}</select></div>
     <label class="t">Perda do dinheiro no tempo</label>
     <div>
-      <div class="perdas">${PERDAS.map((p) => `<label data-perda="${p.id}"><input type="radio" name="sc-perda" value="${p.id}">${p.rotulo}${p.mes != null ? ` <span class="dica">${PCT(p.mes)} a.m.</span>` : ` <input id="sc-outro" inputmode="decimal" placeholder="% a.m.">`}</label>`).join("")}</div>
+      <!-- CDI FIXO (Dr. Bruno, 13/11/2026: "deixa a opção do CDI fixo"). As outras
+           opções (média, IPCA, outra %) continuam em PERDAS, só não aparecem. -->
+      <div class="perdas"><label class="on" data-perda="cdi">${PERDAS[0].rotulo} <span class="dica">${PCT(PERDAS[0].mes)} a.m.</span></label></div>
       <div class="dica" id="sc-dica-perda"></div>
     </div>
   </div>
@@ -152,9 +154,6 @@
     $("#sc-valor", raiz).addEventListener("blur", (e) => { const v = lerNumero(e.target.value); if (v > 0) e.target.value = BRL(v); });
     $("#sc-valor", raiz).addEventListener("focus", (e) => { const v = lerNumero(e.target.value); e.target.value = v > 0 ? String(v).replace(".", ",") : ""; e.target.select(); });
     $("#sc-bandeira", raiz).addEventListener("change", (e) => { estado.bandeira = e.target.value; desenha(); });
-    raiz.querySelectorAll('input[name="sc-perda"]').forEach((r) => r.addEventListener("change", (e) => { estado.perda = e.target.value; desenha(); }));
-    $("#sc-outro", raiz).addEventListener("input", (e) => { estado.outro = e.target.value; estado.perda = "outro"; desenha(); });
-    $("#sc-outro", raiz).addEventListener("focus", () => { estado.perda = "outro"; desenha(); });
   }
 
   function taxaPerda() {
@@ -169,7 +168,7 @@
     const iPct = taxaPerda();
     raiz.querySelectorAll(".perdas label").forEach((l) => {
       const on = l.dataset.perda === estado.perda;
-      l.classList.toggle("on", on); $("input[type=radio]", l).checked = on;
+      l.classList.toggle("on", on);
     });
     const p = PERDAS.find((x) => x.id === estado.perda);
     $("#sc-dica-perda", raiz).textContent = p ? `${p.dica}${p.id === "outro" ? "" : "."}` : "";
