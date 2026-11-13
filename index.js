@@ -11254,7 +11254,20 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
     const { data: ags } = await supabase.from("appointments")
       .select("id, inicio, unidade, status, paciente_nome, paciente_telefone, convenio, motivo, observacoes, conversation_id, compareceu")
       .like("paciente_telefone", `%${f8}`).neq("origem", "bloqueio").order("inicio", { ascending: true }).limit(300);
-    const meus = (ags || []).filter(a => primNome(a.paciente_nome) === pn);
+    let meus = (ags || []).filter(a => primNome(a.paciente_nome) === pn);
+    // 🚨 MESMO TELEFONE + MESMO PRIMEIRO NOME (13/11/2026 — Maria Clara e Maria
+    // Fernanda Gonçalves, irmãs, consultas às 15h40 e 16h20 no celular da mãe).
+    // Pelo primeiro nome as duas viravam UMA ficha: o nome exibido era o da última
+    // agendada e o "atendimento de hoje" era o da primeira — o Dr. Bruno abria a
+    // Maria Clara e via a Maria Fernanda. Desempata pelo SEGUNDO nome quando ele
+    // separa os agendamentos (só restringe se sobrar algum).
+    const _seg = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z\s]/g, " ").split(/\s+/).filter(w => w && !/^(d[aeo]s?|e)$/.test(w))[1] || "";
+    const seg = _seg(nome);
+    if (seg && new Set(meus.map(a => _seg(a.paciente_nome)).filter(Boolean)).size > 1) {
+      const doMesmo = meus.filter(a => _seg(a.paciente_nome) === seg);
+      if (doMesmo.length) meus = doMesmo;
+    }
     const ativos = meus.filter(a => a.status !== "cancelado");
     const hojeYmd = new Date().toLocaleDateString("en-CA", { timeZone: TZ_BR });
     const hoje = ativos.find(a => new Date(a.inicio).toLocaleDateString("en-CA", { timeZone: TZ_BR }) === hojeYmd) || null;
@@ -11263,7 +11276,9 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
     for (const a of [...meus].reverse()) { idade = idadeDe(a.observacoes); if (idade) break; }
     const { data: pac } = await supabase.from("prontuario_pacientes").select("*").eq("chave", chave).maybeSingle();
     const grupo = await chavesDoGrupo(chave, pac);
-    const consultas = await consultasDoGrupo(tel, nome, grupo);
+    // A outra pessoa de mesmo primeiro nome (ver acima) não entra na linha do tempo.
+    const daOutra = new Set((ags || []).filter(a => primNome(a.paciente_nome) === pn && !meus.includes(a)).map(a => a.id));
+    const consultas = (await consultasDoGrupo(tel, nome, grupo)).filter(c => !c.appointment_id || !daOutra.has(c.appointment_id));
     // cabeçalho: o que falta neste cadastro vem do principal (ex.: CPF/nascimento do iClinic)
     const docsGrupo = { ...(pac?.dados || {}) };
     for (const [k, v] of Object.entries(grupo.principalDados)) if (v && !docsGrupo[k] && !/^juntad/.test(k)) docsGrupo[k] = v;
