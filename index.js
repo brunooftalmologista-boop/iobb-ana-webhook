@@ -11278,7 +11278,14 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
     const grupo = await chavesDoGrupo(chave, pac);
     // A outra pessoa de mesmo primeiro nome (ver acima) não entra na linha do tempo.
     const daOutra = new Set((ags || []).filter(a => primNome(a.paciente_nome) === pn && !meus.includes(a)).map(a => a.id));
-    const consultas = (await consultasDoGrupo(tel, nome, grupo)).filter(c => !c.appointment_id || !daOutra.has(c.appointment_id));
+    // 16/11/2026 — Maria Helena dos Santos Carneiro abriu com as consultas da Maria
+    // VITÓRIA Grossi Morato Carneiro (importadas do iClinic, mesmo telefone, sem
+    // agendamento): o filtro acima só via agendamento. Consulta cujo SEGUNDO nome
+    // conflita com o pedido (nenhum é começo do outro: "H." e "Helena" convivem) é
+    // de outra pessoa e sai da linha do tempo.
+    const segConflita = (outroNome) => { const o = _seg(outroNome); return !!(seg && o && !seg.startsWith(o) && !o.startsWith(seg)); };
+    const consultas = (await consultasDoGrupo(tel, nome, grupo))
+      .filter(c => (!c.appointment_id || !daOutra.has(c.appointment_id)) && !segConflita(c.paciente_nome));
     // cabeçalho: o que falta neste cadastro vem do principal (ex.: CPF/nascimento do iClinic)
     const docsGrupo = { ...(pac?.dados || {}) };
     for (const [k, v] of Object.entries(grupo.principalDados)) if (v && !docsGrupo[k] && !/^juntad/.test(k)) docsGrupo[k] = v;
