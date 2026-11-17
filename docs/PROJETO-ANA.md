@@ -248,7 +248,7 @@ Grade de 20 em 20 min; sem 13h00–13h40 (almoço), sem 12h40 e 17h40.
 | Teste de lente | R$ 120 gelatinosa · R$ 150 rígida/escleral (só particular, só Conjunto) |
 | Exames avulsos | Pentacam R$ 300 · Sobrecarga Hídrica R$ 380 · Paquimetria/Topografia R$ 180 (tabela completa no prompt) |
 
-- **Tudo parcela em até 5x no cartão SEM JUROS — inclusive as lentes esclerais.**
+- **Cirurgias e lentes de contato parcelam em até 12x no cartão, COM juros** (desde 17/11/2026; antes era 5x sem juros). A Ana diz só a condição; o valor da parcela a recepção tira do simulador 💳 (taxa Cielo + CDI), porque muda com a bandeira.
 - **Não há desconto na consulta** (regra de 18/08): os R$ 200 são fixos — sem valor
   social, sem condição para idoso/estudante/servidor/indicação/família. A Ana não
   oferece desconto nem diz que "vai verificar com a equipe"; responde sem
