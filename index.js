@@ -11488,7 +11488,7 @@ app.post("/api/prontuario/anexo", requireMedico, express.raw({ type: () => true,
     if (!ult8(tel) || !primNome(nome)) return res.status(400).json({ error: "Paciente inválido." });
     const consultaId = /^[0-9a-f-]{36}$/i.test(String(req.query.consulta || "")) ? String(req.query.consulta) : null;
     const anexo = await guardarAnexo({
-      tel, nome, tipo: String(req.query.tipo || "exame") === "iclinic" ? "iclinic" : "exame",
+      tel, nome, tipo: ["iclinic", "laudo"].includes(String(req.query.tipo || "")) ? String(req.query.tipo) : "exame",
       nomeArq: String(req.query.filename || "arquivo").slice(0, 160),
       mime: String(req.query.mime || req.headers["content-type"] || "application/octet-stream"),
       buf: req.body, obs: req.query.obs, consultaId,
@@ -11717,6 +11717,59 @@ async function completarReceita(d, tel, nome, consultaId) {
 // Só dentro da janela de 24h da Meta (documento é mensagem livre; template não leva PDF
 // aqui). Manda para o número que ESCREVEU para a clínica (patients.phone, 12 ou 13
 // dígitos), não o do cadastro, e registra na conversa para a equipe ver no painel.
+// ===== ASSINAR UM LAUDO PRONTO (Dr. Bruno, 18/11/2026) ==========================
+// "Anexar laudos de exames no prontuário e ter a opção de emitir com assinatura
+// digital." O PDF anexado (tipo "laudo") recebe a assinatura ICP-Brasil do certificado
+// dele SEM ser refeito: carimbo visível no alto da última página (faixa em branco do
+// timbrado) + assinatura PAdES do arquivo inteiro. O original fica; o assinado entra
+// como anexo novo (tipo "assinado"), com "[de:<id>]" na observação para a tela saber.
+async function assinarPdfPronto(buf, cert) {
+  const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
+  const { SignPdf } = require("@signpdf/signpdf");
+  const { P12Signer } = require("@signpdf/signer-p12");
+  const { pdflibAddPlaceholder } = require("@signpdf/placeholder-pdf-lib");
+  const { SUBFILTER_ETSI_CADES_DETACHED } = require("@signpdf/utils");
+  const doc = await PDFDocument.load(buf);
+  const quando = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const pg = doc.getPages()[doc.getPageCount() - 1];
+  const { x, y, width, height } = pg.getMediaBox();
+  const [n, b] = [await doc.embedFont(StandardFonts.Helvetica), await doc.embedFont(StandardFonts.HelveticaBold)];
+  const W = 262, H = 40, X = x + width - W - 36, Y = y + height - H - 18;
+  const verde = rgb(0.13, 0.55, 0.27);
+  pg.drawRectangle({ x: X, y: Y, width: W, height: H, color: rgb(0.93, 0.97, 0.94), borderColor: verde, borderWidth: 0.8 });
+  pg.drawText("Assinado digitalmente · ICP-Brasil", { x: X + 8, y: Y + H - 13, size: 9, font: b, color: verde });
+  pg.drawText("Dr. Bruno O. Borges · CRM-DF 17877 · RQE 9314", { x: X + 8, y: Y + H - 24, size: 7.5, font: n, color: rgb(0.2, 0.2, 0.2) });
+  pg.drawText(`Em ${quando}. Confira em validar.iti.gov.br`, { x: X + 8, y: Y + 6, size: 7, font: n, color: rgb(0.35, 0.35, 0.35) });
+  await pdflibAddPlaceholder({
+    pdfDoc: doc, reason: "Documento médico assinado digitalmente", contactInfo: "IOBB - (61) 3033-6605",
+    name: cert.titular, location: "Brasília - DF", signatureLength: 16384, subFilter: SUBFILTER_ETSI_CADES_DETACHED,
+  });
+  const semAssinatura = Buffer.from(await doc.save({ useObjectStreams: false }));
+  return new SignPdf().sign(semAssinatura, new P12Signer(Buffer.from(cert.pfx), { passphrase: cert.senha }));
+}
+app.post("/api/prontuario/anexo/:id/assinar", requireMedico, async (req, res) => {
+  try {
+    const { data: ax } = await supabase.from("prontuario_anexos").select("*").eq("id", req.params.id).maybeSingle();
+    if (!ax) return res.status(404).json({ error: "Anexo não encontrado." });
+    if (ax.tipo === "assinado") return res.status(409).json({ error: "Este arquivo já é um documento assinado." });
+    if (!/pdf/i.test(String(ax.mime || "")) && !/\.pdf$/i.test(String(ax.nome || ""))) return res.status(400).json({ error: "Só dá para assinar arquivo PDF." });
+    const cert = await certificadoDoMedico();
+    if (!cert) return res.status(409).json({ error: "Cadastre o certificado digital primeiro (botão “Certificado digital”)." });
+    const { data: blob, error: eDl } = await supabase.storage.from(BUCKET_PRONTUARIO).download(ax.path);
+    if (eDl || !blob) throw eDl || new Error("download vazio");
+    let pdf;
+    try { pdf = await assinarPdfPronto(Buffer.from(await blob.arrayBuffer()), cert); }
+    catch (e) { console.error("[Assinar laudo] PDF recusado:", e.message); return res.status(400).json({ error: "Não consegui abrir este PDF para assinar (protegido ou corrompido)." }); }
+    const [ult, prim] = String(ax.paciente_chave || "").split("|");
+    const base = String(ax.nome || "laudo.pdf").replace(/\.pdf$/i, "");
+    const anexo = await guardarAnexo({ tel: ult, nome: prim, tipo: "assinado", nomeArq: `${base} (assinado).pdf`.slice(0, 160), mime: "application/pdf", buf: pdf,
+      obs: `Laudo assinado digitalmente [de:${ax.id}]${ax.observacao ? " — " + ax.observacao : ""}`, consultaId: ax.consulta_id, appointmentId: ax.appointment_id, por: "Dr. Bruno" });
+    res.json({ ok: true, anexo });
+  } catch (e) {
+    console.error("[Assinar laudo] falhou:", e.message);
+    res.status(500).json({ error: "Não consegui assinar o arquivo." });
+  }
+});
 app.post("/api/prontuario/anexo/:id/whatsapp", requireMedico, async (req, res) => {
   try {
     const { data: ax } = await supabase.from("prontuario_anexos").select("*").eq("id", req.params.id).maybeSingle();

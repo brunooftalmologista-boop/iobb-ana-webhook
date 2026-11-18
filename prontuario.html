@@ -366,7 +366,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
             <div class="t"><span>Exames complementares</span><span><button type="button" class="link" id="exames-novos">Ver se chegaram exames novos</button></span></div>
             <div class="c">
               <div id="exames-at-box"><span class="rot">Exames anexados nesta consulta</span><div id="exames-at" style="display:grid;gap:10px"></div>
-                <div class="row" style="margin-top:8px"><label>Exame <select id="ex-nome" style="width:auto"><option>Pentacam</option><option>Paquimetria</option><option>Microscopia especular</option><option>Topografia / Ceratoscopia</option><option>Retinografia</option><option>Curva diária de pressão ocular</option><option>Teste de sobrecarga hídrica</option><option>Exame de outra clínica</option><option>Outro</option></select></label><button type="button" id="ex-anexar">Anexar exame</button><span class="hint">ou arraste o arquivo para cá</span><input type="file" id="ex-arq" accept="application/pdf,image/*" multiple hidden></div>
+                <div class="row" style="margin-top:8px"><label>Exame <select id="ex-nome" style="width:auto"><option value="__laudo">Laudo pronto (para assinar)</option><option selected>Pentacam</option><option>Paquimetria</option><option>Microscopia especular</option><option>Topografia / Ceratoscopia</option><option>Retinografia</option><option>Curva diária de pressão ocular</option><option>Teste de sobrecarga hídrica</option><option>Exame de outra clínica</option><option>Outro</option></select></label><button type="button" id="ex-anexar">Anexar exame</button><span class="hint">ou arraste o arquivo para cá</span><input type="file" id="ex-arq" accept="application/pdf,image/*" multiple hidden></div>
                 <div class="status" id="st-exames"></div></div>
               <div><span class="rot">Topografia de córnea</span>
                 <div class="chips" data-grupo="topo"><span class="chip" tabindex="0">Córnea regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular em ambos os olhos</span><span class="chip" tabindex="0">Astigmatismo regular e simétrico em ambos os olhos</span></div>
@@ -555,7 +555,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
               <div class="soltar" id="soltar"><span>Arraste os arquivos para cá</span><span class="hint">ou</span>
                 <button type="button" class="pri" id="escolher">Selecione os arquivos do seu computador</button><span class="hint">PDF ou imagem, até 30 MB cada.</span>
                 <input type="file" id="arquivo" multiple accept="application/pdf,image/*" hidden></div>
-              <div class="row"><label>Tipo <select id="anexo-tipo"><option value="exame">Exame</option><option value="iclinic">Prontuário anterior (iClinic)</option></select></label><label style="flex:1">Observação <input id="anexo-obs" placeholder="Ex.: Pentacam OD e OE"></label></div>
+              <div class="row"><label>Tipo <select id="anexo-tipo"><option value="exame">Exame</option><option value="laudo">Laudo pronto (para assinar)</option><option value="iclinic">Prontuário anterior (iClinic)</option></select></label><label style="flex:1">Observação <input id="anexo-obs" placeholder="Ex.: Pentacam OD e OE"></label></div>
               <div class="status" id="st-anexo"></div>
               <div class="anexos-t" id="anexos-at" style="padding:0"></div>
             </div>
@@ -2256,7 +2256,7 @@ function desenhaFicha(){
 function desenhaExamesFicha(){
   const cs=ficha.consultas||[], porId=new Map(cs.map(c=>[c.id,c]));
   const consDoAg=new Map(cs.filter(c=>c.appointment_id).map(c=>[c.appointment_id,c]));
-  const exs=(ficha.anexos||[]).filter(x=>x.tipo==="exame"&&!(ficha.hoje&&x.appointment_id===ficha.hoje.id));
+  const exs=(ficha.anexos||[]).filter(x=>(x.tipo==="exame"||x.tipo==="laudo")&&!(ficha.hoje&&x.appointment_id===ficha.hoje.id));
   $("#sec-exames").hidden=!exs.length; if(!exs.length){ $("#exames-corpo").innerHTML=""; return; }
   const dias=new Map();
   for(const x of exs){
@@ -2272,7 +2272,19 @@ function desenhaExamesFicha(){
   $("#exames-resumo").textContent=`Exames (${exs.length} arquivo${exs.length>1?"s":""} em ${lista.length} data${lista.length>1?"s":""}${semC?` · ${semC} sem consulta`:""})`;
   $("#exames-corpo").innerHTML=lista.map((g,i)=>`<details class="ex-dia"${i===0||g.semConsulta?" open":""}><summary><b>${ddmmaa(g.q)}</b> <small>${[g.onde,g.xs.length+" arquivo"+(g.xs.length>1?"s":"")].filter(Boolean).map(esc).join(" · ")}</small>${g.semConsulta?'<span class="tag">sem consulta registrada</span>':""}</summary><div class="anexos-t">${g.xs.map(arq).join("")}</div></details>`).join("");
   $("#sec-exames").open=semC>0;
+  // vários laudos prontos sem assinatura: um botão assina todos de uma vez
+  const pend=laudosSemAssinatura();
+  if(pend.length>1){ $("#exames-corpo").insertAdjacentHTML("afterbegin",`<div class="row" style="margin:4px 0 8px"><button type="button" class="pri" id="assinar-laudos">🔏 Assinar os ${pend.length} laudos anexados</button><span class="status" id="st-laudos"></span></div>`); $("#sec-exames").open=true; }
 }
+function laudosSemAssinatura(){ const xs=ficha.anexos||[]; return xs.filter(x=>x.tipo==="laudo"&&!xs.some(y=>y.tipo==="assinado"&&String(y.observacao||"").includes(`[de:${x.id}]`))); }
+document.addEventListener("click",async e=>{ const b=e.target.closest("#assinar-laudos"); if(!b) return;
+  if(!certInfo) await carregaCert(); if(!certInfo?.cadastrado){ alert("Cadastre o certificado digital primeiro (botão “Certificado digital”)."); return; }
+  const lista=laudosSemAssinatura(); let ok=0; const falhas=[]; b.disabled=true;
+  for(const x of lista){ $("#st-laudos").textContent=`Assinando ${ok+falhas.length+1} de ${lista.length}…`;
+    try{ const r=await api(`/api/prontuario/anexo/${x.id}/assinar`,{method:"POST",body:"{}"}); ficha.anexos=[r.anexo,...ficha.anexos]; ok++; }
+    catch(er){ falhas.push(`${x.nome}: ${er.msg||"falhou"}`); if(er.status===401) break; } }
+  desenhaFicha(); if(atend) desenhaAnexosAt();
+  if(falhas.length) alert(`${ok} assinado(s). Não assinados:\n`+falhas.join("\n")); });
 function preDoAgendamento(id){ return id?(ficha.preexames||[]).find(p=>p.appointment_id===id)||null:null; }
 // Motivo do pré-exame → queixa principal: o que tem botão igual já vem marcado;
 // o resto (e a observação) vai como linha da história.
@@ -2300,9 +2312,20 @@ function dadosDoPreExame(apptId){
 }
 function arq(x){ const ext=(String(x.nome||"").split(".").pop()||"").slice(0,4).toUpperCase();
   const a=arqLink(x,ext); if(x.tipo==="assinado") return `<span class="arq-w">${a}<button type="button" data-wpp="${esc(x.id)}" title="Enviar este PDF ao paciente pelo WhatsApp da clínica">📲 WhatsApp</button></span>`;
+  if(x.tipo==="laudo"){ const ass=(ficha.anexos||[]).find(y=>y.tipo==="assinado"&&String(y.observacao||"").includes(`[de:${x.id}]`));
+    return `<span class="arq-w">${a}${ass?`<span class="hint">✓ assinado →</span>${arq(ass)}`:`<button type="button" class="pri" data-assinar-ax="${esc(x.id)}" title="Aplica a sua assinatura digital (ICP-Brasil) neste PDF, sem refazer o laudo">🔏 Assinar</button>`}</span>`; }
   return x.tipo==="exame"?`<span class="arq-w">${a}<button type="button" data-laudo="${esc(x.id)}">${x.laudo?"Ver laudo":"Gerar laudo"}</button></span>`:a; }
-function arqLink(x,ext){
-  return `<a class="arq" href="${esc(x.url||"#")}" target="_blank" rel="noopener" title="${esc(x.observacao||x.nome)}"><span class="ic">${esc(ext||"ARQ")}</span><span>${esc(x.nome)}<br><small class="hint">${ddmmaa(x.created_at)}${x.observacao?" · "+esc(x.observacao):""}</small></span></a>`; }
+// Laudo pronto anexado → assinatura digital no próprio PDF (18/11/2026)
+document.addEventListener("click",async e=>{ const b=e.target.closest("[data-assinar-ax]"); if(!b) return; e.preventDefault();
+  if(certInfo===null||certInfo===undefined) await carregaCert();
+  if(!certInfo?.cadastrado){ alert("Cadastre o certificado digital primeiro (botão “Certificado digital”)."); return; }
+  b.disabled=true; b.textContent="Assinando…";
+  try{ const r=await api(`/api/prontuario/anexo/${b.dataset.assinarAx}/assinar`,{method:"POST",body:"{}"});
+    ficha.anexos=[r.anexo,...(ficha.anexos||[])]; desenhaFicha(); if(atend) desenhaAnexosAt();
+    if(r.anexo?.url) window.open(r.anexo.url,"_blank","noopener");
+  }catch(er){ b.disabled=false; b.textContent="🔏 Assinar"; alert(er.status===401?MSG_SESSAO:(er.msg||"Não consegui assinar.")); } });
+function arqLink(x,ext){ const ob=String(x.observacao||"").replace(/\s*\[de:[^\]]+\]/,"");   // [de:id] = marca interna do laudo assinado
+  return `<a class="arq" href="${esc(x.url||"#")}" target="_blank" rel="noopener" title="${esc(ob||x.nome)}"><span class="ic">${esc(ext||"ARQ")}</span><span>${esc(x.nome)}<br><small class="hint">${ddmmaa(x.created_at)}${ob?" · "+esc(ob):""}</small></span></a>`; }
 // Texto da consulta → seções (título + conteúdo), no visual do iClinic. Além do
 // título no começo de cada bloco, uma linha que é só título ("Acuidade visual
 // com correção:") abre seção nova, e "Retorno em 1 ano." vira a seção Retorno.
@@ -2369,7 +2392,7 @@ let anxCid=null;
 const inAnx=document.createElement("input"); inAnx.type="file"; inAnx.id="anx-arq"; inAnx.accept="application/pdf,image/*"; inAnx.multiple=true; inAnx.hidden=true; document.body.appendChild(inAnx);
 inAnx.addEventListener("change",()=>{ const fs=[...inAnx.files]; inAnx.value=""; if(anxCid&&fs.length) anexarNaConsulta(anxCid,fs); });
 function anexarNaConsulta(cid,fs){ const l=$(`[data-anx="${cid}"]`); if(!l) return;
-  enviar(fs,"exame",cid,l.querySelector(".status"),l.querySelector("select").value); }
+  const sv=l.querySelector("select").value; enviar(fs,sv==="__laudo"?"laudo":"exame",cid,l.querySelector(".status"),sv==="__laudo"?"Laudo":sv); }
 $("#filtro").addEventListener("change",desenhaTimeline);
 
 
@@ -2597,7 +2620,7 @@ const zona=$("#soltar");
 ["dragleave","drop"].forEach(ev=>zona.addEventListener(ev,e=>{ e.preventDefault(); zona.classList.remove("sobre"); }));
 zona.addEventListener("drop",e=>{ const fs=[...(e.dataTransfer?.files||[])]; if(fs.length) enviar(fs,$("#anexo-tipo").value,atend?.id,$("#st-anexo")); });
 // anexar direto em "Exames complementares" (o nome do exame escolhe o tipo de laudo)
-const anexarExame=fs=>{ if(fs.length) enviar(fs,"exame",atend?.id,$("#st-exames"),$("#ex-nome").value); };
+const anexarExame=fs=>{ if(!fs.length) return; const sv=$("#ex-nome").value; enviar(fs,sv==="__laudo"?"laudo":"exame",atend?.id,$("#st-exames"),sv==="__laudo"?"Laudo":sv); };
 $("#ex-anexar").addEventListener("click",()=>$("#ex-arq").click());
 $("#ex-arq").addEventListener("change",()=>{ const fs=[...$("#ex-arq").files]; $("#ex-arq").value=""; anexarExame(fs); });
 const zonaEx=$("#exames-at-box");
