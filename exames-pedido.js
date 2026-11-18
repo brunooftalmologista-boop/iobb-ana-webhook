@@ -45,5 +45,18 @@ function justPorMotivos(exame, motivos){
   }
   const d=regras.find(r=>!r[0]); return d?d[1]:"";
 }
-window.ExamesPedido={J_GLAUCOMA,J_DIABETES,J_CATARATA,J_ECTASIA,JUST,LISTA,justPorMotivos};
+// ===== Um pedido por CID (Dr. Bruno, 18/11/2026: "não pode ser um único pedido com
+// todos juntos") — o convênio quer cada guia com o seu CID. Cada exame vai para o CID
+// cuja regra o justifica; exames do mesmo CID saem na mesma folha.
+const CIDS_COMUNS=[["H40.0","Suspeita de glaucoma"],["H18.6","Ceratocone"],["H25.9","Catarata senil"],["E11.3","Diabetes (fundo de olho)"],["H52.1","Miopia"],["H52.2","Astigmatismo"],["H52.0","Hipermetropia"],["H52.4","Presbiopia"],["H04.1","Olho seco"],["H35.3","Doença macular"]];
+const casa=(cid,pref)=>pref.some(p=>cid.startsWith(p)||p.startsWith(cid));
+function cidPorRegra(exame,cids){ const regras=JUST[exame]||[];
+  for(const [pref] of regras){ if(!pref) continue; const c=(cids||[]).find(c=>casa(c,pref)); if(c) return c; } return ""; }
+function justPorCid(exame,cid){ const regras=JUST[exame]; if(!regras) return "";
+  if(cid){ const r=regras.find(([pref])=>pref&&casa(cid,pref)); if(r) return r[1]; }
+  const d=regras.find(r=>!r[0]); return d?d[1]:""; }
+function agrupaPorCid(exames,cidDe){ const g=[];
+  for(const e of exames){ const c=(cidDe&&cidDe[e])||""; let x=g.find(y=>y.cid===c); if(!x) g.push(x={cid:c,exames:[]}); x.exames.push(e); }
+  return g; }
+window.ExamesPedido={J_GLAUCOMA,J_DIABETES,J_CATARATA,J_ECTASIA,JUST,LISTA,justPorMotivos,CIDS_COMUNS,cidPorRegra,justPorCid,agrupaPorCid};
 })();

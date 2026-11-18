@@ -12327,6 +12327,9 @@ function limparPedido(b) {
     olho: OLHOS_PEDIDO.includes(b?.olho) ? b.olho : "Ambos os olhos",
     indicacao: String(b?.indicacao || "").trim().slice(0, 400),
     separado: !!b?.separado,
+    // um pedido (folha) por CID — 18/11/2026
+    cids: Object.fromEntries(exames.map(e => [e, String(b?.cids?.[e] || "").trim().toUpperCase()]).filter(([, c]) => /^[A-Z]\d{2}(\.\d{1,2})?$/.test(c))),
+    cid_nomes: Object.fromEntries(Object.entries(b?.cid_nomes || {}).filter(([c]) => /^[A-Z]\d{2}(\.\d{1,2})?$/i.test(c)).map(([c, n]) => [c.toUpperCase(), String(n || "").trim().slice(0, 80)])),
   };
 }
 async function urlAnexoPorId(id) {
@@ -12376,7 +12379,8 @@ async function assinarPedidoPreparado(appointmentId, porMedico) {
   const p = pre.pedido;
   const dados = { nome: String(ag.paciente_nome || "").toUpperCase(), data: dataBR(ag.inicio), idade,
     convenio: temConv ? conv : "", carteirinha: temConv ? (dd.carteirinha || "") : "",
-    exames: p.exames, olho: p.olho, indicacao: p.indicacao || "", justificativas: p.justificativas || {}, separado: !!p.separado };
+    exames: p.exames, olho: p.olho, indicacao: p.indicacao || "", justificativas: p.justificativas || {}, separado: !!p.separado,
+    cids: p.cids || {}, cid_nomes: p.cid_nomes || {} };
   const pdf = await assin.documentoAssinado("pedido", dados, cert);
   const anexo = await guardarAnexo({ tel: ag.paciente_telefone, nome: ag.paciente_nome, tipo: "assinado",
     nomeArq: `Pedido de exames assinado - ${String(dados.nome).slice(0, 60)} - ${dados.data.replace(/\//g, "-")}.pdf`,

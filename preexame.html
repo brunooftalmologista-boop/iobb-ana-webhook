@@ -192,12 +192,16 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
           <div class="info" style="font-size:13.5px;color:var(--muted)">Marque os exames do pedido. Ele vai para o Dr. Bruno conferir e assinar com o certificado digital; assinado, o PDF aparece aqui para imprimir ou mandar ao convênio.</div>
           <div class="chips" id="ped-ex" style="margin-top:8px"></div>
           <div class="campo"><label for="ped-outros">Outros exames (um por linha)</label><textarea id="ped-outros" rows="2" style="min-height:44px"></textarea></div>
+          <div style="margin-top:10px;font-size:13px;color:var(--muted)">CID de cada pedido — <b>sai um pedido (folha) por CID</b>, como o convênio pede</div>
+          <div class="chips" id="ped-cids" style="margin-top:6px"></div>
+          <div class="linha" style="margin-top:6px"><div class="campo" style="margin:0;flex:1 1 220px"><label for="ped-cid-outro">Outro CID</label><input id="ped-cid-outro" placeholder="Ex.: H18.4 Distrofia de córnea"></div><button type="button" id="ped-cid-add" style="flex:0 0 auto">Adicionar CID</button></div>
           <div class="linha" style="margin-top:10px;flex-wrap:wrap">
             <div class="campo" style="margin:0;flex:1 1 200px"><label for="ped-olho">Olhos</label><select id="ped-olho"><option>Ambos os olhos</option><option>Olho direito</option><option>Olho esquerdo</option><option value="-">Não se aplica (exame que não é de olho)</option></select></div>
             <label style="display:flex;gap:6px;align-items:center;font-size:14px;flex:1 1 200px"><input type="checkbox" id="ped-sep" style="width:auto"> Um exame por folha (convênio)</label>
           </div>
           <div id="ped-just"></div>
-          <div class="campo"><label for="ped-ind">Indicação clínica (opcional)</label><input id="ped-ind"></div>
+          <div id="ped-resumo" style="margin-top:8px;font-size:13.5px"></div>
+          <div class="campo"><label for="ped-ind">Indicação clínica (opcional — sai em todas as folhas; o CID já vai no alto de cada uma)</label><input id="ped-ind"></div>
           <div class="linha" style="margin-top:10px"><div class="status" id="st-ped"></div><button type="button" class="link perigo" id="ped-apagar" hidden style="flex:0 0 auto">Apagar pedido</button><button type="button" class="pri" id="ped-salvar" style="flex:0 0 auto">Enviar para o Dr. Bruno assinar</button></div>
         </div>
 
@@ -346,16 +350,42 @@ function desenha(){
    login dele). Justificativa: vem do MOTIVO marcado acima (sem CID — quem
    diagnostica é o médico); dá para editar, e a editada à mão fica valendo. */
 const EXP=window.ExamesPedido||{LISTA:[],justPorMotivos:()=>""};
+setTimeout(()=>{ try{ desenhaCidsPed(); }catch(_){} },0);
 $("#ped-ex").innerHTML=EXP.LISTA.map(x=>`<span class="chip" role="button" tabindex="0" aria-pressed="false">${esc(x)}</span>`).join("");
 let pedEditadas={}, pedNovo=false;
+/* Um pedido por CID (Dr. Bruno, 18/11/2026: "não pode ser um único pedido com todos
+   juntos"). A equipe marca os CIDs (o Dr. Bruno confere ao assinar); cada exame vai
+   para o CID cuja regra o justifica e dá para trocar no seletor ao lado dele. */
+let pedCids=[], pedCidOv={};   // [[código,nome]] · {exame: código}
+const MOTIVO_CID=[[/ceratocone/i,"H18.6"],[/glaucoma|press[ãa]o/i,"H40.0"],[/catarata/i,"H25.9"],[/diabet/i,"E11.3"]];
+const nomeCid=c=>{ const x=pedCids.find(([k])=>k===c)||(EXP.CIDS_COMUNS||[]).find(([k])=>k===c); return x?x[1]:""; };
+function desenhaCidsPed(){ const comuns=EXP.CIDS_COMUNS||[], extras=pedCids.filter(([c])=>!comuns.some(([k])=>k===c));
+  $("#ped-cids").innerHTML=[...comuns,...extras].map(([c,n])=>`<span class="chip" role="button" tabindex="0" data-cid="${esc(c)}" aria-pressed="${pedCids.some(([k])=>k===c)?"true":"false"}">${esc(n)} <small>${esc(c)}</small></span>`).join(""); }
+function cidDoExamePed(e){ if(pedCidOv[e]!=null&&(pedCidOv[e]===""||pedCids.some(([k])=>k===pedCidOv[e]))) return pedCidOv[e];
+  const cs=pedCids.map(([c])=>c); return (EXP.cidPorRegra&&EXP.cidPorRegra(e,cs))||(cs.length===1?cs[0]:""); }
+$("#ped-cids").addEventListener("click",e=>{ const ch=e.target.closest(".chip"); if(!ch) return; const c=ch.dataset.cid;
+  if(pedCids.some(([k])=>k===c)) pedCids=pedCids.filter(([k])=>k!==c); else pedCids.push([c,((EXP.CIDS_COMUNS||[]).find(([k])=>k===c)||[c,""])[1]]);
+  desenhaCidsPed(); desenhaJustPed(); });
+$("#ped-cids").addEventListener("keydown",e=>{ const ch=e.target.closest(".chip"); if(ch&&(e.key===" "||e.key==="Enter")){ e.preventDefault(); ch.click(); } });
+$("#ped-cid-add").addEventListener("click",()=>{ const t=$("#ped-cid-outro").value.trim(); const m=t.match(/^([A-Za-z]\d{2}(?:\.\d{1,2})?)\s*[-–—:]?\s*(.*)$/);
+  if(!m){ st("#st-ped","Escreva o código do CID primeiro (ex.: H18.4 Distrofia de córnea).","erro"); return; }
+  const c=m[1].toUpperCase(); if(!pedCids.some(([k])=>k===c)) pedCids.push([c,m[2].trim().slice(0,80)]);
+  $("#ped-cid-outro").value=""; st("#st-ped","",""); desenhaCidsPed(); desenhaJustPed(); });
+$("#ped-cid-outro").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); $("#ped-cid-add").click(); } });
 function pedExames(){ return [...$$("#ped-ex .chip[aria-pressed=true]").map(c=>c.textContent), ...$("#ped-outros").value.split("\n").map(x=>x.trim()).filter(Boolean)]; }
 function motivosAtuais(){ return [...$$("#motivos .chip[aria-pressed=true]").map(c=>c.textContent), $("#m-outro").value]; }
+function justAutoPed(e,mot){ const c=cidDoExamePed(e); return c&&EXP.justPorCid?EXP.justPorCid(e,c):EXP.justPorMotivos(e,mot); }
 function desenhaJustPed(){
   const exs=pedExames(), mot=motivosAtuais();
-  $("#ped-just").innerHTML=exs.length?`<div style="margin-top:10px;font-size:13px;color:var(--muted)">Justificativa de cada exame (convênio pede; dá para editar)</div>`+exs.map(e=>`<div class="campo" style="margin-top:6px"><label>${esc(e)}</label><input data-pjust="${esc(e)}" value="${esc(pedEditadas[e]!=null?pedEditadas[e]:EXP.justPorMotivos(e,mot))}" placeholder="Justificativa clínica"></div>`).join(""):"";
+  const opcoes=c=>`<option value="">sem CID</option>`+pedCids.map(([k,n])=>`<option value="${esc(k)}"${k===c?" selected":""}>CID ${esc(k)}${n?" · "+esc(n):""}</option>`).join("");
+  $("#ped-just").innerHTML=exs.length?`<div style="margin-top:10px;font-size:13px;color:var(--muted)">CID e justificativa de cada exame (convênio pede; dá para editar)</div>`+exs.map(e=>{ const c=cidDoExamePed(e);
+    return `<div class="campo" style="margin-top:6px"><div class="linha" style="gap:8px;align-items:center;flex-wrap:wrap"><label style="margin:0;flex:0 1 auto">${esc(e)}</label><select data-pcid="${esc(e)}" style="width:auto;flex:0 0 auto;padding:4px 8px">${opcoes(c)}</select></div><input data-pjust="${esc(e)}" value="${esc(pedEditadas[e]!=null?pedEditadas[e]:justAutoPed(e,mot))}" placeholder="Justificativa clínica"></div>`; }).join(""):"";
+  const g=exs.length&&EXP.agrupaPorCid?EXP.agrupaPorCid(exs,Object.fromEntries(exs.map(e=>[e,cidDoExamePed(e)]))):[];
+  $("#ped-resumo").innerHTML=!g.length?"":g.length>1?`📄 Vai sair em <b>${g.length} pedidos</b>, um por CID: `+g.map(x=>`${x.cid?"CID "+esc(x.cid):"sem CID"} (${x.exames.length})`).join(" · "):`📄 Vai sair em <b>1 pedido</b>${g[0].cid?" — CID "+esc(g[0].cid):" — <b>sem CID</b>: marque o CID acima"}.`;
 }
+$("#ped-just").addEventListener("change",e=>{ const s2=e.target.closest("[data-pcid]"); if(!s2) return; pedCidOv[s2.dataset.pcid]=s2.value; desenhaJustPed(); });
 function pedJusts(){ const o={}; $$("#ped-just [data-pjust]").forEach(i=>{ if(i.value.trim()) o[i.dataset.pjust]=i.value.trim(); }); return o; }
-function pedTravado(on){ $$("#ped-form input,#ped-form select,#ped-form textarea").forEach(x=>x.disabled=on); $("#ped-ex").style.pointerEvents=on?"none":""; $("#ped-ex").style.opacity=on?".6":""; $("#ped-salvar").hidden=on; $("#ped-apagar").hidden=on||!(detalhe.pedido&&detalhe.pedido.status==="aguardando"); }
+function pedTravado(on){ $$("#ped-form input,#ped-form select,#ped-form textarea").forEach(x=>x.disabled=on); $("#ped-ex").style.pointerEvents=on?"none":""; $("#ped-ex").style.opacity=on?".6":""; $("#ped-cids").style.pointerEvents=on?"none":""; $("#ped-cids").style.opacity=on?".6":""; $("#ped-cid-add").disabled=on; $("#ped-salvar").hidden=on; $("#ped-apagar").hidden=on||!(detalhe.pedido&&detalhe.pedido.status==="aguardando"); }
 function desenhaPedido(){
   const p=detalhe.pedido; pedNovo=false; pedEditadas={};
   const dt=iso=>new Date(iso).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit"})+" às "+hhmm(iso);
@@ -363,8 +393,13 @@ function desenhaPedido(){
     $$("#ped-ex .chip").forEach(c=>c.setAttribute("aria-pressed",exs.includes(c.textContent)?"true":"false"));
     $("#ped-outros").value=exs.filter(e=>!EXP.LISTA.includes(e)).join("\n");
     $("#ped-olho").value=(x&&x.olho)||"Ambos os olhos"; $("#ped-sep").checked=!!(x&&x.separado); $("#ped-ind").value=(x&&x.indicacao)||"";
-    for(const e of (x&&x.editadas)||[]) if(x.justificativas&&x.justificativas[e]!=null) pedEditadas[e]=x.justificativas[e]; };
-  carrega(p&&p.status!=="descartado"?p:null); desenhaJustPed();
+    for(const e of (x&&x.editadas)||[]) if(x.justificativas&&x.justificativas[e]!=null) pedEditadas[e]=x.justificativas[e];
+    pedCidOv={...((x&&x.cids)||{})}; pedCids=Object.entries((x&&x.cid_nomes)||{});
+    for(const c of Object.values(pedCidOv)) if(c&&!pedCids.some(([k])=>k===c)) pedCids.push([c,nomeCid(c)]);
+    // pedido novo: o motivo marcado já sugere o CID (ceratocone, glaucoma, catarata, diabetes)
+    if(!x){ const mot=motivosAtuais().join(" "); for(const [re,c] of MOTIVO_CID) if(re.test(mot)&&!pedCids.some(([k])=>k===c)) pedCids.push([c,nomeCid(c)]); }
+    desenhaCidsPed(); };
+  pedCids=[]; pedCidOv={}; carrega(p&&p.status!=="descartado"?p:null); desenhaJustPed();
   $("#ped-feito").hidden=!p||p.status==="aguardando";
   if(p&&p.status==="assinado"){
     $("#ped-feito").innerHTML=`✅ <b>Assinado pelo Dr. Bruno</b> ${p.assinado_em?dt(p.assinado_em):""}. ${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:var(--pri);font-weight:500">Abrir o PDF assinado</a>`:"(o PDF está no prontuário)"} · <button type="button" class="link" id="ped-novo">Fazer outro pedido</button>`;
@@ -379,7 +414,7 @@ function desenhaPedido(){
   }
 }
 $("#pac").addEventListener("click",e=>{ if(e.target.id!=="ped-novo") return; pedNovo=true; pedTravado(false);
-  $$("#ped-ex .chip").forEach(c=>c.setAttribute("aria-pressed","false")); $("#ped-outros").value=""; $("#ped-ind").value=""; pedEditadas={}; desenhaJustPed();
+  $$("#ped-ex .chip").forEach(c=>c.setAttribute("aria-pressed","false")); $("#ped-outros").value=""; $("#ped-ind").value=""; pedEditadas={}; pedCidOv={}; desenhaCidsPed(); desenhaJustPed();
   $("#ped-salvar").textContent="Enviar para o Dr. Bruno assinar"; st("#st-ped","Novo pedido: ele precisará de nova assinatura.",""); });
 $("#ped-ex").addEventListener("click",e=>{ const ch=e.target.closest(".chip"); if(!ch) return; ch.setAttribute("aria-pressed",ch.getAttribute("aria-pressed")==="true"?"false":"true"); desenhaJustPed(); });
 $("#ped-ex").addEventListener("keydown",e=>{ const ch=e.target.closest(".chip"); if(ch&&(e.key===" "||e.key==="Enter")){ e.preventDefault(); ch.click(); } });
@@ -392,7 +427,10 @@ async function enviarPedido(apagar){
   const exames=apagar?[]:pedExames();
   if(!apagar&&!exames.length){ st("#st-ped","Marque ou escreva ao menos um exame.","erro"); return; }
   const justificativas=apagar?{}:pedJusts();
-  const corpo={ exames, justificativas, editadas:Object.keys(pedEditadas).filter(e=>exames.includes(e)), olho:$("#ped-olho").value, separado:$("#ped-sep").checked, indicacao:$("#ped-ind").value.trim(), novo:pedNovo };
+  const cids=apagar?{}:Object.fromEntries(exames.map(e=>[e,cidDoExamePed(e)]).filter(([,c])=>c));
+  const cid_nomes=Object.fromEntries(pedCids.filter(([c])=>Object.values(cids).includes(c)).map(([c,n])=>[c,n||""]));
+  if(!apagar&&!Object.keys(cids).length){ st("#st-ped","Marque o CID do pedido (sai um pedido por CID).","erro"); return; }
+  const corpo={ exames, justificativas, editadas:Object.keys(pedEditadas).filter(e=>exames.includes(e)), olho:$("#ped-olho").value, separado:$("#ped-sep").checked, indicacao:$("#ped-ind").value.trim(), novo:pedNovo, cids, cid_nomes };
   $("#ped-salvar").disabled=true;
   try{ const r=await api(`/api/preexame/consulta/${atual}/pedido`,{method:"POST",body:JSON.stringify(corpo)});
     detalhe.pedido=r.pedido; desenhaPedido(); if(apagar) st("#st-ped","Pedido apagado.","ok");

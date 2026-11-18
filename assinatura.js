@@ -344,10 +344,12 @@ function corpoAtestado(doc, d) {
   });
   doc.moveDown(1.5);
 }
-function corpoPedido(doc, d, exames) {
+function corpoPedido(doc, d, exames, cid) {
   const L = doc.page.margins.left, W = doc.page.width - L - doc.page.margins.right;
   tituloDoc(doc, "Solicitação de exames");
   blocoPaciente(doc, d.nome, [d.idade != null ? `${d.idade} anos` : "", d.convenio ? `Convênio: ${d.convenio}` : "", d.carteirinha ? `Carteirinha: ${d.carteirinha}` : ""]);
+  // um pedido por CID (18/11/2026): o CID da folha vem logo acima da lista
+  if (cid) { const nomeCid = d.cid_nomes && d.cid_nomes[cid]; doc.font("G8").fontSize(12).text("CID-10: ", L, doc.y, { continued: true }).font("G6").text(nomeCid ? `${cid} — ${nomeCid}` : cid); doc.moveDown(0.4); }
   doc.font("G6").fontSize(12).text("Solicito:", L, doc.y);
   doc.moveDown(0.4);
   exames.forEach((e, i) => {
@@ -440,6 +442,12 @@ function abrirDoc(info, opcoes = {}) {
   return { doc, partes, fim };
 }
 
+// Um pedido (folha) por CID — d.cids = { exame: "H40.0" }. Sem d.cids, uma folha só, como antes.
+function gruposPedido(d) {
+  const g = [];
+  for (const e of d.exames || []) { const c = (d.cids && d.cids[e]) || ""; let x = g.find(y => y.cid === c); if (!x) g.push(x = { cid: c, exames: [] }); x.exames.push(e); }
+  return g.length ? g : [{ cid: "", exames: d.exames || [] }];
+}
 async function documentoAssinado(tipo, d, cert) {
   const agora = new Date();
   const quando = agora.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -449,7 +457,7 @@ async function documentoAssinado(tipo, d, cert) {
   const paginas = [];   // [via, desenha]
   if (tipo === "colirios") (d.duas_vias ? ["1ª via · farmácia", "2ª via · paciente"] : [""]).forEach(via => paginas.push([via, () => { corpoColirios(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]));
   else if (tipo === "oculos") paginas.push([`Paciente: ${d.nome}`, () => { corpoOculos(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]);
-  else if (tipo === "pedido") (d.separado ? d.exames.map(e => [e]) : [d.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista); assinatura(doc, quando, true, "Assinado digitalmente"); }]));
+  else if (tipo === "pedido") gruposPedido(d).forEach(g => (d.separado ? g.exames.map(e => [e]) : [g.exames]).forEach(lista => paginas.push(["", () => { corpoPedido(doc, d, lista, g.cid); assinatura(doc, quando, true, "Assinado digitalmente"); }])));
   else if (tipo === "laudo") paginas.push(["", () => { corpoLaudo(doc, d); assinatura(doc, quando, true, "Assinado digitalmente"); imagensLaudo(doc, d.imagens); }]);
   else if (tipo === "laudo_oft") paginas.push(["", () => { corpoLaudoOft(doc, d); assinatura(doc, quando, true, "Assinado digitalmente"); }]);
   else if (tipo === "lentes") paginas.push(["", () => { corpoLentes(doc, d); assinatura(doc, quando, false, "Assinada digitalmente"); }]);
