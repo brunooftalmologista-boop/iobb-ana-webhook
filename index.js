@@ -11292,7 +11292,7 @@ app.get("/api/prontuario/ficha", requireMedico, async (req, res) => {
     for (const [k, v] of Object.entries(grupo.principalDados)) if (v && !docsGrupo[k] && !/^juntad/.test(k)) docsGrupo[k] = v;
     let preexames = [];
     if (meus.length) {
-      const { data: ps } = await supabase.from("prontuario_preexame").select("appointment_id, motivos, colirio, motivo_outro, observacao, feito_por, updated_at")
+      const { data: ps } = await supabase.from("prontuario_preexame").select("appointment_id, motivos, colirio, motivo_outro, observacao, feito_por, updated_at, pedido, pedido_status, pedido_por")
         .in("appointment_id", meus.map(a => a.id));
       preexames = (ps || []).map(p => ({ ...p, inicio: meus.find(a => a.id === p.appointment_id)?.inicio || null }));
     }
@@ -11764,6 +11764,15 @@ app.post("/api/prontuario/documento-assinado", requireMedico, express.json({ lim
         consultaId: /^[0-9a-f-]{36}$/i.test(String(consulta_id || "")) ? consulta_id : null,
       });
     }
+    // Pedido assinado de dentro do atendimento: o pedido que a equipe preparou no
+    // pré-exame para esta visita sai da fila "aguardando assinatura" (13/11/2026).
+    if (tipo === "pedido" && anexo && /^[0-9a-f-]{36}$/i.test(String(consulta_id || ""))) {
+      try {
+        const { data: pc } = await supabase.from("prontuario_consultas").select("appointment_id").eq("id", consulta_id).maybeSingle();
+        if (pc?.appointment_id) await supabase.from("prontuario_preexame").update({ pedido_status: "assinado", pedido_assinado_em: new Date().toISOString(), pedido_anexo_id: anexo.id })
+          .eq("appointment_id", pc.appointment_id).eq("pedido_status", "aguardando");
+      } catch (e) { console.error("[Pedido preparado] baixa pelo atendimento falhou:", e.message); }
+    }
     res.json({ ok: true, anexo, url: anexo?.url || null, pdf_b64: anexo?.url ? null : pdf.toString("base64") });
   } catch (e) {
     console.error("[Assinatura] documento falhou:", e.message);
@@ -12210,7 +12219,7 @@ app.get("/api/preexame/consulta/:id", requirePreExame, async (req, res) => {
     res.json({
       consulta: { id: ag.id, inicio: ag.inicio, unidade: ag.unidade, paciente_nome: ag.paciente_nome, convenio: ag.convenio, motivo: ag.motivo, encaixe: ag.encaixe, idade: idadeDe(ag.observacoes)?.idade ?? null, historico },
       preexame: pre ? { motivos: pre.motivos || [], colirio: pre.colirio || [], motivo_outro: pre.motivo_outro || "", observacao: pre.observacao || "", feito_por: pre.feito_por, updated_at: pre.updated_at } : null,
-      anexos, anteriores_total,
+      anexos, anteriores_total, pedido: await pedidoParaTela(pre),
     });
   } catch (e) {
     console.error("[Pré-exame] consulta falhou:", e.message);
@@ -12294,6 +12303,120 @@ app.post("/api/preexame/consulta/:id", requirePreExame, async (req, res) => {
   } catch (e) {
     console.error("[Pré-exame] salvar falhou:", e.message);
     res.status(500).json({ error: "Não consegui salvar o pré-exame." });
+  }
+});
+// ===== PEDIDO DE EXAMES PREPARADO PELA EQUIPE (Dr. Bruno, 13/11/2026) =========
+// "Deixar opção de pedido de exames no pré-exame, para adiantar a solicitação
+// junto aos convênios, com assinatura digital no meu nome." Decisão dele: a
+// EQUIPE PREPARA e ELE ASSINA — o certificado continua só no login de médico
+// (requireMedico). A equipe marca exames, olhos e justificativas; o pedido fica
+// `aguardando` na lista do prontuário ("Pedidos aguardando assinatura") e, se
+// ele abrir o atendimento desse paciente, vem pré-preenchido. Assinado, o PDF
+// volta para o pré-exame para a equipe imprimir ou mandar ao convênio.
+// Mora em prontuario_preexame (um pedido por agendamento): pedido, pedido_status
+// (aguardando/assinado/descartado), pedido_por/em, pedido_assinado_em, pedido_anexo_id.
+const OLHOS_PEDIDO = ["Ambos os olhos", "Olho direito", "Olho esquerdo", "-"];
+function limparPedido(b) {
+  const exames = [...new Set((Array.isArray(b?.exames) ? b.exames : []).map(x => String(x || "").trim().slice(0, 120)).filter(Boolean))].slice(0, 20);
+  const just = {};
+  for (const e of exames) { const j = String(b?.justificativas?.[e] || "").trim().slice(0, 700); if (j) just[e] = j; }
+  return {
+    exames, justificativas: just,
+    // as que a equipe escreveu à mão: só estas sobrepõem a justificativa pelo CID no atendimento
+    editadas: (Array.isArray(b?.editadas) ? b.editadas : []).map(String).filter(e => just[e]),
+    olho: OLHOS_PEDIDO.includes(b?.olho) ? b.olho : "Ambos os olhos",
+    indicacao: String(b?.indicacao || "").trim().slice(0, 400),
+    separado: !!b?.separado,
+  };
+}
+async function urlAnexoPorId(id) {
+  if (!id) return null;
+  const { data: a } = await supabase.from("prontuario_anexos").select("path").eq("id", id).maybeSingle();
+  if (!a?.path) return null;
+  const { data: s } = await supabase.storage.from(BUCKET_PRONTUARIO).createSignedUrl(a.path, 1800);
+  return s?.signedUrl || null;
+}
+async function pedidoParaTela(pre) {
+  if (!pre || !pre.pedido_status) return null;
+  return { ...(pre.pedido || {}), status: pre.pedido_status, por: pre.pedido_por, em: pre.pedido_em,
+    assinado_em: pre.pedido_assinado_em, url: pre.pedido_status === "assinado" ? await urlAnexoPorId(pre.pedido_anexo_id) : null };
+}
+app.post("/api/preexame/consulta/:id/pedido", requirePreExame, async (req, res) => {
+  try {
+    const ag = await agendamentoPreExame(req.params.id);
+    if (!ag) return res.status(404).json({ error: "Consulta não encontrada (ou fora da semana)." });
+    const { data: pre } = await supabase.from("prontuario_preexame").select("pedido_status").eq("appointment_id", ag.id).maybeSingle();
+    // Assinado não se edita por cima: "fazer outro pedido" (novo=true) abre um
+    // novo, que precisa de NOVA assinatura. O PDF anterior fica no prontuário.
+    if (pre?.pedido_status === "assinado" && !req.body?.novo) return res.status(409).json({ error: "Este pedido já foi assinado pelo Dr. Bruno. Para mudar, use “Fazer outro pedido”." });
+    const p = limparPedido(req.body || {});
+    const agora = new Date().toISOString();
+    const linha = { appointment_id: ag.id, paciente_chave: chavePaciente(ag.paciente_telefone, ag.paciente_nome),
+      pedido: p.exames.length ? p : null, pedido_status: p.exames.length ? "aguardando" : null,
+      pedido_por: req.porPreExame, pedido_em: agora, pedido_assinado_em: null, pedido_anexo_id: null };
+    const { error } = await supabase.from("prontuario_preexame").upsert(linha, { onConflict: "appointment_id" });
+    if (error) throw error;
+    res.json({ ok: true, pedido: p.exames.length ? { ...p, status: "aguardando", por: req.porPreExame, em: agora } : null });
+  } catch (e) {
+    console.error("[Pedido preparado] salvar falhou:", e.message);
+    res.status(500).json({ error: "Não consegui salvar o pedido." });
+  }
+});
+async function assinarPedidoPreparado(appointmentId, porMedico) {
+  const { data: pre } = await supabase.from("prontuario_preexame").select("*").eq("appointment_id", appointmentId).maybeSingle();
+  if (!pre || pre.pedido_status !== "aguardando" || !pre.pedido?.exames?.length) throw Object.assign(new Error("Este pedido não está aguardando assinatura."), { publico: true, status: 409 });
+  const { data: ag } = await supabase.from("appointments").select("id, inicio, paciente_nome, paciente_telefone, convenio, observacoes").eq("id", appointmentId).maybeSingle();
+  if (!ag) throw Object.assign(new Error("Agendamento não encontrado."), { publico: true, status: 404 });
+  const cert = await certificadoDoMedico();
+  if (!cert) throw Object.assign(new Error("Cadastre o certificado digital primeiro (botão “Certificado digital”)."), { publico: true, status: 409 });
+  const dd = await dadosDoPaciente(ag);
+  const conv = String(dd.operadora || ag.convenio || "").trim();
+  const temConv = conv && !/particular/i.test(conv);
+  const idade = idadeDe(ag.observacoes)?.idade ?? (dd.nascimento ? idadeDe(`Nascimento: ${dd.nascimento}`)?.idade : null) ?? null;
+  const p = pre.pedido;
+  const dados = { nome: String(ag.paciente_nome || "").toUpperCase(), data: dataBR(ag.inicio), idade,
+    convenio: temConv ? conv : "", carteirinha: temConv ? (dd.carteirinha || "") : "",
+    exames: p.exames, olho: p.olho, indicacao: p.indicacao || "", justificativas: p.justificativas || {}, separado: !!p.separado };
+  const pdf = await assin.documentoAssinado("pedido", dados, cert);
+  const anexo = await guardarAnexo({ tel: ag.paciente_telefone, nome: ag.paciente_nome, tipo: "assinado",
+    nomeArq: `Pedido de exames assinado - ${String(dados.nome).slice(0, 60)} - ${dados.data.replace(/\//g, "-")}.pdf`,
+    mime: "application/pdf", buf: pdf, obs: `Pedido de exames (assinado digitalmente) — preparado por ${pre.pedido_por || "equipe"}`, por: porMedico || null });
+  const agora = new Date().toISOString();
+  await supabase.from("prontuario_preexame").update({ pedido_status: "assinado", pedido_assinado_em: agora, pedido_anexo_id: anexo.id }).eq("appointment_id", appointmentId).eq("pedido_status", "aguardando");
+  return { anexo, assinado_em: agora };
+}
+app.get("/api/prontuario/pedidos-preparados", requireMedico, async (req, res) => {
+  try {
+    const desde = new Date(Date.now() - 14 * 864e5).toISOString();
+    const { data: ps, error } = await supabase.from("prontuario_preexame").select("appointment_id, pedido, pedido_por, pedido_em")
+      .eq("pedido_status", "aguardando").gte("pedido_em", desde).order("pedido_em", { ascending: true }).limit(50);
+    if (error) throw error;
+    const ids = (ps || []).map(p => p.appointment_id);
+    const { data: ags } = ids.length ? await supabase.from("appointments").select("id, inicio, unidade, paciente_nome, paciente_telefone, convenio").in("id", ids) : { data: [] };
+    const pedidos = (ps || []).map(p => ({ ...p, consulta: (ags || []).find(a => a.id === p.appointment_id) || null })).filter(p => p.consulta);
+    res.json({ pedidos });
+  } catch (e) {
+    console.error("[Pedido preparado] listar falhou:", e.message);
+    res.status(500).json({ error: "Não consegui listar os pedidos." });
+  }
+});
+app.post("/api/prontuario/pedidos-preparados/:aid/assinar", requireMedico, async (req, res) => {
+  try {
+    const r = await assinarPedidoPreparado(req.params.aid, "Dr. Bruno");
+    res.json({ ok: true, url: r.anexo.url, anexo: r.anexo });
+  } catch (e) {
+    console.error("[Pedido preparado] assinar falhou:", e.message);
+    res.status(e.status || 500).json({ error: e.publico ? e.message : "Não consegui assinar o pedido." });
+  }
+});
+app.post("/api/prontuario/pedidos-preparados/:aid/descartar", requireMedico, async (req, res) => {
+  try {
+    const { error } = await supabase.from("prontuario_preexame").update({ pedido_status: "descartado" }).eq("appointment_id", req.params.aid).eq("pedido_status", "aguardando");
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[Pedido preparado] descartar falhou:", e.message);
+    res.status(500).json({ error: "Não consegui descartar." });
   }
 });
 app.post("/api/preexame/consulta/:id/anexo", requirePreExame, express.raw({ type: () => true, limit: "30mb" }), async (req, res) => {
@@ -12652,6 +12775,7 @@ app.post("/api/equipe/mensagens", async (req, res) => {
 });
 app.get("/pedidos-lentes.js", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.type("application/javascript").sendFile(__dirname + "/pedidos-lentes.js"); });
 app.get("/equipe-chat.js", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.type("application/javascript").sendFile(__dirname + "/equipe-chat.js"); });
+app.get("/exames-pedido.js", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.type("application/javascript").sendFile(__dirname + "/exames-pedido.js"); });
 app.get("/simulador-cartao.js", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.type("application/javascript").sendFile(__dirname + "/simulador-cartao.js"); });
 app.get("/pre-exame", (req, res) => { res.set("Cache-Control", "no-store, must-revalidate"); res.sendFile(__dirname + "/preexame.html"); });
 app.get("/prontuario/timbrado.jpg", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(__dirname + "/assets/timbrado-a4.jpg"); });

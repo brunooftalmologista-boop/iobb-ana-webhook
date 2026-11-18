@@ -76,6 +76,9 @@ table.lista td{padding:10px;border-bottom:1px solid var(--line);vertical-align:t
 table.lista tr.clica{cursor:pointer} table.lista tr.clica:hover td{background:var(--pri-soft)}
 table.lista td.nome{color:var(--pri);font-weight:500}
 .vazio{color:var(--muted);font-size:14px;padding:6px 0}
+.pp-item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between}
+.pp-item .pp-ex{margin:4px 0 0;padding-left:18px}.pp-item .pp-ex li{margin:2px 0}.pp-item .pp-j{color:var(--muted);font-size:12.5px}
+.pp-item .pp-acoes{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;background:var(--chip);color:var(--muted)}
 .tag.ok{background:#e6f4ea;color:var(--ok)} .tag.and{background:var(--pri-soft);color:var(--pri)}
 
@@ -270,6 +273,10 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
           <div class="cartao-cab"><h2>Resultado da busca</h2></div>
           <div class="cartao-corpo"><div class="tabela-wrap"><table class="lista"><thead><tr><th>Nome</th><th>Telefone</th><th>Última consulta</th><th>Próxima</th><th>Nascimento</th><th>Convênio</th></tr></thead><tbody id="busca-corpo"></tbody></table></div></div>
         </div>
+        <div class="cartao" id="pp-cartao" hidden>
+          <div class="cartao-cab"><h2 id="pp-titulo">📝 Pedidos de exame aguardando sua assinatura</h2><div class="row"><button type="button" class="pri" id="pp-todos">🔏 Assinar todos</button></div></div>
+          <div class="cartao-corpo"><div class="hint" style="margin-bottom:8px">Preparados pela equipe no pré-exame. Confira e assine: o PDF sai com o seu certificado e volta para o pré-exame, para a equipe imprimir ou mandar ao convênio.</div><div id="pp-lista"></div><div class="status" id="pp-st"></div></div>
+        </div>
         <div class="cartao">
           <div class="cartao-cab"><h2 id="dia-titulo">Agenda de hoje</h2><div class="row"><input type="date" id="dia"><button type="button" id="hoje">Hoje</button></div></div>
           <div class="cartao-corpo"><div class="tabela-wrap"><table class="lista"><thead><tr><th>Hora</th><th>Nome</th><th>Convênio</th><th>Unidade</th><th>Prontuário</th></tr></thead><tbody id="dia-corpo"><tr><td colspan="5" class="vazio">Carregando…</td></tr></tbody></table></div></div>
@@ -418,7 +425,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
               </div>
               <div><span class="rot">Exames solicitados</span>
                 <div class="chips" data-grupo="ex">
-                  <span class="chip" tabindex="0">Pentacam</span><span class="chip" tabindex="0">Topografia de córnea</span><span class="chip" tabindex="0">Paquimetria</span>
+                  <span class="chip" tabindex="0">Pentacam</span><span class="chip" tabindex="0">Topografia de córnea</span><span class="chip" tabindex="0">Paquimetria</span><span class="chip" tabindex="0">Tonometria</span>
                   <span class="chip" tabindex="0">Microscopia especular</span><span class="chip" tabindex="0">Mapeamento de retina</span><span class="chip" tabindex="0">Retinografia</span>
                   <span class="chip" tabindex="0">OCT de mácula</span><span class="chip" tabindex="0">OCT de nervo óptico (papila)</span><span class="chip" tabindex="0">Campimetria visual</span>
                   <span class="chip" tabindex="0">Curva diária de pressão ocular</span><span class="chip" tabindex="0">Gonioscopia</span><span class="chip" tabindex="0">Teste de sobrecarga hídrica</span>
@@ -696,6 +703,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
 <datalist id="snellen"><option>20/20</option><option>20/25</option><option>20/30</option><option>20/40</option><option>20/50</option><option>20/60</option><option>20/70</option><option>20/80</option><option>20/100</option><option>20/200</option><option>20/400</option><option>CD 2m</option><option>CD 1m</option><option>MM</option><option>PL</option><option>SPL</option></datalist>
 <datalist id="jaeger"><option>J1</option><option>J2</option><option>J3</option><option>J4</option><option>J6</option></datalist>
 
+<script src="/exames-pedido.js"></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -1375,32 +1383,7 @@ function examesPedidos(){ return [...marcados("ex").map(nomeChip),...linhas("ex-
 // regra cujo CID (prefixo) está entre os diagnósticos marcados vence; senão, o
 // texto padrão do exame (sem CID). O médico pode editar cada uma
 // (fica salva no atendimento, em #ex-justs).
-const J_GLAUCOMA=["H40","H42","Q15.0"], J_DIABETES=["E10","E11","E12","E13","E14","H36.0"], J_CATARATA=["H25","H26","H28"], J_ECTASIA=["H18.6","H18.7"];
-const JUST={
-  "Pentacam":[[J_ECTASIA,"Diagnóstico e acompanhamento de ectasia corneana (ceratocone), com avaliação de progressão por tomografia de córnea."],[["H52.2"],"Investigação de astigmatismo com suspeita de irregularidade corneana."],[["H52.1","H52.0","H44.2"],"Avaliação corneana (curvatura, elevação e espessura) para indicação de cirurgia refrativa e exclusão de ectasia."],[J_CATARATA,"Avaliação corneana no planejamento da cirurgia de catarata (astigmatismo corneano e escolha da lente intraocular)."],[null,"Avaliação da curvatura, elevação e espessura da córnea."]],
-  "Topografia de córnea":[[J_ECTASIA,"Diagnóstico e acompanhamento de ectasia corneana (ceratocone)."],[["H52.2"],"Investigação de astigmatismo com suspeita de irregularidade corneana."],[["H52.1","H52.0","H44.2"],"Avaliação da curvatura corneana para indicação de cirurgia refrativa e exclusão de ectasia."],[J_CATARATA,"Avaliação do astigmatismo corneano no planejamento da cirurgia de catarata."],[null,"Avaliação da curvatura da córnea."]],
-  "Paquimetria":[[J_GLAUCOMA,"Medida da espessura corneana central para interpretação da pressão intraocular em suspeita/diagnóstico de glaucoma."],[J_ECTASIA,"Acompanhamento da espessura corneana em ectasia corneana."],[null,"Avaliação da espessura corneana."]],
-  "Microscopia especular":[[J_CATARATA,"Avaliação do endotélio corneano no pré-operatório de cirurgia de catarata."],[["H18.5"],"Avaliação de distrofia endotelial corneana."],[J_ECTASIA,"Avaliação endotelial em paciente com ectasia corneana e uso de lente de contato."],[null,"Avaliação da densidade e da morfologia das células endoteliais da córnea."]],
-  "Mapeamento de retina":[[J_DIABETES,"Rastreamento e estadiamento de retinopatia diabética."],[["H43"],"Avaliação da periferia retiniana por alteração do vítreo (descolamento do vítreo posterior / moscas volantes)."],[["H44.2","H52.1"],"Avaliação da periferia retiniana em miopia (risco de degenerações e roturas)."],[J_CATARATA,"Avaliação da retina no pré-operatório de cirurgia de catarata."],[J_GLAUCOMA,"Avaliação do nervo óptico e da retina em suspeita/diagnóstico de glaucoma."],[null,"Avaliação do fundo de olho sob midríase."]],
-  "Retinografia":[[J_GLAUCOMA,"Documentação do disco óptico para acompanhamento de glaucoma."],[J_DIABETES,"Documentação e acompanhamento de retinopatia diabética."],[["H35.3"],"Documentação e acompanhamento de maculopatia."],[null,"Documentação fotográfica do fundo de olho."]],
-  // OCT: descrição completa, como os convênios exigem na guia (23/10/2026)
-  "OCT de mácula":[[["H35.3"],"Paciente com doença macular (degeneração macular). Solicito tomografia de coerência óptica (OCT) de mácula para avaliação da espessura e da estrutura das camadas da retina macular, pesquisa de fluido intra/sub-retiniano e de neovascularização, exame necessário para definição de conduta e acompanhamento do tratamento."],
-    [J_DIABETES,"Paciente diabético. Solicito tomografia de coerência óptica (OCT) de mácula para investigação e quantificação de edema macular diabético, exame necessário para indicação e acompanhamento do tratamento."],
-    [["H35.8","H34"],"Solicito tomografia de coerência óptica (OCT) de mácula para investigação e quantificação de edema macular, exame necessário para definição de conduta e acompanhamento."],
-    [J_CATARATA,"Pré-operatório de cirurgia de catarata. Solicito tomografia de coerência óptica (OCT) de mácula para afastar doença macular que limite o prognóstico visual e orientar a escolha da lente intraocular."],
-    [null,"Solicito tomografia de coerência óptica (OCT) de mácula para avaliação da espessura e da estrutura das camadas da retina macular, exame necessário para o diagnóstico e o acompanhamento de alteração macular com repercussão na acuidade visual."]],
-  "OCT de nervo óptico (papila)":[[J_GLAUCOMA,"Paciente com glaucoma / suspeita de glaucoma (escavação do disco óptico aumentada e/ou pressão intraocular elevada). Solicito tomografia de coerência óptica (OCT) de nervo óptico (papila) para quantificação da camada de fibras nervosas da retina e análise do disco óptico, exame necessário para o diagnóstico e o acompanhamento da progressão da doença."],
-    [["H47"],"Solicito tomografia de coerência óptica (OCT) de nervo óptico (papila) para investigação de neuropatia óptica, com quantificação da camada de fibras nervosas da retina e análise do disco óptico."],
-    [null,"Solicito tomografia de coerência óptica (OCT) de nervo óptico (papila) para quantificação da camada de fibras nervosas da retina e análise do disco óptico, exame necessário para o diagnóstico e o acompanhamento."]],
-  "Campimetria visual":[[J_GLAUCOMA,"Avaliação do campo visual para diagnóstico e acompanhamento de glaucoma."],[["H47","H46"],"Investigação de neuropatia óptica."],[null,"Avaliação do campo visual."]],
-  "Curva diária de pressão ocular":[[J_GLAUCOMA,"Avaliação da variação da pressão intraocular ao longo do dia em suspeita/diagnóstico de glaucoma."],[null,"Avaliação da variação diurna da pressão intraocular."]],
-  "Gonioscopia":[[J_GLAUCOMA,"Avaliação do ângulo da câmara anterior para classificação do glaucoma."],[null,"Avaliação do ângulo da câmara anterior."]],
-  "Teste de sobrecarga hídrica":[[J_GLAUCOMA,"Avaliação da facilidade de escoamento do humor aquoso em suspeita/diagnóstico de glaucoma."],[null,"Avaliação da facilidade de escoamento do humor aquoso."]],
-  "Teste de lente de contato":[[J_ECTASIA,"Teste de adaptação de lente de contato para reabilitação visual em ectasia corneana (ceratocone)."],[null,"Teste de adaptação de lente de contato para correção visual."]],
-  "Biometria":[[J_CATARATA,"Cálculo da lente intraocular para cirurgia de catarata."],[null,"Cálculo de lente intraocular."]],
-  "Avaliação cardiológica com risco cirúrgico":[[J_CATARATA,"Avaliação cardiológica pré-operatória, com risco cirúrgico, para cirurgia de catarata."],[null,"Avaliação cardiológica pré-operatória, com risco cirúrgico, para cirurgia oftalmológica."]],
-  "Ultrassonografia ocular":[[J_CATARATA,"Avaliação do segmento posterior por opacidade de meios (catarata densa)."],[["H43.1"],"Avaliação do vítreo e da retina por hemorragia vítrea."],[["H33"],"Investigação de descolamento de retina."],[null,"Avaliação do segmento posterior do olho."]],
-};
+const {J_GLAUCOMA,J_DIABETES,J_CATARATA,J_ECTASIA,JUST}=window.ExamesPedido;   // tabela em /exames-pedido.js (compartilhada com o pré-exame)
 function cidsAtivos(){ return [...marcados("hd").map(c=>c.dataset.cid).filter(Boolean),...cidsEscolhidos().map(([c])=>c)]; }
 function justAuto(exame){ const regras=JUST[exame]; const cs=cidsAtivos();
   if(regras) for(const [pref,txt] of regras){ if(!pref) continue; const c=cs.find(c=>pref.some(p=>c.startsWith(p))); if(c) return `${txt} CID ${c}.`; }
@@ -2122,7 +2105,48 @@ function atualiza(){
 
 /* ===== LISTA ===== */
 function mostra(v){ if(v==="lista"&&segundaVia) fecharSegundaVia(); $("#v-lista").hidden=v!=="lista"; $("#v-ficha").hidden=v!=="ficha"; $("#lat-ficha").hidden=v!=="ficha"; $("#lat-lista").hidden=v!=="lista"; window.scrollTo({top:0}); }
+/* ===== PEDIDOS PREPARADOS PELA EQUIPE (13/11/2026) =====
+   A equipe marca os exames no pré-exame; aqui o Dr. Bruno confere e assina
+   (um a um ou todos). O certificado só é usado neste login. */
+let pedidosPend=[];
+async function carregaPedidosPend(){
+  try{ const r=await api("/api/prontuario/pedidos-preparados"); pedidosPend=r.pedidos||[]; desenhaPedidosPend(); }
+  catch(e){ /* sem a lista, a agenda segue normal */ }
+}
+function desenhaPedidosPend(){
+  const box=$("#pp-cartao"); box.hidden=!pedidosPend.length; if(!pedidosPend.length) return;
+  $("#pp-titulo").textContent=`📝 ${pedidosPend.length} pedido${pedidosPend.length>1?"s":""} de exame aguardando sua assinatura`;
+  $("#pp-todos").hidden=pedidosPend.length<2; $("#pp-todos").textContent=`🔏 Assinar todos (${pedidosPend.length})`;
+  $("#pp-lista").innerHTML=pedidosPend.map((p,i)=>{ const c=p.consulta||{}, d=p.pedido||{}, j=d.justificativas||{};
+    const quando=new Date(c.inicio).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"short",day:"2-digit",month:"2-digit"})+" "+hhmm(c.inicio);
+    return `<div class="pp-item" data-i="${i}"><div style="flex:1 1 320px;min-width:0"><b>${esc(c.paciente_nome||"—")}</b> <span class="hint">· ${esc(quando)} · ${esc(c.unidade||"")}${c.convenio?" · "+esc(c.convenio):""}</span>
+      <ol class="pp-ex">${(d.exames||[]).map(e=>`<li>${esc(e)}${d.olho&&d.olho!=="-"?` <span class="hint">(${esc(d.olho)})</span>`:""}${j[e]?`<div class="pp-j">${esc(j[e])}</div>`:""}</li>`).join("")}</ol>
+      ${d.indicacao?`<div class="pp-j"><b>Indicação clínica:</b> ${esc(d.indicacao)}</div>`:""}
+      <div class="hint">Preparado por ${esc(p.pedido_por||"equipe")} · ${ddmmaa(p.pedido_em)} ${hhmm(p.pedido_em)}${d.separado?" · um exame por folha":""}</div></div>
+      <div class="pp-acoes"><button type="button" class="pri" data-pp="assinar">🔏 Assinar</button><button type="button" data-pp="ficha">Abrir ficha</button><button type="button" class="link" data-pp="descartar">Descartar</button></div></div>`; }).join("");
+}
+function ppStatus(t,cls){ const x=$("#pp-st"); x.textContent=t; x.className="status "+(cls||""); }
+async function assinarPedidoPend(p){
+  const r=await api(`/api/prontuario/pedidos-preparados/${p.appointment_id}/assinar`,{method:"POST",body:"{}"});
+  return r;
+}
+$("#pp-lista").addEventListener("click",async e=>{ const b=e.target.closest("[data-pp]"); if(!b) return;
+  const p=pedidosPend[+b.closest(".pp-item").dataset.i]; if(!p) return;
+  if(b.dataset.pp==="ficha") return abrirFicha(p.consulta.paciente_telefone,p.consulta.paciente_nome);
+  if(b.dataset.pp==="descartar"){ if(b.dataset.conf!=="1"){ b.dataset.conf="1"; b.textContent="Confirmar descarte?"; return; }
+    try{ await api(`/api/prontuario/pedidos-preparados/${p.appointment_id}/descartar`,{method:"POST",body:"{}"}); ppStatus("Pedido descartado.","ok"); carregaPedidosPend(); }
+    catch(er){ ppStatus(er.msg||"Não consegui descartar.","erro"); } return; }
+  b.disabled=true; b.textContent="Assinando…";
+  try{ const r=await assinarPedidoPend(p); ppStatus(`Assinado: ${p.consulta.paciente_nome}.`,"ok"); if(r.url) window.open(r.url,"_blank","noopener"); carregaPedidosPend(); }
+  catch(er){ b.disabled=false; b.textContent="🔏 Assinar"; ppStatus(er.status===401?MSG_SESSAO:(er.msg||"Não consegui assinar."),"erro"); }
+});
+$("#pp-todos").addEventListener("click",async()=>{ const b=$("#pp-todos"); const lista=pedidosPend.slice(); let ok=0, falhas=[];
+  b.disabled=true;
+  for(const p of lista){ ppStatus(`Assinando ${ok+falhas.length+1} de ${lista.length}…`,""); try{ await assinarPedidoPend(p); ok++; }catch(er){ falhas.push(`${p.consulta.paciente_nome}: ${er.msg||"falhou"}`); if(er.status===401) break; } }
+  b.disabled=false; ppStatus(`${ok} assinado${ok!==1?"s":""}.${falhas.length?" Não assinados — "+falhas.join("; "):""}`, falhas.length?"erro":"ok"); carregaPedidosPend();
+});
 async function carregaDia(ymd){
+  carregaPedidosPend();
   $("#dia-corpo").innerHTML='<tr><td colspan="5" class="vazio">Carregando…</td></tr>';
   try{ const r=await api("/api/prontuario/dia?data="+ymd); const cs=r.consultas||[];
     const titulo=ymd===hojeBR()?"Agenda de hoje":"Agenda de "+new Date(ymd+"T12:00:00-03:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"2-digit"});
@@ -2238,7 +2262,19 @@ function dadosDoPreExame(apptId){
   for(const m of pre.motivos||[]){ const n=ALIAS_QP[m]||m; if(botoes.includes(n)) chips.push("qp|"+n); else linhas.push(m); }
   if(pre.motivo_outro) linhas.push(pre.motivo_outro);
   if(pre.observacao) linhas.push(pre.observacao);
-  return {chips,campos:linhas.length?{"qp-txt":linhas.join("\n")}:{}};
+  const campos=linhas.length?{"qp-txt":linhas.join("\n")}:{}; let separado=false;
+  // Pedido de exames que a equipe preparou e ainda não foi assinado (13/11/2026):
+  // vem marcado no atendimento. Justificativa: só as que a equipe escreveu à mão
+  // — as outras saem pelo CID do diagnóstico, como sempre.
+  const ped=pre.pedido_status==="aguardando"?pre.pedido:null;
+  if(ped&&(ped.exames||[]).length){ const exBot=$$('[data-grupo="ex"] .chip').map(nomeChip), fora=[];
+    for(const e of ped.exames){ if(exBot.includes(e)) chips.push("ex|"+e); else fora.push(e); }
+    if(fora.length) campos["ex-txt"]=fora.join("\n");
+    if(ped.olho) campos["ex-olho"]=ped.olho; if(ped.indicacao) campos["ex-ind"]=ped.indicacao;
+    const ed={}; for(const e of ped.editadas||[]) if(ped.justificativas?.[e]) ed[e]=ped.justificativas[e];
+    if(Object.keys(ed).length) campos["ex-justs"]=JSON.stringify(ed);
+    separado=!!ped.separado; }
+  return {chips,campos,separado};
 }
 function arq(x){ const ext=(String(x.nome||"").split(".").pop()||"").slice(0,4).toUpperCase();
   const a=arqLink(x,ext); if(x.tipo==="assinado") return `<span class="arq-w">${a}<button type="button" data-wpp="${esc(x.id)}" title="Enviar este PDF ao paciente pelo WhatsApp da clínica">📲 WhatsApp</button></span>`;
@@ -2357,7 +2393,7 @@ async function iniciar(consultaId){
     let dados=c.dados&&Object.keys(c.dados).length?c.dados:null;
     try{ const loc=JSON.parse(localStorage.getItem(chaveLocal(c.id))||"null"); if(loc&&(!c.updated_at||loc.ts>new Date(c.updated_at).getTime())) dados=loc.dados; }catch(_){}
     if(!dados) dados=dadosDoPreExame(c.appointment_id);
-    aplicar(dados); if(!v("pio-hora")){ const h=new Date(); $("#pio-hora").value=String(h.getHours()).padStart(2,"0")+"h"+String(h.getMinutes()).padStart(2,"0"); }
+    aplicar(dados); if(dados&&dados.separado) $("#ex-separado").checked=true; if(!v("pio-hora")){ const h=new Date(); $("#pio-hora").value=String(h.getHours()).padStart(2,"0")+"h"+String(h.getMinutes()).padStart(2,"0"); }
     $("#data-at").textContent=new Date(c.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,weekday:"long",day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
     durBase=c.duracao_seg||0; t0=Date.now(); pararRelogio(); t0=Date.now(); relogio=setInterval(()=>{ $("#duracao").textContent=fmtDur(durAtual()); },1000);
     modoAtend(true); atualiza(); sujo=false; status(c.updated_at&&c.texto?`Rascunho salvo às ${hhmm(c.updated_at)}.`:"Atendimento iniciado.","ok");

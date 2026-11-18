@@ -186,6 +186,21 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
           <div class="linha" style="margin-top:10px"><div class="status" id="st-dados"></div><button type="button" id="b-ler" hidden style="flex:0 0 auto">Ler documentos</button><button type="button" class="pri" id="b-dados" style="flex:0 0 auto">Conferi, salvar</button></div>
         </div>
 
+        <h3>Pedido de exames <span style="text-transform:none;letter-spacing:0">— o Dr. Bruno assina</span></h3>
+        <div id="ped-feito" hidden style="background:var(--pri-soft);border-radius:8px;padding:10px 12px;font-size:14px"></div>
+        <div id="ped-form">
+          <div class="info" style="font-size:13.5px;color:var(--muted)">Marque os exames do pedido. Ele vai para o Dr. Bruno conferir e assinar com o certificado digital; assinado, o PDF aparece aqui para imprimir ou mandar ao convênio.</div>
+          <div class="chips" id="ped-ex" style="margin-top:8px"></div>
+          <div class="campo"><label for="ped-outros">Outros exames (um por linha)</label><textarea id="ped-outros" rows="2" style="min-height:44px"></textarea></div>
+          <div class="linha" style="margin-top:10px;flex-wrap:wrap">
+            <div class="campo" style="margin:0;flex:1 1 200px"><label for="ped-olho">Olhos</label><select id="ped-olho"><option>Ambos os olhos</option><option>Olho direito</option><option>Olho esquerdo</option><option value="-">Não se aplica (exame que não é de olho)</option></select></div>
+            <label style="display:flex;gap:6px;align-items:center;font-size:14px;flex:1 1 200px"><input type="checkbox" id="ped-sep" style="width:auto"> Um exame por folha (convênio)</label>
+          </div>
+          <div id="ped-just"></div>
+          <div class="campo"><label for="ped-ind">Indicação clínica (opcional)</label><input id="ped-ind"></div>
+          <div class="linha" style="margin-top:10px"><div class="status" id="st-ped"></div><button type="button" class="link perigo" id="ped-apagar" hidden style="flex:0 0 auto">Apagar pedido</button><button type="button" class="pri" id="ped-salvar" style="flex:0 0 auto">Enviar para o Dr. Bruno assinar</button></div>
+        </div>
+
         <h3>Exames realizados</h3>
         <div class="linha">
           <div class="campo" style="margin:0"><label for="exame">Qual exame</label>
@@ -227,6 +242,7 @@ h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px;color:var
   </main>
 </div>
 
+<script src="/exames-pedido.js"></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -322,9 +338,69 @@ function desenha(){
   $("#m-outro").value=[...fora,p.motivo_outro].filter(Boolean).join("; ");
   $("#m-obs").value=p.observacao||"";
   st("#st-motivo",detalhe.preexame?`Salvo às ${hhmm(detalhe.preexame.updated_at)}${detalhe.preexame.feito_por?" ("+detalhe.preexame.feito_por+")":""}.`:"Ainda não preenchido.","");
-  sujo=false; desenhaArqs(); desenhaAnteriores();
+  sujo=false; desenhaArqs(); desenhaAnteriores(); desenhaPedido();
   docs=[]; desenhaDocs(); $("#wa-box").hidden=true; st("#st-doc","",""); carregaDocs();
 }
+/* ===== PEDIDO DE EXAMES (13/11/2026) =====
+   A equipe prepara; o Dr. Bruno assina no prontuário (o certificado só existe no
+   login dele). Justificativa: vem do MOTIVO marcado acima (sem CID — quem
+   diagnostica é o médico); dá para editar, e a editada à mão fica valendo. */
+const EXP=window.ExamesPedido||{LISTA:[],justPorMotivos:()=>""};
+$("#ped-ex").innerHTML=EXP.LISTA.map(x=>`<span class="chip" role="button" tabindex="0" aria-pressed="false">${esc(x)}</span>`).join("");
+let pedEditadas={}, pedNovo=false;
+function pedExames(){ return [...$$("#ped-ex .chip[aria-pressed=true]").map(c=>c.textContent), ...$("#ped-outros").value.split("\n").map(x=>x.trim()).filter(Boolean)]; }
+function motivosAtuais(){ return [...$$("#motivos .chip[aria-pressed=true]").map(c=>c.textContent), $("#m-outro").value]; }
+function desenhaJustPed(){
+  const exs=pedExames(), mot=motivosAtuais();
+  $("#ped-just").innerHTML=exs.length?`<div style="margin-top:10px;font-size:13px;color:var(--muted)">Justificativa de cada exame (convênio pede; dá para editar)</div>`+exs.map(e=>`<div class="campo" style="margin-top:6px"><label>${esc(e)}</label><input data-pjust="${esc(e)}" value="${esc(pedEditadas[e]!=null?pedEditadas[e]:EXP.justPorMotivos(e,mot))}" placeholder="Justificativa clínica"></div>`).join(""):"";
+}
+function pedJusts(){ const o={}; $$("#ped-just [data-pjust]").forEach(i=>{ if(i.value.trim()) o[i.dataset.pjust]=i.value.trim(); }); return o; }
+function pedTravado(on){ $$("#ped-form input,#ped-form select,#ped-form textarea").forEach(x=>x.disabled=on); $("#ped-ex").style.pointerEvents=on?"none":""; $("#ped-ex").style.opacity=on?".6":""; $("#ped-salvar").hidden=on; $("#ped-apagar").hidden=on||!(detalhe.pedido&&detalhe.pedido.status==="aguardando"); }
+function desenhaPedido(){
+  const p=detalhe.pedido; pedNovo=false; pedEditadas={};
+  const dt=iso=>new Date(iso).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit"})+" às "+hhmm(iso);
+  const carrega=x=>{ const exs=(x&&x.exames)||[];
+    $$("#ped-ex .chip").forEach(c=>c.setAttribute("aria-pressed",exs.includes(c.textContent)?"true":"false"));
+    $("#ped-outros").value=exs.filter(e=>!EXP.LISTA.includes(e)).join("\n");
+    $("#ped-olho").value=(x&&x.olho)||"Ambos os olhos"; $("#ped-sep").checked=!!(x&&x.separado); $("#ped-ind").value=(x&&x.indicacao)||"";
+    for(const e of (x&&x.editadas)||[]) if(x.justificativas&&x.justificativas[e]!=null) pedEditadas[e]=x.justificativas[e]; };
+  carrega(p&&p.status!=="descartado"?p:null); desenhaJustPed();
+  $("#ped-feito").hidden=!p||p.status==="aguardando";
+  if(p&&p.status==="assinado"){
+    $("#ped-feito").innerHTML=`✅ <b>Assinado pelo Dr. Bruno</b> ${p.assinado_em?dt(p.assinado_em):""}. ${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:var(--pri);font-weight:500">Abrir o PDF assinado</a>`:"(o PDF está no prontuário)"} · <button type="button" class="link" id="ped-novo">Fazer outro pedido</button>`;
+    pedTravado(true); st("#st-ped","","");
+  } else if(p&&p.status==="descartado"){
+    $("#ped-feito").innerHTML="O Dr. Bruno <b>descartou</b> o pedido anterior. Se precisar, faça outro abaixo.";
+    pedTravado(false); st("#st-ped","","");
+  } else {
+    pedTravado(false);
+    st("#st-ped",p?`⏳ Aguardando a assinatura do Dr. Bruno — enviado por ${p.por||"—"} em ${dt(p.em)}.`:"","");
+    $("#ped-salvar").textContent=p?"Atualizar pedido":"Enviar para o Dr. Bruno assinar";
+  }
+}
+$("#pac").addEventListener("click",e=>{ if(e.target.id!=="ped-novo") return; pedNovo=true; pedTravado(false);
+  $$("#ped-ex .chip").forEach(c=>c.setAttribute("aria-pressed","false")); $("#ped-outros").value=""; $("#ped-ind").value=""; pedEditadas={}; desenhaJustPed();
+  $("#ped-salvar").textContent="Enviar para o Dr. Bruno assinar"; st("#st-ped","Novo pedido: ele precisará de nova assinatura.",""); });
+$("#ped-ex").addEventListener("click",e=>{ const ch=e.target.closest(".chip"); if(!ch) return; ch.setAttribute("aria-pressed",ch.getAttribute("aria-pressed")==="true"?"false":"true"); desenhaJustPed(); });
+$("#ped-ex").addEventListener("keydown",e=>{ const ch=e.target.closest(".chip"); if(ch&&(e.key===" "||e.key==="Enter")){ e.preventDefault(); ch.click(); } });
+$("#ped-outros").addEventListener("input",desenhaJustPed);
+$("#ped-just").addEventListener("input",e=>{ const i=e.target.closest("[data-pjust]"); if(i) pedEditadas[i.dataset.pjust]=i.value; });
+// motivo mudou → justificativas não editadas acompanham
+$("#motivos").addEventListener("click",()=>setTimeout(desenhaJustPed,0)); $("#m-outro").addEventListener("input",desenhaJustPed);
+async function enviarPedido(apagar){
+  if(!atual) return;
+  const exames=apagar?[]:pedExames();
+  if(!apagar&&!exames.length){ st("#st-ped","Marque ou escreva ao menos um exame.","erro"); return; }
+  const justificativas=apagar?{}:pedJusts();
+  const corpo={ exames, justificativas, editadas:Object.keys(pedEditadas).filter(e=>exames.includes(e)), olho:$("#ped-olho").value, separado:$("#ped-sep").checked, indicacao:$("#ped-ind").value.trim(), novo:pedNovo };
+  $("#ped-salvar").disabled=true;
+  try{ const r=await api(`/api/preexame/consulta/${atual}/pedido`,{method:"POST",body:JSON.stringify(corpo)});
+    detalhe.pedido=r.pedido; desenhaPedido(); if(apagar) st("#st-ped","Pedido apagado.","ok");
+  }catch(e){ if(e.status!==401) st("#st-ped",e.msg||"Não consegui enviar o pedido.","erro"); }
+  finally{ $("#ped-salvar").disabled=false; }
+}
+$("#ped-salvar").addEventListener("click",()=>enviarPedido(false));
+$("#ped-apagar").addEventListener("click",()=>{ const b=$("#ped-apagar"); if(b.dataset.conf!=="1"){ b.dataset.conf="1"; b.textContent="Confirmar: apagar?"; setTimeout(()=>{ b.dataset.conf=""; b.textContent="Apagar pedido"; },5000); return; } b.dataset.conf=""; b.textContent="Apagar pedido"; enviarPedido(true); });
 function st(sel,t,cls){ $(sel).textContent=t; $(sel).className="status "+(cls||""); }
 $("#motivos").addEventListener("click",e=>{ const ch=e.target.closest(".chip"); if(!ch) return; alterna(ch); });
 // colírio: Tropicamida e Fenilefrina podem ir juntos; "Não usou" exclui os dois
