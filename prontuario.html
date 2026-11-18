@@ -237,7 +237,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
 <div id="raiz" hidden>
   <header class="topo">
     <b>IOBB · Prontuário</b>
-    <nav><button type="button" id="nav-lista" class="ativo">Prontuários</button><button type="button" id="btn-chat">💬 Chat da equipe</button></nav>
+    <nav><button type="button" id="nav-lista" class="ativo">Prontuários</button><button type="button" id="nav-pedidos" hidden style="background:#fff3cd;color:#7a4b00;font-weight:600">📝 Pedidos para assinar</button><button type="button" id="btn-chat">💬 Chat da equipe</button></nav>
     <div class="esp"><button type="button" class="link" id="btn-cert">🔏 Certificado digital</button> <button type="button" class="link" id="btn-imp">⬆ Importar iClinic</button> <a href="/painel">Voltar ao painel</a></div>
   </header>
 
@@ -273,6 +273,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
           <div class="cartao-cab"><h2>Resultado da busca</h2></div>
           <div class="cartao-corpo"><div class="tabela-wrap"><table class="lista"><thead><tr><th>Nome</th><th>Telefone</th><th>Última consulta</th><th>Próxima</th><th>Nascimento</th><th>Convênio</th></tr></thead><tbody id="busca-corpo"></tbody></table></div></div>
         </div>
+        <div id="pp-casa"></div>
         <div class="cartao" id="pp-cartao" hidden>
           <div class="cartao-cab"><h2 id="pp-titulo">📝 Pedidos de exame aguardando sua assinatura</h2><div class="row"><button type="button" class="pri" id="pp-todos">🔏 Assinar todos</button></div></div>
           <div class="cartao-corpo"><div class="hint" style="margin-bottom:8px">Preparados pela equipe no pré-exame. Confira e assine: o PDF sai com o seu certificado e volta para o pré-exame, para a equipe imprimir ou mandar ao convênio.</div><div id="pp-lista"></div><div class="status" id="pp-st"></div></div>
@@ -2114,7 +2115,9 @@ async function carregaPedidosPend(){
   catch(e){ /* sem a lista, a agenda segue normal */ }
 }
 function desenhaPedidosPend(){
-  const box=$("#pp-cartao"); box.hidden=!pedidosPend.length; if(!pedidosPend.length) return;
+  const box=$("#pp-cartao"); box.hidden=!pedidosPend.length;
+  const nb=$("#nav-pedidos"); nb.hidden=!pedidosPend.length; nb.textContent=`📝 ${pedidosPend.length} pedido${pedidosPend.length>1?"s":""} para assinar`;
+  if(!pedidosPend.length){ if($("#pp-fundo")&&!$("#pp-fundo").hidden) setTimeout(()=>janelaPedidos(false),1500); return; }
   $("#pp-titulo").textContent=`📝 ${pedidosPend.length} pedido${pedidosPend.length>1?"s":""} de exame aguardando sua assinatura`;
   $("#pp-todos").hidden=pedidosPend.length<2; $("#pp-todos").textContent=`🔏 Assinar todos (${pedidosPend.length})`;
   $("#pp-lista").innerHTML=pedidosPend.map((p,i)=>{ const c=p.consulta||{}, d=p.pedido||{}, j=d.justificativas||{};
@@ -2733,6 +2736,28 @@ $("#ml-assinar").addEventListener("click",async()=>{ lerEdicao(); const p=ficha.
 function dataDoLaudo(){ const c=(ficha.consultas||[]).find(x=>x.id===laudoAx?.consulta_id||x.appointment_id&&x.appointment_id===laudoAx?.appointment_id);
   if(c) return new Date(c.data_consulta).toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"});
   return /^\d{2}\/\d{2}\/\d{4}$/.test(laudo?.data_exame||"")?laudo.data_exame:new Date().toLocaleDateString("pt-BR",{timeZone:TZ,day:"2-digit",month:"2-digit",year:"numeric"}); }
+/* Pedidos visíveis em QUALQUER tela (18/11/2026): vindo da agenda (/prontuario?ag=)
+   a lista aparecia por um instante e a ficha abria por cima — o cartão sumia antes
+   de dar para ler. Agora um botão no topo mostra quantos há e abre o cartão numa janela. */
+function janelaPedidos(abrir){
+  const card=$("#pp-cartao"); let fundo=$("#pp-fundo");
+  if(abrir){
+    if(!fundo){ fundo=document.createElement("div"); fundo.id="pp-fundo"; fundo.className="fundo";
+      fundo.innerHTML='<div class="modal grande" role="dialog" aria-label="Pedidos de exame para assinar"><div class="pe"><h3>Pedidos de exame aguardando sua assinatura</h3><button type="button" id="pp-fechar">Fechar</button></div><div id="pp-lugar"></div></div>';
+      document.body.appendChild(fundo);
+      fundo.addEventListener("click",e=>{ if(e.target===fundo||e.target.id==="pp-fechar") janelaPedidos(false); }); }
+    $("#pp-lugar").appendChild(card); card.hidden=!pedidosPend.length; fundo.hidden=false;
+  } else {
+    if(fundo) fundo.hidden=true;
+    $("#pp-casa").after(card); card.hidden=!pedidosPend.length;
+  }
+}
+$("#nav-pedidos").addEventListener("click",()=>janelaPedidos(true));
+// "Abrir ficha" de dentro da janela: fecha a janela antes
+$("#pp-lista").addEventListener("click",e=>{ const b=e.target.closest("[data-pp=ficha]"); if(b) janelaPedidos(false); },true);
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&$("#pp-fundo")&&!$("#pp-fundo").hidden) janelaPedidos(false); });
+// pedido novo da equipe chega mesmo com você dentro de uma ficha
+setInterval(()=>{ if(!$("#raiz").hidden) carregaPedidosPend(); },60000);
 /* ===== entrada ===== */
 (async()=>{
   if(!AUTH) return portao();
