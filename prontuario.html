@@ -422,6 +422,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
               <div id="ind-box" style="border:1px dashed var(--line);border-radius:8px;padding:8px 10px">
                 <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><span class="rot" style="margin:0">💰 Indicação</span><span id="ind-lista" class="row" style="gap:6px;flex-wrap:wrap"></span><button type="button" class="link" id="ind-abrir">+ registrar cirurgia/lente indicada</button></div>
                 <div class="row" id="ind-form" hidden style="margin-top:6px;gap:6px;flex-wrap:wrap"><select id="ind-proc" style="width:auto"></select><input id="ind-proc-outro" placeholder="Qual procedimento?" hidden style="flex:1 1 180px"><select id="ind-olho" style="width:auto"><option value="">Olho…</option><option>OD</option><option>OE</option><option>AO</option></select><input id="ind-valor" placeholder="Valor (opcional)" inputmode="numeric" style="width:130px"><button type="button" class="pri" id="ind-salvar">Salvar</button><button type="button" class="link" id="ind-cancelar">Cancelar</button></div>
+                <div id="ind-sug" hidden style="margin-top:6px;font-size:13.5px"></div>
                 <div class="status" id="ind-st"></div>
               </div>
               <div><span class="rot">Exames solicitados</span>
@@ -621,6 +622,7 @@ mark.alt{background:none;color:inherit;font-weight:700;padding:0}
     <h3 id="gf-t">Finalizar atendimento</h3>
     <p style="margin:0;color:var(--muted)">Ao finalizar um atendimento, você não poderá alterá-lo novamente. Depois, só será possível <b>inserir informações</b>, com data e hora. Deseja prosseguir?</p>
     <label class="row" style="color:var(--ink)"><input type="checkbox" id="gf-copiar" style="width:auto"> Copiar o texto do atendimento (para relatório)</label>
+    <div id="gf-ind" hidden style="background:#fff3cd;border:1px solid #f0d58a;border-radius:8px;padding:10px 12px;font-size:14px"></div>
     <div class="status" id="gf-st"></div>
     <div class="pe"><button type="button" class="link" id="gf-voltar">← Voltar</button><button type="button" class="pri" id="gf-ok">Finalizar</button></div>
   </div>
@@ -2492,8 +2494,16 @@ $("#repetir-ref").addEventListener("click",()=>{ const c=(ficha.consultas||[]).f
 // botão "Finalizar" desta gaveta e o clique caía no chat (21/10/2026 — "não
 // consigo finalizar", várias vezes no dia). Abrir a gaveta fecha o chat.
 function abrirFinalizar(){ try{ window.EquipeChat&&EquipeChat.fechar(); }catch(_){} $("#gf-st").textContent=""; $("#g-fim").hidden=false;
+  const si=indPendente(), gi=$("#gf-ind"); gi.hidden=!si;
+  if(si) gi.innerHTML=`⚠️ A conduta diz <b>“${esc(si.trecho)}”</b>, mas a indicação não foi registrada — sem ela, a Ana não retoma o paciente e ela não entra na lista de Indicações.<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button type="button" class="pri" id="gf-ind-ok">Registrar ${esc(si.proc)}${si.olho?" "+esc(si.olho):""}</button><button type="button" class="link" id="gf-ind-nao">Não é indicação</button></div>`;
   setTimeout(()=>{ try{ const c=quemCobre($("#gf-ok")); if(c) diag("finalizar_coberto",c); }catch(_){} },400); }
 $("#gf-voltar").addEventListener("click",()=>{ $("#g-fim").hidden=true; });
+$("#gf-ind").addEventListener("click",async e=>{ const gi=$("#gf-ind");
+  if(e.target.id==="gf-ind-nao"){ gi.hidden=true; return; }
+  if(e.target.id!=="gf-ind-ok") return; const s=indPendente(); if(!s){ gi.hidden=true; return; }
+  e.target.disabled=true; e.target.textContent="Registrando…";
+  try{ await registrarIndDoTexto(s); gi.innerHTML=`✅ Indicação registrada: <b>${esc(s.proc)}${s.olho?" "+esc(s.olho):""}</b>. A Ana vai retomar o paciente.`; }
+  catch(er){ e.target.disabled=false; e.target.textContent=`Registrar ${s.proc}`; gi.insertAdjacentHTML("beforeend",`<div class="status erro">${esc(er.status===409?(er.msg||"Esta indicação já está registrada."):(er.msg||"Não consegui registrar."))}</div>`); } });
 $("#gf-ok").addEventListener("click",async()=>{
   let txt="";
   try{ txt=textoFinal(); if($("#gf-copiar").checked) copiarTxt(txt,()=>{},()=>{}); }
@@ -2527,10 +2537,36 @@ function quemCobre(el){ const r=el.getBoundingClientRect(); if(!r.width) return 
    Uma linha só: o que já está indicado vira etiqueta; "+ registrar" abre o formulário.
    Alimenta o funil de indicações (a Ana retoma o paciente depois). Não entra no texto do atendimento. */
 const IND_PROCS=["Cirurgia refrativa","Cirurgia de catarata","Crosslinking","Anel de Ferrara","Teste de lente de contato (Esclera)","Teste de lente de contato (Esclera Multifocal)","Lente escleral (Esclera SG)","Lente escleral (ZenLens)","Lente Zen RC","Lente rígida gás permeável","Lente de contato gelatinosa"];
+/* Indicação ESCRITA na conduta (18/11/2026, caso Ronaldo: "Indico FACO+LIO" no texto
+   e a indicação não apareceu — ela só nasce pelo botão "+ registrar"). Agora o texto
+   é lido: aparece a sugestão aqui e um aviso na gaveta de Finalizar, com um clique
+   para registrar. Negação ("sem indicação", "não indico", "contraindicado") não conta. */
+let indPac=[];
+const IND_TEXTO=[[/faco|facect|catarata|\bLIO\b/i,"Cirurgia de catarata"],[/\bPRK\b|lasik|\bsmile\b|refrativ|trans ?prk/i,"Cirurgia refrativa"],[/cross ?-?link|\bCXL\b/i,"Crosslinking"],[/\banel\b|ferrara|\bICRS\b/i,"Anel de Ferrara"],[/escleral|\besclera\b|zen ?lens|zen ?rc/i,"Teste de lente de contato (Esclera)"],[/lente r[íi]gida|\bRGP\b|\bLGP\b/i,"Lente rígida gás permeável"]];
+function indicacaoNoTexto(){
+  for(const trecho of String(v("cd-txt")||"").split(/\n|;|\.\s/)){
+    if(!/\bindic(o|a|amos|ad[oa]s?|a[çc][ãa]o)\b/i.test(trecho)) continue;
+    if(/\b(sem|n[ãa]o|nenhuma)\b[^.]{0,25}indic|contra-?indic|aguarda(r)? indica/i.test(trecho)) continue;
+    for(const [re,p] of IND_TEXTO) if(re.test(trecho)){ const mo=trecho.match(/\b(OD|OE|AO|ambos)\b/i);
+      return {proc:p,olho:mo?(/ambos/i.test(mo[1])?"AO":mo[1].toUpperCase()):"",trecho:trecho.trim().slice(0,90)}; }
+  }
+  return null; }
+function indPendente(){ const s=indicacaoNoTexto(); if(!s) return null;
+  const ja=(indPac||[]).some(i=>i.procedimento===s.proc&&["aberta","pausada","retornou","fechada"].includes(i.status)&&(Date.now()-new Date(i.created_at))<180*864e5);
+  return ja?null:s; }
+function mostraSugInd(){ const box=$("#ind-sug"); if(!box) return; const s=atend?indPendente():null; box.hidden=!s; if(!s) return;
+  box.innerHTML=`📝 Na conduta: “${esc(s.trecho)}” — <button type="button" class="link" id="ind-sug-ir" style="font-weight:600">registrar ${esc(s.proc)}${s.olho?" "+esc(s.olho):""}</button>`; }
+document.addEventListener("click",e=>{ if(e.target.id!=="ind-sug-ir") return; const s=indPendente(); if(!s) return;
+  $("#ind-abrir").click(); $("#ind-proc").value=s.proc; if(s.olho) $("#ind-olho").value=s.olho; $("#ind-valor").focus(); });
+let tSugInd=null; document.addEventListener("input",e=>{ if(e.target.id==="cd-txt"){ clearTimeout(tSugInd); tSugInd=setTimeout(mostraSugInd,600); } });
+async function registrarIndDoTexto(s,stEl){
+  const corpo={procedimento:s.proc,olho:s.olho||null};
+  if(atend?.appointment_id) corpo.appointment_id=atend.appointment_id; else { corpo.telefone=ficha.paciente.telefone; corpo.nome=ficha.paciente.nome; }
+  await api("/api/indicacoes",{method:"POST",body:JSON.stringify(corpo)}); await carregaIndicacoesPac(); }
 const IND_ST={aberta:"em aberto",pausada:"agora não",retornou:"voltou a marcar",fechada:"fechou",recusada:"recusou",perdida:"sem resposta"};
 async function carregaIndicacoesPac(){ const box=$("#ind-lista"); if(!ficha?.paciente) return;
   try{ const r=await api("/api/indicacoes?status=todas"); const f8=String(ficha.paciente.telefone||"").replace(/\D/g,"").slice(-8);
-    const minhas=(r.indicacoes||[]).filter(i=>String(i.paciente_telefone||"").replace(/\D/g,"").slice(-8)===f8);
+    const minhas=(r.indicacoes||[]).filter(i=>String(i.paciente_telefone||"").replace(/\D/g,"").slice(-8)===f8); indPac=minhas; mostraSugInd();
     box.innerHTML=minhas.map(i=>`<span class="tag" title="${esc(IND_ST[i.status]||i.status)}${i.valor?" · R$ "+Number(i.valor).toLocaleString("pt-BR"):""}">${esc(i.procedimento)}${i.olho?" "+esc(i.olho):""} · ${esc(IND_ST[i.status]||i.status)} <button type="button" class="link" data-ind-apagar="${esc(i.id)}" title="Apagar (registrada por engano)" style="padding:0 2px;color:var(--danger)">✕</button></span>`).join("");
   }catch(_){ box.innerHTML=""; } }
 // ✕ na indicação: apaga a registrada por engano (2º clique confirma)
