@@ -11738,16 +11738,27 @@ async function assinarPdfPronto(buf, cert) {
   // ser no fim da página" / "em cada página"). No timbrado do iClinic esse canto é vazio: a data
   // fica à esquerda e o endereço no centro. A assinatura PAdES cobre o arquivo inteiro; o carimbo
   // é só o aviso visível.
+  // Visual do iClinic (19/11/2026, ele mandou um parecer assinado no iClinicRx como modelo):
+  // selo verde "Assinada e Validada Digitalmente" no canto direito do rodapé e, na última
+  // linha, "Assinado digitalmente por <NOME> CRM 17877-DF". Sem QR/ID de receita: esses
+  // apontam para o sistema do iClinic — aqui quem valida é o validar.iti.gov.br.
   const [n, b] = [await doc.embedFont(StandardFonts.Helvetica), await doc.embedFont(StandardFonts.HelveticaBold)];
-  const verde = rgb(0.13, 0.55, 0.27), cinza = rgb(0.3, 0.3, 0.3);
-  const linhas = [["Assinado digitalmente", b, 6.8, verde], ["ICP-Brasil · Dr. Bruno O. Borges", n, 5.6, cinza], ["CRM-DF 17877 · RQE 9314", n, 5.6, cinza], [`Em ${quando} · validar.iti.gov.br`, n, 5.2, cinza]];
-  const larg = Math.max(...linhas.map(([t, f, sz]) => f.widthOfTextAtSize(t, sz))) + 10;
+  const verde = rgb(0.2, 0.62, 0.33), cinza = rgb(0.3, 0.3, 0.3), branco = rgb(1, 1, 1);
+  const titular = String(cert.titular || "").split(":")[0].trim().toUpperCase() || "BRUNO OLIVEIRA BORGES";
+  const selo = "Assinada e Validada Digitalmente", tSelo = 6.6, wSelo = b.widthOfTextAtSize(selo, tSelo) + 22;
+  const linhaFim = `Assinado digitalmente por ${titular} CRM 17877-DF · ICP-Brasil · confira em validar.iti.gov.br`;
   for (const pg of doc.getPages()) {
     const { x, y, width } = pg.getMediaBox();
-    const W = Math.max(larg, 100), H = 31, X = x + width - W - 34, Y = y + 31;
-    pg.drawRectangle({ x: X, y: Y, width: W, height: H, color: rgb(0.94, 0.98, 0.95), borderColor: verde, borderWidth: 0.6, opacity: 0.95 });
-    let ty = Y + H - 8.5;
-    for (const [t, f, sz, cor] of linhas) { pg.drawText(t, { x: X + 5, y: ty, size: sz, font: f, color: cor }); ty -= 7.2; }
+    const X = x + width - wSelo - 34, Y = y + 47, H = 13;
+    // selo: pílula verde com o ✓ num círculo branco
+    pg.drawRectangle({ x: X + H / 2, y: Y, width: wSelo - H, height: H, color: verde });
+    pg.drawCircle({ x: X + H / 2, y: Y + H / 2, size: H / 2, color: verde });
+    pg.drawCircle({ x: X + wSelo - H / 2, y: Y + H / 2, size: H / 2, color: verde });
+    pg.drawCircle({ x: X + 7, y: Y + H / 2, size: 4.3, color: branco });
+    pg.drawSvgPath("M -2.2 0 L -0.6 1.7 L 2.4 -1.6", { x: X + 7, y: Y + H / 2, borderColor: verde, borderWidth: 1.1 });
+    pg.drawText(selo, { x: X + 14, y: Y + 4, size: tSelo, font: b, color: branco });
+    const tEm = `Emissão: ${quando}`; pg.drawText(tEm, { x: X + wSelo - n.widthOfTextAtSize(tEm, 6) - 2, y: Y - 9, size: 6, font: n, color: cinza });
+    pg.drawText(linhaFim, { x: x + 34, y: y + 8, size: 6.3, font: n, color: cinza });
   }
   await pdflibAddPlaceholder({
     pdfDoc: doc, reason: "Documento médico assinado digitalmente", contactInfo: "IOBB - (61) 3033-6605",
