@@ -1388,7 +1388,12 @@ function corrigirUnidadeDaData(texto, slots) {
     if (!correta) return m;                                  // fim de semana: não opina
     const ditaEhTag = /taguatinga/i.test(unidDita);
     if (ditaEhTag === (correta === "Taguatinga")) return m;   // par já coerente
-    const hora = (meio.match(/(\d{1,2})\s*[h:]\s*(\d{2})/) || [])[0];
+    // ⛔ 19/11/2026 (Adriano, 61 9998-7001): a trava NÃO troca mais a DATA. Ela trocou
+    // "hoje, 19/11, 15h40, Conjunto Nacional" por "25/11 … Conjunto Nacional" na
+    // CONFIRMAÇÃO — mas o agendamento gravado era 19/11 15h40 no Taguatinga. O texto
+    // dizia uma coisa, a agenda outra, e o paciente foi ao Conjunto fechado. Data e
+    // hora são o que vai para a agenda; o que está errado é o NOME da unidade.
+    const hora = null;   // (antes: a hora citada, usada para procurar outra DATA — ver acima)
     if (hora && Array.isArray(slots)) {
       const alvo = hora.replace(/\s/g, "").replace(":", "h");
       const cand = slots.filter(s => /taguatinga/i.test(s.unidade) === ditaEhTag
