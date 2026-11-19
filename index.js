@@ -11767,8 +11767,8 @@ async function assinarPdfPronto(buf, cert) {
   const titular = String(cert.titular || "").split(":")[0].trim().toUpperCase() || "BRUNO OLIVEIRA BORGES";
   const selo = "Assinada e Validada Digitalmente", tSelo = 6.6, wSelo = b.widthOfTextAtSize(selo, tSelo) + 22;
   // Como conferir, escrito por extenso (19/11/2026: "deixa a forma de conferir mais explícita")
-  const linhaFim = `Assinado digitalmente por ${titular} · CRM 17877-DF · ICP-Brasil. `;
-  const linhaConf = "Para conferir a validade: acesse validar.iti.gov.br e envie este arquivo PDF.";
+  const linhaFim = `Assinado digitalmente por ${titular} CRM-17877. `;
+  const linhaConf = "Para conferir a validade: acesse validar.iti.gov.br";
   for (const pg of doc.getPages()) {
     const { x, y, width } = pg.getMediaBox();
     const X = x + width - wSelo - 34, Y = y + 47, H = 13;
