@@ -11488,7 +11488,10 @@ app.post("/api/prontuario/anexo", requireMedico, express.raw({ type: () => true,
     if (!ult8(tel) || !primNome(nome)) return res.status(400).json({ error: "Paciente inválido." });
     const consultaId = /^[0-9a-f-]{36}$/i.test(String(req.query.consulta || "")) ? String(req.query.consulta) : null;
     const anexo = await guardarAnexo({
-      tel, nome, tipo: ["iclinic", "laudo"].includes(String(req.query.tipo || "")) ? String(req.query.tipo) : "exame",
+      // PDF chamado "laudo…"/"parecer…"/"relatório…" anexado como Exame é laudo pronto (19/11/2026,
+      // caso Daniella: 6 laudos entraram como Exame e o botão 🔏 Assinar não apareceu)
+      tel, nome, tipo: ["iclinic", "laudo"].includes(String(req.query.tipo || "")) ? String(req.query.tipo)
+        : (/pdf/i.test(String(req.query.mime || "")) && /^(laudo|parecer|relat[óo]rio)[\s_\-.]/i.test(String(req.query.filename || ""))) ? "laudo" : "exame",
       nomeArq: String(req.query.filename || "arquivo").slice(0, 160),
       mime: String(req.query.mime || req.headers["content-type"] || "application/octet-stream"),
       buf: req.body, obs: req.query.obs, consultaId,
