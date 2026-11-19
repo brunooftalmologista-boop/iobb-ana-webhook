@@ -11734,15 +11734,21 @@ async function assinarPdfPronto(buf, cert) {
   const { SUBFILTER_ETSI_CADES_DETACHED } = require("@signpdf/utils");
   const doc = await PDFDocument.load(buf);
   const quando = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const pg = doc.getPages()[doc.getPageCount() - 1];
-  const { x, y, width, height } = pg.getMediaBox();
+  // Carimbo no FIM DE CADA PÁGINA, no canto direito do rodapé (Dr. Bruno, 19/11/2026: "tem que
+  // ser no fim da página" / "em cada página"). No timbrado do iClinic esse canto é vazio: a data
+  // fica à esquerda e o endereço no centro. A assinatura PAdES cobre o arquivo inteiro; o carimbo
+  // é só o aviso visível.
   const [n, b] = [await doc.embedFont(StandardFonts.Helvetica), await doc.embedFont(StandardFonts.HelveticaBold)];
-  const W = 262, H = 40, X = x + width - W - 36, Y = y + height - H - 18;
-  const verde = rgb(0.13, 0.55, 0.27);
-  pg.drawRectangle({ x: X, y: Y, width: W, height: H, color: rgb(0.93, 0.97, 0.94), borderColor: verde, borderWidth: 0.8 });
-  pg.drawText("Assinado digitalmente · ICP-Brasil", { x: X + 8, y: Y + H - 13, size: 9, font: b, color: verde });
-  pg.drawText("Dr. Bruno O. Borges · CRM-DF 17877 · RQE 9314", { x: X + 8, y: Y + H - 24, size: 7.5, font: n, color: rgb(0.2, 0.2, 0.2) });
-  pg.drawText(`Em ${quando}. Confira em validar.iti.gov.br`, { x: X + 8, y: Y + 6, size: 7, font: n, color: rgb(0.35, 0.35, 0.35) });
+  const verde = rgb(0.13, 0.55, 0.27), cinza = rgb(0.3, 0.3, 0.3);
+  const linhas = [["Assinado digitalmente", b, 6.8, verde], ["ICP-Brasil · Dr. Bruno O. Borges", n, 5.6, cinza], ["CRM-DF 17877 · RQE 9314", n, 5.6, cinza], [`Em ${quando} · validar.iti.gov.br`, n, 5.2, cinza]];
+  const larg = Math.max(...linhas.map(([t, f, sz]) => f.widthOfTextAtSize(t, sz))) + 10;
+  for (const pg of doc.getPages()) {
+    const { x, y, width } = pg.getMediaBox();
+    const W = Math.max(larg, 100), H = 31, X = x + width - W - 34, Y = y + 31;
+    pg.drawRectangle({ x: X, y: Y, width: W, height: H, color: rgb(0.94, 0.98, 0.95), borderColor: verde, borderWidth: 0.6, opacity: 0.95 });
+    let ty = Y + H - 8.5;
+    for (const [t, f, sz, cor] of linhas) { pg.drawText(t, { x: X + 5, y: ty, size: sz, font: f, color: cor }); ty -= 7.2; }
+  }
   await pdflibAddPlaceholder({
     pdfDoc: doc, reason: "Documento médico assinado digitalmente", contactInfo: "IOBB - (61) 3033-6605",
     name: cert.titular, location: "Brasília - DF", signatureLength: 16384, subFilter: SUBFILTER_ETSI_CADES_DETACHED,
