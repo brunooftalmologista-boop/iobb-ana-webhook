@@ -11734,6 +11734,26 @@ async function assinarPdfPronto(buf, cert) {
   const { SUBFILTER_ETSI_CADES_DETACHED } = require("@signpdf/utils");
   const doc = await PDFDocument.load(buf);
   const quando = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  // "Documento gerado por iClinic…" vinha escrito no rodapé dos laudos montados no modelo do
+  // iClinic — e não é verdade (Dr. Bruno, 19/11/2026). Antes de assinar, a linha é coberta e
+  // trocada pela do IOBB; os metadados do PDF também passam a dizer IOBB.
+  const it = await doc.embedFont(StandardFonts.HelveticaOblique);
+  try {
+    const pdfjs = require("pdfjs-dist/legacy/build/pdf.js");
+    const pj = await pdfjs.getDocument({ data: new Uint8Array(buf), disableFontFace: true, isEvalSupported: false, verbosity: 0 }).promise;
+    const paginas = doc.getPages();
+    for (let p = 1; p <= Math.min(pj.numPages, paginas.length); p++) {
+      const tc = await (await pj.getPage(p)).getTextContent();
+      for (const t of tc.items) {
+        if (!/iclinic/i.test(t.str || "") || !t.width) continue;
+        const sz = Math.abs(t.transform[0]) || 8, ex = t.transform[4], ey = t.transform[5], pg = paginas[p - 1];
+        pg.drawRectangle({ x: ex - 2, y: ey - sz * 0.32, width: t.width + 4, height: sz * 1.35, color: rgb(1, 1, 1) });
+        const novo = /^documento gerado/i.test(t.str.trim()) ? "Documento emitido pelo Instituto de Olhos Bruno Borges" : "Instituto de Olhos Bruno Borges";
+        pg.drawText(novo, { x: ex + (t.width - it.widthOfTextAtSize(novo, sz)) / 2, y: ey, size: sz, font: it, color: rgb(0.25, 0.25, 0.25) });
+      }
+    }
+  } catch (e) { console.error("[Assinar laudo] não consegui ler o texto do PDF (segue sem trocar o rodapé):", e.message); }
+  doc.setProducer("IOBB - prontuário"); doc.setCreator("IOBB - prontuário");
   // Carimbo no FIM DE CADA PÁGINA, no canto direito do rodapé (Dr. Bruno, 19/11/2026: "tem que
   // ser no fim da página" / "em cada página"). No timbrado do iClinic esse canto é vazio: a data
   // fica à esquerda e o endereço no centro. A assinatura PAdES cobre o arquivo inteiro; o carimbo
@@ -11746,7 +11766,9 @@ async function assinarPdfPronto(buf, cert) {
   const verde = rgb(0.2, 0.62, 0.33), cinza = rgb(0.3, 0.3, 0.3), branco = rgb(1, 1, 1);
   const titular = String(cert.titular || "").split(":")[0].trim().toUpperCase() || "BRUNO OLIVEIRA BORGES";
   const selo = "Assinada e Validada Digitalmente", tSelo = 6.6, wSelo = b.widthOfTextAtSize(selo, tSelo) + 22;
-  const linhaFim = `Assinado digitalmente por ${titular} CRM 17877-DF · ICP-Brasil · confira em validar.iti.gov.br`;
+  // Como conferir, escrito por extenso (19/11/2026: "deixa a forma de conferir mais explícita")
+  const linhaFim = `Assinado digitalmente por ${titular} · CRM 17877-DF · ICP-Brasil. `;
+  const linhaConf = "Para conferir a validade: acesse validar.iti.gov.br e envie este arquivo PDF.";
   for (const pg of doc.getPages()) {
     const { x, y, width } = pg.getMediaBox();
     const X = x + width - wSelo - 34, Y = y + 47, H = 13;
@@ -11758,7 +11780,9 @@ async function assinarPdfPronto(buf, cert) {
     pg.drawSvgPath("M -2.2 0 L -0.6 1.7 L 2.4 -1.6", { x: X + 7, y: Y + H / 2, borderColor: verde, borderWidth: 1.1 });
     pg.drawText(selo, { x: X + 14, y: Y + 4, size: tSelo, font: b, color: branco });
     const tEm = `Emissão: ${quando}`; pg.drawText(tEm, { x: X + wSelo - n.widthOfTextAtSize(tEm, 6) - 2, y: Y - 9, size: 6, font: n, color: cinza });
-    pg.drawText(linhaFim, { x: x + 34, y: y + 8, size: 6.3, font: n, color: cinza });
+    const tz = Math.min(6.2, 6.2 * (width - 68) / (n.widthOfTextAtSize(linhaFim, 6.2) + b.widthOfTextAtSize(linhaConf, 6.2)));   // cabe na largura da página
+    pg.drawText(linhaFim, { x: x + 34, y: y + 8, size: tz, font: n, color: cinza });
+    pg.drawText(linhaConf, { x: x + 34 + n.widthOfTextAtSize(linhaFim, tz), y: y + 8, size: tz, font: b, color: verde });
   }
   await pdflibAddPlaceholder({
     pdfDoc: doc, reason: "Documento médico assinado digitalmente", contactInfo: "IOBB - (61) 3033-6605",
