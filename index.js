@@ -11764,10 +11764,11 @@ async function assinarPdfPronto(buf, cert) {
   // apontam para o sistema do iClinic — aqui quem valida é o validar.iti.gov.br.
   const [n, b] = [await doc.embedFont(StandardFonts.Helvetica), await doc.embedFont(StandardFonts.HelveticaBold)];
   const verde = rgb(0.2, 0.62, 0.33), cinza = rgb(0.3, 0.3, 0.3), branco = rgb(1, 1, 1);
-  const titular = String(cert.titular || "").split(":")[0].trim().toUpperCase() || "BRUNO OLIVEIRA BORGES";
   const selo = "Assinada e Validada Digitalmente", tSelo = 6.6, wSelo = b.widthOfTextAtSize(selo, tSelo) + 22;
   // Como conferir, escrito por extenso (19/11/2026: "deixa a forma de conferir mais explícita")
-  const linhaFim = `Assinado digitalmente por ${titular} CRM-17877. `;
+  // Nome FIXO do médico: o certificado cadastrado é o da clínica (e-CNPJ "BRUNO OLIVEIRA BORGES
+  // CLINICA OFTALMOLOGICA LTDA") e o nome dele saía com "CLINICA OFTALMOLOGICA LTDA" (19/11/2026).
+  const linhaFim = "Assinado digitalmente por BRUNO OLIVEIRA BORGES CRM 17877-DF. ";
   const linhaConf = "Para conferir a validade: acesse validar.iti.gov.br";
   for (const pg of doc.getPages()) {
     const { x, y, width } = pg.getMediaBox();
